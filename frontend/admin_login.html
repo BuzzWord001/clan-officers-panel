@@ -3,49 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SanTDeviL // Admin Console</title>
+  <title>SanTDeviL — вход администратора</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <div class="scanlines"></div>
 
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="lock" style="color: var(--danger); border-color: var(--danger);">▓ ADMIN CONSOLE ▓</div>
-      <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL"
-           style="width: 90px; height: 90px; margin: 0 auto 12px; display: block;">
-      <h1>SanTDeviL</h1>
-      <div class="login-sub">// ROOT ACCESS</div>
+  <main class="auth-shell">
+    <form class="auth-card auth-card--admin" id="admin-form" autocomplete="off" novalidate>
 
-      <form id="admin-form" autocomplete="off" novalidate style="margin-top: 24px;">
-        <div class="form-group">
-          <label for="a-user">Логин администратора</label>
-          <input type="text" id="a-user" name="username"
-                 autocomplete="off"
-                 required minlength="2" maxlength="32">
-        </div>
+      <header class="auth-head">
+        <img class="auth-logo" src="assets/logo.png" alt="">
+        <h1 class="auth-title">SanTDeviL</h1>
+        <p class="auth-sub auth-sub--admin">Вход администратора</p>
+      </header>
 
-        <div class="form-group">
-          <label for="a-password">Пароль администратора</label>
-          <input type="password" id="a-password" name="password"
-                 autocomplete="off"
-                 required minlength="1" maxlength="200">
-        </div>
+      <div class="auth-field">
+        <label for="a-user">Логин</label>
+        <input type="text" id="a-user" name="username"
+               autocomplete="off"
+               required minlength="2" maxlength="32" autofocus>
+      </div>
 
-        <div class="form-actions">
-          <button type="submit" id="admin-btn">Войти как admin</button>
-        </div>
-      </form>
+      <div class="auth-field">
+        <label for="a-password">Пароль</label>
+        <input type="password" id="a-password" name="password"
+               autocomplete="off"
+               required maxlength="200">
+      </div>
 
-      <div class="login-divider" style="margin: 22px 0 12px;">// или //</div>
-      <a href="login.html" class="admin-link">Вход офицера</a>
+      <button type="submit" class="auth-submit" id="admin-btn">Войти</button>
 
-      <div class="login-error" id="login-error"></div>
-    </div>
-  </div>
+      <p class="auth-error" id="login-error" role="alert" aria-live="polite"></p>
+
+      <a class="auth-secondary" href="login.html">← Вход офицера</a>
+    </form>
+  </main>
 
   <script src="config.js"></script>
   <script src="js/matrix.js"></script>

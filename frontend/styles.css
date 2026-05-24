@@ -287,67 +287,152 @@ input:focus {
 
 input::placeholder { color: var(--muted); }
 
-/* ── Login ── */
-.login-shell {
+/* ──────────────────────────────────────────────────────────
+   Auth — login.html / admin_login.html
+   ────────────────────────────────────────────────────────── */
+
+.auth-shell {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
+  position: relative;
+  z-index: 2;
 }
 
-.login-card {
-  background: rgba(2, 12, 4, 0.96);
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: rgba(2, 10, 4, 0.94);
   border: 1px solid var(--accent);
   box-shadow:
-    0 0 32px rgba(0, 255, 65, 0.45),
-    0 12px 60px rgba(0, 0, 0, 0.85),
-    inset 0 0 60px rgba(0, 255, 65, 0.05);
-  backdrop-filter: blur(6px);
-  padding: 36px 38px;
-  width: 100%;
-  max-width: 460px;
-  text-align: center;
+    0 0 32px rgba(0, 255, 65, 0.35),
+    0 14px 60px rgba(0, 0, 0, 0.85);
+  padding: 36px 32px 28px;
+  display: flex;
+  flex-direction: column;
 }
 
-.login-card .lock {
-  font-size: 11px;
-  letter-spacing: 3px;
-  color: var(--muted);
+.auth-card--admin {
+  border-color: var(--danger);
+  box-shadow:
+    0 0 28px rgba(255, 59, 59, 0.3),
+    0 14px 60px rgba(0, 0, 0, 0.85);
+}
+
+.auth-head {
+  text-align: center;
   margin-bottom: 22px;
 }
 
-.login-card h1 {
-  font-size: 28px;
-  letter-spacing: 7px;
-  color: var(--accent);
-  text-shadow: 0 0 12px var(--accent);
+.auth-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 18px rgba(0, 255, 65, 0.4);
+  filter: hue-rotate(70deg) saturate(1.6) brightness(0.95);
+  display: block;
+  margin: 0 auto 14px;
 }
 
-.login-card .login-sub {
+.auth-card--admin .auth-logo {
+  border-color: var(--danger);
+  box-shadow: 0 0 18px rgba(255, 59, 59, 0.4);
+  filter: hue-rotate(-10deg) saturate(1.6) brightness(0.95);
+}
+
+.auth-title {
+  font-size: 26px;
+  letter-spacing: 6px;
+  color: var(--accent);
+  text-shadow: 0 0 14px var(--accent);
+  font-weight: 700;
+}
+
+.auth-card--admin .auth-title {
+  color: var(--danger);
+  text-shadow: 0 0 14px var(--danger);
+}
+
+.auth-sub {
   margin-top: 6px;
   font-size: 12px;
   letter-spacing: 3px;
   color: var(--text-dim);
+  text-transform: uppercase;
 }
 
-.login-divider {
-  margin: 28px 0 18px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 10px;
-  color: var(--muted);
+.auth-sub--admin { color: var(--danger); opacity: 0.85; }
+
+.auth-field {
+  margin-top: 14px;
+  text-align: left;
+}
+
+.auth-field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.auth-field input { width: 100%; }
+
+.auth-submit {
+  margin-top: 22px;
+  width: 100%;
+  padding: 13px;
+  font-size: 14px;
   letter-spacing: 3px;
 }
 
-.login-divider::before, .login-divider::after {
-  content: "";
-  flex: 1;
-  border-top: 1px dashed var(--accent-soft);
+.auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
-/* ── Login form ── */
+.auth-card--admin .auth-submit {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(40, 5, 5, 0.85);
+  text-shadow: 0 0 6px rgba(255, 59, 59, 0.5);
+}
+
+.auth-card--admin .auth-submit:hover {
+  background: rgba(80, 15, 15, 0.9);
+  box-shadow: 0 0 14px rgba(255, 59, 59, 0.6);
+}
+
+.auth-error {
+  margin-top: 14px;
+  min-height: 18px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.auth-secondary {
+  margin-top: 18px;
+  text-align: center;
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+
+.auth-secondary:hover {
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent);
+}
+
+/* shared form-group (settings) */
 .form-group {
   text-align: left;
   margin-top: 16px;
@@ -359,6 +444,7 @@ input::placeholder { color: var(--muted); }
   letter-spacing: 2px;
   color: var(--text-dim);
   margin-bottom: 6px;
+  text-transform: uppercase;
 }
 
 .form-group .hint {
@@ -373,56 +459,8 @@ input::placeholder { color: var(--muted); }
 }
 
 .form-actions button {
-  width: 100%;
-  padding: 12px 18px;
-  font-size: 14px;
-}
-
-.form-actions button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.admin-link {
-  display: inline-block;
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--muted);
-  border-bottom: 1px dashed var(--muted);
-  padding-bottom: 2px;
-  transition: all 0.15s;
-}
-
-.admin-link:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  text-shadow: 0 0 8px var(--accent);
-}
-
-.login-error {
-  margin-top: 16px;
-  color: var(--danger);
-  font-size: 12px;
-  min-height: 14px;
-  letter-spacing: 1px;
-}
-
-.vk-btn {
-  width: 100%;
-  background: rgba(20, 50, 90, 0.92);
-  border: 1px solid #6a93c7;
-  color: #d4e6f7;
-  padding: 12px 18px;
-  font-family: inherit;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.15s;
-  text-shadow: 0 0 6px rgba(106, 147, 199, 0.6);
-}
-
-.vk-btn:hover {
-  background: rgba(40, 80, 130, 0.95);
-  box-shadow: 0 0 14px rgba(106, 147, 199, 0.7);
+  padding: 11px 22px;
+  font-size: 13px;
 }
 
 /* ── Status / empty ── */

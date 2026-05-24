@@ -3,59 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SanTDeviL // Access Required</title>
+  <title>SanTDeviL — вход</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <div class="scanlines"></div>
 
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="lock">▓ ACCESS REQUIRED ▓</div>
-      <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL"
-           style="width: 90px; height: 90px; margin: 0 auto 12px; display: block;">
-      <h1>SanTDeviL</h1>
-      <div class="login-sub">OFFICER MANIFEST // Реестр посвящённых</div>
+  <main class="auth-shell">
+    <form class="auth-card" id="login-form" autocomplete="on" novalidate>
 
-      <div class="login-divider">DECRYPT IDENTITY</div>
+      <header class="auth-head">
+        <img class="auth-logo" src="assets/logo.png" alt="">
+        <h1 class="auth-title">SanTDeviL</h1>
+        <p class="auth-sub">Реестр приёма в клан</p>
+      </header>
 
-      <form id="login-form" autocomplete="on" novalidate>
-        <div class="form-group">
-          <label for="f-nick">Игровой ник</label>
-          <input type="text" id="f-nick" name="username"
-                 autocomplete="username"
-                 placeholder="Например, Меченый"
-                 required minlength="2" maxlength="32"
-                 pattern="[A-Za-zА-Яа-яЁё0-9 _\-.]{2,32}">
-          <div class="hint">2–32 символа: буквы, цифры, пробел, _ - .</div>
-        </div>
-
-        <div class="form-group">
-          <label for="f-password">Пароль офицеров</label>
-          <input type="password" id="f-password" name="password"
-                 autocomplete="current-password"
-                 placeholder="Общий пароль офицерского состава"
-                 required minlength="1" maxlength="200">
-        </div>
-
-        <div class="form-actions">
-          <button type="submit" id="login-btn">Войти</button>
-        </div>
-      </form>
-
-      <div class="login-divider" style="margin: 22px 0 12px;">// или //</div>
-      <a href="admin_login.html" class="admin-link">Вход для администратора</a>
-
-      <div class="login-error" id="login-error"></div>
-
-      <div style="margin-top: 22px; font-size: 11px; color: var(--muted); letter-spacing: 2px;">
-        Доступ только для офицеров клана.<br>Пароль выдаёт администратор.
+      <div class="auth-field">
+        <label for="f-nick">Игровой ник</label>
+        <input type="text" id="f-nick" name="username"
+               autocomplete="username"
+               required minlength="2" maxlength="32"
+               pattern="[A-Za-zА-Яа-яЁё0-9 _\-.]{2,32}"
+               autofocus>
       </div>
-    </div>
-  </div>
+
+      <div class="auth-field">
+        <label for="f-password">Пароль</label>
+        <input type="password" id="f-password" name="password"
+               autocomplete="current-password"
+               required maxlength="200">
+      </div>
+
+      <button type="submit" class="auth-submit" id="login-btn">Войти</button>
+
+      <p class="auth-error" id="login-error" role="alert" aria-live="polite"></p>
+
+      <a class="auth-secondary" href="admin_login.html">Я администратор</a>
+    </form>
+  </main>
 
   <script src="config.js"></script>
   <script src="js/matrix.js"></script>
