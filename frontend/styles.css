@@ -4,7 +4,7 @@
 
 :root {
   --bg:        #000000;
-  --bg-panel:  rgba(2, 12, 4, 0.42);
+  --bg-panel:  rgba(2, 12, 4, 0.20);
   --accent:    #00ff41;
   --accent-dim:#0a8a2c;
   --accent-soft:rgba(0, 255, 65, 0.18);
@@ -95,9 +95,9 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   justify-content: space-between;
   padding: 18px 28px;
   border-bottom: 1px solid var(--accent-soft);
-  background: rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .brand {
@@ -228,8 +228,8 @@ main {
     inset 0 0 60px rgba(0, 255, 65, 0.04);
   padding: 22px 26px;
   margin-bottom: 20px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .panel h2 {
@@ -265,6 +265,7 @@ tbody td {
   color: var(--text);
   border-bottom: 1px dashed rgba(0, 255, 65, 0.08);
   vertical-align: middle;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
 }
 
 tbody tr:hover { background: rgba(0, 255, 65, 0.06); }
