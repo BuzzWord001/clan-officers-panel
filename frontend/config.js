@@ -5,5 +5,5 @@ window.OFFICERS_CONFIG = {
   TG_LOGIN_BOT: "santdevil_officers_bot",
   // VK app_id для Implicit Flow (popup → oauth.vk.com/blank.html → токен).
   // Подойдёт любой Standalone/Web app, кастомные redirect URI не нужны.
-  VK_APP_ID: "54543925",
+  VK_APP_ID: "54607613",
 };

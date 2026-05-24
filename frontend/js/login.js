@@ -41,10 +41,13 @@
       '<div style="color: var(--muted); font-size: 11px; letter-spacing: 2px;">TG-логин не настроен (TG_LOGIN_BOT в config.js)</div>';
   }
 
-  // ── VK Implicit Flow (popup) ──
-  const VK_REDIRECT = "https://oauth.vk.com/blank.html";
-  let pollTimer = null;
+  // ── VK Implicit Flow (popup → vk_callback.html → postMessage) ──
+  const VK_REDIRECT = window.location.origin
+      + window.location.pathname.replace(/\/[^/]*$/, "/")
+      + "vk_callback.html";
+
   let popup = null;
+  let pollTimer = null;
 
   function openVkPopup() {
     if (!cfg.VK_APP_ID) {
@@ -73,36 +76,27 @@
       return;
     }
 
-    pollTimer = setInterval(checkVkPopup, 250);
+    // postMessage придёт сам, но на всякий случай поллим и popup.closed.
+    pollTimer = setInterval(() => {
+      if (popup && popup.closed) {
+        stopPolling();
+      }
+    }, 500);
   }
 
-  function checkVkPopup() {
-    if (!popup) { stopPolling(); return; }
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
 
-    if (popup.closed) {
-      stopPolling();
-      showError("Окно VK закрыто. Попробуй ещё раз.");
-      return;
-    }
+  window.addEventListener("message", (ev) => {
+    if (ev.origin !== window.location.origin) return;
+    if (!ev.data || ev.data.type !== "vk_auth") return;
 
-    // Доступ к popup.location.* выбросит SecurityError, пока popup на чужом
-    // origin (oauth.vk.com). Как только VK редиректнет на blank.html — origin
-    // станет тот же, и мы прочитаем hash.
-    let hash = null;
-    try {
-      const href = popup.location.href || "";
-      if (href.startsWith(VK_REDIRECT)) {
-        hash = popup.location.hash;
-      }
-    } catch (_) {
-      return;
-    }
-
-    if (!hash) return;
     stopPolling();
-    popup.close();
+    if (popup && !popup.closed) popup.close();
 
-    const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+    const raw = (ev.data.hash || ev.data.search || "").replace(/^[#?]/, "");
+    const params = new URLSearchParams(raw);
     const error = params.get("error");
     if (error) {
       showError(`VK: ${params.get("error_description") || error}`);
@@ -121,14 +115,7 @@
         if (e.status === 403) showError("Этого VK-аккаунта нет в списке офицеров.");
         else showError(e.detail || e.message || "Ошибка входа через VK");
       });
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  }
+  });
 
   $("vk-login-btn").addEventListener("click", openVkPopup);
 })();
