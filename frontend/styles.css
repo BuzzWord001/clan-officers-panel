@@ -4,7 +4,7 @@
 
 :root {
   --bg:        #000000;
-  --bg-panel:  rgba(2, 12, 4, 0.93);
+  --bg-panel:  rgba(2, 12, 4, 0.62);
   --accent:    #00ff41;
   --accent-dim:#0a8a2c;
   --accent-soft:rgba(0, 255, 65, 0.18);
@@ -95,8 +95,9 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   justify-content: space-between;
   padding: 18px 28px;
   border-bottom: 1px solid var(--accent-soft);
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .brand {
@@ -227,6 +228,8 @@ main {
     inset 0 0 60px rgba(0, 255, 65, 0.04);
   padding: 22px 26px;
   margin-bottom: 20px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .panel h2 {
