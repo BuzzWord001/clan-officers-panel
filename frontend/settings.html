@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SanTDeviL // Admin Settings</title>
-  <link rel="stylesheet" href="styles.css?v=4">
+  <title>SanTDeviL — Настройки</title>
+  <link rel="stylesheet" href="styles.css?v=5">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -19,41 +19,40 @@
       <div class="brand">
         <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
         <div class="brand-name">SanTDeviL</div>
-        <span class="classified-badge">CLASSIFIED // ADMIN ROOT</span>
+        <span class="classified-badge">Панель администратора</span>
       </div>
       <div class="user-bar">
         <span class="who" id="who"></span>
-        <button id="logout-btn">Logout</button>
+        <button id="logout-btn">Выйти</button>
       </div>
     </header>
 
     <section class="title-block">
       <div class="glitch">S a n T D e v i L</div>
-      <div class="subtitle">ADMIN CONSOLE <span class="slash">//</span> Управление доступом</div>
+      <div class="subtitle">Управление доступом</div>
     </section>
 
     <main>
       <div class="tabs">
-        <a href="index.html">// Реестр</a>
-        <a href="audit.html">// История</a>
-        <a href="settings.html" class="active">// Настройки</a>
+        <a href="index.html">Реестр</a>
+        <a href="audit.html">История</a>
+        <a href="settings.html" class="active">Настройки</a>
       </div>
 
       <div class="panel">
-        <h2>Пароль офицеров</h2>
+        <h2>Общий пароль офицеров</h2>
         <p class="hint" style="margin-bottom: 12px;">
-          Этот пароль вводят офицеры на главной странице вместе с игровым ником.
-          После смены — сообщи новый пароль офицерам в чате.
+          Этот пароль офицеры вводят на странице входа вместе с игровым ником.
+          После смены — сообщи новый пароль в офицерском чате.
         </p>
         <form id="officer-pwd-form" autocomplete="off">
           <div class="form-group">
-            <label for="op-new">Новый пароль офицеров</label>
+            <label for="op-new">Новый пароль</label>
             <input type="password" id="op-new" required minlength="6" maxlength="200"
-                   autocomplete="new-password" placeholder="Минимум 6 символов">
-            <div class="hint">Сохраняется в БД как bcrypt-хэш.</div>
+                   autocomplete="new-password" placeholder="минимум 6 символов">
           </div>
           <div class="form-group">
-            <label for="op-confirm">Повторите пароль</label>
+            <label for="op-confirm">Повтор пароля</label>
             <input type="password" id="op-confirm" required minlength="6" maxlength="200"
                    autocomplete="new-password">
           </div>
@@ -65,28 +64,28 @@
       </div>
 
       <div class="panel">
-        <h2>Логин и пароль администратора</h2>
+        <h2>Учётные данные администратора</h2>
         <p class="hint" style="margin-bottom: 12px;">
-          Этот логин и пароль — только твои. Используются для входа в эту админ-консоль.
+          Этот логин и пароль — только твои. Для подтверждения изменений
+          нужно ввести текущий пароль.
         </p>
         <form id="admin-form" autocomplete="off">
           <div class="form-group">
-            <label for="a-current">Текущий пароль администратора</label>
+            <label for="a-current">Текущий пароль</label>
             <input type="password" id="a-current" required autocomplete="current-password">
-            <div class="hint">Требуется для подтверждения.</div>
           </div>
           <div class="form-group">
-            <label for="a-new-user">Новый логин (необязательно)</label>
+            <label for="a-new-user">Новый логин</label>
             <input type="text" id="a-new-user" minlength="2" maxlength="32"
-                   autocomplete="off" placeholder="Оставь пустым, чтобы не менять">
+                   autocomplete="off" placeholder="оставь пустым, чтобы не менять">
           </div>
           <div class="form-group">
-            <label for="a-new-pwd">Новый пароль (необязательно)</label>
+            <label for="a-new-pwd">Новый пароль</label>
             <input type="password" id="a-new-pwd" minlength="6" maxlength="200"
-                   autocomplete="new-password" placeholder="Оставь пустым, чтобы не менять">
+                   autocomplete="new-password" placeholder="оставь пустым, чтобы не менять">
           </div>
           <div class="form-actions">
-            <button type="submit">Обновить</button>
+            <button type="submit">Сохранить</button>
           </div>
           <div class="status-line" id="a-status"></div>
         </form>
@@ -94,12 +93,12 @@
 
     </main>
 
-    <footer class="bottom">SanTDeviL // Officer Panel // v0.2</footer>
+    <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=4"></script>
-  <script src="js/matrix.js?v=4"></script>
-  <script src="js/api.js?v=4"></script>
-  <script src="js/settings.js?v=4"></script>
+  <script src="config.js?v=5"></script>
+  <script src="js/matrix.js?v=5"></script>
+  <script src="js/api.js?v=5"></script>
+  <script src="js/settings.js?v=5"></script>
 </body>
 </html>

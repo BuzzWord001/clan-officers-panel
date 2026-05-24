@@ -9,7 +9,7 @@
     window.location.href = "index.html";
     return;
   }
-  $("who").textContent = `ADMIN :: ${me.name}`;
+  $("who").textContent = `АДМИНИСТРАТОР • ${me.name}`;
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
     window.location.href = "admin_login.html";

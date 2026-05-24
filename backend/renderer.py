@@ -47,8 +47,7 @@ def _fmt_date(iso: str) -> str:
 def _build_rows(rows: list[dict]) -> str:
     if not rows:
         return (
-            '<tr><td colspan="5" class="empty">// MANIFEST IS EMPTY // '
-            'СПИСОК ПУСТ //</td></tr>'
+            '<tr><td colspan="5" class="empty">Список пуст</td></tr>'
         )
     html_rows = []
     today = date.today()

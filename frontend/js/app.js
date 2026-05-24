@@ -10,7 +10,7 @@
     window.location.href = "login.html";
     return;
   }
-  $("who").textContent = `${me.role.toUpperCase()} :: ${me.name}`;
+  $("who").textContent = `${fmtRoleLabel(me.role)} • ${me.name}`;
   if (me.role === "admin") {
     const tab = $("settings-tab");
     if (tab) tab.hidden = false;
@@ -32,13 +32,13 @@
     const note = $("f-note").value.trim();
     if (!nick || !date) return;
 
-    setStatus("Запись…");
+    setStatus("Добавляю…");
     try {
       await API.create({ game_nick: nick, title, accepted_date: date, note });
       $("f-nick").value = "";
       $("f-title").value = "";
       $("f-note").value = "";
-      setStatus(`✓ Принят: ${nick}`);
+      setStatus(`✓ Добавлен: ${nick}`);
       await reload();
     } catch (e) {
       setStatus(`✗ Ошибка: ${e.detail || e.message}`);
@@ -50,6 +50,12 @@
     if (text.startsWith("✓") || text.startsWith("✗")) {
       setTimeout(() => { $("form-status").textContent = ""; }, 4000);
     }
+  }
+
+  function fmtRoleLabel(role) {
+    if (role === "admin") return "АДМИНИСТРАТОР";
+    if (role === "officer") return "ОФИЦЕР";
+    return role.toUpperCase();
   }
 
   // ── Render table ──
@@ -77,13 +83,13 @@
         <td class="title"></td>
         <td class="date">${fmtDate(r.accepted_date)}</td>
         <td class="${r.immune_active ? "immune-active" : "immune-expired"}">
-          ${r.immune_active ? "иммунитет до " : "иммунитет был до "}${fmtDate(r.immune_until)}
+          ${r.immune_active ? "до " : "истёк "}${fmtDate(r.immune_until)}
         </td>
         <td class="note"></td>
         <td style="color: var(--muted); font-size: 12px;"></td>
         <td class="row-actions">
-          <button class="btn-edit">Edit</button>
-          <button class="btn-del danger">Del</button>
+          <button class="btn-edit">Изменить</button>
+          <button class="btn-del danger">Удалить</button>
         </td>
       `;
       tr.querySelector(".nick").textContent = r.game_nick;
@@ -128,7 +134,7 @@
     titleCell.innerHTML = `<input type="text" value="${escapeAttr(r.title || "")}" placeholder="Титул" style="width:100%">`;
     dateCell.innerHTML  = `<input type="date" value="${r.accepted_date}" style="width:100%">`;
     noteCell.innerHTML  = `<input type="text" value="${escapeAttr(r.note || "")}" style="width:100%">`;
-    actions.innerHTML = `<button class="save">Save</button><button class="cancel">Cancel</button>`;
+    actions.innerHTML = `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
 
     actions.querySelector(".cancel").addEventListener("click", reload);
     actions.querySelector(".save").addEventListener("click", async () => {

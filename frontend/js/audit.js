@@ -9,7 +9,9 @@
     window.location.href = "login.html";
     return;
   }
-  $("who").textContent = `${me.role.toUpperCase()} :: ${me.name}`;
+  const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
+                  : me.role === "officer" ? "ОФИЦЕР" : me.role.toUpperCase();
+  $("who").textContent = `${roleLabel} • ${me.name}`;
   if (me.role === "admin") {
     const tab = $("settings-tab");
     if (tab) tab.hidden = false;
@@ -41,12 +43,14 @@
     return out.length ? out.join("\n") : "—";
   }
 
+  const ACTION_RU = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО" };
+
   function summarise(item) {
     if (item.action === "create" && item.after) {
-      return `→ ${item.after.game_nick} • принят ${item.after.accepted_date}`;
+      return `${item.after.game_nick} — принят ${item.after.accepted_date}`;
     }
     if (item.action === "delete" && item.before) {
-      return `← ${item.before.game_nick} • принят ${item.before.accepted_date}`;
+      return `${item.before.game_nick} — принят ${item.before.accepted_date}`;
     }
     return diffLines(item.before, item.after);
   }
@@ -63,7 +67,7 @@
       div.className = "audit-item";
       div.innerHTML = `
         <div class="head">
-          <span><span class="action ${it.action}">${it.action.toUpperCase()}</span>
+          <span><span class="action ${it.action}">${ACTION_RU[it.action] || it.action.toUpperCase()}</span>
             • <span class="nick" style="color: var(--accent)"></span></span>
           <span class="actor"></span>
         </div>
