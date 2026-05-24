@@ -28,8 +28,16 @@
   }
 
   function today() {
-    const d = new Date();
-    return fmtRus(d.toISOString().slice(0, 10));
+    // Дата по московскому времени — независимо от часового пояса
+    // браузера пользователя.
+    const parts = new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).formatToParts(new Date());
+    const get = (t) => parts.find((p) => p.type === t).value;
+    return `${get("day")}.${get("month")}.${get("year")}`;
   }
 
   // Навешать на text-input авто-форматирование при вводе/paste.
