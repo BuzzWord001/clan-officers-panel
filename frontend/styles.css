@@ -86,16 +86,17 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  padding-left: var(--content-shift, 0px);
   transition: padding-left 0.2s;
 }
 
-/* На широких экранах сдвигаем весь контент вправо, чтобы девушка слева
-   не была перекрыта таблицей. */
+/* На широких экранах сдвигаем контент вправо, чтобы девушка слева не
+   была перекрыта таблицей. */
 @media (min-width: 1400px) {
-  .shell { padding-left: 360px; }
+  :root { --content-shift: 360px; }
 }
 @media (min-width: 1700px) {
-  .shell { padding-left: 440px; }
+  :root { --content-shift: 440px; }
 }
 
 /* ── Header ── */
@@ -105,9 +106,13 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   justify-content: space-between;
   padding: 18px 28px;
   border-bottom: 1px solid var(--accent-soft);
-  background: rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  /* Сводим на нет padding-left у .shell — шапка идёт от края до края */
+  margin-left: calc(-1 * var(--content-shift, 0px));
+  margin-right: 0;
+  padding-left: max(28px, var(--content-shift, 0px));
 }
 
 .brand {
