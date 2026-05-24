@@ -62,9 +62,20 @@ def current_session(request: Request) -> dict[str, str]:
     }
 
 
+ADMIN_DISPLAY = "Администратор"
+
+
 def current_actor(request: Request) -> dict[str, str]:
-    """Для CRUD-эндпоинтов: формат как раньше (platform/id/name)."""
+    """Для CRUD-эндпоинтов: формат как раньше (platform/id/name).
+
+    Для admin-сессии namespace анонимизируется в «Администратор» — реальный
+    логин админа (например, buzzword001 — он же игровой ник в Telegram) НЕ
+    светится в acceptances.created_by_* и audit_log.actor_*. Это даёт админу
+    инкогнито при правках в реестре.
+    """
     s = current_session(request)
+    if s["role"] == "admin":
+        return {"platform": "admin", "id": "admin", "name": ADMIN_DISPLAY}
     return {
         "platform": s["role"],
         "id": s["name"],

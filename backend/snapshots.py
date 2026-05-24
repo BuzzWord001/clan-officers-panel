@@ -79,6 +79,31 @@ def create_manual() -> Path:
     return target
 
 
+def inspect(name: str, audit_limit: int = 500) -> dict:
+    """Открыть снапшот readonly и вернуть его acceptances + audit_log.
+    Не подменяет текущую БД. Используется чтобы посмотреть удалённую историю.
+    """
+    src = _safe_filename(name)
+    if not src.exists():
+        raise FileNotFoundError(name)
+    # SQLite URI с режимом ro — гарантия что мы не модифицируем файл.
+    uri = f"file:{src.as_posix()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            acc_rows = [dict(r) for r in conn.execute("SELECT * FROM acceptances ORDER BY accepted_date ASC, id ASC").fetchall()]
+        except sqlite3.Error:
+            acc_rows = []
+        try:
+            aud_rows = [dict(r) for r in conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (audit_limit,)).fetchall()]
+        except sqlite3.Error:
+            aud_rows = []
+    finally:
+        conn.close()
+    return {"acceptances": acc_rows, "audit": aud_rows}
+
+
 def list_all() -> list[dict]:
     _ensure_dir()
     out = []

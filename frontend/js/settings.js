@@ -96,6 +96,7 @@
           <td class="date"></td>
           <td></td>
           <td class="row-actions">
+            <button class="btn-inspect">Открыть</button>
             <button class="btn-restore">Откатить</button>
             <button class="btn-del-snap danger">Удалить</button>
           </td>
@@ -104,6 +105,7 @@
         tr.children[1].textContent = fmtIso(s.created_at);
         tr.children[2].textContent = fmtSize(s.size);
 
+        tr.querySelector(".btn-inspect").addEventListener("click", () => doInspect(s.name));
         tr.querySelector(".btn-restore").addEventListener("click", () => doRestore(s.name));
         tr.querySelector(".btn-del-snap").addEventListener("click", () => doDelete(s.name));
         tbody.appendChild(tr);
@@ -111,6 +113,101 @@
     } catch (e) {
       flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
     }
+  }
+
+  async function doInspect(name) {
+    try {
+      const data = await API.snapshotInspect(name);
+      openInspectModal(name, data);
+    } catch (e) {
+      flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  }
+
+  function fmtIsoDate(iso) {
+    if (!iso) return "";
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+  }
+
+  function fmtTs(iso) {
+    if (!iso) return "";
+    const d = new Date(iso + (iso.endsWith("Z") ? "" : "Z"));
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function openInspectModal(name, data) {
+    const old = document.getElementById("inspect-modal");
+    if (old) old.remove();
+
+    const accRows = (data.acceptances || []).map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${esc(r.game_nick)}</td>
+        <td>${esc(r.title)}</td>
+        <td>${fmtIsoDate(r.accepted_date)}</td>
+        <td>${esc(r.note)}</td>
+      </tr>`).join("") || `<tr><td colspan="5" class="empty">Записей нет</td></tr>`;
+
+    const ACTION = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО" };
+    const auditRows = (data.audit || []).map(a => `
+      <tr>
+        <td class="${a.action}" style="color: ${a.action === 'delete' ? 'var(--danger)' : 'var(--accent)'};">
+          ${ACTION[a.action] || (a.action || "").toUpperCase()}
+        </td>
+        <td>${esc(a.game_nick)}</td>
+        <td>${esc(a.actor_name)}</td>
+        <td>${fmtTs(a.timestamp)}</td>
+      </tr>`).join("") || `<tr><td colspan="4" class="empty">История пуста</td></tr>`;
+
+    const modal = document.createElement("div");
+    modal.id = "inspect-modal";
+    modal.className = "modal-backdrop";
+    modal.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>Снапшот: ${esc(name)}</h2>
+          <button class="modal-close" type="button" aria-label="Закрыть">×</button>
+        </div>
+
+        <h3 style="font-size:13px;letter-spacing:3px;color:var(--accent);margin:8px 0;">РЕЕСТР</h3>
+        <div class="table-scroll" style="max-height:30vh;">
+          <table>
+            <thead><tr>
+              <th style="width:42px;">№</th><th>Ник</th><th>Титул</th>
+              <th style="width:130px;">Принят</th><th>Примечание</th>
+            </tr></thead>
+            <tbody>${accRows}</tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size:13px;letter-spacing:3px;color:var(--accent);margin:18px 0 8px;">ЖУРНАЛ ИЗМЕНЕНИЙ</h3>
+        <div class="table-scroll" style="max-height:30vh;">
+          <table>
+            <thead><tr>
+              <th style="width:120px;">Действие</th><th>Ник</th>
+              <th style="width:160px;">Автор</th><th style="width:160px;">Когда</th>
+            </tr></thead>
+            <tbody>${auditRows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) modal.remove();
+    });
+    modal.querySelector(".modal-close").addEventListener("click", () => modal.remove());
+    document.addEventListener("keydown", function onEsc(e) {
+      if (e.key === "Escape") { modal.remove(); document.removeEventListener("keydown", onEsc); }
+    });
   }
 
   async function doRestore(name) {

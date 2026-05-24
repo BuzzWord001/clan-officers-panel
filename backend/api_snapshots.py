@@ -35,6 +35,17 @@ def delete_snapshot(name: str, _: dict = Depends(require_admin)) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
 
 
+@router.get("/{name}/inspect")
+def inspect_snapshot(name: str, _: dict = Depends(require_admin)) -> dict:
+    """Открыть снапшот readonly, отдать его acceptances + audit_log."""
+    try:
+        return snapshots.inspect(name)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "snapshot_not_found")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+
 @router.post("/{name}/restore")
 def restore_snapshot(name: str, _: dict = Depends(require_admin)) -> dict:
     try:

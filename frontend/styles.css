@@ -390,6 +390,71 @@ td.actor { color: var(--text-dim); font-size: 13px; }
   box-shadow: 0 0 8px rgba(255, 59, 59, 0.5);
 }
 
+/* Модальное окно просмотра снапшота */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFade 0.18s ease-out;
+}
+
+@keyframes modalFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: rgba(2, 12, 4, 0.96);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 32px rgba(0, 255, 65, 0.4), 0 16px 60px rgba(0, 0, 0, 0.9);
+  padding: 24px 26px;
+  width: 100%;
+  max-width: 1000px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px dashed var(--accent-soft);
+}
+
+.modal-head h2 {
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-transform: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: rgba(0, 30, 10, 0.6);
+  padding: 0;
+  font-size: 20px;
+  line-height: 26px;
+  letter-spacing: 0;
+}
+.modal-close:hover {
+  background: rgba(0, 80, 20, 0.85);
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.6);
+}
+
 label {
   display: block;
   font-size: 11px;

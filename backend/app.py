@@ -21,7 +21,7 @@ import api_audit
 import api_snapshots
 import auth_pwd
 from config import settings
-from session import current_actor
+from session import current_actor, require_admin
 from urllib.parse import urlparse
 
 
@@ -75,8 +75,8 @@ def health() -> dict:
 
 
 @app.post("/admin/republish")
-async def republish(_: dict = Depends(current_actor)) -> dict:
-    """Принудительная публикация (без ожидания дебаунса). Требует авторизации офицера."""
+async def republish(_: dict = Depends(require_admin)) -> dict:
+    """Принудительная публикация в TG/VK (без ожидания 5-мин дебаунса). Только admin."""
     return await publisher.publish_now()
 
 

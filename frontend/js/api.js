@@ -45,6 +45,7 @@
 
     snapshotList:    () => request("GET",  "/admin/snapshots"),
     snapshotCreate:  () => request("POST", "/admin/snapshots"),
+    snapshotInspect: (name) => request("GET",  `/admin/snapshots/${encodeURIComponent(name)}/inspect`),
     snapshotRestore: (name) => request("POST", `/admin/snapshots/${encodeURIComponent(name)}/restore`),
     snapshotDelete:  (name) => request("DELETE", `/admin/snapshots/${encodeURIComponent(name)}`),
   };
