@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     default_admin_password: str = "SanTDeviL_admin_change_me"
     default_officer_password: str = "santdevil2026"
 
+    # Plaintext офицерский пароль для подписи закрепа в TG/VK
+    # (хранится отдельно от bcrypt-хэша — при смене пароля офицеров
+    # обнови и тут, иначе в закрепе будет старое значение).
+    caption_officer_password: str = "santdevil2026"
+
     @property
     def project_dir(self) -> Path:
         return _PROJECT_DIR

@@ -398,7 +398,7 @@ label {
   margin-bottom: 6px;
 }
 
-input[type=text], input[type=date], input[type=password] {
+input[type=text], input[type=date], input[type=password], input[type=email], input[type=number] {
   width: 100%;
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid var(--accent-soft);
@@ -416,6 +416,18 @@ input:focus {
 }
 
 input::placeholder { color: var(--muted); }
+
+/* Перебиваем yellow/white autofill в Chrome/Edge для всех полей */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.85) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
+  border: 1px solid var(--accent-soft);
+  transition: background-color 600000s ease-in-out 0s;
+}
 
 /* ──────────────────────────────────────────────────────────
    Auth — login.html / admin_login.html
