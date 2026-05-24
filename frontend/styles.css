@@ -105,7 +105,7 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   align-items: center;
   justify-content: space-between;
   padding: 12px 28px;
-  border-bottom: 1px solid var(--accent-soft);
+  border-bottom: none;
   background: transparent;
   /* Сводим на нет padding-left у .shell — шапка идёт от края до края,
      и её содержимое (лого + SanTDeviL + бейдж) стоит слева у самого края. */
