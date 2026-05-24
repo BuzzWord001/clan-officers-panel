@@ -1,55 +1,50 @@
-"""VK ID — обмен code на access_token + получение user info.
+"""VK Implicit Flow — валидация access_token через users.get.
 
-Frontend получает code от VK ID, шлёт сюда. Мы дёргаем VK напрямую
-с server_secret и проверяем user.
+Клиент получает токен от VK сам (popup на oauth.vk.com/blank.html),
+шлёт нам access_token + заявленный user_id. Мы дёргаем users.get
+с этим токеном и проверяем, что VK возвращает того же user_id.
+Если совпало — токен подлинный.
+
+Преимущество: не нужен client_secret, не нужны кастомные redirect URI
+в настройках VK-приложения, не нужна ИП-верификация.
 """
 
 import httpx
 from fastapi import HTTPException, status
 
-from config import settings
 
-
-VK_OAUTH_TOKEN_URL = "https://oauth.vk.com/access_token"
 VK_API_USERS_GET = "https://api.vk.com/method/users.get"
 VK_API_VERSION = "5.199"
 
 
-async def exchange_code(code: str, redirect_uri: str) -> dict:
-    if not (settings.vk_app_id and settings.vk_app_secret):
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "vk_oauth_not_configured")
+async def validate_token(access_token: str, claimed_user_id: int) -> dict:
+    """Проверяет access_token, возвращает данные пользователя.
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(
-            VK_OAUTH_TOKEN_URL,
-            params={
-                "client_id": settings.vk_app_id,
-                "client_secret": settings.vk_app_secret,
-                "redirect_uri": redirect_uri,
-                "code": code,
-            },
-        )
-    if r.status_code != 200:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"vk_token_http_{r.status_code}")
-    data = r.json()
-    if "access_token" not in data or "user_id" not in data:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, data.get("error_description", "vk_token_error"))
-    return data
-
-
-async def fetch_user(access_token: str, user_id: int) -> dict:
+    Бросает 401 если токен невалиден или не принадлежит claimed_user_id.
+    """
     async with httpx.AsyncClient(timeout=10.0) as client:
         r = await client.get(
             VK_API_USERS_GET,
             params={
-                "user_ids": user_id,
+                "user_ids": claimed_user_id,
                 "fields": "screen_name",
                 "access_token": access_token,
                 "v": VK_API_VERSION,
             },
         )
     payload = r.json()
+    if "error" in payload:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            payload["error"].get("error_msg", "vk_api_error"),
+        )
+
     items = payload.get("response") or []
     if not items:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "vk_user_not_found")
-    return items[0]
+
+    user = items[0]
+    if int(user["id"]) != int(claimed_user_id):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "vk_token_user_mismatch")
+
+    return user

@@ -29,7 +29,7 @@
     me:           () => request("GET", "/auth/me"),
     logout:       () => request("POST", "/auth/logout"),
     loginTg:      (payload) => request("POST", "/auth/tg", payload),
-    loginVk:      (code, redirectUri) => request("POST", "/auth/vk", { code, redirect_uri: redirectUri }),
+    loginVk:      (accessToken, userId) => request("POST", "/auth/vk", { access_token: accessToken, user_id: userId }),
     list:         () => request("GET", "/acceptances"),
     create:       (payload) => request("POST", "/acceptances", payload),
     update:       (id, payload) => request("PATCH", `/acceptances/${id}`, payload),

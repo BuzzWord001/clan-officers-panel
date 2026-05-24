@@ -20,6 +20,7 @@ import api_acceptances
 import api_audit
 from config import settings
 from session import current_actor
+from urllib.parse import urlparse
 
 
 logging.basicConfig(
@@ -48,9 +49,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SanTDeviL Officer Panel", version="0.1.0", lifespan=lifespan)
 
+
+def _frontend_origin() -> str:
+    """Из FRONTEND_URL берём только origin (scheme://host[:port]) для CORS.
+    Браузер шлёт Origin header без пути — сравнение должно быть по origin."""
+    p = urlparse(settings.frontend_url)
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else settings.frontend_url
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=[_frontend_origin()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

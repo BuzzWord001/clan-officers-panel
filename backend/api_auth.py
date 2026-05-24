@@ -1,6 +1,6 @@
 """Endpoints авторизации: /auth/tg, /auth/vk, /auth/me, /auth/logout."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 import auth_tg
@@ -26,20 +26,19 @@ def login_tg(payload: TgLoginPayload, response: Response) -> MeOut:
     return MeOut(platform="tg", user_id=str(payload.id), name=name, username=payload.username)
 
 
-class VkCodeIn(BaseModel):
-    code: str
-    redirect_uri: str
+class VkTokenIn(BaseModel):
+    access_token: str
+    user_id: int
 
 
 @router.post("/vk")
-async def login_vk(payload: VkCodeIn, response: Response) -> MeOut:
-    tok = await auth_vk.exchange_code(payload.code, payload.redirect_uri)
-    user_id = int(tok["user_id"])
+async def login_vk(payload: VkTokenIn, response: Response) -> MeOut:
+    user = await auth_vk.validate_token(payload.access_token, payload.user_id)
+    user_id = int(user["id"])
 
     if not whitelist.is_vk_allowed(user_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_whitelist")
 
-    user = await auth_vk.fetch_user(tok["access_token"], user_id)
     display = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
     name = whitelist.vk_name_for(user_id, display)
 
