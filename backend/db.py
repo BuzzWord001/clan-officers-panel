@@ -43,8 +43,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
     after_json      TEXT,
     actor_platform  TEXT    NOT NULL,
     actor_id        TEXT    NOT NULL,
-    actor_name      TEXT    NOT NULL
+    actor_name      TEXT    NOT NULL,
+    actor_ip        TEXT    NOT NULL DEFAULT '',
+    actor_user_agent TEXT   NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS login_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL,
+    role            TEXT    NOT NULL,            -- officer | admin
+    name            TEXT    NOT NULL,            -- game_nick (officer) или логин (admin)
+    success         INTEGER NOT NULL,            -- 0/1
+    reason          TEXT    NOT NULL DEFAULT '', -- 'wrong_password' / '' и т.п.
+    ip              TEXT    NOT NULL DEFAULT '',
+    user_agent      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_time ON login_log(timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(timestamp);
 
@@ -225,28 +240,6 @@ def clear_audit() -> int:
         return cur.rowcount
 
 
-def list_audit(limit: int = 200) -> list[dict[str, Any]]:
-    with connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-        out = []
-        for r in rows:
-            out.append({
-                "id": r["id"],
-                "timestamp": r["timestamp"],
-                "action": r["action"],
-                "acceptance_id": r["acceptance_id"],
-                "game_nick": r["game_nick"],
-                "before": json.loads(r["before_json"]) if r["before_json"] else None,
-                "after": json.loads(r["after_json"]) if r["after_json"] else None,
-                "actor_platform": r["actor_platform"],
-                "actor_id": r["actor_id"],
-                "actor_name": r["actor_name"],
-            })
-        return out
-
-
 def get_render_state() -> dict[str, Any]:
     with connection() as conn:
         row = conn.execute("SELECT * FROM render_state WHERE id = 1").fetchone()
@@ -281,8 +274,8 @@ def _write_audit(
     conn.execute(
         """INSERT INTO audit_log
            (timestamp, action, acceptance_id, game_nick, before_json, after_json,
-            actor_platform, actor_id, actor_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            actor_platform, actor_id, actor_name, actor_ip, actor_user_agent)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             datetime.utcnow().isoformat(timespec="seconds"),
             action,
@@ -293,8 +286,81 @@ def _write_audit(
             actor["platform"],
             str(actor["id"]),
             actor["name"],
+            actor.get("ip", ""),
+            actor.get("user_agent", ""),
         ),
     )
+
+
+def list_audit(limit: int = 200) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        out = []
+        for r in rows:
+            keys = r.keys()
+            out.append({
+                "id": r["id"],
+                "timestamp": r["timestamp"],
+                "action": r["action"],
+                "acceptance_id": r["acceptance_id"],
+                "game_nick": r["game_nick"],
+                "before": json.loads(r["before_json"]) if r["before_json"] else None,
+                "after": json.loads(r["after_json"]) if r["after_json"] else None,
+                "actor_platform": r["actor_platform"],
+                "actor_id": r["actor_id"],
+                "actor_name": r["actor_name"],
+                "actor_ip": r["actor_ip"] if "actor_ip" in keys else "",
+                "actor_user_agent": r["actor_user_agent"] if "actor_user_agent" in keys else "",
+            })
+        return out
+
+
+# ── login_log ─────────────────────────────────────────────────────────────
+
+def write_login(*, role: str, name: str, success: bool,
+                ip: str, user_agent: str, reason: str = "") -> None:
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO login_log (timestamp, role, name, success, reason, ip, user_agent)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.utcnow().isoformat(timespec="seconds"),
+                role,
+                name,
+                1 if success else 0,
+                reason,
+                ip,
+                user_agent,
+            ),
+        )
+
+
+def list_logins(limit: int = 200) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM login_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "timestamp": r["timestamp"],
+                "role": r["role"],
+                "name": r["name"],
+                "success": bool(r["success"]),
+                "reason": r["reason"],
+                "ip": r["ip"],
+                "user_agent": r["user_agent"],
+            }
+            for r in rows
+        ]
+
+
+def clear_logins() -> int:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM login_log")
+        return cur.rowcount
 
 
 def _serialise(obj: Any) -> Any:

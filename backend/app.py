@@ -81,6 +81,7 @@ async def republish(_: dict = Depends(require_admin)) -> dict:
 
 
 app.include_router(api_auth.router)
+app.include_router(api_auth.admin_router)
 app.include_router(api_acceptances.router)
 app.include_router(api_audit.router)
 app.include_router(api_snapshots.router)

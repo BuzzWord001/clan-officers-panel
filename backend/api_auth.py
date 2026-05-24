@@ -8,11 +8,14 @@ POST /auth/logout       — выйти
 Admin-only:
 POST /auth/admin/officer-password   — сменить пароль офицеров
 POST /auth/admin/credentials        — сменить admin username / password
+GET  /admin/login-log               — журнал входов (IP, UA)
+DELETE /admin/login-log             — очистить
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 import auth_pwd
+import db
 from schemas import (
     OfficerLoginIn,
     AdminLoginIn,
@@ -20,25 +23,43 @@ from schemas import (
     ChangeAdminCredentialsIn,
     MeOut,
 )
-from session import current_session, set_session, clear_session, require_admin
+from session import (
+    current_session, set_session, clear_session, require_admin,
+    client_ip, client_user_agent,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/login", response_model=MeOut)
-def login(payload: OfficerLoginIn, response: Response) -> dict:
-    if not auth_pwd.verify_officer(payload.password):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_password")
+def login(payload: OfficerLoginIn, request: Request, response: Response) -> dict:
     name = payload.game_nick.strip()
+    ip = client_ip(request)
+    ua = client_user_agent(request)
+
+    if not auth_pwd.verify_officer(payload.password):
+        db.write_login(role="officer", name=name, success=False,
+                       reason="wrong_password", ip=ip, user_agent=ua)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_password")
+
+    db.write_login(role="officer", name=name, success=True, ip=ip, user_agent=ua)
     set_session(response, role="officer", name=name)
     return {"role": "officer", "name": name, "login_at": "now"}
 
 
 @router.post("/admin/login", response_model=MeOut)
-def admin_login(payload: AdminLoginIn, response: Response) -> dict:
+def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> dict:
+    ip = client_ip(request)
+    ua = client_user_agent(request)
+
     if not auth_pwd.verify_admin(payload.username, payload.password):
+        db.write_login(role="admin", name=payload.username, success=False,
+                       reason="wrong_credentials", ip=ip, user_agent=ua)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
+
+    db.write_login(role="admin", name=payload.username, success=True, ip=ip, user_agent=ua)
     set_session(response, role="admin", name=payload.username)
     return {"role": "admin", "name": payload.username, "login_at": "now"}
 
@@ -74,3 +95,17 @@ def update_admin(payload: ChangeAdminCredentialsIn, _: dict = Depends(require_ad
     if not ok:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "current_password_wrong")
     return {"ok": True}
+
+
+# --- admin: login log ----------------------------------------------------
+
+@admin_router.get("/login-log")
+def login_log(limit: int = 200, _: dict = Depends(require_admin)) -> list[dict]:
+    if limit < 1: limit = 1
+    if limit > 1000: limit = 1000
+    return db.list_logins(limit)
+
+
+@admin_router.delete("/login-log", status_code=status.HTTP_204_NO_CONTENT)
+def clear_login_log(_: dict = Depends(require_admin)) -> None:
+    db.clear_logins()

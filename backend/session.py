@@ -65,21 +65,44 @@ def current_session(request: Request) -> dict[str, str]:
 ADMIN_DISPLAY = "Администратор"
 
 
+def client_ip(request: Request) -> str:
+    """Достаёт реальный IP клиента из заголовков прокси/туннеля."""
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()[:64]
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    if request.client:
+        return (request.client.host or "")[:64]
+    return ""
+
+
+def client_user_agent(request: Request) -> str:
+    """Берёт User-Agent. Обрезаем до 200 символов для БД."""
+    return (request.headers.get("user-agent") or "")[:200]
+
+
 def current_actor(request: Request) -> dict[str, str]:
-    """Для CRUD-эндпоинтов: формат как раньше (platform/id/name).
+    """Для CRUD-эндпоинтов: формат platform/id/name + ip/user_agent.
 
     Для admin-сессии namespace анонимизируется в «Администратор» — реальный
     логин админа (например, buzzword001 — он же игровой ник в Telegram) НЕ
     светится в acceptances.created_by_* и audit_log.actor_*. Это даёт админу
-    инкогнито при правках в реестре.
+    инкогнито при правках в реестре. Но IP+UA для аудита сохраняются.
     """
     s = current_session(request)
+    ip = client_ip(request)
+    ua = client_user_agent(request)
     if s["role"] == "admin":
-        return {"platform": "admin", "id": "admin", "name": ADMIN_DISPLAY}
+        return {"platform": "admin", "id": "admin", "name": ADMIN_DISPLAY,
+                "ip": ip, "user_agent": ua}
     return {
         "platform": s["role"],
         "id": s["name"],
         "name": s["name"],
+        "ip": ip,
+        "user_agent": ua,
     }
 
 

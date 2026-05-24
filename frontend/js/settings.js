@@ -241,5 +241,52 @@
     }
   });
 
+  // ── Login log ──
+  async function reloadLogins() {
+    try {
+      const list = await API.loginLog(200);
+      const tbody = $("logins-tbody");
+      tbody.innerHTML = "";
+      if (!list.length) { $("logins-empty").hidden = false; return; }
+      $("logins-empty").hidden = true;
+      for (const l of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="date"></td>
+          <td></td>
+          <td class="nick"></td>
+          <td></td>
+          <td class="ip"></td>
+          <td class="ua"></td>
+        `;
+        tr.children[0].textContent = fmtIso(l.timestamp);
+        tr.children[1].textContent = l.role === "admin" ? "АДМИН" : "офицер";
+        tr.children[2].textContent = l.name;
+        tr.children[3].className = l.success ? "success-yes" : "success-no";
+        tr.children[3].textContent = l.success ? "✓" : "✗";
+        if (!l.success && l.reason) {
+          tr.children[3].title = l.reason;
+        }
+        tr.children[4].textContent = l.ip || "—";
+        tr.children[5].textContent = l.user_agent || "—";
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      flash($("logins-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  $("clear-logins").addEventListener("click", async () => {
+    if (!confirm("Полностью очистить журнал входов?")) return;
+    try {
+      await API.loginLogClear();
+      await reloadLogins();
+      flash($("logins-status"), "✓ Очищено", true);
+    } catch (e) {
+      flash($("logins-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  });
+
   await reloadSnapshots();
+  await reloadLogins();
 })();

@@ -390,6 +390,22 @@ td.actor { color: var(--text-dim); font-size: 13px; }
   box-shadow: 0 0 8px rgba(255, 59, 59, 0.5);
 }
 
+.audit-meta {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  word-break: break-all;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 255, 65, 0.08);
+}
+
+td.success-yes { color: var(--accent); font-weight: 700; }
+td.success-no  { color: var(--danger); font-weight: 700; }
+td.ip { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 13px; color: var(--text-dim); }
+td.ua { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; color: var(--muted); max-width: 280px; word-break: break-all; }
+
 /* Модальное окно просмотра снапшота */
 .modal-backdrop {
   position: fixed;

@@ -99,6 +99,15 @@
         `${fmtTs(it.timestamp)} • ${it.actor_name}`;
       div.querySelector(".diff").textContent = summarise(it);
 
+      if (isAdmin && (it.actor_ip || it.actor_user_agent)) {
+        const meta = document.createElement("div");
+        meta.className = "audit-meta";
+        const ip = it.actor_ip || "—";
+        const ua = (it.actor_user_agent || "—").slice(0, 120);
+        meta.textContent = `IP: ${ip}    UA: ${ua}`;
+        div.appendChild(meta);
+      }
+
       if (isAdmin) {
         const btn = div.querySelector(".audit-del");
         btn.hidden = false;

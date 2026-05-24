@@ -44,6 +44,19 @@ class AuditOut(BaseModel):
     actor_platform: str
     actor_id: str
     actor_name: str
+    actor_ip: str = ""
+    actor_user_agent: str = ""
+
+
+class LoginLogOut(BaseModel):
+    id: int
+    timestamp: str
+    role: str
+    name: str
+    success: bool
+    reason: str
+    ip: str
+    user_agent: str
 
 
 class MeOut(BaseModel):

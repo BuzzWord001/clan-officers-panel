@@ -43,6 +43,9 @@
     auditDelete:   (id) => request("DELETE", `/audit/${id}`),
     auditClear:    () => request("DELETE", `/audit`),
 
+    loginLog:        (limit = 200) => request("GET", `/admin/login-log?limit=${limit}`),
+    loginLogClear:   () => request("DELETE", "/admin/login-log"),
+
     snapshotList:    () => request("GET",  "/admin/snapshots"),
     snapshotCreate:  () => request("POST", "/admin/snapshots"),
     snapshotInspect: (name) => request("GET",  `/admin/snapshots/${encodeURIComponent(name)}/inspect`),

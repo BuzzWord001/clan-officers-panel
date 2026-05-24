@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SanTDeviL — Настройки</title>
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=18" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=19" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -93,6 +93,35 @@
 
       <div class="panel">
         <div class="panel-head">
+          <h2>Журнал входов</h2>
+          <button id="clear-logins" class="danger">Очистить журнал</button>
+        </div>
+        <p class="hint" style="margin-bottom: 12px;">
+          Каждый успешный и неуспешный вход на сайт фиксируется здесь:
+          ник или логин, IP-адрес и User-Agent браузера. По этим данным
+          можно понять, кто именно вносил правки в реестр и с какого устройства.
+        </p>
+        <div class="table-scroll" style="max-height: 380px;">
+          <table id="logins-table">
+            <thead>
+              <tr>
+                <th style="width:140px;">Когда</th>
+                <th style="width:100px;">Роль</th>
+                <th>Имя</th>
+                <th style="width:60px;">Успех</th>
+                <th style="width:140px;">IP</th>
+                <th>User-Agent</th>
+              </tr>
+            </thead>
+            <tbody id="logins-tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="logins-empty" hidden>Журнал входов пуст</div>
+        <div class="status-line" id="logins-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
           <h2>Резервные копии и откат</h2>
           <button id="snapshot-now">Создать снапшот сейчас</button>
         </div>
@@ -123,9 +152,9 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=18"></script>
-  <script src="js/matrix.js?v=18"></script>
-  <script src="js/api.js?v=18"></script>
-  <script src="js/settings.js?v=18"></script>
+  <script src="config.js?v=19"></script>
+  <script src="js/matrix.js?v=19"></script>
+  <script src="js/api.js?v=19"></script>
+  <script src="js/settings.js?v=19"></script>
 </body>
 </html>
