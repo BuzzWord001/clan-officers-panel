@@ -35,6 +35,31 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   pointer-events: none;
 }
 
+/* Стилизованный «matrix-portrait» на заднем фоне */
+.bg-girl {
+  position: fixed;
+  right: 2vw;
+  bottom: 0;
+  height: 92vh;
+  max-height: 92vh;
+  width: auto;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.32;
+  filter:
+    hue-rotate(95deg)
+    saturate(2.4)
+    brightness(0.85)
+    contrast(1.15)
+    drop-shadow(0 0 28px rgba(0, 255, 65, 0.45));
+  mix-blend-mode: screen;
+  user-select: none;
+}
+
+@media (max-width: 900px) {
+  .bg-girl { opacity: 0.18; height: 70vh; right: -10vw; }
+}
+
 .scanlines {
   position: fixed;
   inset: 0;
@@ -255,10 +280,12 @@ td.immune-expired  { color: var(--muted); text-decoration: line-through; }
 /* ── Form ── */
 .form-row {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 2fr auto;
+  grid-template-columns: 1.4fr 1.4fr 0.9fr 1.6fr auto;
   gap: 12px;
   align-items: end;
 }
+
+td.title { color: var(--text-dim); font-style: italic; }
 
 label {
   display: block;

@@ -19,6 +19,7 @@ def list_all() -> list[dict]:
 def create(payload: AcceptanceIn, actor: dict = Depends(current_actor)) -> dict:
     return db.create_acceptance(
         game_nick=payload.game_nick,
+        title=payload.title,
         accepted_date=payload.accepted_date.isoformat(),
         note=payload.note,
         actor=actor,
@@ -30,6 +31,7 @@ def update(acc_id: int, payload: AcceptanceUpdate, actor: dict = Depends(current
     res = db.update_acceptance(
         acc_id,
         game_nick=payload.game_nick,
+        title=payload.title,
         accepted_date=payload.accepted_date.isoformat() if payload.accepted_date else None,
         note=payload.note,
         actor=actor,

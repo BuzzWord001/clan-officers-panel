@@ -47,7 +47,7 @@ def _fmt_date(iso: str) -> str:
 def _build_rows(rows: list[dict]) -> str:
     if not rows:
         return (
-            '<tr><td colspan="4" class="empty">// MANIFEST IS EMPTY // '
+            '<tr><td colspan="5" class="empty">// MANIFEST IS EMPTY // '
             'СПИСОК ПУСТ //</td></tr>'
         )
     html_rows = []
@@ -62,10 +62,13 @@ def _build_rows(rows: list[dict]) -> str:
         else:
             immune_text = f"истёк {_fmt_date(r['immune_until'])}"
 
+        title = r.get("title") or "—"
+
         html_rows.append(
             "<tr>"
             f'<td>{i}</td>'
             f'<td class="nick">{escape(r["game_nick"])}</td>'
+            f'<td class="title">{escape(title)}</td>'
             f'<td class="date">{_fmt_date(r["accepted_date"])}</td>'
             f'<td class="{immune_cls}">{immune_text}</td>'
             "</tr>"

@@ -6,12 +6,14 @@ from pydantic import BaseModel, Field, field_validator
 
 class AcceptanceIn(BaseModel):
     game_nick: str = Field(min_length=1, max_length=64)
+    title: str = Field(default="", max_length=100)
     accepted_date: date
     note: str = Field(default="", max_length=200)
 
 
 class AcceptanceUpdate(BaseModel):
     game_nick: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=100)
     accepted_date: date | None = None
     note: str | None = Field(default=None, max_length=200)
 
@@ -19,6 +21,7 @@ class AcceptanceUpdate(BaseModel):
 class AcceptanceOut(BaseModel):
     id: int
     game_nick: str
+    title: str
     accepted_date: date
     immune_until: date
     immune_active: bool

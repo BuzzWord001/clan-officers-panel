@@ -20,6 +20,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS acceptances (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     game_nick       TEXT    NOT NULL,
+    title           TEXT    NOT NULL DEFAULT '',
     accepted_date   TEXT    NOT NULL,            -- ISO YYYY-MM-DD
     note            TEXT    NOT NULL DEFAULT '',
     created_at      TEXT    NOT NULL,
@@ -94,9 +95,11 @@ def connection():
 def _row_to_acceptance(row: sqlite3.Row) -> dict[str, Any]:
     accepted = date.fromisoformat(row["accepted_date"])
     immune_until = accepted + timedelta(days=IMMUNITY_DAYS)
+    keys = row.keys()
     return {
         "id": row["id"],
         "game_nick": row["game_nick"],
+        "title": row["title"] if "title" in keys else "",
         "accepted_date": row["accepted_date"],
         "immune_until": immune_until.isoformat(),
         "immune_active": date.today() < immune_until,
@@ -128,6 +131,7 @@ def get_acceptance(acc_id: int) -> dict[str, Any] | None:
 def create_acceptance(
     *,
     game_nick: str,
+    title: str,
     accepted_date: str,
     note: str,
     actor: dict[str, str],
@@ -136,11 +140,12 @@ def create_acceptance(
     with connection() as conn:
         cur = conn.execute(
             """INSERT INTO acceptances
-               (game_nick, accepted_date, note, created_at, updated_at,
+               (game_nick, title, accepted_date, note, created_at, updated_at,
                 created_by_platform, created_by_id, created_by_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 game_nick.strip(),
+                title.strip(),
                 accepted_date,
                 note.strip(),
                 now,
@@ -163,6 +168,7 @@ def update_acceptance(
     acc_id: int,
     *,
     game_nick: str | None,
+    title: str | None,
     accepted_date: str | None,
     note: str | None,
     actor: dict[str, str],
@@ -175,15 +181,16 @@ def update_acceptance(
             return None
 
         new_nick = (game_nick or before["game_nick"]).strip()
+        new_title = (before["title"] if title is None else title).strip()
         new_date = accepted_date or before["accepted_date"]
         new_note = before["note"] if note is None else note.strip()
         now = datetime.utcnow().isoformat(timespec="seconds")
 
         conn.execute(
             """UPDATE acceptances
-               SET game_nick = ?, accepted_date = ?, note = ?, updated_at = ?
+               SET game_nick = ?, title = ?, accepted_date = ?, note = ?, updated_at = ?
                WHERE id = ?""",
-            (new_nick, new_date, new_note, now, acc_id),
+            (new_nick, new_title, new_date, new_note, now, acc_id),
         )
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)

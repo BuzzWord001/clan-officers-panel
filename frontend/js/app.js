@@ -27,14 +27,16 @@
   $("add-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const nick = $("f-nick").value.trim();
+    const title = $("f-title").value.trim();
     const date = $("f-date").value;
     const note = $("f-note").value.trim();
     if (!nick || !date) return;
 
     setStatus("Запись…");
     try {
-      await API.create({ game_nick: nick, accepted_date: date, note });
+      await API.create({ game_nick: nick, title, accepted_date: date, note });
       $("f-nick").value = "";
+      $("f-title").value = "";
       $("f-note").value = "";
       setStatus(`✓ Принят: ${nick}`);
       await reload();
@@ -72,6 +74,7 @@
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td class="nick"></td>
+        <td class="title"></td>
         <td class="date">${fmtDate(r.accepted_date)}</td>
         <td class="${r.immune_active ? "immune-active" : "immune-expired"}">
           ${r.immune_active ? "иммунитет до " : "иммунитет был до "}${fmtDate(r.immune_until)}
@@ -84,8 +87,9 @@
         </td>
       `;
       tr.querySelector(".nick").textContent = r.game_nick;
+      tr.querySelector(".title").textContent = r.title || "—";
       tr.querySelector(".note").textContent = r.note || "—";
-      tr.querySelector("td:nth-child(6)").textContent =
+      tr.querySelector("td:nth-child(7)").textContent =
         `${r.created_by_platform}:${r.created_by_name}`;
 
       tr.querySelector(".btn-del").addEventListener("click", () => onDelete(r));
@@ -114,23 +118,25 @@
   }
 
   function onEdit(tr, r) {
-    // Превращаем строку в редактируемую: ник, дата, примечание.
-    const nickCell = tr.querySelector(".nick");
-    const dateCell = tr.querySelector(".date");
-    const noteCell = tr.querySelector(".note");
-    const actions  = tr.querySelector(".row-actions");
+    const nickCell  = tr.querySelector(".nick");
+    const titleCell = tr.querySelector(".title");
+    const dateCell  = tr.querySelector(".date");
+    const noteCell  = tr.querySelector(".note");
+    const actions   = tr.querySelector(".row-actions");
 
-    nickCell.innerHTML = `<input type="text" value="${escapeAttr(r.game_nick)}" style="width:100%">`;
-    dateCell.innerHTML = `<input type="date" value="${r.accepted_date}" style="width:100%">`;
-    noteCell.innerHTML = `<input type="text" value="${escapeAttr(r.note || "")}" style="width:100%">`;
+    nickCell.innerHTML  = `<input type="text" value="${escapeAttr(r.game_nick)}" style="width:100%">`;
+    titleCell.innerHTML = `<input type="text" value="${escapeAttr(r.title || "")}" placeholder="Титул" style="width:100%">`;
+    dateCell.innerHTML  = `<input type="date" value="${r.accepted_date}" style="width:100%">`;
+    noteCell.innerHTML  = `<input type="text" value="${escapeAttr(r.note || "")}" style="width:100%">`;
     actions.innerHTML = `<button class="save">Save</button><button class="cancel">Cancel</button>`;
 
     actions.querySelector(".cancel").addEventListener("click", reload);
     actions.querySelector(".save").addEventListener("click", async () => {
       const payload = {
-        game_nick: nickCell.querySelector("input").value.trim(),
+        game_nick:     nickCell.querySelector("input").value.trim(),
+        title:         titleCell.querySelector("input").value.trim(),
         accepted_date: dateCell.querySelector("input").value,
-        note: noteCell.querySelector("input").value.trim(),
+        note:          noteCell.querySelector("input").value.trim(),
       };
       try {
         await API.update(r.id, payload);
@@ -146,6 +152,5 @@
   }
 
   await reload();
-  // Лёгкий авто-рефреш на случай если другой офицер только что добавил.
   setInterval(reload, 30000);
 })();

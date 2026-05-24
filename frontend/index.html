@@ -10,6 +10,7 @@
 <body>
 
   <canvas id="matrix-canvas"></canvas>
+  <img class="bg-girl" src="assets/bg.png?v=4" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -49,6 +50,10 @@
             <input type="text" id="f-nick" name="nick" placeholder="Например, Меченый" required maxlength="64">
           </div>
           <div>
+            <label for="f-title">Титул</label>
+            <input type="text" id="f-title" name="title" placeholder="Например, твин Pandora" maxlength="100">
+          </div>
+          <div>
             <label for="f-date">Дата приёма</label>
             <input type="date" id="f-date" name="date" required>
           </div>
@@ -70,6 +75,7 @@
             <tr>
               <th style="width:42px;">#</th>
               <th>Ник</th>
+              <th>Титул</th>
               <th style="width:140px;">Принят</th>
               <th style="width:200px;">Иммунитет</th>
               <th>Примечание</th>
