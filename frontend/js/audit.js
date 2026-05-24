@@ -30,14 +30,21 @@
     });
   }
 
+  const FIELD_RU = {
+    game_nick: "ник",
+    title: "титул",
+    accepted_date: "дата",
+    note: "примечание",
+  };
+
   function diffLines(before, after) {
-    const keys = ["game_nick", "accepted_date", "note"];
+    const keys = ["game_nick", "title", "accepted_date", "note"];
     const out = [];
     for (const k of keys) {
       const b = before ? before[k] : undefined;
       const a = after  ? after[k]  : undefined;
       if (b !== a) {
-        out.push(`${k}: ${JSON.stringify(b ?? "")} → ${JSON.stringify(a ?? "")}`);
+        out.push(`${FIELD_RU[k] || k}: «${b ?? ""}» → «${a ?? ""}»`);
       }
     }
     return out.length ? out.join("\n") : "—";

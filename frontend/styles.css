@@ -35,30 +35,34 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   pointer-events: none;
 }
 
-/* Декоративный «matrix-portrait» — фоновый ватермарк за контентом.
-   По центру внизу, прозрачный, blend-mode даёт зелёное свечение поверх дождя. */
+/* Декоративный «matrix-portrait» — слева в свободной зоне рядом с таблицей.
+   На узких экранах прячется (за таблицей нет смысла). */
 .bg-girl {
   position: fixed;
-  left: 50%;
+  left: 0;
   bottom: 0;
-  transform: translateX(-50%);
-  height: 88vh;
+  height: 96vh;
+  max-height: 96vh;
   width: auto;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.18;
+  opacity: 0.42;
   filter:
     hue-rotate(95deg)
-    saturate(2.4)
+    saturate(2.6)
     brightness(0.9)
     contrast(1.1)
-    drop-shadow(0 0 24px rgba(0, 255, 65, 0.35));
+    drop-shadow(0 0 28px rgba(0, 255, 65, 0.45));
   mix-blend-mode: screen;
   user-select: none;
 }
 
-@media (max-width: 900px) {
-  .bg-girl { opacity: 0.12; height: 60vh; }
+/* Экран узкий — девушка перекроет контент, прячем. */
+@media (max-width: 1400px) {
+  .bg-girl { opacity: 0.18; height: 75vh; }
+}
+@media (max-width: 1100px) {
+  .bg-girl { display: none; }
 }
 
 .scanlines {
