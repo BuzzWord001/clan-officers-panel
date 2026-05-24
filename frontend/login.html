@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SanTDeviL // Access Required</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <div class="scanlines"></div>
+
+  <div class="login-shell">
+    <div class="login-card">
+      <div class="lock">▓ ACCESS REQUIRED ▓</div>
+      <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL"
+           style="width: 90px; height: 90px; margin: 0 auto 12px; display: block;">
+      <h1>SanTDeviL</h1>
+      <div class="login-sub">OFFICER MANIFEST // Реестр посвящённых</div>
+
+      <div class="login-divider">DECRYPT IDENTITY</div>
+
+      <div class="login-buttons">
+        <div id="tg-login-mount"></div>
+        <button id="vk-login-btn" class="vk-btn" type="button">Войти через VK</button>
+      </div>
+
+      <div class="login-error" id="login-error"></div>
+      <div style="margin-top: 22px; font-size: 11px; color: var(--muted); letter-spacing: 2px;">
+        Доступ только для офицеров клана.<br>Whitelist сверяется с офицерским чатом.
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/matrix.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>

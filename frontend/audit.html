@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SanTDeviL // Audit Log</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <div class="scanlines"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
+        <div class="brand-name">SanTDeviL</div>
+        <span class="classified-badge">CLASSIFIED // OFFICERS ONLY</span>
+      </div>
+      <div class="user-bar" id="user-bar">
+        <span class="who" id="who"></span>
+        <button id="logout-btn">Logout</button>
+      </div>
+    </header>
+
+    <section class="title-block">
+      <div class="glitch">S a n T D e v i L</div>
+      <div class="subtitle">
+        AUDIT LOG <span class="slash">//</span> Журнал изменений
+      </div>
+    </section>
+
+    <main>
+      <div class="tabs">
+        <a href="index.html">// Реестр</a>
+        <a href="audit.html" class="active">// История</a>
+      </div>
+
+      <div class="panel">
+        <h2>Последние изменения</h2>
+        <div class="audit-list" id="audit-list"></div>
+        <div class="empty" id="empty-state" hidden>История пуста</div>
+      </div>
+    </main>
+
+    <footer class="bottom">SanTDeviL // Officer Panel // v0.1</footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/matrix.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/audit.js"></script>
+</body>
+</html>

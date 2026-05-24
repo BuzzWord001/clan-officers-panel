@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1100px;
+    font-family: 'Share Tech Mono', 'Cascadia Code', 'Consolas', monospace;
+    color: #c8ffc8;
+    background: #000;
+    position: relative;
+  }
+
+  /* Matrix-фон в виде символов */
+  .bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at top, rgba(0, 255, 65, 0.10), transparent 65%),
+      radial-gradient(ellipse at bottom, rgba(0, 100, 30, 0.18), transparent 70%),
+      #000;
+    z-index: 0;
+  }
+
+  .bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        to bottom,
+        rgba(0, 255, 65, 0.04) 0px,
+        rgba(0, 255, 65, 0.04) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    pointer-events: none;
+  }
+
+  .glyph-rain {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 0.22;
+    z-index: 0;
+    font-family: 'VT323', monospace;
+    color: #00ff41;
+    font-size: 18px;
+    line-height: 18px;
+    letter-spacing: 4px;
+    text-shadow: 0 0 4px #00ff41;
+    white-space: pre;
+  }
+
+  .content { position: relative; z-index: 1; padding: 36px 40px 28px; }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.35);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .logo {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    border: 2px solid #00ff41;
+    box-shadow: 0 0 20px rgba(0, 255, 65, 0.55);
+    filter: hue-rotate(70deg) saturate(1.6) brightness(0.95);
+  }
+
+  .brand-text h1 {
+    font-size: 42px;
+    letter-spacing: 10px;
+    color: #00ff41;
+    text-shadow: 0 0 14px #00ff41, 0 0 28px rgba(0, 255, 65, 0.45);
+    font-weight: 700;
+  }
+
+  .brand-text .sub {
+    margin-top: 4px;
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: #7fd58a;
+  }
+
+  .badge {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #ff3b3b;
+    border: 1px solid #ff3b3b;
+    padding: 6px 12px;
+    text-shadow: 0 0 6px #ff3b3b;
+  }
+
+  /* Stats row */
+  .stats {
+    display: flex;
+    gap: 30px;
+    padding: 16px 0 22px;
+    border-bottom: 1px dashed rgba(0, 255, 65, 0.25);
+  }
+
+  .stat {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #7fd58a;
+  }
+
+  .stat .num {
+    display: block;
+    font-size: 22px;
+    color: #00ff41;
+    text-shadow: 0 0 8px rgba(0, 255, 65, 0.6);
+    font-weight: 700;
+    margin-top: 4px;
+  }
+
+  /* Table */
+  table {
+    width: 100%;
+    margin-top: 16px;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  thead th {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: #00ff41;
+    text-align: left;
+    padding: 12px 14px;
+    background: rgba(0, 255, 65, 0.07);
+    border-bottom: 1px solid rgba(0, 255, 65, 0.35);
+  }
+
+  thead th:first-child { width: 44px; text-align: center; }
+  thead th:nth-child(3) { width: 160px; }
+  thead th:nth-child(4) { width: 240px; }
+
+  tbody tr {
+    border-bottom: 1px dashed rgba(0, 255, 65, 0.12);
+  }
+
+  tbody tr:nth-child(odd)  { background: rgba(0, 30, 0, 0.4); }
+  tbody tr:nth-child(even) { background: rgba(0, 15, 0, 0.5); }
+
+  tbody td {
+    padding: 12px 14px;
+    font-size: 15px;
+    vertical-align: middle;
+    color: #c8ffc8;
+  }
+
+  tbody td:first-child {
+    text-align: center;
+    color: #4a8a55;
+    font-size: 13px;
+  }
+
+  td.nick {
+    color: #00ff41;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(0, 255, 65, 0.6);
+    letter-spacing: 1px;
+  }
+
+  td.date { color: #7fd58a; }
+
+  td.immune-active {
+    color: #00ff41;
+    font-weight: 700;
+  }
+
+  td.immune-expired {
+    color: #4a8a55;
+    text-decoration: line-through;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0, 255, 65, 0.35);
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #4a8a55;
+  }
+
+  .footer .right { color: #7fd58a; }
+
+  .empty {
+    text-align: center;
+    padding: 40px;
+    color: #4a8a55;
+    letter-spacing: 3px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="glyph-rain">GLYPH_RAIN</div>
+
+  <div class="content">
+
+    <div class="header">
+      <div class="brand">
+        <img class="logo" src="LOGO_PATH" alt="SanTDeviL">
+        <div class="brand-text">
+          <h1>SanTDeviL</h1>
+          <div class="sub">OFFICER MANIFEST // Реестр посвящённых</div>
+        </div>
+      </div>
+      <div class="badge">CLASSIFIED // OFFICERS ONLY</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">ВСЕГО ПРИНЯТО<span class="num">TOTAL_COUNT</span></div>
+      <div class="stat">ПОД ИММУНИТЕТОМ<span class="num">IMMUNE_COUNT</span></div>
+      <div class="stat">ОБЯЗАНЫ ДОБЛЕСТЬЮ<span class="num">DUTY_COUNT</span></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>НИК</th>
+          <th>ПРИНЯТ</th>
+          <th>ИММУНИТЕТ ДО</th>
+        </tr>
+      </thead>
+      <tbody>
+        TABLE_ROWS
+      </tbody>
+    </table>
+
+    <div class="footer">
+      <span>// SanTDeviL OFFICER PANEL</span>
+      <span class="right">UPDATED: UPDATED_TIME мск</span>
+    </div>
+
+  </div>
+</body>
+</html>

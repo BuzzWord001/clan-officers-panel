@@ -1,0 +1,168 @@
+"""Рендер списка приёма в PNG через headless Chrome (Selenium).
+
+Адаптация renderer.py из clan-reg-bot под Matrix-тему и 3 колонки
+(№, ник, дата приёма, иммунитет до).
+"""
+
+import logging
+import os
+import random
+import sys
+import time
+from datetime import date, datetime, timedelta, timezone
+from html import escape
+from pathlib import Path
+
+from config import settings
+import db
+
+log = logging.getLogger("officers.render")
+
+_PROJECT_DIR = settings.project_dir
+RENDER_DIR = settings.render_dir
+TEMPLATE_PATH = RENDER_DIR / "template.html"
+LOGO_PATH = RENDER_DIR / "assets" / "logo.png"
+OUTPUT_DIR = RENDER_DIR / "output"
+OUTPUT_PATH = OUTPUT_DIR / "manifest.png"
+TMP_HTML = RENDER_DIR / "_render.html"
+
+
+_GLYPHS = "アイウエオカキクケコサシスセソタチツテトナニABCDEFGHIJKLMN0123456789СТАЛКЕРZONESDEVIL"
+
+
+def _glyph_rain(width: int = 60, height: int = 70) -> str:
+    """Случайная сетка символов для фонового эффекта в шаблоне."""
+    rnd = random.Random(0xC0DE)
+    lines = []
+    for _ in range(height):
+        lines.append("".join(rnd.choice(_GLYPHS) for _ in range(width)))
+    return "\n".join(lines)
+
+
+def _fmt_date(iso: str) -> str:
+    y, m, d = iso.split("-")
+    return f"{d}.{m}.{y}"
+
+
+def _build_rows(rows: list[dict]) -> str:
+    if not rows:
+        return (
+            '<tr><td colspan="4" class="empty">// MANIFEST IS EMPTY // '
+            'СПИСОК ПУСТ //</td></tr>'
+        )
+    html_rows = []
+    today = date.today()
+    for i, r in enumerate(rows, 1):
+        immune_until = date.fromisoformat(r["immune_until"])
+        active = today < immune_until
+        immune_cls = "immune-active" if active else "immune-expired"
+        if active:
+            days_left = (immune_until - today).days
+            immune_text = f"{_fmt_date(r['immune_until'])} ({days_left} дн.)"
+        else:
+            immune_text = f"истёк {_fmt_date(r['immune_until'])}"
+
+        html_rows.append(
+            "<tr>"
+            f'<td>{i}</td>'
+            f'<td class="nick">{escape(r["game_nick"])}</td>'
+            f'<td class="date">{_fmt_date(r["accepted_date"])}</td>'
+            f'<td class="{immune_cls}">{immune_text}</td>'
+            "</tr>"
+        )
+    return "\n        ".join(html_rows)
+
+
+def render_png(rows: list[dict] | None = None) -> Path:
+    if rows is None:
+        rows = db.list_acceptances()
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    logo_uri = "file:///" + str(LOGO_PATH).replace("\\", "/")
+    html = html.replace("LOGO_PATH", logo_uri)
+    html = html.replace("GLYPH_RAIN", _glyph_rain())
+
+    today = date.today()
+    immune_count = sum(1 for r in rows if date.fromisoformat(r["immune_until"]) > today)
+    duty_count = len(rows) - immune_count
+
+    html = html.replace("TOTAL_COUNT", str(len(rows)))
+    html = html.replace("IMMUNE_COUNT", str(immune_count))
+    html = html.replace("DUTY_COUNT", str(duty_count))
+
+    now_msk = datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M")
+    html = html.replace("UPDATED_TIME", now_msk)
+
+    html = html.replace("TABLE_ROWS", _build_rows(rows))
+
+    TMP_HTML.write_text(html, encoding="utf-8")
+
+    driver = None
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+
+        opts = Options()
+        opts.add_argument("--headless=new")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--hide-scrollbars")
+        opts.add_argument("--window-size=1100,10000")
+
+        driver = webdriver.Chrome(options=opts)
+        driver.get("file:///" + str(TMP_HTML).replace("\\", "/"))
+
+        time.sleep(0.9)
+        height = driver.execute_script("return document.body.offsetHeight") + 10
+        driver.set_window_size(1100, height)
+        time.sleep(0.4)
+        height = driver.execute_script("return document.body.offsetHeight") + 10
+        driver.set_window_size(1100, height)
+        time.sleep(0.3)
+
+        driver.save_screenshot(str(OUTPUT_PATH))
+
+        from PIL import Image
+        img = Image.open(OUTPUT_PATH)
+        img = img.crop((0, 0, img.width, min(height, img.height)))
+        img.save(OUTPUT_PATH, optimize=True)
+
+        log.info("Manifest rendered: %s (%dx%d)", OUTPUT_PATH, 1100, height)
+        return OUTPUT_PATH
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        try:
+            TMP_HTML.unlink()
+        except OSError:
+            pass
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    db.init_db()
+    # Демо-данные если БД пустая
+    rows = db.list_acceptances()
+    if not rows:
+        actor = {"platform": "demo", "id": "0", "name": "preview"}
+        db.create_acceptance(
+            game_nick="Меченый", accepted_date=str(date.today() - timedelta(days=2)),
+            note="первый из посвящённых", actor=actor,
+        )
+        db.create_acceptance(
+            game_nick="Стрелок", accepted_date=str(date.today() - timedelta(days=10)),
+            note="иммунитет уже истёк", actor=actor,
+        )
+        db.create_acceptance(
+            game_nick="Кречет", accepted_date=str(date.today()),
+            note="принят сегодня", actor=actor,
+        )
+        rows = db.list_acceptances()
+    path = render_png(rows)
+    print(f"OK: {path}")

@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+.venv/
+venv/
+
+# Local data and secrets
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+backend/.env
+backend/config_local.py
+*.log
+.bot.lock
+.bot_pid
+
+# Renders
+render/output/*.png
+render/_render.html
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
