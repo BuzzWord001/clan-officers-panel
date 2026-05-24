@@ -18,6 +18,7 @@ import scheduler
 import api_auth
 import api_acceptances
 import api_audit
+import auth_pwd
 from config import settings
 from session import current_actor
 from urllib.parse import urlparse
@@ -34,6 +35,7 @@ log = logging.getLogger("officers.app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    auth_pwd.ensure_initialised()
     log.info("DB initialised: %s", settings.db_path)
     log.info("Frontend: %s", settings.frontend_url)
     sched = scheduler.make_scheduler()

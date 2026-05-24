@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SanTDeviL // Admin Settings</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <div class="scanlines"></div>
+
+  <div class="shell">
+
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
+        <div class="brand-name">SanTDeviL</div>
+        <span class="classified-badge">CLASSIFIED // ADMIN ROOT</span>
+      </div>
+      <div class="user-bar">
+        <span class="who" id="who"></span>
+        <button id="logout-btn">Logout</button>
+      </div>
+    </header>
+
+    <section class="title-block">
+      <div class="glitch">S a n T D e v i L</div>
+      <div class="subtitle">ADMIN CONSOLE <span class="slash">//</span> Управление доступом</div>
+    </section>
+
+    <main>
+      <div class="tabs">
+        <a href="index.html">// Реестр</a>
+        <a href="audit.html">// История</a>
+        <a href="settings.html" class="active">// Настройки</a>
+      </div>
+
+      <div class="panel">
+        <h2>Пароль офицеров</h2>
+        <p class="hint" style="margin-bottom: 12px;">
+          Этот пароль вводят офицеры на главной странице вместе с игровым ником.
+          После смены — сообщи новый пароль офицерам в чате.
+        </p>
+        <form id="officer-pwd-form" autocomplete="off">
+          <div class="form-group">
+            <label for="op-new">Новый пароль офицеров</label>
+            <input type="password" id="op-new" required minlength="6" maxlength="200"
+                   autocomplete="new-password" placeholder="Минимум 6 символов">
+            <div class="hint">Сохраняется в БД как bcrypt-хэш.</div>
+          </div>
+          <div class="form-group">
+            <label for="op-confirm">Повторите пароль</label>
+            <input type="password" id="op-confirm" required minlength="6" maxlength="200"
+                   autocomplete="new-password">
+          </div>
+          <div class="form-actions">
+            <button type="submit">Сменить пароль офицеров</button>
+          </div>
+          <div class="status-line" id="op-status"></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>Логин и пароль администратора</h2>
+        <p class="hint" style="margin-bottom: 12px;">
+          Этот логин и пароль — только твои. Используются для входа в эту админ-консоль.
+        </p>
+        <form id="admin-form" autocomplete="off">
+          <div class="form-group">
+            <label for="a-current">Текущий пароль администратора</label>
+            <input type="password" id="a-current" required autocomplete="current-password">
+            <div class="hint">Требуется для подтверждения.</div>
+          </div>
+          <div class="form-group">
+            <label for="a-new-user">Новый логин (необязательно)</label>
+            <input type="text" id="a-new-user" minlength="2" maxlength="32"
+                   autocomplete="off" placeholder="Оставь пустым, чтобы не менять">
+          </div>
+          <div class="form-group">
+            <label for="a-new-pwd">Новый пароль (необязательно)</label>
+            <input type="password" id="a-new-pwd" minlength="6" maxlength="200"
+                   autocomplete="new-password" placeholder="Оставь пустым, чтобы не менять">
+          </div>
+          <div class="form-actions">
+            <button type="submit">Обновить</button>
+          </div>
+          <div class="status-line" id="a-status"></div>
+        </form>
+      </div>
+
+    </main>
+
+    <footer class="bottom">SanTDeviL // Officer Panel // v0.2</footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/matrix.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/settings.js"></script>
+</body>
+</html>

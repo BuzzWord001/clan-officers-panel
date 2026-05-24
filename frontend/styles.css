@@ -347,19 +347,56 @@ input::placeholder { color: var(--muted); }
   border-top: 1px dashed var(--accent-soft);
 }
 
-.login-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  align-items: stretch;
+/* ── Login form ── */
+.form-group {
+  text-align: left;
+  margin-top: 16px;
 }
 
-#tg-login-mount {
-  background: rgba(0, 30, 10, 0.6);
-  border: 1px solid var(--accent-soft);
-  padding: 10px 12px;
-  display: flex;
-  justify-content: center;
+.form-group label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.form-group .hint {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.form-actions {
+  margin-top: 22px;
+}
+
+.form-actions button {
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+}
+
+.form-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-link {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  border-bottom: 1px dashed var(--muted);
+  padding-bottom: 2px;
+  transition: all 0.15s;
+}
+
+.admin-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-shadow: 0 0 8px var(--accent);
 }
 
 .login-error {

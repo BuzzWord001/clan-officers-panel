@@ -10,7 +10,11 @@
     window.location.href = "login.html";
     return;
   }
-  $("who").textContent = `${me.platform.toUpperCase()} :: ${me.name}`;
+  $("who").textContent = `${me.role.toUpperCase()} :: ${me.name}`;
+  if (me.role === "admin") {
+    const tab = $("settings-tab");
+    if (tab) tab.hidden = false;
+  }
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
     window.location.href = "login.html";

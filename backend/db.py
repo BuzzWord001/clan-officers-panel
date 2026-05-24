@@ -58,6 +58,14 @@ CREATE TABLE IF NOT EXISTS render_state (
 );
 
 INSERT OR IGNORE INTO render_state (id, dirty) VALUES (1, 0);
+
+CREATE TABLE IF NOT EXISTS auth_config (
+    id                       INTEGER PRIMARY KEY CHECK (id = 1),
+    officer_password_hash    TEXT NOT NULL,
+    admin_username           TEXT NOT NULL,
+    admin_password_hash      TEXT NOT NULL,
+    updated_at               TEXT NOT NULL
+);
 """
 
 

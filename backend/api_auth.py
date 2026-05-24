@@ -1,63 +1,76 @@
-"""Endpoints авторизации: /auth/tg, /auth/vk, /auth/me, /auth/logout."""
+"""Авторизация по паролю.
+
+POST /auth/login        — общий вход офицеров (game_nick + общий пароль)
+POST /auth/admin/login  — вход админа (username + admin password)
+GET  /auth/me           — текущая сессия
+POST /auth/logout       — выйти
+
+Admin-only:
+POST /auth/admin/officer-password   — сменить пароль офицеров
+POST /auth/admin/credentials        — сменить admin username / password
+"""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
 
-import auth_tg
-import auth_vk
-import whitelist
-from schemas import TgLoginPayload, MeOut
-from session import current_actor, set_session, clear_session
+import auth_pwd
+from schemas import (
+    OfficerLoginIn,
+    AdminLoginIn,
+    ChangeOfficerPasswordIn,
+    ChangeAdminCredentialsIn,
+    MeOut,
+)
+from session import current_session, set_session, clear_session, require_admin
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/tg")
-def login_tg(payload: TgLoginPayload, response: Response) -> MeOut:
-    auth_tg.verify_tg_payload(payload)
-
-    if not whitelist.is_tg_allowed(payload.id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_whitelist")
-
-    name = whitelist.tg_name_for(payload.id, payload.username or payload.first_name or "")
-    session_data = {"platform": "tg", "id": payload.id, "name": name}
-    set_session(response, session_data)
-    return MeOut(platform="tg", user_id=str(payload.id), name=name, username=payload.username)
+@router.post("/login", response_model=MeOut)
+def login(payload: OfficerLoginIn, response: Response) -> dict:
+    if not auth_pwd.verify_officer(payload.password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_password")
+    name = payload.game_nick.strip()
+    set_session(response, role="officer", name=name)
+    return {"role": "officer", "name": name, "login_at": "now"}
 
 
-class VkTokenIn(BaseModel):
-    access_token: str
-    user_id: int
+@router.post("/admin/login", response_model=MeOut)
+def admin_login(payload: AdminLoginIn, response: Response) -> dict:
+    if not auth_pwd.verify_admin(payload.username, payload.password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
+    set_session(response, role="admin", name=payload.username)
+    return {"role": "admin", "name": payload.username, "login_at": "now"}
 
 
-@router.post("/vk")
-async def login_vk(payload: VkTokenIn, response: Response) -> MeOut:
-    user = await auth_vk.validate_token(payload.access_token, payload.user_id)
-    user_id = int(user["id"])
-
-    if not whitelist.is_vk_allowed(user_id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_whitelist")
-
-    display = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
-    name = whitelist.vk_name_for(user_id, display)
-
-    session_data = {"platform": "vk", "id": user_id, "name": name}
-    set_session(response, session_data)
-    return MeOut(
-        platform="vk",
-        user_id=str(user_id),
-        name=name,
-        username=user.get("screen_name"),
-    )
-
-
-@router.get("/me")
-def me(actor: dict = Depends(current_actor)) -> MeOut:
-    return MeOut(platform=actor["platform"], user_id=actor["id"], name=actor["name"])
+@router.get("/me", response_model=MeOut)
+def me(s: dict = Depends(current_session)) -> dict:
+    return s
 
 
 @router.post("/logout")
 def logout(response: Response) -> dict:
     clear_session(response)
+    return {"ok": True}
+
+
+# --- admin-only ----------------------------------------------------------
+
+@router.post("/admin/officer-password")
+def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(require_admin)) -> dict:
+    auth_pwd.set_officer_password(payload.new_password)
+    return {"ok": True}
+
+
+@router.post("/admin/credentials")
+def update_admin(payload: ChangeAdminCredentialsIn, _: dict = Depends(require_admin)) -> dict:
+    if not payload.new_username and not payload.new_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "nothing_to_update")
+    ok = auth_pwd.update_admin(
+        current_password=payload.current_password,
+        new_username=payload.new_username,
+        new_password=payload.new_password,
+    )
+    if not ok:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "current_password_wrong")
     return {"ok": True}

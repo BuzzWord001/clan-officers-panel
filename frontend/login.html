@@ -22,14 +22,37 @@
 
       <div class="login-divider">DECRYPT IDENTITY</div>
 
-      <div class="login-buttons">
-        <div id="tg-login-mount"></div>
-        <button id="vk-login-btn" class="vk-btn" type="button">Войти через VK</button>
-      </div>
+      <form id="login-form" autocomplete="on" novalidate>
+        <div class="form-group">
+          <label for="f-nick">Игровой ник</label>
+          <input type="text" id="f-nick" name="username"
+                 autocomplete="username"
+                 placeholder="Например, Меченый"
+                 required minlength="2" maxlength="32"
+                 pattern="[A-Za-zА-Яа-яЁё0-9 _\-.]{2,32}">
+          <div class="hint">2–32 символа: буквы, цифры, пробел, _ - .</div>
+        </div>
+
+        <div class="form-group">
+          <label for="f-password">Пароль офицеров</label>
+          <input type="password" id="f-password" name="password"
+                 autocomplete="current-password"
+                 placeholder="Общий пароль офицерского состава"
+                 required minlength="1" maxlength="200">
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="login-btn">Войти</button>
+        </div>
+      </form>
+
+      <div class="login-divider" style="margin: 22px 0 12px;">// или //</div>
+      <a href="admin_login.html" class="admin-link">Вход для администратора</a>
 
       <div class="login-error" id="login-error"></div>
+
       <div style="margin-top: 22px; font-size: 11px; color: var(--muted); letter-spacing: 2px;">
-        Доступ только для офицеров клана.<br>Whitelist сверяется с офицерским чатом.
+        Доступ только для офицеров клана.<br>Пароль выдаёт администратор.
       </div>
     </div>
   </div>

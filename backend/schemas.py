@@ -1,7 +1,10 @@
 """Pydantic-схемы для запросов и ответов."""
 
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+NICK_PATTERN = r"^[A-Za-zА-Яа-яЁё0-9 _\-.]{2,32}$"
 
 
 class AcceptanceIn(BaseModel):
@@ -44,25 +47,33 @@ class AuditOut(BaseModel):
 
 
 class MeOut(BaseModel):
-    platform: str
-    user_id: str
-    name: str
-    username: str | None = None
+    role: str         # "officer" | "admin"
+    name: str         # game nick для officer, admin username для admin
+    login_at: str
 
 
-class TgLoginPayload(BaseModel):
-    """Поля, которые отдаёт Telegram Login Widget."""
-    id: int
-    first_name: str | None = None
-    last_name: str | None = None
-    username: str | None = None
-    photo_url: str | None = None
-    auth_date: int
-    hash: str
+class OfficerLoginIn(BaseModel):
+    game_nick: str = Field(min_length=2, max_length=32, pattern=NICK_PATTERN)
+    password: str = Field(min_length=1, max_length=200)
 
 
-class VkLoginPayload(BaseModel):
-    """access_token + user info, который пришёл от VK Implicit Flow."""
-    user_id: int
-    access_token: str
-    expires_in: int | None = None
+class AdminLoginIn(BaseModel):
+    username: str = Field(min_length=2, max_length=32)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class ChangeOfficerPasswordIn(BaseModel):
+    new_password: str = Field(min_length=6, max_length=200)
+
+    @field_validator("new_password")
+    @classmethod
+    def _no_spaces(cls, v: str) -> str:
+        if v != v.strip():
+            raise ValueError("password must not have leading/trailing spaces")
+        return v
+
+
+class ChangeAdminCredentialsIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_username: str | None = Field(default=None, min_length=2, max_length=32)
+    new_password: str | None = Field(default=None, min_length=6, max_length=200)

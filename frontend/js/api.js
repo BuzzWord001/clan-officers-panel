@@ -1,4 +1,4 @@
-// Тонкая обёртка над fetch с поддержкой cookies. API URL берётся из config.js.
+// fetch с cookies. API_URL берётся из config.js.
 (function () {
   const BASE = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
 
@@ -15,7 +15,8 @@
     const res = await fetch(BASE + path, init);
     if (res.status === 204) return null;
     const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { data = { detail: text }; }
     if (!res.ok) {
       const err = new Error((data && data.detail) || res.statusText);
       err.status = res.status;
@@ -26,14 +27,17 @@
   }
 
   window.API = {
-    me:           () => request("GET", "/auth/me"),
-    logout:       () => request("POST", "/auth/logout"),
-    loginTg:      (payload) => request("POST", "/auth/tg", payload),
-    loginVk:      (accessToken, userId) => request("POST", "/auth/vk", { access_token: accessToken, user_id: userId }),
-    list:         () => request("GET", "/acceptances"),
-    create:       (payload) => request("POST", "/acceptances", payload),
-    update:       (id, payload) => request("PATCH", `/acceptances/${id}`, payload),
-    remove:       (id) => request("DELETE", `/acceptances/${id}`),
-    audit:        (limit = 200) => request("GET", `/audit?limit=${limit}`),
+    me:            () => request("GET",  "/auth/me"),
+    logout:        () => request("POST", "/auth/logout"),
+    loginOfficer:  (game_nick, password) => request("POST", "/auth/login", { game_nick, password }),
+    loginAdmin:    (username, password)  => request("POST", "/auth/admin/login", { username, password }),
+    setOfficerPwd: (new_password)        => request("POST", "/auth/admin/officer-password", { new_password }),
+    updateAdmin:   (payload)             => request("POST", "/auth/admin/credentials", payload),
+
+    list:          () => request("GET",  "/acceptances"),
+    create:        (payload) => request("POST",  "/acceptances", payload),
+    update:        (id, payload) => request("PATCH", `/acceptances/${id}`, payload),
+    remove:        (id) => request("DELETE", `/acceptances/${id}`),
+    audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
   };
 })();
