@@ -122,10 +122,14 @@ def render_png(rows: list[dict] | None = None) -> Path:
         driver.execute_script("return document.fonts && document.fonts.ready;")
         time.sleep(0.4)
 
-        # Фактическая высота контента
-        height = driver.execute_script(
-            "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
-        )
+        # Берём именно нижнюю границу .footer — последнего видимого элемента.
+        # scrollHeight ненадёжен: absolute-фон .bg растягивается до высоты
+        # body, и обратно body — до .bg → циклически большое число.
+        height = driver.execute_script("""
+            const f = document.querySelector('.footer');
+            const r = f.getBoundingClientRect();
+            return Math.ceil(r.bottom + 14);
+        """)
 
         # Full-page screenshot через CDP — захватывает ВСЁ содержимое body,
         # даже если оно длиннее viewport. На длинных списках это надёжнее
