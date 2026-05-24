@@ -10,9 +10,11 @@ import logging
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 import db
 import publisher
+import snapshots
 from config import settings
 
 log = logging.getLogger("officers.scheduler")
@@ -38,8 +40,18 @@ async def _tick() -> None:
     log.info("Publish result: %s", result)
 
 
+def _daily_snapshot() -> None:
+    try:
+        snapshots.create_auto()
+    except Exception as exc:
+        log.exception("daily snapshot failed: %s", exc)
+
+
 def make_scheduler() -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone="UTC")
     sched.add_job(_tick, "interval", minutes=1, id="publish_tick",
                   max_instances=1, coalesce=True)
+    # 03:00 МСК == 00:00 UTC
+    sched.add_job(_daily_snapshot, CronTrigger(hour=0, minute=0),
+                  id="daily_snapshot", max_instances=1, coalesce=True)
     return sched

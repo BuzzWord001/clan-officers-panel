@@ -256,6 +256,22 @@ main {
 }
 
 /* ── Table ── */
+.table-scroll {
+  max-height: 62vh;
+  overflow-y: auto;
+  border: 1px solid var(--accent-soft);
+  background: rgba(0, 10, 0, 0.25);
+}
+
+.table-scroll::-webkit-scrollbar { width: 10px; }
+.table-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.35); }
+.table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.35);
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  border-radius: 5px;
+}
+.table-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 65, 0.55); }
+
 table {
   width: 100%;
   border-collapse: separate;
@@ -269,7 +285,11 @@ thead th {
   text-align: left;
   padding: 10px 12px;
   border-bottom: 1px solid var(--accent-soft);
-  background: rgba(0, 255, 65, 0.05);
+  background: rgba(0, 20, 5, 0.85);
+  backdrop-filter: blur(6px);
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 tbody td {
@@ -307,7 +327,68 @@ td.immune-expired  { color: var(--muted); text-decoration: line-through; }
   align-items: end;
 }
 
+.ff label .req {
+  color: var(--danger);
+  margin-left: 3px;
+  font-weight: 700;
+}
+
+.ff.optional label { color: var(--muted); }
+.ff.optional input { border-color: rgba(0, 255, 65, 0.08); }
+
+.form-legend {
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.form-legend .req { color: var(--danger); font-weight: 700; }
+
 td.title { color: var(--text-dim); font-style: italic; }
+td.actor { color: var(--text-dim); font-size: 13px; }
+
+/* Заголовок панели с действием справа */
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.panel-head h2 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+.panel-head button { white-space: nowrap; }
+
+/* Скролл у журнала аудита */
+.audit-scroll {
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.audit-scroll::-webkit-scrollbar { width: 10px; }
+.audit-scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.35); }
+.audit-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.35);
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  border-radius: 5px;
+}
+
+.audit-item .audit-del {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  line-height: 18px;
+  font-size: 16px;
+  letter-spacing: 0;
+  margin-left: 8px;
+  text-shadow: none;
+}
+.audit-item .audit-del:hover {
+  background: rgba(255, 59, 59, 0.2);
+  box-shadow: 0 0 8px rgba(255, 59, 59, 0.5);
+}
 
 label {
   display: block;

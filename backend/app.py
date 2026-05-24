@@ -18,6 +18,7 @@ import scheduler
 import api_auth
 import api_acceptances
 import api_audit
+import api_snapshots
 import auth_pwd
 from config import settings
 from session import current_actor
@@ -82,3 +83,4 @@ async def republish(_: dict = Depends(current_actor)) -> dict:
 app.include_router(api_auth.router)
 app.include_router(api_acceptances.router)
 app.include_router(api_audit.router)
+app.include_router(api_snapshots.router)

@@ -5,16 +5,16 @@
   let me;
   try {
     me = await API.me();
-  } catch (e) {
-    window.location.href = "login.html";
-    return;
-  }
+  } catch (_) { window.location.href = "login.html"; return; }
+
   const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР" : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;
-  if (me.role === "admin") {
+  const isAdmin = me.role === "admin";
+  if (isAdmin) {
     const tab = $("settings-tab");
     if (tab) tab.hidden = false;
+    $("clear-all").hidden = false;
   }
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
@@ -36,6 +36,7 @@
     accepted_date: "дата",
     note: "примечание",
   };
+  const ACTION_RU = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО" };
 
   function diffLines(before, after) {
     const keys = ["game_nick", "title", "accepted_date", "note"];
@@ -50,43 +51,80 @@
     return out.length ? out.join("\n") : "—";
   }
 
-  const ACTION_RU = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО" };
-
   function summarise(item) {
     if (item.action === "create" && item.after) {
-      return `${item.after.game_nick} — принят ${item.after.accepted_date}`;
+      return `${item.after.game_nick} — принят ${DateRu.fmtRus(item.after.accepted_date)}`;
     }
     if (item.action === "delete" && item.before) {
-      return `${item.before.game_nick} — принят ${item.before.accepted_date}`;
+      return `${item.before.game_nick} — принят ${DateRu.fmtRus(item.before.accepted_date)}`;
     }
     return diffLines(item.before, item.after);
   }
 
-  try {
-    const data = await API.audit(200);
+  async function reload() {
+    try {
+      const data = await API.audit(200);
+      render(data);
+    } catch (e) {
+      $("audit-list").innerHTML = `<div class="empty">Ошибка: ${e.detail || e.message}</div>`;
+    }
+  }
+
+  function render(data) {
     const list = $("audit-list");
+    list.innerHTML = "";
     if (!data.length) {
       $("empty-state").hidden = false;
       return;
     }
+    $("empty-state").hidden = true;
+
     for (const it of data) {
       const div = document.createElement("div");
       div.className = "audit-item";
+      div.dataset.id = it.id;
       div.innerHTML = `
         <div class="head">
           <span><span class="action ${it.action}">${ACTION_RU[it.action] || it.action.toUpperCase()}</span>
             • <span class="nick" style="color: var(--accent)"></span></span>
-          <span class="actor"></span>
+          <span>
+            <span class="actor"></span>
+            <button class="audit-del" hidden title="Удалить запись из истории">×</button>
+          </span>
         </div>
         <div class="diff"></div>
       `;
       div.querySelector(".nick").textContent = it.game_nick || `#${it.acceptance_id || "?"}`;
       div.querySelector(".actor").textContent =
-        `${fmtTs(it.timestamp)} • ${it.actor_platform}:${it.actor_name}`;
+        `${fmtTs(it.timestamp)} • ${it.actor_name}`;
       div.querySelector(".diff").textContent = summarise(it);
+
+      if (isAdmin) {
+        const btn = div.querySelector(".audit-del");
+        btn.hidden = false;
+        btn.addEventListener("click", async () => {
+          if (!confirm("Удалить эту запись из истории?")) return;
+          try {
+            await API.auditDelete(it.id);
+            await reload();
+          } catch (e) {
+            alert(`Не удалось удалить: ${e.detail || e.message}`);
+          }
+        });
+      }
       list.appendChild(div);
     }
-  } catch (e) {
-    $("audit-list").innerHTML = `<div class="empty">Ошибка: ${e.detail || e.message}</div>`;
   }
+
+  $("clear-all").addEventListener("click", async () => {
+    if (!confirm("Полностью очистить журнал изменений? Это нельзя отменить.")) return;
+    try {
+      await API.auditClear();
+      await reload();
+    } catch (e) {
+      alert(`Не удалось очистить: ${e.detail || e.message}`);
+    }
+  });
+
+  await reload();
 })();

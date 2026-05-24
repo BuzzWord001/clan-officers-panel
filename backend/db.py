@@ -213,6 +213,18 @@ def delete_acceptance(acc_id: int, *, actor: dict[str, str]) -> bool:
         return True
 
 
+def delete_audit_entry(entry_id: int) -> bool:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM audit_log WHERE id = ?", (entry_id,))
+        return cur.rowcount > 0
+
+
+def clear_audit() -> int:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM audit_log")
+        return cur.rowcount
+
+
 def list_audit(limit: int = 200) -> list[dict[str, Any]]:
     with connection() as conn:
         rows = conn.execute(

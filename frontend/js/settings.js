@@ -1,4 +1,4 @@
-// Admin Settings — смена паролей.
+// Admin Settings — смена паролей + snapshots/restore.
 (async function () {
   const $ = (id) => document.getElementById(id);
 
@@ -62,4 +62,87 @@
       else flash(status, e.detail || e.message || "Ошибка", false);
     }
   });
+
+  // ── Snapshots ──
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + " Б";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " КБ";
+    return (bytes / (1024 * 1024)).toFixed(2) + " МБ";
+  }
+
+  function fmtIso(iso) {
+    if (!iso) return "";
+    const d = new Date(iso + (iso.endsWith("Z") ? "" : "Z"));
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  async function reloadSnapshots() {
+    try {
+      const list = await API.snapshotList();
+      const tbody = $("snap-tbody");
+      tbody.innerHTML = "";
+      if (!list.length) {
+        $("snap-empty").hidden = false;
+        return;
+      }
+      $("snap-empty").hidden = true;
+      for (const s of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="nick"></td>
+          <td class="date"></td>
+          <td></td>
+          <td class="row-actions">
+            <button class="btn-restore">Откатить</button>
+            <button class="btn-del-snap danger">Удалить</button>
+          </td>
+        `;
+        tr.children[0].textContent = s.name;
+        tr.children[1].textContent = fmtIso(s.created_at);
+        tr.children[2].textContent = fmtSize(s.size);
+
+        tr.querySelector(".btn-restore").addEventListener("click", () => doRestore(s.name));
+        tr.querySelector(".btn-del-snap").addEventListener("click", () => doDelete(s.name));
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  async function doRestore(name) {
+    if (!confirm(`Откатить базу к снапшоту "${name}"?\n\nТекущая база будет сохранена как pre_restore_*.\nСервер перезапустится — обнови страницу через несколько секунд.`)) return;
+    try {
+      await API.snapshotRestore(name);
+      flash($("snap-status"), "✓ Откат запущен. Сервер перезапускается…", true);
+      setTimeout(() => location.reload(), 5000);
+    } catch (e) {
+      flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  async function doDelete(name) {
+    if (!confirm(`Удалить снапшот "${name}"?`)) return;
+    try {
+      await API.snapshotDelete(name);
+      await reloadSnapshots();
+    } catch (e) {
+      flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  $("snapshot-now").addEventListener("click", async () => {
+    try {
+      const s = await API.snapshotCreate();
+      flash($("snap-status"), `✓ Создан: ${s.name}`, true);
+      await reloadSnapshots();
+    } catch (e) {
+      flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  });
+
+  await reloadSnapshots();
 })();

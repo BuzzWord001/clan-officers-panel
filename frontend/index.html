@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SanTDeviL — Реестр приёма в клан</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=14" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=15" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -42,46 +42,49 @@
       <div class="panel" id="form-panel">
         <h2>Новая запись</h2>
         <form class="form-row" id="add-form" autocomplete="off">
-          <div>
-            <label for="f-nick">Ник в игре</label>
+          <div class="ff required">
+            <label for="f-nick">Ник в игре<span class="req">*</span></label>
             <input type="text" id="f-nick" name="nick" placeholder="например, PANDORA" required maxlength="64">
           </div>
-          <div>
+          <div class="ff optional">
             <label for="f-title">Титул</label>
             <input type="text" id="f-title" name="title" placeholder="имя или мэйн-ник" maxlength="100">
           </div>
-          <div>
-            <label for="f-date">Дата приёма</label>
-            <input type="date" id="f-date" name="date" required>
+          <div class="ff required">
+            <label for="f-date">Дата приёма<span class="req">*</span></label>
+            <input type="text" id="f-date" name="date" placeholder="ДД.ММ.ГГГГ" required maxlength="10">
           </div>
-          <div>
+          <div class="ff optional">
             <label for="f-note">Примечание</label>
             <input type="text" id="f-note" name="note" placeholder="необязательно" maxlength="200">
           </div>
-          <div>
+          <div class="ff">
             <button type="submit">Добавить</button>
           </div>
         </form>
+        <div class="form-legend"><span class="req">*</span> — обязательное поле</div>
         <div class="status-line" id="form-status"></div>
       </div>
 
       <div class="panel">
         <h2>Принятые в клан</h2>
-        <table id="acceptances-table">
-          <thead>
-            <tr>
-              <th style="width:42px;">№</th>
-              <th>Ник</th>
-              <th>Титул</th>
-              <th style="width:130px;">Принят</th>
-              <th style="width:200px;">Иммунитет</th>
-              <th>Примечание</th>
-              <th style="width:160px;">Добавил</th>
-              <th style="width:120px;"></th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table id="acceptances-table">
+            <thead>
+              <tr>
+                <th style="width:42px;">№</th>
+                <th>Ник</th>
+                <th>Титул</th>
+                <th style="width:130px;">Принят</th>
+                <th style="width:200px;">Иммунитет</th>
+                <th>Примечание</th>
+                <th style="width:140px;">Добавил</th>
+                <th style="width:160px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
         <div class="empty" id="empty-state" hidden>Список пуст — добавьте первого офицера</div>
       </div>
     </main>
@@ -89,9 +92,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=14"></script>
-  <script src="js/matrix.js?v=14"></script>
-  <script src="js/api.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="config.js?v=15"></script>
+  <script src="js/matrix.js?v=15"></script>
+  <script src="js/api.js?v=15"></script>
+  <script src="js/dateutil.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SanTDeviL — История изменений</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=14" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=15" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -39,8 +39,13 @@
       </div>
 
       <div class="panel">
-        <h2>Последние изменения</h2>
-        <div class="audit-list" id="audit-list"></div>
+        <div class="panel-head">
+          <h2>Последние изменения</h2>
+          <button id="clear-all" class="danger" hidden>Очистить всю историю</button>
+        </div>
+        <div class="audit-scroll">
+          <div class="audit-list" id="audit-list"></div>
+        </div>
         <div class="empty" id="empty-state" hidden>История пуста</div>
       </div>
     </main>
@@ -48,9 +53,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=14"></script>
-  <script src="js/matrix.js?v=14"></script>
-  <script src="js/api.js?v=14"></script>
-  <script src="js/audit.js?v=14"></script>
+  <script src="config.js?v=15"></script>
+  <script src="js/matrix.js?v=15"></script>
+  <script src="js/api.js?v=15"></script>
+  <script src="js/dateutil.js?v=15"></script>
+  <script src="js/audit.js?v=15"></script>
 </body>
 </html>

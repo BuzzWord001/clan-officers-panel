@@ -38,6 +38,14 @@
     create:        (payload) => request("POST",  "/acceptances", payload),
     update:        (id, payload) => request("PATCH", `/acceptances/${id}`, payload),
     remove:        (id) => request("DELETE", `/acceptances/${id}`),
+
     audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
+    auditDelete:   (id) => request("DELETE", `/audit/${id}`),
+    auditClear:    () => request("DELETE", `/audit`),
+
+    snapshotList:    () => request("GET",  "/admin/snapshots"),
+    snapshotCreate:  () => request("POST", "/admin/snapshots"),
+    snapshotRestore: (name) => request("POST", `/admin/snapshots/${encodeURIComponent(name)}/restore`),
+    snapshotDelete:  (name) => request("DELETE", `/admin/snapshots/${encodeURIComponent(name)}`),
   };
 })();

@@ -1,4 +1,4 @@
-// Главная страница — таблица, форма добавления, inline-редактирование.
+// Главная — таблица, форма добавления, inline-редактирование.
 (async function () {
   const $ = (id) => document.getElementById(id);
 
@@ -10,6 +10,11 @@
     window.location.href = "login.html";
     return;
   }
+  function fmtRoleLabel(role) {
+    if (role === "admin") return "АДМИНИСТРАТОР";
+    if (role === "officer") return "ОФИЦЕР";
+    return role.toUpperCase();
+  }
   $("who").textContent = `${fmtRoleLabel(me.role)} • ${me.name}`;
   if (me.role === "admin") {
     const tab = $("settings-tab");
@@ -20,24 +25,32 @@
     window.location.href = "login.html";
   });
 
-  // ── Form: defaults ──
-  const dateInput = $("f-date");
-  dateInput.value = new Date().toISOString().slice(0, 10);
+  // ── Date input ──
+  DateRu.bindDateInput($("f-date"));
+  $("f-date").value = DateRu.today();
 
+  // ── Add form ──
   $("add-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const nick = $("f-nick").value.trim();
     const title = $("f-title").value.trim();
-    const date = $("f-date").value;
+    const rusDate = $("f-date").value.trim();
     const note = $("f-note").value.trim();
-    if (!nick || !date) return;
+
+    const iso = DateRu.parseRus(rusDate);
+    if (!nick) return;
+    if (!iso) {
+      setStatus("✗ Неверная дата — ожидаю ДД.ММ.ГГГГ");
+      return;
+    }
 
     setStatus("Добавляю…");
     try {
-      await API.create({ game_nick: nick, title, accepted_date: date, note });
+      await API.create({ game_nick: nick, title, accepted_date: iso, note });
       $("f-nick").value = "";
       $("f-title").value = "";
       $("f-note").value = "";
+      $("f-date").value = DateRu.today();
       setStatus(`✓ Добавлен: ${nick}`);
       await reload();
     } catch (e) {
@@ -52,18 +65,7 @@
     }
   }
 
-  function fmtRoleLabel(role) {
-    if (role === "admin") return "АДМИНИСТРАТОР";
-    if (role === "officer") return "ОФИЦЕР";
-    return role.toUpperCase();
-  }
-
   // ── Render table ──
-  function fmtDate(iso) {
-    const [y, m, d] = iso.split("-");
-    return `${d}.${m}.${y}`;
-  }
-
   function renderTable(rows) {
     const tbody = $("tbody");
     tbody.innerHTML = "";
@@ -81,12 +83,12 @@
         <td>${i + 1}</td>
         <td class="nick"></td>
         <td class="title"></td>
-        <td class="date">${fmtDate(r.accepted_date)}</td>
+        <td class="date">${DateRu.fmtRus(r.accepted_date)}</td>
         <td class="${r.immune_active ? "immune-active" : "immune-expired"}">
-          ${r.immune_active ? "до " : "истёк "}${fmtDate(r.immune_until)}
+          ${r.immune_active ? "до " : "истёк "}${DateRu.fmtRus(r.immune_until)}
         </td>
         <td class="note"></td>
-        <td style="color: var(--muted); font-size: 12px;"></td>
+        <td class="actor"></td>
         <td class="row-actions">
           <button class="btn-edit">Изменить</button>
           <button class="btn-del danger">Удалить</button>
@@ -95,8 +97,7 @@
       tr.querySelector(".nick").textContent = r.game_nick;
       tr.querySelector(".title").textContent = r.title || "—";
       tr.querySelector(".note").textContent = r.note || "—";
-      tr.querySelector("td:nth-child(7)").textContent =
-        `${r.created_by_platform}:${r.created_by_name}`;
+      tr.querySelector(".actor").textContent = r.created_by_name;
 
       tr.querySelector(".btn-del").addEventListener("click", () => onDelete(r));
       tr.querySelector(".btn-edit").addEventListener("click", () => onEdit(tr, r));
@@ -114,7 +115,7 @@
   }
 
   async function onDelete(r) {
-    if (!confirm(`Удалить запись "${r.game_nick}" (принят ${fmtDate(r.accepted_date)})?`)) return;
+    if (!confirm(`Удалить запись "${r.game_nick}" (принят ${DateRu.fmtRus(r.accepted_date)})?`)) return;
     try {
       await API.remove(r.id);
       await reload();
@@ -130,18 +131,26 @@
     const noteCell  = tr.querySelector(".note");
     const actions   = tr.querySelector(".row-actions");
 
-    nickCell.innerHTML  = `<input type="text" value="${escapeAttr(r.game_nick)}" style="width:100%">`;
-    titleCell.innerHTML = `<input type="text" value="${escapeAttr(r.title || "")}" placeholder="Титул" style="width:100%">`;
-    dateCell.innerHTML  = `<input type="date" value="${r.accepted_date}" style="width:100%">`;
-    noteCell.innerHTML  = `<input type="text" value="${escapeAttr(r.note || "")}" style="width:100%">`;
+    nickCell.innerHTML  = `<input type="text" value="${esc(r.game_nick)}" style="width:100%">`;
+    titleCell.innerHTML = `<input type="text" value="${esc(r.title || "")}" placeholder="титул" style="width:100%">`;
+    dateCell.innerHTML  = `<input type="text" value="${DateRu.fmtRus(r.accepted_date)}" placeholder="ДД.ММ.ГГГГ" style="width:100%">`;
+    noteCell.innerHTML  = `<input type="text" value="${esc(r.note || "")}" style="width:100%">`;
     actions.innerHTML = `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
+
+    DateRu.bindDateInput(dateCell.querySelector("input"));
 
     actions.querySelector(".cancel").addEventListener("click", reload);
     actions.querySelector(".save").addEventListener("click", async () => {
+      const rusDate = dateCell.querySelector("input").value.trim();
+      const iso = DateRu.parseRus(rusDate);
+      if (!iso) {
+        alert("Неверная дата — ожидаю ДД.ММ.ГГГГ");
+        return;
+      }
       const payload = {
         game_nick:     nickCell.querySelector("input").value.trim(),
         title:         titleCell.querySelector("input").value.trim(),
-        accepted_date: dateCell.querySelector("input").value,
+        accepted_date: iso,
         note:          noteCell.querySelector("input").value.trim(),
       };
       try {
@@ -153,7 +162,7 @@
     });
   }
 
-  function escapeAttr(s) {
+  function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   }
 
