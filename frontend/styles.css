@@ -109,10 +109,10 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  /* Сводим на нет padding-left у .shell — шапка идёт от края до края */
+  /* Сводим на нет padding-left у .shell — шапка идёт от края до края,
+     и её содержимое (лого + SanTDeviL + бейдж) стоит слева у самого края. */
   margin-left: calc(-1 * var(--content-shift, 0px));
   margin-right: 0;
-  padding-left: max(28px, var(--content-shift, 0px));
 }
 
 .brand {
