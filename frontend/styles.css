@@ -4,7 +4,7 @@
 
 :root {
   --bg:        #000000;
-  --bg-panel:  rgba(0, 10, 0, 0.78);
+  --bg-panel:  rgba(2, 12, 4, 0.93);
   --accent:    #00ff41;
   --accent-dim:#0a8a2c;
   --accent-soft:rgba(0, 255, 65, 0.18);
@@ -119,21 +119,22 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
 .user-bar .who { color: var(--accent); }
 
 button, .btn {
-  background: transparent;
+  background: rgba(0, 30, 10, 0.92);
   color: var(--accent);
   border: 1px solid var(--accent);
-  padding: 8px 16px;
+  padding: 9px 18px;
   font-family: inherit;
   font-size: 13px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.15s ease;
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.5);
 }
 
 button:hover, .btn:hover {
-  background: var(--accent-soft);
-  box-shadow: 0 0 12px rgba(0, 255, 65, 0.5);
+  background: rgba(0, 80, 20, 0.95);
+  box-shadow: 0 0 14px rgba(0, 255, 65, 0.7);
 }
 
 button.danger { color: var(--danger); border-color: var(--danger); }
@@ -296,9 +297,13 @@ input::placeholder { color: var(--muted); }
 }
 
 .login-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--accent-soft);
-  box-shadow: 0 0 30px rgba(0, 255, 65, 0.2);
+  background: rgba(2, 12, 4, 0.96);
+  border: 1px solid var(--accent);
+  box-shadow:
+    0 0 32px rgba(0, 255, 65, 0.45),
+    0 12px 60px rgba(0, 0, 0, 0.85),
+    inset 0 0 60px rgba(0, 255, 65, 0.05);
+  backdrop-filter: blur(6px);
   padding: 36px 38px;
   width: 100%;
   max-width: 460px;
@@ -346,7 +351,15 @@ input::placeholder { color: var(--muted); }
   display: flex;
   flex-direction: column;
   gap: 14px;
-  align-items: center;
+  align-items: stretch;
+}
+
+#tg-login-mount {
+  background: rgba(0, 30, 10, 0.6);
+  border: 1px solid var(--accent-soft);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: center;
 }
 
 .login-error {
@@ -359,19 +372,20 @@ input::placeholder { color: var(--muted); }
 
 .vk-btn {
   width: 100%;
-  background: rgba(76, 117, 163, 0.15);
-  border: 1px solid #4c75a3;
-  color: #8db4dc;
-  padding: 11px 16px;
+  background: rgba(20, 50, 90, 0.92);
+  border: 1px solid #6a93c7;
+  color: #d4e6f7;
+  padding: 12px 18px;
   font-family: inherit;
   letter-spacing: 2px;
   cursor: pointer;
   transition: all 0.15s;
+  text-shadow: 0 0 6px rgba(106, 147, 199, 0.6);
 }
 
 .vk-btn:hover {
-  background: rgba(76, 117, 163, 0.3);
-  box-shadow: 0 0 12px rgba(76, 117, 163, 0.5);
+  background: rgba(40, 80, 130, 0.95);
+  box-shadow: 0 0 14px rgba(106, 147, 199, 0.7);
 }
 
 /* ── Status / empty ── */

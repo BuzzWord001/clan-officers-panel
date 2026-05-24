@@ -8,6 +8,23 @@
   const $ = (id) => document.getElementById(id);
   const cfg = window.OFFICERS_CONFIG || {};
 
+  // Эта же страница (login.html) используется как VK redirect_uri (так настроено
+  // в VK-приложении). Когда страница открыта в popup'е после VK-авторизации,
+  // в URL будет #access_token=...&user_id=... — перехватываем, шлём родителю и
+  // закрываемся, не запуская обычный flow.
+  const inVkCallback = window.opener && window.opener !== window
+    && /[#&](access_token|error)=/.test(window.location.hash + window.location.search);
+  if (inVkCallback) {
+    try {
+      window.opener.postMessage(
+        { type: "vk_auth", hash: window.location.hash, search: window.location.search },
+        window.location.origin,
+      );
+    } catch (_) {}
+    window.close();
+    return;
+  }
+
   // Если уже залогинены — сразу на главную.
   API.me().then(() => { window.location.href = "index.html"; }).catch(() => {});
 
@@ -41,10 +58,11 @@
       '<div style="color: var(--muted); font-size: 11px; letter-spacing: 2px;">TG-логин не настроен (TG_LOGIN_BOT в config.js)</div>';
   }
 
-  // ── VK Implicit Flow (popup → vk_callback.html → postMessage) ──
-  const VK_REDIRECT = window.location.origin
-      + window.location.pathname.replace(/\/[^/]*$/, "/")
-      + "vk_callback.html";
+  // ── VK Implicit Flow (popup → login.html → postMessage → закрыться) ──
+  // redirect_uri = текущая страница (она же зарегистрирована в VK-приложении
+  // как Доверенный redirect URI). При загрузке login.js видит что он в popup'е
+  // (см. выше) и просто передаёт hash родителю.
+  const VK_REDIRECT = window.location.origin + window.location.pathname;
 
   let popup = null;
   let pollTimer = null;
