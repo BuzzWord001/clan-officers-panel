@@ -808,9 +808,65 @@ footer.bottom {
   text-shadow: 0 0 6px var(--accent);
 }
 
+/* ────────────────────────────────────────────────────────────
+   Mobile-адаптация
+   ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  /* На мобилке таблица — горизонтальный скролл, чтобы все 8 столбцов
+     помещались, а не сжимались в нечитаемые. */
+  .table-scroll { overflow-x: auto; }
+  .table-scroll table { min-width: 760px; }
+}
+
 @media (max-width: 720px) {
-  .title-block .glitch { font-size: 36px; letter-spacing: 8px; }
-  .form-row { grid-template-columns: 1fr; }
+  /* Topbar — компактнее: лого + имя слева, кнопка "Выйти" справа.
+     Бейдж "Только для офицеров" скрываем — он повторяет смысл сайта. */
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .brand { gap: 10px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand-name { font-size: 17px; letter-spacing: 2.5px; }
+  .classified-badge { display: none; }
+  .user-bar { gap: 8px; font-size: 11px; }
+  .user-bar #logout-btn { padding: 6px 10px; font-size: 11px; }
+  .who { max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Заголовок-глитч компактнее, чтобы не лез в три строки */
+  .title-block { padding: 22px 12px 12px; }
+  .title-block .glitch { font-size: 28px; letter-spacing: 5px; }
+  .title-block .subtitle { font-size: 12px; letter-spacing: 3px; }
+
+  /* Контент чуть уже по краям, панели тоньше */
+  main { padding: 16px 12px 40px; }
+  .panel { padding: 16px 14px; }
+  .intro p { font-size: 13px; line-height: 1.5; }
+
+  /* Форма — в один столбец, кнопка во всю ширину */
+  .form-row { grid-template-columns: 1fr; gap: 10px; }
+  .form-row .ff:last-child button { width: 100%; padding: 12px; }
+
+  /* Таблица — мельче текст и плотнее padding */
   thead th, tbody td { padding: 8px 6px; font-size: 12px; }
   .row-actions { text-align: left; }
+  .row-actions button { padding: 4px 8px; font-size: 10px; }
+
+  /* Вкладки — компактнее */
+  .tabs { gap: 12px; font-size: 11px; letter-spacing: 2px; }
+
+  /* Login-карточка — без больших отступов на узком экране */
+  .auth-shell { padding: 16px; }
+  .auth-card { padding: 24px 20px 20px; max-width: 100%; }
+  .auth-logo { width: 60px; height: 60px; }
+  .auth-title { font-size: 22px; letter-spacing: 4px; }
+
+  /* Модальное окно снапшота — на весь экран */
+  .modal-card { padding: 16px 14px; max-height: 92vh; }
+  .modal-head h2 { font-size: 14px; }
+}
+
+@media (max-width: 380px) {
+  .brand-name { font-size: 15px; letter-spacing: 1.5px; }
+  .title-block .glitch { font-size: 22px; letter-spacing: 3px; }
+  .tabs { gap: 10px; font-size: 10px; }
+  .panel h2 { font-size: 14px; letter-spacing: 2px; }
 }
