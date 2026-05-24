@@ -105,33 +105,52 @@ def render_png(rows: list[dict] | None = None) -> Path:
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        import base64
 
         opts = Options()
         opts.add_argument("--headless=new")
         opts.add_argument("--disable-gpu")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--hide-scrollbars")
-        opts.add_argument("--window-size=1100,10000")
+        opts.add_argument("--window-size=1100,2000")
 
         driver = webdriver.Chrome(options=opts)
         driver.get("file:///" + str(TMP_HTML).replace("\\", "/"))
 
-        time.sleep(0.9)
-        height = driver.execute_script("return document.body.offsetHeight") + 10
-        driver.set_window_size(1100, height)
+        # Ждём загрузки шрифтов, изображений и layout
+        time.sleep(0.6)
+        driver.execute_script("return document.fonts && document.fonts.ready;")
         time.sleep(0.4)
-        height = driver.execute_script("return document.body.offsetHeight") + 10
-        driver.set_window_size(1100, height)
-        time.sleep(0.3)
 
-        driver.save_screenshot(str(OUTPUT_PATH))
+        # Фактическая высота контента
+        height = driver.execute_script(
+            "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+        )
+
+        # Full-page screenshot через CDP — захватывает ВСЁ содержимое body,
+        # даже если оно длиннее viewport. На длинных списках это надёжнее
+        # чем менять window size.
+        result = driver.execute_cdp_cmd("Page.captureScreenshot", {
+            "format": "png",
+            "captureBeyondViewport": True,
+            "clip": {
+                "x": 0,
+                "y": 0,
+                "width": 1100,
+                "height": height,
+                "scale": 1,
+            },
+        })
+        png_bytes = base64.b64decode(result["data"])
+        OUTPUT_PATH.write_bytes(png_bytes)
 
         from PIL import Image
         img = Image.open(OUTPUT_PATH)
-        img = img.crop((0, 0, img.width, min(height, img.height)))
         img.save(OUTPUT_PATH, optimize=True)
+        actual_w, actual_h = img.size
 
-        log.info("Manifest rendered: %s (%dx%d)", OUTPUT_PATH, 1100, height)
+        log.info("Manifest rendered: %s (%dx%d, content=%d)",
+                 OUTPUT_PATH, actual_w, actual_h, height)
         return OUTPUT_PATH
     finally:
         if driver:

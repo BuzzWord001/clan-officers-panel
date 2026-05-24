@@ -617,6 +617,16 @@ input:-webkit-autofill:active {
   text-shadow: 0 0 6px var(--accent);
 }
 
+/* Вводный текст под табами */
+.intro p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+.intro b { color: var(--accent); text-shadow: 0 0 6px rgba(0, 255, 65, 0.4); }
+
 /* shared form-group (settings) */
 .form-group {
   text-align: left;
