@@ -4,9 +4,6 @@ from datetime import date
 from pydantic import BaseModel, Field, field_validator
 
 
-NICK_PATTERN = r"^[A-Za-zА-Яа-яЁё0-9 _\-.]{2,32}$"
-
-
 class AcceptanceIn(BaseModel):
     game_nick: str = Field(min_length=1, max_length=64)
     accepted_date: date
@@ -53,8 +50,17 @@ class MeOut(BaseModel):
 
 
 class OfficerLoginIn(BaseModel):
-    game_nick: str = Field(min_length=2, max_length=32, pattern=NICK_PATTERN)
+    # Никакой регулярки — игровые ники могут быть на любом языке, с !, @, # и т.п.
+    game_nick: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
+
+    @field_validator("game_nick")
+    @classmethod
+    def _strip_and_check(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("game_nick is required")
+        return s
 
 
 class AdminLoginIn(BaseModel):
