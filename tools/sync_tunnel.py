@@ -102,7 +102,7 @@ def run_once() -> int:
                 if current == new_url:
                     log("config.js уже актуальный")
                 else:
-                    log(f"updating config.js: {current} → {new_url}")
+                    log(f"updating config.js: {current} -> {new_url}")
                     if replace_url(new_url):
                         push_config(new_url)
             # Печатаем строку cloudflared, чтобы видеть в логе
