@@ -7,7 +7,7 @@ RENDER_DEBOUNCE_MINUTES с последнего изменения.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -41,6 +41,27 @@ async def _tick() -> None:
 
 
 def _periodic_snapshot() -> None:
+    # Перед snapshot — подрезаем логи (TTL 30 дней) и пытаемся VACUUM
+    # раз в неделю. Так снапшот сразу меньше: не тащит уже удалённые
+    # страницы в backup.
+    try:
+        removed = db.trim_old_logs()
+        if any(v > 0 for v in removed.values()):
+            log.info("log trim removed: %s", removed)
+    except Exception:
+        log.exception("log trim failed")
+
+    # VACUUM запускается только в понедельник в 06:00 UTC — иначе каждые 6
+    # часов держал бы лишнюю нагрузку. На маленькой БД он мгновенный, но
+    # лишний раз не нужен.
+    now = datetime.utcnow()
+    if now.weekday() == 0 and now.hour == 6:
+        try:
+            saved = db.vacuum()
+            log.info("VACUUM done, reclaimed %d bytes", saved)
+        except Exception:
+            log.exception("VACUUM failed")
+
     try:
         path = snapshots.create_auto()
         log.info("auto snapshot: %s", path.name)
@@ -54,13 +75,6 @@ def _periodic_snapshot() -> None:
             log.info("auto snapshot trim: removed %d old", removed)
     except Exception:
         log.exception("snapshot trim failed")
-    # Логи подрезаем здесь же — за один тик уборка.
-    try:
-        removed = db.trim_old_logs()
-        if any(v > 0 for v in removed.values()):
-            log.info("log trim removed: %s", removed)
-    except Exception:
-        log.exception("log trim failed")
 
 
 def make_scheduler() -> AsyncIOScheduler:

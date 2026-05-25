@@ -542,6 +542,43 @@ def trim_old_logs() -> dict[str, int]:
     return removed
 
 
+def vacuum() -> int:
+    """Освобождает удалённые страницы в SQLite файле обратно в OS.
+
+    Без VACUUM файл officers.db только растёт: DELETE помечает страницы
+    свободными внутри, но не уменьшает размер файла. Снапшот тяжелее зря.
+
+    Возвращает экономию в байтах. Запускать после trim_old_logs — иначе
+    смысла нет. VACUUM нельзя в транзакции (sqlite требует autocommit) —
+    делаем отдельным соединением с isolation_level=None.
+    """
+    db_path = Path(settings.db_path)
+    before = db_path.stat().st_size if db_path.exists() else 0
+    conn = sqlite3.connect(settings.db_path, isolation_level=None)
+    try:
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+    after = db_path.stat().st_size if db_path.exists() else 0
+    return max(0, before - after)
+
+
+def storage_stats() -> dict[str, Any]:
+    """Сводка для UI: размер БД и кол-во строк в основных таблицах."""
+    db_path = Path(settings.db_path)
+    size = db_path.stat().st_size if db_path.exists() else 0
+    counts: dict[str, int] = {}
+    with connection() as conn:
+        for t in ("acceptances", "audit_log", "login_log",
+                  "access_log", "telemetry_log", "blocklist",
+                  "geoip_cache"):
+            try:
+                counts[t] = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            except sqlite3.Error:
+                counts[t] = 0
+    return {"db_bytes": size, "rows": counts}
+
+
 # ── geoip cache ──────────────────────────────────────────────────────────
 
 

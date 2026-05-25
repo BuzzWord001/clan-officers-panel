@@ -141,5 +141,7 @@
 
     telemetry:        (limit = 200) => request("GET", `/admin/telemetry?limit=${limit}`),
     telemetryClear:   () => request("DELETE", "/admin/telemetry"),
+
+    storage:          () => request("GET", "/admin/storage"),
   };
 })();

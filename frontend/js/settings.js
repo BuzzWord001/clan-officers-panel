@@ -236,10 +236,29 @@
       const s = await API.snapshotCreate();
       flash($("snap-status"), `✓ Создан: ${s.name}`, true);
       await reloadSnapshots();
+      await reloadStorageStats();
     } catch (e) {
       flash($("snap-status"), `Ошибка: ${e.detail || e.message}`, false);
     }
   });
+
+  async function reloadStorageStats() {
+    try {
+      const st = await API.storage();
+      const dbKb = (st.db.db_bytes / 1024).toFixed(1);
+      const snapMb = (st.snapshots.total_bytes / (1024*1024)).toFixed(2);
+      const rows = st.db.rows || {};
+      const top = Object.entries(rows)
+        .filter(([k, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("  •  ");
+      $("storage-stats").innerHTML =
+        `Размер БД: <b>${dbKb} КБ</b>  •  Снапшотов: <b>${st.snapshots.count}</b> (${snapMb} МБ)<br>${top}`;
+    } catch (e) {
+      $("storage-stats").textContent = "статистика недоступна";
+    }
+  }
 
   // ── GeoIP helpers ──
   // countryCode → флаг через regional indicator letters. RU → 🇷🇺
@@ -510,6 +529,7 @@
   });
 
   await reloadSnapshots();
+  await reloadStorageStats();
   await reloadLogins();
   await reloadBlocklist();
   await reloadTelemetry();

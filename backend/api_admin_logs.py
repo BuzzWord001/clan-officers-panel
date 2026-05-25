@@ -76,6 +76,24 @@ def clear_access_log(_: dict = Depends(require_admin)) -> None:
     db.clear_access()
 
 
+# ── storage stats ────────────────────────────────────────────────────────
+
+
+@router.get("/storage")
+def storage(_: dict = Depends(require_admin)) -> dict:
+    """Сводка для UI: размер БД, кол-во строк в таблицах + размер снапшотов."""
+    import snapshots as _snap
+    snap_list = _snap.list_all()
+    total_snap_bytes = sum(s["size"] for s in snap_list)
+    return {
+        "db": db.storage_stats(),
+        "snapshots": {
+            "count": len(snap_list),
+            "total_bytes": total_snap_bytes,
+        },
+    }
+
+
 # ── geoip resolve ────────────────────────────────────────────────────────
 
 

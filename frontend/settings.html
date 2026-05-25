@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Настройки</title>
-  <link rel="stylesheet" href="styles.css?v=1779742863">
+  <link rel="stylesheet" href="styles.css?v=1779743266">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779742863" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779743266" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -232,10 +232,12 @@
           <button id="snapshot-now">Создать снапшот сейчас</button>
         </div>
         <p class="hint" style="margin-bottom: 12px;">
-          База автоматически сохраняется каждый день в 03:00 (МСК).
-          Здесь видны все доступные снапшоты — можно откатить сайт к любому из них.
-          Перед откатом текущая база автоматически сохраняется (на случай если откат окажется ошибкой).
+          База автоматически сохраняется <b>каждые 6 часов</b> (03:00, 09:00, 15:00, 21:00 МСК).
+          Старые auto-снапшоты после 120-го удаляются (хранится ~30 дней истории).
+          Ручные снапшоты и pre-restore не удаляются автоматически.
+          Перед откатом текущая база сохраняется как pre-restore.
         </p>
+        <div class="hint" id="storage-stats" style="margin-bottom: 12px; font-size: 12px; color: var(--text-dim);">…</div>
         <div class="table-scroll" style="max-height: 380px;">
           <table id="snapshots-table">
             <thead>
@@ -258,9 +260,9 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779742863"></script>
-  <script src="js/matrix.js?v=1779742863"></script>
-  <script src="js/api.js?v=1779742863"></script>
-  <script src="js/settings.js?v=1779742863"></script>
+  <script src="config.js?v=1779743266"></script>
+  <script src="js/matrix.js?v=1779743266"></script>
+  <script src="js/api.js?v=1779743266"></script>
+  <script src="js/settings.js?v=1779743266"></script>
 </body>
 </html>
