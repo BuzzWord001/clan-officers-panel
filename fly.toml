@@ -38,4 +38,7 @@ primary_region = "ams"   # Amsterdam — ближе всего к РФ из free
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  # 1024MB — на 512MB Chromium tab crash на тяжёлом template.html.
+  # Стоимость растёт: ~$3.9/мес вместо $1.9 за VM. На free $5 credit
+  # хватает ~1.3 мес — всё ещё достаточно для тестирования.
+  memory_mb = 1024

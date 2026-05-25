@@ -122,9 +122,7 @@ def render_png(rows: list[dict] | None = None) -> Path:
         opts.add_argument("--disable-sync")
         opts.add_argument("--disable-translate")
         opts.add_argument("--mute-audio")
-        opts.add_argument("--disable-features=site-per-process,Translate,VizDisplayCompositor")
-        opts.add_argument("--no-zygote")
-        opts.add_argument("--single-process")
+        opts.add_argument("--disable-features=Translate,VizDisplayCompositor")
         opts.add_argument("--hide-scrollbars")
         opts.add_argument("--window-size=1100,2000")
         # На Fly/Linux chromium лежит в /usr/bin/chromium, на Windows — в PATH.
