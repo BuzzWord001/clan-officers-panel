@@ -36,7 +36,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.post("/login", response_model=MeOut)
+@router.post("/login")
 def login(payload: OfficerLoginIn, request: Request, response: Response) -> dict:
     name = payload.game_nick.strip()
     ip = client_ip(request)
@@ -48,11 +48,14 @@ def login(payload: OfficerLoginIn, request: Request, response: Response) -> dict
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_password")
 
     db.write_login(role="officer", name=name, success=True, ip=ip, user_agent=ua)
-    set_session(response, role="officer", name=name)
-    return {"role": "officer", "name": name, "login_at": "now"}
+    token = set_session(response, role="officer", name=name)
+    # token в body — фолбэк для браузеров где cross-site cookie не доходит
+    # (РФ Firefox с ETP / Brave / Yandex / Chrome с отключёнными 3p cookie).
+    # Фронт сам решает: если cookie доехала — игнорит, иначе кладёт в localStorage.
+    return {"role": "officer", "name": name, "login_at": "now", "token": token}
 
 
-@router.post("/admin/login", response_model=MeOut)
+@router.post("/admin/login")
 def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> dict:
     ip = client_ip(request)
     ua = client_user_agent(request)
@@ -63,8 +66,8 @@ def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> 
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
 
     db.write_login(role="admin", name=payload.username, success=True, ip=ip, user_agent=ua)
-    set_session(response, role="admin", name=payload.username)
-    return {"role": "admin", "name": payload.username, "login_at": "now"}
+    token = set_session(response, role="admin", name=payload.username)
+    return {"role": "admin", "name": payload.username, "login_at": "now", "token": token}
 
 
 @router.get("/me", response_model=MeOut)

@@ -1,6 +1,20 @@
-// fetch с cookies. API_URL берётся из config.js.
+// fetch с cookies + Bearer-fallback. API_URL берётся из config.js.
+//
+// Cookie работает в Chrome/Edge с дефолтными настройками. В Firefox ETP,
+// Brave, Yandex Browser, Chrome без 3p-cookies SameSite=None блокируется —
+// поэтому login возвращает токен в body, фронт его кладёт в localStorage и
+// шлёт в Authorization: Bearer. Cookie всё равно ставится — если доехала,
+// браузер её сам приложит.
 (function () {
   const BASE = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
+  const TOKEN_KEY = "officer_session_token";
+
+  function getToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; }
+  }
+  function setToken(t) {
+    try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+  }
 
   // Best-effort: даже если основной fetch упал (РФ-блокировка, TLS, CORS),
   // попробуем отправить причину в telemetry. Если и она не дойдёт — кладём
@@ -53,6 +67,9 @@
       init.body = JSON.stringify(body);
       init.headers["Content-Type"] = "application/json";
     }
+    // Bearer фолбэк — если cookie доехала, сервер всё равно её предпочтёт.
+    const tok = getToken();
+    if (tok) init.headers["Authorization"] = "Bearer " + tok;
     let res;
     try {
       res = await fetch(BASE + path, init);
@@ -80,11 +97,18 @@
     return data;
   }
 
+  // Login сохраняет токен в localStorage (фолбэк на случай если cookie не доедет).
+  async function loginAndStore(path, payload) {
+    const data = await request("POST", path, payload);
+    if (data && data.token) setToken(data.token);
+    return data;
+  }
+
   window.API = {
     me:            () => request("GET",  "/auth/me"),
-    logout:        () => request("POST", "/auth/logout"),
-    loginOfficer:  (game_nick, password) => request("POST", "/auth/login", { game_nick, password }),
-    loginAdmin:    (username, password)  => request("POST", "/auth/admin/login", { username, password }),
+    logout:        async () => { try { return await request("POST", "/auth/logout"); } finally { setToken(""); } },
+    loginOfficer:  (game_nick, password) => loginAndStore("/auth/login", { game_nick, password }),
+    loginAdmin:    (username, password)  => loginAndStore("/auth/admin/login", { username, password }),
     setOfficerPwd: (new_password)        => request("POST", "/auth/admin/officer-password", { new_password }),
     updateAdmin:   (payload)             => request("POST", "/auth/admin/credentials", payload),
 

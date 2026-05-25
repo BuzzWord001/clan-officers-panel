@@ -25,9 +25,14 @@ _SESSION_MAX_AGE = 60 * 60 * 24 * 7
 
 
 def _actor_from_cookie(request: Request) -> tuple[str, str]:
-    """Достаёт (role, name) из подписанной session-cookie без падений.
-    Для незалогиненных возвращает ('', '')."""
+    """Достаёт (role, name) из cookie ИЛИ Authorization: Bearer.
+    Bearer-фолбэк нужен для браузеров где cross-site cookie блокируется
+    (Firefox ETP, Brave, Yandex). Для незалогиненных возвращает ('', '')."""
     token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
     if not token:
         return "", ""
     try:

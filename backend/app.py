@@ -96,7 +96,10 @@ app.add_middleware(
     allow_origins=_allowed_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    # Явный список вместо "*" — при credentials=True Chrome/Firefox обязаны
+    # видеть точное имя header'а в Access-Control-Allow-Headers, "*" не
+    # принимается. Без Authorization в списке Bearer-fallback ломается preflight'ом.
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 # GuardAndLog после CORS — Starlette стек идёт снизу вверх: первая

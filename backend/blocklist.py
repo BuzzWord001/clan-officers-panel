@@ -116,13 +116,22 @@ def is_blocked_request(scope: dict, headers: dict[bytes, bytes]) -> str | None:
     if nicks:
         # Cookie парсим вручную — у FastAPI request тут ещё нет.
         cookie_header = headers.get(b"cookie", b"").decode("latin-1")
-        session_cookie = None
+        session_token: str | None = None
         for chunk in cookie_header.split(";"):
             k, _, v = chunk.strip().partition("=")
             if k == COOKIE_NAME:
-                session_cookie = v
+                session_token = v
                 break
-        nick = _extract_session_nick(session_cookie)
+        # Если cookie блокированы (РФ-Firefox/Brave), фронт шлёт токен
+        # в Authorization: Bearer — оттуда тоже надо вытащить.
+        if not session_token:
+            auth = headers.get(b"authorization", b"").decode("latin-1")
+            if not auth:
+                auth = headers.get(b"Authorization", b"").decode("latin-1")
+            if auth.lower().startswith("bearer "):
+                session_token = auth[7:].strip()
+
+        nick = _extract_session_nick(session_token)
         if nick and nick.casefold() in nicks:
             return f"nick {nick}"
 

@@ -22,13 +22,22 @@ def _verify(token: str) -> dict[str, Any]:
     return _serializer.loads(token, max_age=MAX_AGE_SEC)
 
 
-def set_session(response: Response, *, role: str, name: str) -> None:
-    payload = {
+def make_token(*, role: str, name: str) -> str:
+    """Подписанный токен. Тот же что лежит в cookie — но может быть отдан
+    в response body для клиентов которым cross-site cookies заблокированы
+    (Firefox ETP, Brave, Yandex Browser, любой Chrome у которого юзер
+    отключил third-party cookies). Срок жизни — те же 7 дней."""
+    return _sign({
         "role": role,
         "name": name,
         "login_at": datetime.utcnow().isoformat(timespec="seconds"),
-    }
-    token = _sign(payload)
+    })
+
+
+def set_session(response: Response, *, role: str, name: str) -> str:
+    """Ставит cookie И возвращает тот же токен — фронт сложит его в localStorage
+    как фолбэк. Если cookie доедет, фронт всё равно её предпочтёт."""
+    token = make_token(role=role, name=name)
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -38,15 +47,28 @@ def set_session(response: Response, *, role: str, name: str) -> None:
         samesite="none",
         path="/",
     )
+    return token
 
 
 def clear_session(response: Response) -> None:
     response.delete_cookie(COOKIE_NAME, path="/", samesite="none", secure=True)
 
 
+def _token_from_request(request: Request) -> str | None:
+    """Cookie приоритетнее (HTTP-only, не утечёт через XSS); fallback —
+    Authorization: Bearer для клиентов где cookie не работает."""
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        return token
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return None
+
+
 def current_session(request: Request) -> dict[str, str]:
     """Возвращает {role, name, login_at}. Бросает 401, если нет/протух/битый."""
-    token = request.cookies.get(COOKIE_NAME)
+    token = _token_from_request(request)
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "no_session")
     try:
