@@ -118,6 +118,34 @@ def list_all() -> list[dict]:
     return out
 
 
+def trim_auto(keep_last: int = 120) -> int:
+    """Оставить keep_last новейших auto-снапшотов, остальные удалить.
+
+    Manual / pre_restore — НЕ трогаем: это точки восстановления, которые
+    Лир делал явно (через UI). Подметаем только PREFIX_AUTO.
+    """
+    _ensure_dir()
+    auto_files = sorted(
+        SNAPSHOT_DIR.glob(f"{PREFIX_AUTO}*{SUFFIX}"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    # Manual использует PREFIX_MANUAL который начинается с того же PREFIX_AUTO=
+    # "officers_" → отфильтруем по более жёсткому условию.
+    auto_files = [p for p in auto_files
+                  if not p.name.startswith(PREFIX_MANUAL)
+                  and not p.name.startswith(PREFIX_PRE_RESTORE)]
+    to_remove = auto_files[keep_last:]
+    removed = 0
+    for p in to_remove:
+        try:
+            p.unlink()
+            removed += 1
+        except OSError as exc:
+            log.warning("trim_auto failed to remove %s: %s", p.name, exc)
+    return removed
+
+
 def delete_one(name: str) -> bool:
     path = _safe_filename(name)
     if path.exists():

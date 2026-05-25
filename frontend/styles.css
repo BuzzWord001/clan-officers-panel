@@ -258,7 +258,10 @@ main {
 /* ── Table ── */
 .table-scroll {
   max-height: 62vh;
-  overflow-y: auto;
+  /* Горизонтальный скролл важен для широких журналов (access/login):
+     8-9 колонок не помещаются на мобильных и ноутах 13" — без него
+     User-Agent зажат до 30px и нечитаем. */
+  overflow: auto;
   border: 1px solid var(--accent-soft);
   background: rgba(0, 10, 0, 0.25);
 }
@@ -404,7 +407,36 @@ td.actor { color: var(--text-dim); font-size: 13px; }
 td.success-yes { color: var(--accent); font-weight: 700; }
 td.success-no  { color: var(--danger); font-weight: 700; }
 td.ip { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 13px; color: var(--text-dim); }
-td.ua { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; color: var(--muted); max-width: 280px; word-break: break-all; }
+
+/* User-Agent — в одну строку с многоточием. Полный текст видно по hover (title)
+   и по горизонтальному скроллу. Word-break ломал высоту строки и таблица
+   выглядела как лесенка. */
+td.ua {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 320px;
+  min-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Гео-ячейка — флаг + страна + город (через JS). */
+td.geo {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Журналы (admin-only) — широкие таблицы нуждаются в min-width, иначе
+   браузер сжимает фиксированные ширины колонок и теряется читаемость. */
+#logins-table  { min-width: 1100px; }
+#access-table  { min-width: 1180px; }
+#block-table   { min-width: 880px; }
+#telemetry-table { min-width: 900px; }
 
 /* Модальное окно просмотра снапшота */
 .modal-backdrop {

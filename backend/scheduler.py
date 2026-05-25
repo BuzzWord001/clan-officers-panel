@@ -40,26 +40,36 @@ async def _tick() -> None:
     log.info("Publish result: %s", result)
 
 
-def _daily_snapshot() -> None:
+def _periodic_snapshot() -> None:
     try:
-        snapshots.create_auto()
+        path = snapshots.create_auto()
+        log.info("auto snapshot: %s", path.name)
     except Exception as exc:
-        log.exception("daily snapshot failed: %s", exc)
-    # Подрезаем старые логи в одной задаче — снапшот уже сохранил историю,
-    # дальше её можно подчистить чтобы access_log не разрастался.
+        log.exception("auto snapshot failed: %s", exc)
+    # Подрезаем старые auto-снапшоты: 4 в день × 30 дней = 120 макс.
+    # Manual и pre_restore — НЕ трогаем (это явные точки восстановления Лира).
+    try:
+        removed = snapshots.trim_auto(keep_last=120)
+        if removed:
+            log.info("auto snapshot trim: removed %d old", removed)
+    except Exception:
+        log.exception("snapshot trim failed")
+    # Логи подрезаем здесь же — за один тик уборка.
     try:
         removed = db.trim_old_logs()
         if any(v > 0 for v in removed.values()):
-            log.info("daily log trim removed: %s", removed)
+            log.info("log trim removed: %s", removed)
     except Exception:
-        log.exception("daily log trim failed")
+        log.exception("log trim failed")
 
 
 def make_scheduler() -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone="UTC")
     sched.add_job(_tick, "interval", minutes=1, id="publish_tick",
                   max_instances=1, coalesce=True)
-    # 03:00 МСК == 00:00 UTC
-    sched.add_job(_daily_snapshot, CronTrigger(hour=0, minute=0),
-                  id="daily_snapshot", max_instances=1, coalesce=True)
+    # Снапшоты 4 раза в сутки: 00/06/12/18 UTC = 03/09/15/21 МСК.
+    # Точки восстановления привязаны к деловому циклу (утро/обед/вечер/ночь).
+    # Размер БД ~50КБ × 120 retention ≈ 6МБ, volume 3ГБ выдержит.
+    sched.add_job(_periodic_snapshot, CronTrigger(hour="0,6,12,18", minute=0),
+                  id="periodic_snapshot", max_instances=1, coalesce=True)
     return sched
