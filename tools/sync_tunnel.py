@@ -18,6 +18,14 @@ import sys
 import time
 from pathlib import Path
 
+# stdout/stderr должны принимать кириллицу/стрелки — иначе любой print()
+# с не-ASCII символом валит весь скрипт под cp1251 Windows консолью.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 CONFIG_JS   = PROJECT_DIR / "frontend" / "config.js"
@@ -50,12 +58,16 @@ def replace_url(new_url: str) -> bool:
 
 
 def git(*args, **kw):
+    # encoding=utf-8 ОБЯЗАТЕЛЕН: иначе git stderr с кириллицей (commit msg,
+    # пути в Russian-локали Windows) декодится cp1251 и падает UnicodeDecodeError.
     return subprocess.run(
         ["git", *args],
         cwd=str(PROJECT_DIR),
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         **kw,
     )
 
@@ -64,7 +76,7 @@ def push_config(new_url: str) -> None:
     # pull --rebase чтобы не словить non-fast-forward на другой машине
     git("pull", "--rebase", "--autostash", "origin", "main")
     git("add", "frontend/config.js")
-    msg = f"chore: tunnel url → {new_url}"
+    msg = f"chore: tunnel url -> {new_url}"
     r = git("-c", "core.autocrlf=true", "commit", "-m", msg)
     if "nothing to commit" in (r.stdout + r.stderr).lower():
         log("nothing to commit")

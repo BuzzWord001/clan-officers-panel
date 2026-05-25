@@ -33,6 +33,13 @@ def _acquire_lock():
 
 def main():
     _acquire_lock()
+    # stdout под Windows = cp1251 по умолчанию. Любой кириллический лог
+    # (например auth_pwd.log при логине Russian-ника) — UnicodeEncodeError.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
