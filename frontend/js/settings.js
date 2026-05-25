@@ -258,6 +258,7 @@
           <td></td>
           <td class="ip"></td>
           <td class="ua"></td>
+          <td class="row-actions"></td>
         `;
         tr.children[0].textContent = fmtIso(l.timestamp);
         tr.children[1].textContent = l.role === "admin" ? "АДМИН" : "офицер";
@@ -269,6 +270,24 @@
         }
         tr.children[4].textContent = l.ip || "—";
         tr.children[5].textContent = l.user_agent || "—";
+
+        // Кнопки быстрой блокировки. По admin блокировать смысла нет.
+        const actions = tr.children[6];
+        if (l.ip && l.ip !== "—") {
+          const ipBtn = document.createElement("button");
+          ipBtn.className = "danger";
+          ipBtn.textContent = "Блок IP";
+          ipBtn.addEventListener("click", () => quickBlock("ip", l.ip, `вход ${l.name}`));
+          actions.appendChild(ipBtn);
+        }
+        if (l.role === "officer" && l.name) {
+          const nickBtn = document.createElement("button");
+          nickBtn.className = "danger";
+          nickBtn.style.marginLeft = "6px";
+          nickBtn.textContent = "Блок ник";
+          nickBtn.addEventListener("click", () => quickBlock("nick", l.name, `по нику`));
+          actions.appendChild(nickBtn);
+        }
         tbody.appendChild(tr);
       }
     } catch (e) {
@@ -287,6 +306,126 @@
     }
   });
 
+  // ── Blocklist ──
+  async function quickBlock(kind, pattern, reason) {
+    if (!confirm(`Заблокировать ${kind === "ip" ? "IP " + pattern : "ник " + pattern}?\nПричина: ${reason}`)) return;
+    try {
+      await API.blocklistAdd({ kind, pattern, reason });
+      await reloadBlocklist();
+      flash($("block-status"), `✓ Заблокирован ${kind}: ${pattern}`, true);
+    } catch (e) {
+      flash($("block-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  async function reloadBlocklist() {
+    try {
+      const list = await API.blocklist();
+      const tbody = $("block-tbody");
+      tbody.innerHTML = "";
+      if (!list.length) { $("block-empty").hidden = false; return; }
+      $("block-empty").hidden = true;
+      for (const b of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td></td><td class="nick"></td><td></td><td class="date"></td>
+          <td></td><td class="row-actions"></td>
+        `;
+        tr.children[0].textContent = b.kind === "ip" ? "IP" : "ник";
+        tr.children[1].textContent = b.pattern;
+        tr.children[2].textContent = b.reason || "—";
+        tr.children[3].textContent = fmtIso(b.created_at);
+        tr.children[4].textContent = b.created_by;
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "Разблок.";
+        delBtn.addEventListener("click", async () => {
+          if (!confirm(`Снять блокировку ${b.kind}:${b.pattern}?`)) return;
+          try {
+            await API.blocklistRemove(b.id);
+            await reloadBlocklist();
+            flash($("block-status"), `✓ Разблокирован`, true);
+          } catch (e) {
+            flash($("block-status"), `Ошибка: ${e.detail || e.message}`, false);
+          }
+        });
+        tr.children[5].appendChild(delBtn);
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      flash($("block-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  $("block-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const payload = {
+      kind: $("block-kind").value,
+      pattern: $("block-pattern").value.trim(),
+      reason: $("block-reason").value.trim(),
+    };
+    if (!payload.pattern) return;
+    try {
+      await API.blocklistAdd(payload);
+      $("block-pattern").value = "";
+      $("block-reason").value = "";
+      await reloadBlocklist();
+      flash($("block-status"), `✓ Заблокирован`, true);
+    } catch (e) {
+      flash($("block-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  });
+
+  // ── Access log ──
+  async function reloadAccess() {
+    try {
+      const list = await API.accessLog(500);
+      const tbody = $("access-tbody");
+      tbody.innerHTML = "";
+      if (!list.length) { $("access-empty").hidden = false; return; }
+      $("access-empty").hidden = true;
+      for (const a of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="date"></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="nick"></td>
+          <td class="ip"></td>
+        `;
+        tr.children[0].textContent = fmtIso(a.timestamp);
+        tr.children[1].textContent = a.method;
+        tr.children[2].textContent = a.path;
+        tr.children[3].textContent = a.status;
+        tr.children[3].className = a.status >= 400 ? "success-no" : "success-yes";
+        tr.children[4].textContent = a.latency_ms;
+        tr.children[5].textContent = a.actor_role === "admin"
+          ? "АДМИН" : (a.actor_role === "officer" ? "офицер" : "—");
+        tr.children[6].textContent = a.actor_name || "—";
+        tr.children[7].textContent = a.ip || "—";
+        tr.children[7].title = a.user_agent || "";
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      flash($("access-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  $("clear-access").addEventListener("click", async () => {
+    if (!confirm("Полностью очистить журнал действий?")) return;
+    try {
+      await API.accessLogClear();
+      await reloadAccess();
+      flash($("access-status"), "✓ Очищено", true);
+    } catch (e) {
+      flash($("access-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  });
+
   await reloadSnapshots();
   await reloadLogins();
+  await reloadBlocklist();
+  await reloadAccess();
 })();

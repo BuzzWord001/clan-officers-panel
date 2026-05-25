@@ -51,5 +51,12 @@
     snapshotInspect: (name) => request("GET",  `/admin/snapshots/${encodeURIComponent(name)}/inspect`),
     snapshotRestore: (name) => request("POST", `/admin/snapshots/${encodeURIComponent(name)}/restore`),
     snapshotDelete:  (name) => request("DELETE", `/admin/snapshots/${encodeURIComponent(name)}`),
+
+    blocklist:        () => request("GET",  "/admin/blocklist"),
+    blocklistAdd:     (payload) => request("POST", "/admin/blocklist", payload),
+    blocklistRemove:  (id) => request("DELETE", `/admin/blocklist/${id}`),
+
+    accessLog:        (limit = 500) => request("GET", `/admin/access-log?limit=${limit}`),
+    accessLogClear:   () => request("DELETE", "/admin/access-log"),
   };
 })();

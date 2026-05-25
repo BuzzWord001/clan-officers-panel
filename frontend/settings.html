@@ -100,8 +100,8 @@
         </div>
         <p class="hint" style="margin-bottom: 12px;">
           Каждый успешный и неуспешный вход на сайт фиксируется здесь:
-          ник или логин, IP-адрес и User-Agent браузера. По этим данным
-          можно понять, кто именно вносил правки в реестр и с какого устройства.
+          ник или логин, IP-адрес и User-Agent браузера. Кнопкой
+          «Заблокировать» можно мгновенно забанить IP или ник прямо отсюда.
         </p>
         <div class="table-scroll" style="max-height: 380px;">
           <table id="logins-table">
@@ -113,6 +113,7 @@
                 <th style="width:60px;">Успех</th>
                 <th style="width:140px;">IP</th>
                 <th>User-Agent</th>
+                <th style="width:200px;"></th>
               </tr>
             </thead>
             <tbody id="logins-tbody"></tbody>
@@ -120,6 +121,75 @@
         </div>
         <div class="empty" id="logins-empty" hidden>Журнал входов пуст</div>
         <div class="status-line" id="logins-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Блок-лист</h2>
+        </div>
+        <p class="hint" style="margin-bottom: 12px;">
+          Запросы с заблокированных IP-адресов и сессий заблокированных ников
+          отбиваются 403 на уровне backend — до сайта они не доходят.
+          IP принимает одиночный адрес (например, <code>5.45.207.10</code>)
+          или CIDR-подсеть (<code>5.45.207.0/24</code>).
+        </p>
+        <form id="block-form" autocomplete="off" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <select id="block-kind" style="min-width:130px;">
+            <option value="ip">IP / CIDR</option>
+            <option value="nick">Игровой ник</option>
+          </select>
+          <input type="text" id="block-pattern" placeholder="что блокируем" required maxlength="128" style="flex:1; min-width:160px;">
+          <input type="text" id="block-reason" placeholder="причина (для журнала)" maxlength="200" style="flex:2; min-width:200px;">
+          <button type="submit">Заблокировать</button>
+        </form>
+        <div class="table-scroll" style="max-height: 280px;">
+          <table id="block-table">
+            <thead>
+              <tr>
+                <th style="width:80px;">Тип</th>
+                <th>Шаблон</th>
+                <th>Причина</th>
+                <th style="width:140px;">Когда</th>
+                <th style="width:140px;">Кто</th>
+                <th style="width:100px;"></th>
+              </tr>
+            </thead>
+            <tbody id="block-tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="block-empty" hidden>Блок-лист пуст</div>
+        <div class="status-line" id="block-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Журнал действий</h2>
+          <button id="clear-access" class="danger">Очистить</button>
+        </div>
+        <p class="hint" style="margin-bottom: 12px;">
+          Все мутации (создание/правка/удаление записей, входы, админские
+          действия) пишутся сюда. Видно метод, путь, статус-код, длительность,
+          кто был залогинен, IP и браузер. Поле пустое для незалогиненных запросов.
+        </p>
+        <div class="table-scroll" style="max-height: 480px;">
+          <table id="access-table">
+            <thead>
+              <tr>
+                <th style="width:140px;">Когда</th>
+                <th style="width:70px;">Метод</th>
+                <th>Путь</th>
+                <th style="width:60px;">Статус</th>
+                <th style="width:70px;">ms</th>
+                <th style="width:80px;">Роль</th>
+                <th>Имя</th>
+                <th style="width:130px;">IP</th>
+              </tr>
+            </thead>
+            <tbody id="access-tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="access-empty" hidden>Журнал пуст</div>
+        <div class="status-line" id="access-status"></div>
       </div>
 
       <div class="panel">

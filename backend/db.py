@@ -82,6 +82,33 @@ CREATE TABLE IF NOT EXISTS auth_config (
     admin_password_hash      TEXT NOT NULL,
     updated_at               TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS blocklist (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind            TEXT    NOT NULL,            -- 'ip' | 'nick'
+    pattern         TEXT    NOT NULL,            -- IP / CIDR / точный ник
+    reason          TEXT    NOT NULL DEFAULT '',
+    created_at      TEXT    NOT NULL,
+    created_by      TEXT    NOT NULL DEFAULT 'admin'
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocklist_kind ON blocklist(kind);
+
+CREATE TABLE IF NOT EXISTS access_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL,
+    method          TEXT    NOT NULL,
+    path            TEXT    NOT NULL,
+    status          INTEGER NOT NULL,
+    latency_ms      INTEGER NOT NULL DEFAULT 0,
+    actor_role      TEXT    NOT NULL DEFAULT '', -- 'admin' | 'officer' | '' (no session)
+    actor_name      TEXT    NOT NULL DEFAULT '',
+    ip              TEXT    NOT NULL DEFAULT '',
+    user_agent      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_access_time ON access_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_access_ip ON access_log(ip);
 """
 
 
@@ -374,6 +401,95 @@ def list_logins(limit: int = 200) -> list[dict[str, Any]]:
 def clear_logins() -> int:
     with connection() as conn:
         cur = conn.execute("DELETE FROM login_log")
+        return cur.rowcount
+
+
+# ── blocklist ────────────────────────────────────────────────────────────
+
+def list_blocklist() -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM blocklist ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_blocklist(*, kind: str, pattern: str, reason: str, created_by: str) -> dict[str, Any]:
+    if kind not in {"ip", "nick"}:
+        raise ValueError(f"invalid kind: {kind!r}")
+    pattern = pattern.strip()
+    if not pattern:
+        raise ValueError("empty pattern")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO blocklist (kind, pattern, reason, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
+            (kind, pattern, reason.strip(), now, created_by),
+        )
+        row = conn.execute(
+            "SELECT * FROM blocklist WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+        return dict(row)
+
+
+def delete_blocklist(entry_id: int) -> bool:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM blocklist WHERE id = ?", (entry_id,))
+        return cur.rowcount > 0
+
+
+# ── access_log (детальный журнал действий) ──────────────────────────────
+
+# Не пишем чисто-read traffic — он раздувает БД и не несёт пользы.
+# Логируем mutations + auth + admin endpoints.
+_ACCESS_LOG_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_ACCESS_LOG_GET_PREFIXES = ("/admin/",)  # GET /admin/snapshots и пр. — нужно знать кто смотрел
+_ACCESS_LOG_SKIP_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
+
+
+def should_access_log(method: str, path: str) -> bool:
+    if path in _ACCESS_LOG_SKIP_PATHS:
+        return False
+    if method.upper() in _ACCESS_LOG_METHODS:
+        return True
+    if method.upper() == "GET" and any(path.startswith(p) for p in _ACCESS_LOG_GET_PREFIXES):
+        return True
+    return False
+
+
+def write_access(*, method: str, path: str, status: int, latency_ms: int,
+                 actor_role: str, actor_name: str, ip: str, user_agent: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO access_log
+               (timestamp, method, path, status, latency_ms,
+                actor_role, actor_name, ip, user_agent)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.utcnow().isoformat(timespec="seconds"),
+                method.upper(),
+                path[:200],
+                status,
+                latency_ms,
+                actor_role,
+                actor_name[:64],
+                ip[:64],
+                user_agent[:200],
+            ),
+        )
+
+
+def list_access(limit: int = 500) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM access_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def clear_access() -> int:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM access_log")
         return cur.rowcount
 
 

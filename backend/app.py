@@ -19,10 +19,12 @@ import scheduler
 import api_auth
 import api_acceptances
 import api_audit
+import api_admin_logs
 import api_snapshots
 import auth_pwd
 import bot_tg_listener
 import bot_vk_listener
+from middleware import GuardAndLogMiddleware
 from config import settings
 from session import current_actor, require_admin
 from urllib.parse import urlparse
@@ -97,6 +99,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GuardAndLog после CORS — Starlette стек идёт снизу вверх: первая
+# добавленная middleware оборачивает запрос ПОСЛЕДНЕЙ. То есть CORS
+# отрабатывает на outermost level (правильно для preflight), а guard/log
+# уже видит preflight как OPTIONS и пропускает.
+app.add_middleware(GuardAndLogMiddleware)
+
 
 @app.get("/health")
 def health() -> dict:
@@ -114,3 +122,4 @@ app.include_router(api_auth.admin_router)
 app.include_router(api_acceptances.router)
 app.include_router(api_audit.router)
 app.include_router(api_snapshots.router)
+app.include_router(api_admin_logs.router)
