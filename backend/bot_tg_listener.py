@@ -172,6 +172,6 @@ async def run() -> None:
                     continue
                 last_repost = now
                 try:
-                    await publisher.publish_force_repost("tg_new_member")
+                    await publisher.publish_force_repost("tg", "tg_new_member")
                 except Exception:
                     log.exception("force repost from TG join failed")

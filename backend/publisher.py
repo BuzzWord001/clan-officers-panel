@@ -60,13 +60,20 @@ def _caption_vk() -> str:
     return "\n".join(parts)
 
 
-async def publish_now(*, force_repost: bool = False) -> dict:
+async def publish_now(*, force_repost: bool = False,
+                      platforms: tuple[str, ...] | None = None) -> dict:
     """Публикует/обновляет манифест в TG+VK офицерских чатах.
 
     force_repost=True — не редактирует существующий пост, а **пересоздаёт**:
     delete + send + pin. Нужно когда в чат заходит новый участник: edit
     оставит закреп на месте, но новички не увидят его в недавних сообщениях.
+
+    platforms=None — обе площадки (так работает scheduler и republish после
+    смены пароля). Передай ("tg",) или ("vk",) чтобы тронуть только одну —
+    например когда listener видит join только в одной площадке, не нужно
+    спамить вторую.
     """
+    targets = set(platforms) if platforms else {"tg", "vk"}
     state = db.get_render_state()
     image = await asyncio.to_thread(renderer.render_png)
     result: dict = {}
@@ -79,42 +86,58 @@ async def publish_now(*, force_repost: bool = False) -> dict:
     tg_old_to_delete = state.get("tg_message_id") if force_repost else None
     vk_old_to_delete = state.get("vk_message_id") if force_repost else None
 
-    if settings.tg_bot_token and settings.tg_officer_chat_id:
-        try:
-            new_tg = await bot_tg.publish_manifest(image, _caption_tg(), tg_prev)
-            if tg_old_to_delete and tg_old_to_delete != new_tg:
-                await bot_tg.delete_message_safe(tg_old_to_delete)
-            db.update_render_state(tg_message_id=new_tg)
-            result["tg"] = new_tg
-        except Exception as exc:
-            log.exception("TG publish failed")
-            result["tg_error"] = str(exc)
-    else:
-        result["tg_error"] = "tg_not_configured"
+    if "tg" in targets:
+        if settings.tg_bot_token and settings.tg_officer_chat_id:
+            try:
+                new_tg = await bot_tg.publish_manifest(image, _caption_tg(), tg_prev)
+                if tg_old_to_delete and tg_old_to_delete != new_tg:
+                    await bot_tg.delete_message_safe(tg_old_to_delete)
+                db.update_render_state(tg_message_id=new_tg)
+                result["tg"] = new_tg
+            except Exception as exc:
+                log.exception("TG publish failed")
+                result["tg_error"] = str(exc)
+        else:
+            result["tg_error"] = "tg_not_configured"
 
-    if settings.vk_group_token and settings.vk_officer_peer_id:
-        try:
-            new_vk = await asyncio.to_thread(
-                bot_vk.publish_manifest, image, _caption_vk(), vk_prev,
-            )
-            if vk_old_to_delete and vk_old_to_delete != new_vk:
-                await asyncio.to_thread(bot_vk.delete_message_safe, vk_old_to_delete)
-            db.update_render_state(vk_message_id=new_vk)
-            result["vk"] = new_vk
-        except Exception as exc:
-            log.exception("VK publish failed")
-            result["vk_error"] = str(exc)
-    else:
-        result["vk_error"] = "vk_not_configured"
+    if "vk" in targets:
+        if settings.vk_group_token and settings.vk_officer_peer_id:
+            try:
+                new_vk = await asyncio.to_thread(
+                    bot_vk.publish_manifest, image, _caption_vk(), vk_prev,
+                )
+                if vk_old_to_delete and vk_old_to_delete != new_vk:
+                    await asyncio.to_thread(bot_vk.delete_message_safe, vk_old_to_delete)
+                db.update_render_state(vk_message_id=new_vk)
+                result["vk"] = new_vk
+            except Exception as exc:
+                log.exception("VK publish failed")
+                result["vk_error"] = str(exc)
+        else:
+            result["vk_error"] = "vk_not_configured"
 
     now = datetime.utcnow().isoformat(timespec="seconds")
-    db.update_render_state(dirty=0, last_render_at=now, last_publish_at=now)
+    # При полной публикации сбрасываем dirty; при частичной (только одна
+    # площадка) — НЕ сбрасываем, чтобы scheduler позже всё-таки прокатил
+    # вторую площадку, если она dirty по обычным правкам.
+    if not platforms:
+        db.update_render_state(dirty=0, last_render_at=now, last_publish_at=now)
+    else:
+        db.update_render_state(last_render_at=now, last_publish_at=now)
+
     if force_repost:
-        log.info("Force repost done: %s", {k: v for k, v in result.items() if "error" not in k})
+        log.info("Force repost (platforms=%s) done: %s",
+                 sorted(targets), {k: v for k, v in result.items() if "error" not in k})
     return result
 
 
-async def publish_force_repost(reason: str = "") -> dict:
-    """Shortcut: всегда новый пост в чат. Нужно при входе нового участника."""
-    log.info("Force repost requested: %s", reason or "no reason")
-    return await publish_now(force_repost=True)
+async def publish_force_repost(platform: str, reason: str = "") -> dict:
+    """Принудительно пересоздаёт закреп в одной площадке (по-новой sendPhoto+pin).
+
+    platform: "tg" или "vk". Передаём строго одну — listener знает откуда
+    пришёл join, нет смысла трогать вторую и плодить лишние посты.
+    """
+    if platform not in {"tg", "vk"}:
+        raise ValueError(f"unsupported platform: {platform!r}")
+    log.info("Force repost requested for %s: %s", platform, reason or "no reason")
+    return await publish_now(force_repost=True, platforms=(platform,))

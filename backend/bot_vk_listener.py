@@ -116,7 +116,7 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
                 log.info("VK invite event in officer chat → force repost")
                 # Перекидываем корутину в основной event loop.
                 fut = asyncio.run_coroutine_threadsafe(
-                    publisher.publish_force_repost("vk_chat_invite"), loop,
+                    publisher.publish_force_repost("vk", "vk_chat_invite"), loop,
                 )
                 try:
                     fut.result(timeout=120)
