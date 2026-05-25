@@ -241,6 +241,35 @@
     }
   });
 
+  // ── GeoIP helpers ──
+  // countryCode → флаг через regional indicator letters. RU → 🇷🇺
+  function flag(code) {
+    if (!code || code.length !== 2) return "";
+    const A = 0x1F1E6;
+    return String.fromCodePoint(A + code.charCodeAt(0) - 65)
+         + String.fromCodePoint(A + code.charCodeAt(1) - 65);
+  }
+  function fmtGeo(g) {
+    if (!g) return "—";
+    const parts = [];
+    if (g.country_code) parts.push(flag(g.country_code));
+    if (g.country) parts.push(g.country);
+    if (g.city) parts.push(g.city);
+    return parts.length ? parts.join(" ") : "—";
+  }
+
+  async function resolveAllIps(ips) {
+    // Дедуп и фильтрация пустых, чтобы не тратить квоту ip-api.
+    const uniq = [...new Set(ips.filter(Boolean).filter(x => x !== "—"))];
+    if (!uniq.length) return {};
+    try {
+      return await API.resolveIps(uniq);
+    } catch (e) {
+      console.warn("geoip resolve failed:", e);
+      return {};
+    }
+  }
+
   // ── Login log ──
   async function reloadLogins() {
     try {
@@ -249,6 +278,7 @@
       tbody.innerHTML = "";
       if (!list.length) { $("logins-empty").hidden = false; return; }
       $("logins-empty").hidden = true;
+      const geo = await resolveAllIps(list.map(l => l.ip));
       for (const l of list) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -257,6 +287,7 @@
           <td class="nick"></td>
           <td></td>
           <td class="ip"></td>
+          <td class="geo"></td>
           <td class="ua"></td>
           <td class="row-actions"></td>
         `;
@@ -269,10 +300,13 @@
           tr.children[3].title = l.reason;
         }
         tr.children[4].textContent = l.ip || "—";
-        tr.children[5].textContent = l.user_agent || "—";
+        const g = geo[l.ip];
+        tr.children[5].textContent = fmtGeo(g);
+        if (g && g.isp) tr.children[5].title = g.isp;
+        tr.children[6].textContent = l.user_agent || "—";
 
         // Кнопки быстрой блокировки. По admin блокировать смысла нет.
-        const actions = tr.children[6];
+        const actions = tr.children[7];
         if (l.ip && l.ip !== "—") {
           const ipBtn = document.createElement("button");
           ipBtn.className = "danger";
@@ -383,6 +417,7 @@
       tbody.innerHTML = "";
       if (!list.length) { $("access-empty").hidden = false; return; }
       $("access-empty").hidden = true;
+      const geo = await resolveAllIps(list.map(a => a.ip));
       for (const a of list) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -394,6 +429,7 @@
           <td></td>
           <td class="nick"></td>
           <td class="ip"></td>
+          <td class="geo"></td>
         `;
         tr.children[0].textContent = fmtIso(a.timestamp);
         tr.children[1].textContent = a.method;
@@ -406,12 +442,61 @@
         tr.children[6].textContent = a.actor_name || "—";
         tr.children[7].textContent = a.ip || "—";
         tr.children[7].title = a.user_agent || "";
+        const g = geo[a.ip];
+        tr.children[8].textContent = fmtGeo(g);
+        if (g && g.isp) tr.children[8].title = g.isp;
         tbody.appendChild(tr);
       }
     } catch (e) {
       flash($("access-status"), `Ошибка: ${e.detail || e.message}`, false);
     }
   }
+
+  // ── Telemetry (failed fetches before they reach auth) ──
+  async function reloadTelemetry() {
+    try {
+      const list = await API.telemetry(200);
+      const tbody = $("telemetry-tbody");
+      tbody.innerHTML = "";
+      if (!list.length) { $("telemetry-empty").hidden = false; return; }
+      $("telemetry-empty").hidden = true;
+      const geo = await resolveAllIps(list.map(t => t.ip));
+      for (const t of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="date"></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="ip"></td>
+          <td class="geo"></td>
+        `;
+        tr.children[0].textContent = fmtIso(t.timestamp);
+        tr.children[1].textContent = t.kind;
+        tr.children[2].textContent = t.message || "—";
+        tr.children[2].title = t.user_agent || "";
+        tr.children[3].textContent = t.url || "—";
+        tr.children[4].textContent = t.ip || "—";
+        const g = geo[t.ip];
+        tr.children[5].textContent = fmtGeo(g);
+        if (g && g.isp) tr.children[5].title = g.isp;
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      flash($("telemetry-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  }
+
+  $("clear-telemetry").addEventListener("click", async () => {
+    if (!confirm("Очистить журнал telemetry?")) return;
+    try {
+      await API.telemetryClear();
+      await reloadTelemetry();
+      flash($("telemetry-status"), "✓ Очищено", true);
+    } catch (e) {
+      flash($("telemetry-status"), `Ошибка: ${e.detail || e.message}`, false);
+    }
+  });
 
   $("clear-access").addEventListener("click", async () => {
     if (!confirm("Полностью очистить журнал действий?")) return;
@@ -427,5 +512,6 @@
   await reloadSnapshots();
   await reloadLogins();
   await reloadBlocklist();
+  await reloadTelemetry();
   await reloadAccess();
 })();

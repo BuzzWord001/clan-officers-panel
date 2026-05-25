@@ -109,6 +109,33 @@ CREATE TABLE IF NOT EXISTS access_log (
 
 CREATE INDEX IF NOT EXISTS idx_access_time ON access_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_access_ip ON access_log(ip);
+
+-- Кэш гео-IP. ip-api.com бесплатен (45 req/min), результат не меняется
+-- неделями — кэшируем чтобы не упереться в лимит и видеть страну сразу.
+CREATE TABLE IF NOT EXISTS geoip_cache (
+    ip              TEXT PRIMARY KEY,
+    country         TEXT NOT NULL DEFAULT '',
+    country_code    TEXT NOT NULL DEFAULT '',
+    region          TEXT NOT NULL DEFAULT '',
+    city            TEXT NOT NULL DEFAULT '',
+    isp             TEXT NOT NULL DEFAULT '',
+    resolved_at     TEXT NOT NULL
+);
+
+-- Telemetry от фронта: ошибки fetch которые НЕ дошли до auth (когда сервер
+-- недоступен из РФ, СORS lock, TLS issues). Доходят через GitHub Pages
+-- путь, если backend жив хотя бы частично.
+CREATE TABLE IF NOT EXISTS telemetry_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL,
+    kind            TEXT    NOT NULL,        -- 'connect_error' | 'tls' | 'cors' | ...
+    message         TEXT    NOT NULL DEFAULT '',
+    url             TEXT    NOT NULL DEFAULT '',
+    ip              TEXT    NOT NULL DEFAULT '',
+    user_agent      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_time ON telemetry_log(timestamp);
 """
 
 
@@ -445,10 +472,15 @@ def delete_blocklist(entry_id: int) -> bool:
 _ACCESS_LOG_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _ACCESS_LOG_GET_PREFIXES = ("/admin/",)  # GET /admin/snapshots и пр. — нужно знать кто смотрел
 _ACCESS_LOG_SKIP_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
+# Префиксы которые НЕ пишем в access_log даже если POST — это сами telemetry
+# и геоипы (иначе двойной шум: пользователь не дошёл → telemetry POST → access_log).
+_ACCESS_LOG_SKIP_PREFIXES = ("/telemetry/",)
 
 
 def should_access_log(method: str, path: str) -> bool:
     if path in _ACCESS_LOG_SKIP_PATHS:
+        return False
+    if any(path.startswith(p) for p in _ACCESS_LOG_SKIP_PREFIXES):
         return False
     if method.upper() in _ACCESS_LOG_METHODS:
         return True
@@ -504,10 +536,69 @@ def trim_old_logs() -> dict[str, int]:
     cutoff = (datetime.utcnow() - timedelta(days=_LOG_RETENTION_DAYS)).isoformat(timespec="seconds")
     removed: dict[str, int] = {}
     with connection() as conn:
-        for table in ("access_log", "login_log", "audit_log"):
+        for table in ("access_log", "login_log", "audit_log", "telemetry_log"):
             cur = conn.execute(f"DELETE FROM {table} WHERE timestamp < ?", (cutoff,))
             removed[table] = cur.rowcount
     return removed
+
+
+# ── geoip cache ──────────────────────────────────────────────────────────
+
+
+def get_geoip_cached(ips: list[str]) -> dict[str, dict[str, Any]]:
+    """Возвращает {ip: row} только для тех IP, что уже в кэше."""
+    if not ips:
+        return {}
+    placeholders = ",".join("?" * len(ips))
+    with connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM geoip_cache WHERE ip IN ({placeholders})", ips
+        ).fetchall()
+        return {r["ip"]: dict(r) for r in rows}
+
+
+def upsert_geoip(ip: str, *, country: str, country_code: str, region: str,
+                 city: str, isp: str) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO geoip_cache (ip, country, country_code, region, city, isp, resolved_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(ip) DO UPDATE SET
+                   country=excluded.country, country_code=excluded.country_code,
+                   region=excluded.region, city=excluded.city, isp=excluded.isp,
+                   resolved_at=excluded.resolved_at""",
+            (ip, country, country_code, region, city, isp, now),
+        )
+
+
+# ── telemetry ────────────────────────────────────────────────────────────
+
+
+def write_telemetry(*, kind: str, message: str, url: str, ip: str, user_agent: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO telemetry_log (timestamp, kind, message, url, ip, user_agent)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.utcnow().isoformat(timespec="seconds"),
+                kind[:32], message[:500], url[:300], ip[:64], user_agent[:200],
+            ),
+        )
+
+
+def list_telemetry(limit: int = 200) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM telemetry_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def clear_telemetry() -> int:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM telemetry_log")
+        return cur.rowcount
 
 
 def _serialise(obj: Any) -> Any:

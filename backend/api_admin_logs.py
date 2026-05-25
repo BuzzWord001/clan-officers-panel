@@ -6,15 +6,17 @@
 
 import ipaddress
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 import blocklist as _bl
 import db
-from session import require_admin
+import geoip
+from session import client_ip, client_user_agent, require_admin
 
 
 router = APIRouter(prefix="/admin", tags=["admin-logs"])
+telemetry_router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
 # ── blocklist ────────────────────────────────────────────────────────────
@@ -72,3 +74,50 @@ def get_access_log(limit: int = 500, _: dict = Depends(require_admin)) -> list[d
 @router.delete("/access-log", status_code=status.HTTP_204_NO_CONTENT)
 def clear_access_log(_: dict = Depends(require_admin)) -> None:
     db.clear_access()
+
+
+# ── geoip resolve ────────────────────────────────────────────────────────
+
+
+class ResolveIPsIn(BaseModel):
+    ips: list[str] = Field(..., max_length=500)
+
+
+@router.post("/resolve-ips")
+async def resolve_ips(payload: ResolveIPsIn, _: dict = Depends(require_admin)) -> dict:
+    return await geoip.resolve(payload.ips)
+
+
+# ── telemetry ────────────────────────────────────────────────────────────
+
+
+@router.get("/telemetry")
+def get_telemetry(limit: int = 200, _: dict = Depends(require_admin)) -> list[dict]:
+    if limit < 1: limit = 1
+    if limit > 1000: limit = 1000
+    return db.list_telemetry(limit)
+
+
+@router.delete("/telemetry", status_code=status.HTTP_204_NO_CONTENT)
+def clear_telemetry(_: dict = Depends(require_admin)) -> None:
+    db.clear_telemetry()
+
+
+# Публичный POST — фронт пишет сюда когда сам fetch упал. Auth не нужен.
+class TelemetryIn(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=32)
+    message: str = Field("", max_length=500)
+    url: str = Field("", max_length=300)
+
+
+@telemetry_router.post("/connect-error", status_code=status.HTTP_204_NO_CONTENT)
+def telemetry_connect_error(payload: TelemetryIn, request: Request) -> None:
+    """Frontend сюда POSTит из catch'а fetch'а — позволяет видеть кто
+    пытался зайти даже если основной запрос упал."""
+    db.write_telemetry(
+        kind=payload.kind,
+        message=payload.message,
+        url=payload.url,
+        ip=client_ip(request),
+        user_agent=client_user_agent(request),
+    )

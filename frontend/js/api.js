@@ -2,6 +2,47 @@
 (function () {
   const BASE = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
 
+  // Best-effort: даже если основной fetch упал (РФ-блокировка, TLS, CORS),
+  // попробуем отправить причину в telemetry. Если и она не дойдёт — кладём
+  // запись в localStorage queue, выкатим при следующем успешном connect.
+  function dropTelemetry(kind, message, url) {
+    const payload = JSON.stringify({ kind, message: String(message).slice(0, 500), url });
+    const ep = BASE + "/telemetry/connect-error";
+    // sendBeacon работает в background и не показывает ошибок пользователю.
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: "application/json" });
+        if (navigator.sendBeacon(ep, blob)) return;
+      }
+    } catch (_) {}
+    // Фолбэк через fetch без credentials (preflight проще), без await.
+    try {
+      fetch(ep, {
+        method: "POST", mode: "cors", credentials: "omit", keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+      }).catch(() => {
+        // Совсем не достучались — копим в localStorage.
+        try {
+          const q = JSON.parse(localStorage.getItem("telemetryQueue") || "[]");
+          q.push({ kind, message: String(message).slice(0, 500), url, at: Date.now() });
+          localStorage.setItem("telemetryQueue", JSON.stringify(q.slice(-50)));
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
+  // При успешном connect выгребаем накопленную очередь.
+  function flushTelemetryQueue() {
+    let q;
+    try { q = JSON.parse(localStorage.getItem("telemetryQueue") || "[]"); } catch (_) { return; }
+    if (!q || !q.length) return;
+    localStorage.removeItem("telemetryQueue");
+    for (const r of q) {
+      dropTelemetry(r.kind || "queued", `[delayed ${r.at}] ${r.message || ""}`, r.url || "");
+    }
+  }
+
   async function request(method, path, body) {
     const init = {
       method,
@@ -12,7 +53,20 @@
       init.body = JSON.stringify(body);
       init.headers["Content-Type"] = "application/json";
     }
-    const res = await fetch(BASE + path, init);
+    let res;
+    try {
+      res = await fetch(BASE + path, init);
+    } catch (netErr) {
+      // Чистый network error (TLS, CORS, DNS, offline). Запрос даже до
+      // сервера не дошёл — пробуем оповестить telemetry-endpoint.
+      dropTelemetry("connect_error", netErr && netErr.message || "fetch failed", path);
+      const err = new Error("Сервер недоступен — проверь интернет или попробуй позже");
+      err.status = 0;
+      err.detail = "network_error";
+      throw err;
+    }
+    // Дошли до сервера — флашим накопленные ошибки прошлых попыток.
+    flushTelemetryQueue();
     if (res.status === 204) return null;
     const text = await res.text();
     let data = null;
@@ -58,5 +112,10 @@
 
     accessLog:        (limit = 500) => request("GET", `/admin/access-log?limit=${limit}`),
     accessLogClear:   () => request("DELETE", "/admin/access-log"),
+
+    resolveIps:       (ips) => request("POST", "/admin/resolve-ips", { ips }),
+
+    telemetry:        (limit = 200) => request("GET", `/admin/telemetry?limit=${limit}`),
+    telemetryClear:   () => request("DELETE", "/admin/telemetry"),
   };
 })();

@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Настройки</title>
-  <link rel="stylesheet" href="styles.css?v=1779735396">
+  <link rel="stylesheet" href="styles.css?v=1779736093">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779735396" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779736093" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -112,6 +112,7 @@
                 <th>Имя</th>
                 <th style="width:60px;">Успех</th>
                 <th style="width:140px;">IP</th>
+                <th style="width:180px;">Откуда</th>
                 <th>User-Agent</th>
                 <th style="width:200px;"></th>
               </tr>
@@ -163,6 +164,38 @@
 
       <div class="panel">
         <div class="panel-head">
+          <h2>Не дошли до сервера (telemetry)</h2>
+          <button id="clear-telemetry" class="danger">Очистить</button>
+        </div>
+        <p class="hint" style="margin-bottom: 12px;">
+          Если у пользователя fetch упал (РФ блокирует <code>*.fly.dev</code>,
+          TLS-ошибка, отвалился DNS, CORS), сайт отправляет диагностику сюда
+          best-effort: через <code>sendBeacon</code>, иначе fetch без credentials,
+          иначе копит в localStorage и шлёт при следующем успешном connect.
+          Если очень повезёт и хотя бы telemetry-endpoint доступен —
+          увидим IP, страну и почему именно не дошёл основной запрос.
+        </p>
+        <div class="table-scroll" style="max-height: 280px;">
+          <table id="telemetry-table">
+            <thead>
+              <tr>
+                <th style="width:140px;">Когда</th>
+                <th style="width:110px;">Тип</th>
+                <th>Сообщение</th>
+                <th style="width:140px;">URL</th>
+                <th style="width:130px;">IP</th>
+                <th style="width:180px;">Откуда</th>
+              </tr>
+            </thead>
+            <tbody id="telemetry-tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="telemetry-empty" hidden>Записей нет</div>
+        <div class="status-line" id="telemetry-status"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
           <h2>Журнал действий</h2>
           <button id="clear-access" class="danger">Очистить</button>
         </div>
@@ -183,6 +216,7 @@
                 <th style="width:80px;">Роль</th>
                 <th>Имя</th>
                 <th style="width:130px;">IP</th>
+                <th style="width:140px;">Откуда</th>
               </tr>
             </thead>
             <tbody id="access-tbody"></tbody>
@@ -224,9 +258,9 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779735396"></script>
-  <script src="js/matrix.js?v=1779735396"></script>
-  <script src="js/api.js?v=1779735396"></script>
-  <script src="js/settings.js?v=1779735396"></script>
+  <script src="config.js?v=1779736093"></script>
+  <script src="js/matrix.js?v=1779736093"></script>
+  <script src="js/api.js?v=1779736093"></script>
+  <script src="js/settings.js?v=1779736093"></script>
 </body>
 </html>
