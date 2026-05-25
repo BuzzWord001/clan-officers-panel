@@ -50,26 +50,28 @@ class GuardAndLogMiddleware(BaseHTTPMiddleware):
         if method == "OPTIONS":
             return await call_next(request)
 
-        # 1) Block-list.
-        # Заголовки храним как dict[bytes,bytes] для blocklist.is_blocked_request.
-        headers_b = {k: v for k, v in request.scope.get("headers", [])}
-        block_reason = blocklist.is_blocked_request(request.scope, headers_b)
-        if block_reason:
-            log.warning("blocked request %s %s — %s", method, path, block_reason)
-            # Логируем в access_log с status=403 и причиной в actor_name (нет настоящего actor).
-            try:
-                role, name = _actor_from_cookie(request)
-                db.write_access(
-                    method=method, path=path, status=403, latency_ms=0,
-                    actor_role=role, actor_name=name,
-                    ip=client_ip(request), user_agent=client_user_agent(request),
+        # Кто инициатор — нужно ДО блок-листа, чтобы admin не словил self-lockout
+        # (если он заблокирует свой IP, всё равно сможет зайти разблокировать).
+        role, name = _actor_from_cookie(request)
+
+        # 1) Block-list. Admin никогда не блокируется — это последняя страховка.
+        if role != "admin":
+            headers_b = {k: v for k, v in request.scope.get("headers", [])}
+            block_reason = blocklist.is_blocked_request(request.scope, headers_b)
+            if block_reason:
+                log.warning("blocked request %s %s — %s", method, path, block_reason)
+                try:
+                    db.write_access(
+                        method=method, path=path, status=403, latency_ms=0,
+                        actor_role=role, actor_name=name,
+                        ip=client_ip(request), user_agent=client_user_agent(request),
+                    )
+                except Exception:
+                    log.exception("access_log write failed (block branch)")
+                return PlainTextResponse(
+                    f"blocked: {block_reason}",
+                    status_code=403,
                 )
-            except Exception:
-                log.exception("access_log write failed (block branch)")
-            return PlainTextResponse(
-                f"blocked: {block_reason}",
-                status_code=403,
-            )
 
         # 2) Прокатить запрос, измерить latency и записать в access_log.
         if not db.should_access_log(method, path):
@@ -80,7 +82,6 @@ class GuardAndLogMiddleware(BaseHTTPMiddleware):
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         try:
-            role, name = _actor_from_cookie(request)
             db.write_access(
                 method=method,
                 path=path,

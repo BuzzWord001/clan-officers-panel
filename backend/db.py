@@ -493,6 +493,23 @@ def clear_access() -> int:
         return cur.rowcount
 
 
+# Сколько дней храним детальный access_log/login_log/audit_log.
+# 30 — баланс: достаточно для расследования инцидента, но БД не пухнет.
+_LOG_RETENTION_DAYS = 30
+
+
+def trim_old_logs() -> dict[str, int]:
+    """Удаляет записи старше _LOG_RETENTION_DAYS. Вызывается из daily snapshot job
+    в scheduler. Audit_log тоже подрезаем — снапшоты держат историю на бэкап."""
+    cutoff = (datetime.utcnow() - timedelta(days=_LOG_RETENTION_DAYS)).isoformat(timespec="seconds")
+    removed: dict[str, int] = {}
+    with connection() as conn:
+        for table in ("access_log", "login_log", "audit_log"):
+            cur = conn.execute(f"DELETE FROM {table} WHERE timestamp < ?", (cutoff,))
+            removed[table] = cur.rowcount
+    return removed
+
+
 def _serialise(obj: Any) -> Any:
     if isinstance(obj, dict):
         return {k: _serialise(v) for k, v in obj.items()}

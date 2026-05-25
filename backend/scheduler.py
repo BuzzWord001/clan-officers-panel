@@ -45,6 +45,14 @@ def _daily_snapshot() -> None:
         snapshots.create_auto()
     except Exception as exc:
         log.exception("daily snapshot failed: %s", exc)
+    # Подрезаем старые логи в одной задаче — снапшот уже сохранил историю,
+    # дальше её можно подчистить чтобы access_log не разрастался.
+    try:
+        removed = db.trim_old_logs()
+        if any(v > 0 for v in removed.values()):
+            log.info("daily log trim removed: %s", removed)
+    except Exception:
+        log.exception("daily log trim failed")
 
 
 def make_scheduler() -> AsyncIOScheduler:
