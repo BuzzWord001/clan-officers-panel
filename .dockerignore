@@ -1,0 +1,45 @@
+.git
+.github
+.gitignore
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+
+# Локальные данные — мигрируются в Fly volume отдельно.
+data/officers.db
+data/officers.db-*
+data/snapshots/
+data/logs/
+
+# Cloudflared больше не нужен.
+bin/
+tools/
+
+# Сырые рендеры, демо-скрины, артефакты — в образе не нужны.
+render/output/
+
+# Документация и frontend — не нужны в backend-образе.
+README.md
+SETUP.md
+AUTOSTART.md
+DEPLOY_FLY.md
+frontend/
+start_tunnel.bat
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Lock / pid
+backend/.bot.lock
+backend/.bot_pid
+backend/.env

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     port: int = 8765
     public_url: str = "http://localhost:8765"
     frontend_url: str = "http://localhost:5500"
+    # Дополнительные origin'ы через запятую (CORS). На Fly сюда передаётся
+    # `https://buzzword001.github.io`, чтобы GitHub Pages мог стучаться.
+    extra_origins: str = ""
     session_secret: str = "dev-secret-change-me"
 
     tg_bot_token: str = ""

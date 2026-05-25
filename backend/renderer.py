@@ -111,8 +111,15 @@ def render_png(rows: list[dict] | None = None) -> Path:
         opts.add_argument("--headless=new")
         opts.add_argument("--disable-gpu")
         opts.add_argument("--no-sandbox")
+        # --disable-dev-shm-usage обязателен в Docker: /dev/shm только 64MB,
+        # на длинных страницах Chromium падает с "session not created".
+        opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--hide-scrollbars")
         opts.add_argument("--window-size=1100,2000")
+        # На Fly/Linux chromium лежит в /usr/bin/chromium, на Windows — в PATH.
+        chrome_bin = os.environ.get("CHROME_BIN")
+        if chrome_bin:
+            opts.binary_location = chrome_bin
 
         driver = webdriver.Chrome(options=opts)
         driver.get("file:///" + str(TMP_HTML).replace("\\", "/"))

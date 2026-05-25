@@ -1,4 +1,4 @@
-// Адрес API бэкенда. Подменить после смены Cloudflare Tunnel URL.
+// Адрес API бэкенда. Постоянный URL Fly.io, никогда не меняется.
 window.OFFICERS_CONFIG = {
-  API_URL: "https://eds-site-executive-doctrine.trycloudflare.com",
+  API_URL: "https://clan-officers-panel.fly.dev",
 };

@@ -58,16 +58,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SanTDeviL Officer Panel", version="0.1.0", lifespan=lifespan)
 
 
-def _frontend_origin() -> str:
-    """Из FRONTEND_URL берём только origin (scheme://host[:port]) для CORS.
-    Браузер шлёт Origin header без пути — сравнение должно быть по origin."""
-    p = urlparse(settings.frontend_url)
-    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else settings.frontend_url
+def _origin_of(url: str) -> str:
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else url
+
+
+def _allowed_origins() -> list[str]:
+    """CORS-белый список: основной FRONTEND_URL + EXTRA_ORIGINS (через запятую).
+    Дубли и пустые значения отбрасываются."""
+    seen: list[str] = []
+    for raw in [settings.frontend_url, *settings.extra_origins.split(",")]:
+        o = _origin_of(raw.strip())
+        if o and o not in seen:
+            seen.append(o)
+    return seen
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_frontend_origin()],
+    allow_origins=_allowed_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
