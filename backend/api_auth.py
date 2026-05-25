@@ -14,8 +14,11 @@ DELETE /admin/login-log             — очистить
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
+import asyncio
+
 import auth_pwd
 import db
+import publisher
 from schemas import (
     OfficerLoginIn,
     AdminLoginIn,
@@ -78,9 +81,22 @@ def logout(response: Response) -> dict:
 # --- admin-only ----------------------------------------------------------
 
 @router.post("/admin/officer-password")
-def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(require_admin)) -> dict:
+async def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(require_admin)) -> dict:
     auth_pwd.set_officer_password(payload.new_password)
+    # Обновляем подпись в TG/VK закрепе сразу — без 5-мин debounce.
+    # Делаем edit (не force_repost), чтобы не спамить чат новым постом
+    # при каждой смене пароля.
+    asyncio.create_task(_republish_after_password_change())
     return {"ok": True}
+
+
+async def _republish_after_password_change() -> None:
+    try:
+        await publisher.publish_now()
+    except Exception:
+        # publish уже логирует исключение, тут просто чтобы фоновая задача
+        # не падала без обработки.
+        pass
 
 
 @router.post("/admin/credentials")

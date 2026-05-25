@@ -70,6 +70,18 @@ async def _edit_photo(message_id: int, image_path: Path, caption: str) -> bool:
     return bool(data.get("ok"))
 
 
+async def delete_message_safe(message_id: int) -> None:
+    """Удаляет сообщение в офицерском TG-чате, не падает если уже нет."""
+    if not (settings.tg_bot_token and settings.tg_officer_chat_id):
+        return
+    try:
+        await _call("deleteMessage",
+                    chat_id=settings.tg_officer_chat_id,
+                    message_id=message_id)
+    except Exception as exc:
+        log.info("TG delete %s skipped: %s", message_id, exc)
+
+
 async def publish_manifest(image_path: Path, caption: str, prev_message_id: int | None) -> int:
     """Публикация/обновление закрепа. Возвращает актуальный message_id."""
     if not (settings.tg_bot_token and settings.tg_officer_chat_id):

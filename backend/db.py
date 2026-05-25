@@ -85,11 +85,25 @@ CREATE TABLE IF NOT EXISTS auth_config (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Доращиваем БД до текущей версии. ALTER TABLE ADD COLUMN идемпотентен
+    через try/except — sqlite кидает OperationalError если колонка уже есть."""
+    # 2026-05-25: храним plaintext пароль офицеров для подписи в TG/VK.
+    # Без этого подпись остаётся со старым паролем из env после смены через UI.
+    try:
+        conn.execute(
+            "ALTER TABLE auth_config ADD COLUMN officer_password_plain TEXT NOT NULL DEFAULT ''"
+        )
+    except sqlite3.OperationalError:
+        pass  # колонка уже есть
+
+
 def init_db() -> None:
     db_path = Path(settings.db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with connection() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
 
 
 @contextmanager

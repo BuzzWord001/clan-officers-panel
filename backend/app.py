@@ -5,6 +5,7 @@
     python -m uvicorn app:app --host 0.0.0.0 --port 8765
 """
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -20,6 +21,8 @@ import api_acceptances
 import api_audit
 import api_snapshots
 import auth_pwd
+import bot_tg_listener
+import bot_vk_listener
 from config import settings
 from session import current_actor, require_admin
 from urllib.parse import urlparse
@@ -48,9 +51,21 @@ async def lifespan(app: FastAPI):
     sched.start()
     app.state.scheduler = sched
     log.info("Scheduler started, debounce=%s min", settings.render_debounce_minutes)
+
+    # Listener'ы новых участников: при входе нового члена в TG/VK офицерский
+    # чат вызывают publisher.publish_force_repost, чтобы новичок увидел
+    # манифест среди недавних сообщений (закреп он не видит до прокрутки).
+    tg_task = asyncio.create_task(bot_tg_listener.run(), name="tg_listener")
+    vk_task = asyncio.create_task(bot_vk_listener.run(), name="vk_listener")
+    log.info("Member listeners started (TG + VK)")
+
     try:
         yield
     finally:
+        for t in (tg_task, vk_task):
+            t.cancel()
+        await asyncio.gather(tg_task, vk_task, return_exceptions=True)
+        log.info("Listeners stopped")
         sched.shutdown(wait=False)
         log.info("Scheduler stopped")
 

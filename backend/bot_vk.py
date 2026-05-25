@@ -40,6 +40,17 @@ def _upload_photo(session, image_path: Path, peer_id: int) -> str:
     return f"photo{photo['owner_id']}_{photo['id']}"
 
 
+def delete_message_safe(cm_id: int) -> None:
+    """Удаляет conversation_message в офицерском VK-чате, не падает если уже нет."""
+    if not (settings.vk_group_token and settings.vk_officer_peer_id):
+        return
+    try:
+        _, api = _api()
+        api.messages.delete(peer_id=_peer_id(), cmids=cm_id, delete_for_all=1)
+    except Exception as exc:
+        log.info("VK delete %s skipped: %s", cm_id, exc)
+
+
 def publish_manifest(image_path: Path, caption: str, prev_message_id: int | None) -> int:
     """Публикует/обновляет манифест в VK офицерском чате. Возвращает conversation_message_id."""
     session, api = _api()
