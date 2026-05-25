@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-dejavu \
         fonts-liberation \
         fonts-noto-core \
-        fonts-noto-color-emoji \
         ca-certificates \
         tzdata \
         curl \
     && rm -rf /var/lib/apt/lists/*
+# fonts-noto-color-emoji намеренно НЕ ставим — это десятки мегабайт RAM
+# при загрузке страницы, шаблон манифеста эмодзи не использует.
 
 ENV CHROME_BIN=/usr/bin/chromium \
     TZ=Europe/Moscow \

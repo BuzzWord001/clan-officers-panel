@@ -114,6 +114,17 @@ def render_png(rows: list[dict] | None = None) -> Path:
         # --disable-dev-shm-usage обязателен в Docker: /dev/shm только 64MB,
         # на длинных страницах Chromium падает с "session not created".
         opts.add_argument("--disable-dev-shm-usage")
+        # Ужимаем потребление RAM на 512MB Fly VM. Без этих опций
+        # tab crashes на рендере страницы с emoji + Noto шрифтами.
+        opts.add_argument("--disable-extensions")
+        opts.add_argument("--disable-background-networking")
+        opts.add_argument("--disable-default-apps")
+        opts.add_argument("--disable-sync")
+        opts.add_argument("--disable-translate")
+        opts.add_argument("--mute-audio")
+        opts.add_argument("--disable-features=site-per-process,Translate,VizDisplayCompositor")
+        opts.add_argument("--no-zygote")
+        opts.add_argument("--single-process")
         opts.add_argument("--hide-scrollbars")
         opts.add_argument("--window-size=1100,2000")
         # На Fly/Linux chromium лежит в /usr/bin/chromium, на Windows — в PATH.
