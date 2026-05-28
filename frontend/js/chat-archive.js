@@ -18,6 +18,9 @@
                   : me.role === "officer" ? "ОФИЦЕР"
                   : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;
+  // CSS-гейт: body[data-role=admin] показывает админ-элементы. У офицеров
+  // тег отсутствует и .chat-admin-bar / .chat-msg-del скрыты `display:none`.
+  document.body.setAttribute("data-role", me.role);
   if (isAdmin) {
     const tab = $("settings-tab");
     if (tab) tab.hidden = false;

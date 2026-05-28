@@ -988,22 +988,26 @@ footer.bottom {
   position: absolute;
   top: 6px;
   right: 8px;
-  background: transparent;
+  background: rgba(255, 59, 59, 0.08);
   color: var(--danger);
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 59, 59, 0.35);
   font-size: 14px;
   line-height: 1;
-  padding: 2px 7px;
+  padding: 2px 8px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
 }
 .chat-msg:hover .chat-msg-del { opacity: 1; }
 .chat-msg-del:hover {
-  background: rgba(255, 59, 59, 0.15);
+  background: rgba(255, 59, 59, 0.20);
   border-color: var(--danger);
   box-shadow: 0 0 8px rgba(255, 59, 59, 0.5);
 }
+/* Двойная защита: даже если frontend выдаст HTML с кнопками,
+   при role != admin они скрыты CSS-ом. */
+body:not([data-role="admin"]) .chat-msg-del,
+body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 
 .chat-text mark,
 .chat-author mark {

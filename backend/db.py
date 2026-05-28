@@ -208,6 +208,29 @@ CREATE TRIGGER IF NOT EXISTS chat_messages_au AFTER UPDATE ON chat_messages BEGI
                 REPLACE(REPLACE(new.text, 'ё', 'е'), 'Ё', 'Е'),
                 REPLACE(REPLACE(new.user_display, 'ё', 'е'), 'Ё', 'Е'));
 END;
+
+-- Зеркало clan_members.json из clan-reg-bot. Используется для умного поиска
+-- в архиве: «Мелодька» автоматически расширяется в OR со всеми известными
+-- именами этого человека (игровой ник, имя в VK, @username в TG и т.п.).
+-- key — оригинальный {platform}_{platform_id} из clan-reg-bot, identifier
+-- сохраняем 1:1 чтобы апсерты были идемпотентны.
+CREATE TABLE IF NOT EXISTS clan_members (
+    key             TEXT    PRIMARY KEY,
+    game_nick       TEXT    NOT NULL DEFAULT '',  -- через запятую
+    display_name    TEXT    NOT NULL DEFAULT '',
+    vk_id           TEXT    NOT NULL DEFAULT '',
+    vk_display      TEXT    NOT NULL DEFAULT '',
+    vk_first        TEXT    NOT NULL DEFAULT '',
+    vk_last         TEXT    NOT NULL DEFAULT '',
+    vk_screen_name  TEXT    NOT NULL DEFAULT '',
+    tg_id           TEXT    NOT NULL DEFAULT '',
+    tg_display      TEXT    NOT NULL DEFAULT '',
+    tg_username     TEXT    NOT NULL DEFAULT '',
+    tg_first_name   TEXT    NOT NULL DEFAULT '',
+    tg_last_name    TEXT    NOT NULL DEFAULT '',
+    raw_json        TEXT    NOT NULL DEFAULT '',  -- полный исходный объект на всякий случай
+    synced_at       TEXT    NOT NULL
+);
 """
 
 
@@ -868,7 +891,7 @@ def _normalize_for_fts(s: str) -> str:
     return s.replace("ё", "е").replace("Ё", "Е")
 
 
-def _build_fts_query(user_q: str) -> str:
+def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
     """Превращает поисковый запрос пользователя в FTS5 syntax.
 
     Поддерживает:
@@ -878,10 +901,10 @@ def _build_fts_query(user_q: str) -> str:
       - от:Марина / автор:Лир / author:X — фильтр по user_display
         (FTS5 column-targeted: {user_display}: phrase)
       - ё / Ё нормализуются в е/Е чтобы совпало с индексом
-
-    FTS5 не имеет унарного NOT, поэтому исключения рендерятся как
-    `positive_query NOT exclusion`. Если позитива нет — исключения
-    игнорируются (поиск «всё кроме X» бесполезен).
+      - если expand_identity=True и слово/«фраза» однозначно совпадает с
+        участником клана из clan_members — заменяется на OR-группу со
+        всеми его известными именами (game_nick, vk_display, tg_username, ...).
+        Это даёт «всё про Мелодьку» по любому из её имён.
     """
     positives: list[str] = []
     negatives: list[str] = []
@@ -893,8 +916,6 @@ def _build_fts_query(user_q: str) -> str:
         if not raw:
             continue
 
-        # Column filter (только для user_display — единственная альтернативная
-        # колонка в FTS5 индексе кроме text)
         column = None
         lower = raw.lower()
         for px in _AUTHOR_PREFIXES:
@@ -902,35 +923,197 @@ def _build_fts_query(user_q: str) -> str:
                 column = "user_display"
                 raw = raw[len(px):]
                 break
+        raw_clean = raw  # без normalize — для identity-резолва
         raw = _normalize_for_fts(raw).strip()
         if not raw:
             continue
 
         # Фраза в кавычках — точное совпадение без префикса
-        if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2:
+        is_phrase = raw.startswith('"') and raw.endswith('"') and len(raw) >= 2
+        if is_phrase:
             inner = raw[1:-1].replace('"', '')
             if not inner:
                 continue
-            phrase = f'"{inner}"'
+            base_phrase = f'"{inner}"'
+            identity_seed = inner
         else:
-            # Обычное слово — префикс-матч
             clean = raw.replace('"', '')
             if not clean:
                 continue
-            phrase = f'"{clean}"*'
+            base_phrase = f'"{clean}"*'
+            identity_seed = raw_clean.replace('"', '').rstrip('*')
 
-        if column:
-            phrase = f"{column}: {phrase}"
+        # Identity-расширение: только для позитивов, без явной column-spec
+        # (от:Марина уже сужает колонку — двойное расширение не нужно)
+        # и только для нетривиальных длинных токенов (>=3 чтобы не
+        # расширять «я», «не», и т.п. чем угодно).
+        expanded = None
+        if (expand_identity and not negate and column is None
+                and len(identity_seed.strip()) >= 3):
+            try:
+                variants = resolve_identity(identity_seed)
+            except Exception:
+                variants = []
+            if variants:
+                # Собираем OR-группу: основной токен + все имена-варианты
+                # как user_display-таргетед (имена принадлежат автору, а
+                # не тексту сообщения — это сильно режет шум).
+                # FTS5 prefix-match `*` работает только на одном слове —
+                # фразы с пробелом идут без префикса.
+                phrases = [base_phrase]
+                seen = {identity_seed.lower().replace("ё", "е")}
+                for v in variants:
+                    nv = v.lower().replace("ё", "е").strip()
+                    if not nv or nv in seen:
+                        continue
+                    seen.add(nv)
+                    safe = _normalize_for_fts(v).replace('"', '').strip()
+                    if not safe:
+                        continue
+                    if " " in safe:
+                        phrases.append(f'user_display:"{safe}"')
+                    else:
+                        phrases.append(f'user_display:"{safe}"*')
+                expanded = "(" + " OR ".join(phrases) + ")"
+
+        if expanded:
+            phrase = expanded
+        elif column:
+            phrase = f"{column}:{base_phrase}"
+        else:
+            phrase = base_phrase
 
         (negatives if negate else positives).append(phrase)
 
     if not positives:
-        # Только исключения / пустой запрос — нечего искать.
         return '""'
     pos = " ".join(positives)
     if negatives:
         return pos + " NOT (" + " OR ".join(negatives) + ")"
     return pos
+
+
+# ── clan_members (зеркало для identity-резолва) ──────────────────────────
+
+_MEMBER_FIELDS = (
+    "key", "game_nick", "display_name", "vk_id", "vk_display",
+    "vk_first", "vk_last", "vk_screen_name", "tg_id", "tg_display",
+    "tg_username", "tg_first_name", "tg_last_name",
+)
+
+
+def bulk_sync_clan_members(members: list[dict]) -> dict:
+    """Полная синхронизация: затирает текущее зеркало и записывает то что прислали.
+
+    members — список словарей в формате clan_members.json (см. clan-reg-bot).
+    Ключ берётся из поля 'key' либо вычисляется как `{platform}_{platform_id}`
+    чтобы матчилось с UNIQUE-ключом исходной БД.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    rows = []
+    for m in members:
+        key = m.get("key") or f"{m.get('platform','x')}_{m.get('platform_id', 0)}"
+        row = {f: "" for f in _MEMBER_FIELDS}
+        row["key"] = str(key)
+        for f in _MEMBER_FIELDS[1:]:
+            v = m.get(f)
+            if v is not None:
+                row[f] = str(v)
+        rows.append(row)
+
+    with connection() as conn:
+        conn.execute("DELETE FROM clan_members")
+        for r in rows:
+            conn.execute(
+                """INSERT INTO clan_members
+                   (key, game_nick, display_name, vk_id, vk_display,
+                    vk_first, vk_last, vk_screen_name, tg_id, tg_display,
+                    tg_username, tg_first_name, tg_last_name,
+                    raw_json, synced_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (r["key"], r["game_nick"], r["display_name"],
+                 r["vk_id"], r["vk_display"], r["vk_first"], r["vk_last"],
+                 r["vk_screen_name"],
+                 r["tg_id"], r["tg_display"], r["tg_username"],
+                 r["tg_first_name"], r["tg_last_name"],
+                 json.dumps(_serialise({k: v for k, v in r.items()
+                                        if k != "raw_json"}),
+                            ensure_ascii=False),
+                 now),
+            )
+    return {"synced": len(rows), "at": now}
+
+
+def list_clan_members() -> list[dict]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM clan_members ORDER BY display_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def _member_name_variants(m: dict) -> list[str]:
+    """Все известные имена-варианты одного человека для FTS5 OR-раскрытия."""
+    out: set[str] = set()
+    for f in ("display_name", "vk_display", "vk_first", "vk_last",
+              "vk_screen_name", "tg_username", "tg_first_name",
+              "tg_last_name", "tg_display"):
+        v = (m.get(f) or "").strip()
+        if v:
+            out.add(v)
+    for nick in (m.get("game_nick") or "").split(","):
+        nick = nick.strip()
+        if nick:
+            out.add(nick)
+    return sorted(out)
+
+
+def resolve_identity(token: str) -> list[str]:
+    """Найти участника клана по любому имени-варианту → вернуть все его
+    известные имена. Возвращает [] если не нашли или нашли >1 (неоднозначно).
+
+    Сравнение case-insensitive с ё→е fold (как в FTS5 индексе).
+    Для одной находки удобно сразу подставить — для нескольких слишком
+    рискованно (можно зацепить чужого).
+    """
+    t = (token or "").strip().lower().replace("ё", "е")
+    if not t or len(t) < 2:
+        return []
+    matched = []
+    members = list_clan_members()
+    for m in members:
+        # game_nick может быть запятая-список — проверяем каждый ник отдельно
+        haystack: list[str] = []
+        for f in ("display_name", "vk_display", "vk_first", "vk_last",
+                  "vk_screen_name", "tg_username", "tg_first_name",
+                  "tg_last_name", "tg_display"):
+            v = (m.get(f) or "").strip()
+            if v:
+                haystack.append(v.lower().replace("ё", "е"))
+        for nick in (m.get("game_nick") or "").split(","):
+            nick = nick.strip().lower().replace("ё", "е")
+            if nick:
+                haystack.append(nick)
+        for h in haystack:
+            if t == h or (len(t) >= 3 and (t in h or h in t)):
+                matched.append(m)
+                break
+    # Если запрос точно совпал ровно с одним человеком — берём его.
+    # Substring может зацепить нескольких — лучше не расширять чтобы
+    # не давать чужие результаты.
+    if len(matched) == 1:
+        return _member_name_variants(matched[0])
+    # Если несколько кандидатов — попробуем сузить до тех у кого совпадение
+    # ровно равно (без substring).
+    exact = []
+    for m in matched:
+        for f in _member_name_variants(m):
+            if f.lower().replace("ё", "е") == t:
+                exact.append(m)
+                break
+    if len(exact) == 1:
+        return _member_name_variants(exact[0])
+    return []
 
 
 def delete_chat_message(msg_id: int) -> bool:

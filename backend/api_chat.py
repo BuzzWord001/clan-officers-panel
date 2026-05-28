@@ -174,6 +174,31 @@ def delete_message(msg_id: int, admin: dict = Depends(require_admin)) -> dict:
     return {"deleted": 1}
 
 
+class MembersBulkSync(BaseModel):
+    members: list[dict]
+
+
+@router.post("/members/bulk-sync")
+def members_bulk_sync(payload: MembersBulkSync,
+                      _=Depends(require_bot_token)) -> dict:
+    """Полная синхронизация зеркала clan_members.json из clan-reg-bot.
+    Затирает существующее зеркало целиком и пишет новое. Используется
+    для identity-расширения в умном поиске архива."""
+    res = db.bulk_sync_clan_members(payload.members)
+    log.info("clan_members bulk sync: %d members", res["synced"])
+    return res
+
+
+@router.get("/members/identity")
+def members_identity(
+    q: str = Query(..., min_length=1),
+    _: dict = Depends(require_officer),
+) -> dict:
+    """Резолв одного имени → все известные варианты (для UI-подсказки)."""
+    variants = db.resolve_identity(q)
+    return {"query": q, "variants": variants, "matched": bool(variants)}
+
+
 @router.delete("/messages")
 def clear_archive(
     confirm: str = Query(default="", description="Должно быть 'yes'"),
