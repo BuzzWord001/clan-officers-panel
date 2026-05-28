@@ -136,6 +136,78 @@ CREATE TABLE IF NOT EXISTS telemetry_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_time ON telemetry_log(timestamp);
+
+-- Архив переписки клановых чатов TG и VK. Каждое сообщение хранится
+-- ровно один раз — bot-мост пишет ТОЛЬКО оригинал, ретрансляцию в
+-- парный чат другой платформы НЕ дублирует.
+--
+-- chat_group: 'general' (общий чат) | 'officers' (офицерский). У каждой
+-- группы есть пара TG↔VK, объединённая мостом.
+-- platform:   'tg' | 'vk' — откуда родом сообщение.
+-- UNIQUE на (platform, chat_id, message_id) защищает от случайного
+-- двойного ingest со стороны бота — INSERT OR IGNORE.
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_group      TEXT    NOT NULL,            -- 'general' | 'officers'
+    platform        TEXT    NOT NULL,            -- 'tg' | 'vk'
+    chat_id         TEXT    NOT NULL,
+    message_id      TEXT    NOT NULL,
+    user_id         TEXT    NOT NULL,
+    user_display    TEXT    NOT NULL,
+    user_username   TEXT    NOT NULL DEFAULT '', -- @username (tg) или screen_name (vk)
+    text            TEXT    NOT NULL DEFAULT '',
+    reply_to_msg_id TEXT    NOT NULL DEFAULT '', -- message_id того на которое отвечают
+    media_json      TEXT    NOT NULL DEFAULT '[]',
+    sent_at         TEXT    NOT NULL,            -- ISO datetime (от платформы)
+    ingested_at     TEXT    NOT NULL,            -- когда сохранили
+    UNIQUE(platform, chat_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_group_date
+    ON chat_messages(chat_group, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_user
+    ON chat_messages(user_display);
+
+-- FTS5 индекс для полнотекстового поиска по тексту и автору. unicode61
+-- + remove_diacritics=2 нормализует ёжё → ее, а заглавные в строчные —
+-- поиск "марина" найдёт "Марина" и "МАРИНА".
+CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+    text,
+    user_display,
+    content='chat_messages',
+    content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+-- Триггеры синхронизации FTS5 ↔ основная таблица. В FTS5 кладём
+-- нормализованную версию (ё → е), потому что FTS5 `remove_diacritics`
+-- не сворачивает кириллическое ё/Ё (это не combining mark, а отдельный
+-- код-поинт). В основной таблице text остаётся в оригинале — для
+-- отображения. При search тоже сворачиваем ё→е в запросе.
+CREATE TRIGGER IF NOT EXISTS chat_messages_ai AFTER INSERT ON chat_messages BEGIN
+    INSERT INTO chat_messages_fts(rowid, text, user_display)
+        VALUES (new.id,
+                REPLACE(REPLACE(new.text, 'ё', 'е'), 'Ё', 'Е'),
+                REPLACE(REPLACE(new.user_display, 'ё', 'е'), 'Ё', 'Е'));
+END;
+
+CREATE TRIGGER IF NOT EXISTS chat_messages_ad AFTER DELETE ON chat_messages BEGIN
+    INSERT INTO chat_messages_fts(chat_messages_fts, rowid, text, user_display)
+        VALUES ('delete', old.id,
+                REPLACE(REPLACE(old.text, 'ё', 'е'), 'Ё', 'Е'),
+                REPLACE(REPLACE(old.user_display, 'ё', 'е'), 'Ё', 'Е'));
+END;
+
+CREATE TRIGGER IF NOT EXISTS chat_messages_au AFTER UPDATE ON chat_messages BEGIN
+    INSERT INTO chat_messages_fts(chat_messages_fts, rowid, text, user_display)
+        VALUES ('delete', old.id,
+                REPLACE(REPLACE(old.text, 'ё', 'е'), 'Ё', 'Е'),
+                REPLACE(REPLACE(old.user_display, 'ё', 'е'), 'Ё', 'Е'));
+    INSERT INTO chat_messages_fts(rowid, text, user_display)
+        VALUES (new.id,
+                REPLACE(REPLACE(new.text, 'ё', 'е'), 'Ё', 'Е'),
+                REPLACE(REPLACE(new.user_display, 'ё', 'е'), 'Ё', 'Е'));
+END;
 """
 
 
@@ -636,6 +708,189 @@ def clear_telemetry() -> int:
     with connection() as conn:
         cur = conn.execute("DELETE FROM telemetry_log")
         return cur.rowcount
+
+
+# ── chat archive ─────────────────────────────────────────────────────────
+
+# Группы валидируются на API-слое, тут оставлены как контракт для bot-стороны.
+CHAT_GROUPS = ("general", "officers")
+CHAT_PLATFORMS = ("tg", "vk")
+
+
+def ingest_chat_message(
+    *,
+    chat_group: str,
+    platform: str,
+    chat_id: str,
+    message_id: str,
+    user_id: str,
+    user_display: str,
+    user_username: str = "",
+    text: str = "",
+    reply_to_msg_id: str = "",
+    media: list[dict[str, Any]] | None = None,
+    sent_at: str,
+) -> dict[str, Any]:
+    """Сохраняет сообщение в архив. Дубль (platform, chat_id, message_id)
+    тихо игнорируется — UNIQUE индекс защищает от повторного ingest от
+    бота при перезапуске или ретрае.
+
+    Возвращает {"id": int, "duplicate": bool}.
+    """
+    if chat_group not in CHAT_GROUPS:
+        raise ValueError(f"invalid chat_group: {chat_group!r}")
+    if platform not in CHAT_PLATFORMS:
+        raise ValueError(f"invalid platform: {platform!r}")
+
+    media_json = json.dumps(media or [], ensure_ascii=False)
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO chat_messages
+               (chat_group, platform, chat_id, message_id,
+                user_id, user_display, user_username,
+                text, reply_to_msg_id, media_json,
+                sent_at, ingested_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (chat_group, platform, str(chat_id), str(message_id),
+             str(user_id), user_display[:128], user_username[:64],
+             text, str(reply_to_msg_id), media_json,
+             sent_at, now),
+        )
+        if cur.rowcount == 0:
+            # Дубль — вернём id существующей записи для идемпотентности
+            row = conn.execute(
+                """SELECT id FROM chat_messages
+                   WHERE platform = ? AND chat_id = ? AND message_id = ?""",
+                (platform, str(chat_id), str(message_id)),
+            ).fetchone()
+            return {"id": row["id"] if row else 0, "duplicate": True}
+        return {"id": cur.lastrowid, "duplicate": False}
+
+
+def _row_to_chat_message(row: sqlite3.Row) -> dict[str, Any]:
+    try:
+        media = json.loads(row["media_json"]) if row["media_json"] else []
+    except json.JSONDecodeError:
+        media = []
+    return {
+        "id": row["id"],
+        "chat_group": row["chat_group"],
+        "platform": row["platform"],
+        "chat_id": row["chat_id"],
+        "message_id": row["message_id"],
+        "user_id": row["user_id"],
+        "user_display": row["user_display"],
+        "user_username": row["user_username"],
+        "text": row["text"],
+        "reply_to_msg_id": row["reply_to_msg_id"],
+        "media": media,
+        "sent_at": row["sent_at"],
+        "ingested_at": row["ingested_at"],
+    }
+
+
+def list_chat_messages(
+    *,
+    chat_group: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    user: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    before_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Возвращает сообщения в обратном хронологическом порядке (новые сверху).
+
+    before_id используется для пагинации — следующая страница это «всё что
+    id < before_id». Это устойчиво к новым ingest'ам в процессе листания,
+    в отличие от offset.
+
+    search использует FTS5; остальное — обычные индексы.
+    """
+    clauses = []
+    params: list[Any] = []
+    if chat_group:
+        if chat_group not in CHAT_GROUPS:
+            raise ValueError(f"invalid chat_group: {chat_group!r}")
+        clauses.append("chat_group = ?")
+        params.append(chat_group)
+    if date_from:
+        clauses.append("sent_at >= ?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("sent_at <= ?")
+        params.append(date_to)
+    if user:
+        clauses.append("user_display LIKE ?")
+        params.append(f"%{user}%")
+    if before_id:
+        clauses.append("id < ?")
+        params.append(before_id)
+
+    with connection() as conn:
+        if search:
+            # FTS5 path — MATCH работает только с именем виртуальной таблицы,
+            # не с алиасом. Поэтому подзапрос по chat_messages_fts даёт
+            # rowid'ы, а внешний SELECT фильтрует по остальным условиям.
+            fts_q = _build_fts_query(search)
+            where = " AND ".join(clauses) if clauses else "1=1"
+            sql = (
+                "SELECT * FROM chat_messages "
+                "WHERE id IN (SELECT rowid FROM chat_messages_fts "
+                "             WHERE chat_messages_fts MATCH ?) "
+                f"AND {where} "
+                "ORDER BY id DESC LIMIT ?"
+            )
+            rows = conn.execute(sql, [fts_q, *params, limit]).fetchall()
+        else:
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            sql = (
+                f"SELECT * FROM chat_messages{where} "
+                "ORDER BY id DESC LIMIT ?"
+            )
+            rows = conn.execute(sql, [*params, limit]).fetchall()
+        return [_row_to_chat_message(r) for r in rows]
+
+
+def _build_fts_query(user_q: str) -> str:
+    """Превращает «обычный» поисковый запрос юзера в FTS5 syntax.
+
+    Все слова → AND с префикс-матчингом (`марина*`). Спецсимволы FTS5
+    (двойные кавычки) экранируются как фраза в двойных кавычках. ё→е,
+    Ё→Е чтобы матчилось с нормализованным индексом.
+    """
+    parts = []
+    for tok in user_q.split():
+        clean = (tok.replace('"', '')
+                    .replace('ё', 'е').replace('Ё', 'Е').strip())
+        if not clean:
+            continue
+        # Префикс-матч: «мар» найдёт «Марина», «марса»
+        parts.append(f'"{clean}"*')
+    return " ".join(parts) if parts else '""'
+
+
+def chat_archive_stats() -> dict[str, Any]:
+    """Сводка для UI и админ-страницы."""
+    with connection() as conn:
+        total = conn.execute(
+            "SELECT count(*) FROM chat_messages"
+        ).fetchone()[0]
+        by_group = {}
+        for g in CHAT_GROUPS:
+            by_group[g] = conn.execute(
+                "SELECT count(*) FROM chat_messages WHERE chat_group = ?", (g,)
+            ).fetchone()[0]
+        first_last = conn.execute(
+            "SELECT MIN(sent_at) AS first, MAX(sent_at) AS last FROM chat_messages"
+        ).fetchone()
+        return {
+            "total": total,
+            "by_group": by_group,
+            "first_at": first_last["first"],
+            "last_at": first_last["last"],
+        }
 
 
 def _serialise(obj: Any) -> Any:

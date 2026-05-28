@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <title>SanTDeviL — Архив переписки</title>
+  <link rel="stylesheet" href="styles.css?v=1779743267">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <img class="bg-girl" src="assets/bg.png?v=1779743267" alt="" aria-hidden="true">
+  <div class="scanlines"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
+        <div class="brand-name">SanTDeviL</div>
+        <span class="classified-badge">Только для офицеров</span>
+      </div>
+      <div class="user-bar" id="user-bar">
+        <span class="who" id="who"></span>
+        <button id="logout-btn">Выйти</button>
+      </div>
+    </header>
+
+    <section class="title-block">
+      <div class="glitch">S a n T D e v i L</div>
+      <div class="subtitle">Архив переписки</div>
+    </section>
+
+    <main>
+      <div class="tabs">
+        <a href="index.html">Реестр</a>
+        <a href="audit.html">История</a>
+        <a href="chat-archive.html" class="active">Архив</a>
+        <a href="settings.html" id="settings-tab" hidden>Настройки</a>
+      </div>
+
+      <div class="panel chat-filter-panel">
+        <div class="chat-filters">
+          <div class="ff">
+            <label>Чат</label>
+            <select id="f-group">
+              <option value="">Все</option>
+              <option value="general">Общий</option>
+              <option value="officers">Офицерский</option>
+            </select>
+          </div>
+          <div class="ff">
+            <label>От</label>
+            <input type="date" id="f-from">
+          </div>
+          <div class="ff">
+            <label>До</label>
+            <input type="date" id="f-to">
+          </div>
+          <div class="ff">
+            <label>Автор</label>
+            <input type="text" id="f-user" placeholder="имя в TG/VK" maxlength="64">
+          </div>
+          <div class="ff ff-grow">
+            <label>Поиск</label>
+            <input type="text" id="f-search" placeholder="по тексту сообщения" maxlength="200">
+          </div>
+          <div class="ff">
+            <label>&nbsp;</label>
+            <button id="apply-btn">Применить</button>
+          </div>
+          <div class="ff">
+            <label>&nbsp;</label>
+            <button id="reset-btn" class="secondary">Сброс</button>
+          </div>
+        </div>
+        <div class="chat-stats" id="chat-stats"></div>
+      </div>
+
+      <div class="panel">
+        <div class="chat-feed" id="chat-feed"></div>
+        <div class="chat-loading" id="chat-loading" hidden>Загрузка…</div>
+        <div class="empty" id="empty-state" hidden>В архиве ничего не найдено</div>
+        <div class="chat-load-more" id="load-more-wrap" hidden>
+          <button id="load-more-btn">Загрузить ещё</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="bottom">SanTDeviL — Офицерская панель</footer>
+  </div>
+
+  <script src="config.js?v=1779743267"></script>
+  <script src="js/matrix.js?v=1779743267"></script>
+  <script src="js/api.js?v=1779743267"></script>
+  <script src="js/dateutil.js?v=1779743267"></script>
+  <script src="js/chat-archive.js?v=1779743267"></script>
+</body>
+</html>

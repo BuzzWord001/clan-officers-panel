@@ -21,6 +21,7 @@ import api_acceptances
 import api_audit
 import api_admin_logs
 import api_snapshots
+import api_chat
 import auth_pwd
 import bot_tg_listener
 import bot_vk_listener
@@ -127,3 +128,4 @@ app.include_router(api_audit.router)
 app.include_router(api_snapshots.router)
 app.include_router(api_admin_logs.router)
 app.include_router(api_admin_logs.telemetry_router)
+app.include_router(api_chat.router)

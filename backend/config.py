@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # обнови и тут, иначе в закрепе будет старое значение).
     caption_officer_password: str = "santdevil2026"
 
+    # Bearer-токен которым боты-мосты авторизуются на /chat/ingest.
+    # Только bot side знает его; офицеры видят архив через свою сессию.
+    archive_bot_token: str = ""
+
     @property
     def project_dir(self) -> Path:
         return _PROJECT_DIR

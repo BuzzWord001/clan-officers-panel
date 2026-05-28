@@ -143,5 +143,16 @@
     telemetryClear:   () => request("DELETE", "/admin/telemetry"),
 
     storage:          () => request("GET", "/admin/storage"),
+
+    chatGroups:       () => request("GET", "/chat/groups"),
+    chatStats:        () => request("GET", "/chat/stats"),
+    chatList:         (params) => {
+      // params: { chat_group, date_from, date_to, user, search, before_id, limit }
+      const qs = Object.entries(params || {})
+        .filter(([_, v]) => v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
+        .join("&");
+      return request("GET", "/chat/list" + (qs ? "?" + qs : ""));
+    },
   };
 })();
