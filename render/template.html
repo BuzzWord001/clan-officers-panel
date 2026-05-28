@@ -9,7 +9,13 @@
 
   body {
     width: 1100px;
-    font-family: 'Share Tech Mono', 'Cascadia Code', 'Consolas', monospace;
+    /* CJK и эмодзи в никах не покрываются Share Tech Mono — добавлены
+       Noto fallback'и. Браузер сам делает glyph-fallback в порядке
+       font-family stack: латиница/кириллица → стиль; иероглифы →
+       Noto Sans CJK; эмодзи → Noto Color Emoji. */
+    font-family: 'Share Tech Mono', 'Cascadia Code', 'Consolas',
+                 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans CJK KR',
+                 'Noto Color Emoji', monospace;
     color: #c8ffc8;
     background: #000;
     position: relative;

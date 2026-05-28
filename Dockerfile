@@ -4,20 +4,24 @@
 FROM python:3.12-slim-bookworm
 
 # Chromium + chromedriver совместимы из коробки в Debian 12.
-# Шрифты Noto нужны для кириллицы и стрелок в template.html
-# (без них рендер показывает "тофу" квадратики).
+# Шрифты Noto нужны чтобы рендер не показывал "тофу" квадратики:
+#   - fonts-noto-core    — латиница, кириллица, базовые символы
+#   - fonts-noto-cjk     — китайский/японский/корейский (некоторые
+#                          игроки PW пишут ник иероглифами)
+#   - fonts-noto-color-emoji — эмодзи в никах (девочки часто украшают
+#                              свои ники цветочками, сердечками и т.п.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
         chromium-driver \
         fonts-dejavu \
         fonts-liberation \
         fonts-noto-core \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
         ca-certificates \
         tzdata \
         curl \
     && rm -rf /var/lib/apt/lists/*
-# fonts-noto-color-emoji намеренно НЕ ставим — это десятки мегабайт RAM
-# при загрузке страницы, шаблон манифеста эмодзи не использует.
 
 ENV CHROME_BIN=/usr/bin/chromium \
     TZ=Europe/Moscow \
