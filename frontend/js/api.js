@@ -154,5 +154,7 @@
         .join("&");
       return request("GET", "/chat/list" + (qs ? "?" + qs : ""));
     },
+    chatMessageDelete: (id) => request("DELETE", `/chat/messages/${id}`),
+    chatClearAll:      () => request("DELETE", "/chat/messages?confirm=yes"),
   };
 })();

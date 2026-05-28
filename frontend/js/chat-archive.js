@@ -1,5 +1,6 @@
 // Архив переписки TG/VK. Лента в обратном хронологическом порядке,
-// фильтры (чат / даты / автор / поиск), lazy-load по before_id.
+// фильтры (чат / даты в DD.MM.YYYY / автор / умный поиск), lazy-load
+// по before_id, подсветка совпадений, админ-удаление сообщений.
 (async function () {
   const $ = (id) => document.getElementById(id);
   const PAGE_SIZE = 80;
@@ -12,13 +13,15 @@
     return;
   }
 
-  const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
+  const isAdmin = me.role === "admin";
+  const roleLabel = isAdmin ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР"
                   : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;
-  if (me.role === "admin") {
+  if (isAdmin) {
     const tab = $("settings-tab");
     if (tab) tab.hidden = false;
+    $("chat-admin-bar").hidden = false;
   }
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
@@ -29,12 +32,32 @@
   let loaded = [];
   // Минимальный id страницы — для следующего before_id.
   let oldestId = null;
-  // Текущие фильтры, чтобы load-more подгружал ту же выборку.
+  // Активные фильтры — фиксируем при «Поиск», чтобы load-more тянул ту же выборку.
   let activeFilters = {};
+  // Термины для подсветки (только позитивы, без -минусов и без от:).
+  let highlightTerms = [];
+
+  // ─────────────── даты ───────────────
+
+  function parseDateRu(s) {
+    // Принимает DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY (с цифрами или с
+    // ведущими нулями). Возвращает YYYY-MM-DD или null.
+    s = (s || "").trim();
+    if (!s) return null;
+    const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})$/);
+    if (!m) return null;
+    let [_, d, mo, y] = m;
+    d = d.padStart(2, "0");
+    mo = mo.padStart(2, "0");
+    if (y.length === 2) y = "20" + y;
+    if (y.length !== 4) return null;
+    const di = parseInt(d, 10), moi = parseInt(mo, 10), yi = parseInt(y, 10);
+    if (di < 1 || di > 31 || moi < 1 || moi > 12 || yi < 2000 || yi > 2100) return null;
+    return `${y}-${mo}-${d}`;
+  }
 
   function fmtTs(iso) {
     if (!iso) return "";
-    // sent_at от ботов идёт уже как ISO в UTC (без 'Z') — парсим как UTC.
     const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
     return d.toLocaleString("ru-RU", {
       day: "2-digit", month: "2-digit", year: "numeric",
@@ -42,23 +65,105 @@
     });
   }
 
+  // ─────────────── подсветка ───────────────
+
+  function normForMatch(s) {
+    return String(s || "").toLowerCase().replace(/ё/g, "е");
+  }
+
+  function extractHighlightTerms(query) {
+    // Парсер должен быть симметричным с backend _build_fts_query, но
+    // нам нужны только позитивные термины которые видны пользователю.
+    // Извлекаем все токены, выкидываем минусы и от:/автор: префиксы для
+    // выделения в основном тексте (их подсветим в авторе отдельно).
+    const out = { text: [], author: [] };
+    if (!query) return out;
+    const re = /-?"[^"]+"\*?|-?\S+/g;
+    let m;
+    while ((m = re.exec(query)) !== null) {
+      let tok = m[0];
+      if (tok.startsWith("-")) continue;
+      // column prefix
+      let target = "text";
+      const lc = tok.toLowerCase();
+      const prefs = ["от:", "автор:", "author:", "from:"];
+      for (const p of prefs) {
+        if (lc.startsWith(p)) {
+          target = "author";
+          tok = tok.slice(p.length);
+          break;
+        }
+      }
+      if (tok.startsWith('"') && tok.endsWith('"') && tok.length >= 2) {
+        tok = tok.slice(1, -1);
+      }
+      tok = tok.replace(/\*+$/, "").trim();
+      if (tok) out[target].push(tok);
+    }
+    return out;
+  }
+
+  function highlight(escapedHtml, terms) {
+    // Работаем по уже escapeHtml-нутой строке. Ищем по нормализованной
+    // версии (ё→е, lower), но заменяем в оригинале, сохраняя регистр.
+    if (!terms || !terms.length || !escapedHtml) return escapedHtml;
+    const normHay = normForMatch(escapedHtml);
+    // Подходящие сегменты: [{start, end}]
+    const ranges = [];
+    for (const t of terms) {
+      const nt = normForMatch(t);
+      if (!nt) continue;
+      let idx = 0;
+      while (true) {
+        const found = normHay.indexOf(nt, idx);
+        if (found < 0) break;
+        ranges.push([found, found + nt.length]);
+        idx = found + nt.length;
+      }
+    }
+    if (!ranges.length) return escapedHtml;
+    // Сливаем пересекающиеся
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [ranges[0]];
+    for (let i = 1; i < ranges.length; i++) {
+      const last = merged[merged.length - 1];
+      if (ranges[i][0] <= last[1]) {
+        last[1] = Math.max(last[1], ranges[i][1]);
+      } else {
+        merged.push(ranges[i]);
+      }
+    }
+    // Собираем строку с <mark>
+    let out = "";
+    let cur = 0;
+    for (const [a, b] of merged) {
+      out += escapedHtml.slice(cur, a)
+           + "<mark>" + escapedHtml.slice(a, b) + "</mark>";
+      cur = b;
+    }
+    out += escapedHtml.slice(cur);
+    return out;
+  }
+
+  // ─────────────── рендер ───────────────
+
   function platformBadge(p) {
-    if (p === "tg") return "TG";
-    if (p === "vk") return "VK";
-    return p.toUpperCase();
+    return p === "tg" ? "TG" : p === "vk" ? "VK" : p.toUpperCase();
   }
-
   function groupLabel(g) {
-    if (g === "general") return "общий";
-    if (g === "officers") return "офицерский";
-    return g;
+    return g === "general" ? "общий" : g === "officers" ? "офицерский" : g;
   }
-
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, c => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;",
       '"': "&quot;", "'": "&#39;",
     }[c]));
+  }
+  function formatBytes(b) {
+    if (!b) return "";
+    if (b < 1024) return b + "Б";
+    if (b < 1024 * 1024) return Math.round(b / 1024) + "КБ";
+    return (b / (1024 * 1024)).toFixed(1) + "МБ";
   }
 
   function renderMedia(media) {
@@ -78,23 +183,25 @@
     return `<div class="chat-media-list">${items.join("")}</div>`;
   }
 
-  function formatBytes(b) {
-    if (!b) return "";
-    if (b < 1024) return b + "Б";
-    if (b < 1024 * 1024) return Math.round(b / 1024) + "КБ";
-    return (b / (1024 * 1024)).toFixed(1) + "МБ";
-  }
-
   function renderMessage(m) {
     const reply = m.reply_to_msg_id
       ? `<div class="chat-reply">↩ ответ на сообщение ${escapeHtml(m.reply_to_msg_id)}</div>`
       : "";
-    const text = m.text ? `<div class="chat-text">${escapeHtml(m.text)}</div>` : "";
+
+    const authorEsc = escapeHtml(m.user_display);
+    const author = highlight(authorEsc, highlightTerms.author);
+    const textEsc = escapeHtml(m.text);
+    const textHl = highlight(textEsc, highlightTerms.text);
+    const text = m.text ? `<div class="chat-text">${textHl}</div>` : "";
     const media = renderMedia(m.media);
+    const delBtn = isAdmin
+      ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
+      : "";
     return `
       <div class="chat-msg chat-msg-${m.platform}" data-id="${m.id}">
+        ${delBtn}
         <div class="chat-head">
-          <span class="chat-author">${escapeHtml(m.user_display)}</span>
+          <span class="chat-author">${author}</span>
           ${m.user_username ? `<span class="chat-username">@${escapeHtml(m.user_username)}</span>` : ""}
           <span class="chat-badge chat-badge-${m.platform}">${platformBadge(m.platform)}</span>
           <span class="chat-group-tag">${groupLabel(m.chat_group)}</span>
@@ -110,19 +217,48 @@
   function render(reset) {
     const feed = $("chat-feed");
     if (reset) feed.innerHTML = "";
-    const html = loaded.map(renderMessage).join("");
-    feed.innerHTML = html;
+    feed.innerHTML = loaded.map(renderMessage).join("");
     $("empty-state").hidden = loaded.length > 0;
     $("load-more-wrap").hidden = loaded.length === 0
       || loaded.length < PAGE_SIZE
       || loaded.length % PAGE_SIZE !== 0;
+    // Привязываем delete handlers (после innerHTML)
+    if (isAdmin) {
+      feed.querySelectorAll(".chat-msg-del").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = parseInt(btn.dataset.delId, 10);
+          if (!id) return;
+          if (!confirm("Удалить это сообщение из архива?")) return;
+          try {
+            await API.chatMessageDelete(id);
+            loaded = loaded.filter(m => m.id !== id);
+            render(true);
+            refreshStats();
+          } catch (e) {
+            alert("Не удалось удалить: " + (e.detail || e.message));
+          }
+        });
+      });
+    }
   }
 
+  // ─────────────── фильтры ───────────────
+
   function collectFilters() {
+    // Валидация дат — невалидные подсвечиваем и не отправляем.
+    const fFrom = $("f-from");
+    const fTo = $("f-to");
+    let dateFrom = parseDateRu(fFrom.value);
+    let dateTo = parseDateRu(fTo.value);
+    fFrom.classList.toggle("invalid", fFrom.value && !dateFrom);
+    fTo.classList.toggle("invalid", fTo.value && !dateTo);
+    // Чтобы date_to включал весь день, заменяем YYYY-MM-DD на YYYY-MM-DDT23:59:59
+    if (dateTo) dateTo = dateTo + "T23:59:59";
     return {
       chat_group: $("f-group").value || undefined,
-      date_from: $("f-from").value || undefined,
-      date_to: $("f-to").value || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
       user: $("f-user").value.trim() || undefined,
       search: $("f-search").value.trim() || undefined,
     };
@@ -148,6 +284,7 @@
 
   async function applyFilters() {
     activeFilters = collectFilters();
+    highlightTerms = extractHighlightTerms(activeFilters.search);
     oldestId = null;
     await load(true);
     await refreshStats();
@@ -170,22 +307,38 @@
     }
   }
 
+  // ─────────────── события ───────────────
+
   $("apply-btn").addEventListener("click", applyFilters);
   $("reset-btn").addEventListener("click", () => {
-    $("f-group").value = "";
-    $("f-from").value = "";
-    $("f-to").value = "";
-    $("f-user").value = "";
-    $("f-search").value = "";
+    for (const id of ["f-group", "f-from", "f-to", "f-user", "f-search"]) {
+      $(id).value = "";
+      $(id).classList.remove("invalid");
+    }
     applyFilters();
   });
   $("load-more-btn").addEventListener("click", () => load(false));
-  $("f-search").addEventListener("keydown", e => {
-    if (e.key === "Enter") applyFilters();
-  });
-  $("f-user").addEventListener("keydown", e => {
-    if (e.key === "Enter") applyFilters();
-  });
+
+  // Enter в любом поле фильтров = поиск
+  for (const id of ["f-from", "f-to", "f-user", "f-search"]) {
+    $(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") applyFilters();
+    });
+  }
+
+  if (isAdmin) {
+    $("clear-archive-btn").addEventListener("click", async () => {
+      if (!confirm("Очистить ВЕСЬ архив переписки? Это нельзя отменить.")) return;
+      if (!confirm("Точно? Удалятся ВСЕ сообщения общего и офицерского чатов.")) return;
+      try {
+        const r = await API.chatClearAll();
+        alert(`Архив очищен. Удалено сообщений: ${r.deleted}`);
+        await applyFilters();
+      } catch (e) {
+        alert("Не удалось очистить: " + (e.detail || e.message));
+      }
+    });
+  }
 
   await applyFilters();
 })();

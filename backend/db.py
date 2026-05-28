@@ -853,22 +853,104 @@ def list_chat_messages(
         return [_row_to_chat_message(r) for r in rows]
 
 
-def _build_fts_query(user_q: str) -> str:
-    """Превращает «обычный» поисковый запрос юзера в FTS5 syntax.
+import re as _re
 
-    Все слова → AND с префикс-матчингом (`марина*`). Спецсимволы FTS5
-    (двойные кавычки) экранируются как фраза в двойных кавычках. ё→е,
-    Ё→Е чтобы матчилось с нормализованным индексом.
+# Префиксы column-targeted поиска. После префикса значение матчится только
+# по полю user_display в FTS5 индексе.
+_AUTHOR_PREFIXES = ("от:", "автор:", "author:", "from:")
+# Токенизатор: квотированная фраза с опциональным минусом и звёздочкой,
+# либо обычное слово (тоже с опциональным минусом).
+_FTS_TOK_RE = _re.compile(r'-?"[^"]+"\*?|-?\S+', _re.UNICODE)
+
+
+def _normalize_for_fts(s: str) -> str:
+    """ё→е для совпадения с нормализованным FTS5 индексом."""
+    return s.replace("ё", "е").replace("Ё", "Е")
+
+
+def _build_fts_query(user_q: str) -> str:
+    """Превращает поисковый запрос пользователя в FTS5 syntax.
+
+    Поддерживает:
+      - обычные слова → префикс-матч AND (марин* AND лоб*)
+      - "точная фраза" → phrase-match без префикса
+      - -слово / -"фраза" → исключение (FTS5 NOT)
+      - от:Марина / автор:Лир / author:X — фильтр по user_display
+        (FTS5 column-targeted: {user_display}: phrase)
+      - ё / Ё нормализуются в е/Е чтобы совпало с индексом
+
+    FTS5 не имеет унарного NOT, поэтому исключения рендерятся как
+    `positive_query NOT exclusion`. Если позитива нет — исключения
+    игнорируются (поиск «всё кроме X» бесполезен).
     """
-    parts = []
-    for tok in user_q.split():
-        clean = (tok.replace('"', '')
-                    .replace('ё', 'е').replace('Ё', 'Е').strip())
-        if not clean:
+    positives: list[str] = []
+    negatives: list[str] = []
+
+    for raw in _FTS_TOK_RE.findall(user_q):
+        negate = raw.startswith("-")
+        if negate:
+            raw = raw[1:]
+        if not raw:
             continue
-        # Префикс-матч: «мар» найдёт «Марина», «марса»
-        parts.append(f'"{clean}"*')
-    return " ".join(parts) if parts else '""'
+
+        # Column filter (только для user_display — единственная альтернативная
+        # колонка в FTS5 индексе кроме text)
+        column = None
+        lower = raw.lower()
+        for px in _AUTHOR_PREFIXES:
+            if lower.startswith(px):
+                column = "user_display"
+                raw = raw[len(px):]
+                break
+        raw = _normalize_for_fts(raw).strip()
+        if not raw:
+            continue
+
+        # Фраза в кавычках — точное совпадение без префикса
+        if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2:
+            inner = raw[1:-1].replace('"', '')
+            if not inner:
+                continue
+            phrase = f'"{inner}"'
+        else:
+            # Обычное слово — префикс-матч
+            clean = raw.replace('"', '')
+            if not clean:
+                continue
+            phrase = f'"{clean}"*'
+
+        if column:
+            phrase = f"{column}: {phrase}"
+
+        (negatives if negate else positives).append(phrase)
+
+    if not positives:
+        # Только исключения / пустой запрос — нечего искать.
+        return '""'
+    pos = " ".join(positives)
+    if negatives:
+        return pos + " NOT (" + " OR ".join(negatives) + ")"
+    return pos
+
+
+def delete_chat_message(msg_id: int) -> bool:
+    """Удалить одно сообщение из архива. True если запись существовала."""
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM chat_messages WHERE id = ?", (msg_id,))
+        return cur.rowcount > 0
+
+
+def clear_chat_archive() -> int:
+    """Удалить весь архив. Возвращает кол-во удалённых сообщений.
+    Также пересоздаёт FTS5 индекс — после массового DELETE он может
+    остаться раздутым."""
+    with connection() as conn:
+        n = conn.execute("SELECT count(*) FROM chat_messages").fetchone()[0]
+        conn.execute("DELETE FROM chat_messages")
+        # rebuild FTS5 чтобы убрать tombstones
+        conn.execute("INSERT INTO chat_messages_fts(chat_messages_fts) "
+                     "VALUES ('rebuild')")
+        return n
 
 
 def chat_archive_stats() -> dict[str, Any]:

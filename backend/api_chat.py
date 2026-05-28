@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 import db
 from config import settings
-from session import current_session
+from session import current_session, require_admin
 
 
 log = logging.getLogger("officers.chat")
@@ -162,3 +162,30 @@ def groups(_: dict = Depends(require_officer)) -> list[dict]:
         {"id": "general", "label": "Общий чат"},
         {"id": "officers", "label": "Офицерский чат"},
     ]
+
+
+@router.delete("/messages/{msg_id}")
+def delete_message(msg_id: int, admin: dict = Depends(require_admin)) -> dict:
+    """Удалить одно сообщение из архива. Только админ."""
+    if not db.delete_chat_message(msg_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    log.info("chat archive: msg id=%s удалён админом %s",
+             msg_id, admin.get("name"))
+    return {"deleted": 1}
+
+
+@router.delete("/messages")
+def clear_archive(
+    confirm: str = Query(default="", description="Должно быть 'yes'"),
+    admin: dict = Depends(require_admin),
+) -> dict:
+    """Полная очистка архива. Только админ + явный confirm=yes."""
+    if confirm != "yes":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "confirm=yes обязателен для очистки всего архива",
+        )
+    n = db.clear_chat_archive()
+    log.warning("chat archive: ПОЛНАЯ ОЧИСТКА (%d сообщений) "
+                "выполнена админом %s", n, admin.get("name"))
+    return {"deleted": n}

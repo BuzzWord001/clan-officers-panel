@@ -53,33 +53,44 @@
           </div>
           <div class="ff">
             <label>От</label>
-            <input type="date" id="f-from">
+            <input type="text" id="f-from" placeholder="25.04.2026" maxlength="10" inputmode="numeric">
           </div>
           <div class="ff">
             <label>До</label>
-            <input type="date" id="f-to">
+            <input type="text" id="f-to" placeholder="29.05.2026" maxlength="10" inputmode="numeric">
           </div>
           <div class="ff">
             <label>Автор</label>
             <input type="text" id="f-user" placeholder="имя в TG/VK" maxlength="64">
           </div>
           <div class="ff ff-grow">
-            <label>Поиск</label>
-            <input type="text" id="f-search" placeholder="по тексту сообщения" maxlength="200">
+            <label>Поиск по тексту</label>
+            <input type="text" id="f-search" placeholder='слово, "точная фраза", -исключить, от:Марина' maxlength="200">
           </div>
           <div class="ff">
             <label>&nbsp;</label>
-            <button id="apply-btn">Применить</button>
+            <button id="apply-btn">Поиск</button>
           </div>
           <div class="ff">
             <label>&nbsp;</label>
             <button id="reset-btn" class="secondary">Сброс</button>
           </div>
         </div>
+        <div class="chat-search-hint">
+          Поиск понимает: <code>"точная фраза"</code> &middot;
+          <code>-исключить</code> &middot;
+          <code>от:Имя</code> &middot;
+          <code>автор:Имя</code> &middot;
+          обычные слова работают как «начинается с…»
+        </div>
         <div class="chat-stats" id="chat-stats"></div>
       </div>
 
       <div class="panel">
+        <div class="chat-admin-bar" id="chat-admin-bar" hidden>
+          <button id="clear-archive-btn" class="danger">Очистить весь архив</button>
+          <span class="chat-admin-hint">Доступно только администратору</span>
+        </div>
         <div class="chat-feed" id="chat-feed"></div>
         <div class="chat-loading" id="chat-loading" hidden>Загрузка…</div>
         <div class="empty" id="empty-state" hidden>В архиве ничего не найдено</div>
