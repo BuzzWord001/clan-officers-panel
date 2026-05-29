@@ -1345,15 +1345,21 @@
     freshIds.clear();
     $("chat-loading").hidden = false;
     try {
-      // before_id = targetId + 1 → страница начинается с target ID и
-      // идёт вглубь по убыванию.
-      const params = { ...activeFilters, limit: PAGE_SIZE,
-                       before_id: targetId + 1 };
-      const page = await API.chatList(params);
-      loaded = page;
-      if (page.length) {
-        oldestId = page[page.length - 1].id;
-        newestId = Math.max(...page.map(m => m.id));
+      // Грузим в обе стороны от target — половина страницы новее
+      // (after_id=target) и половина старее (before_id=target+1).
+      // Так пользователь сразу видит контекст «вокруг» сообщения.
+      const HALF = Math.floor(PAGE_SIZE / 2);   // 40
+      const [newerPage, olderPage] = await Promise.all([
+        API.chatList({ ...activeFilters, after_id:  targetId,    limit: HALF }),
+        API.chatList({ ...activeFilters, before_id: targetId + 1, limit: HALF }),
+      ]);
+      // Backend отдаёт DESC. Объединяем: новые сверху + старые снизу.
+      loaded = newerPage.concat(olderPage);
+      if (olderPage.length) oldestId = olderPage[olderPage.length - 1].id;
+      if (newerPage.length) {
+        newestId = newerPage[0].id;
+      } else if (loaded.length) {
+        newestId = Math.max(...loaded.map(m => m.id));
       }
       renderReset();
       await refreshStats();
@@ -1361,40 +1367,33 @@
         `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
       // Не нашли — попробуем без chat_group фильтра (target может быть
       // в другом чате, а пользователь хочет именно к нему).
+      let effectiveNewerPage = newerPage;
       if (!el && activeFilters.chat_group) {
         $("f-group").value = "";
         activeFilters = collectFilters();
-        const page2 = await API.chatList({ limit: PAGE_SIZE,
-                                           before_id: targetId + 1 });
-        loaded = page2;
-        if (page2.length) {
-          oldestId = page2[page2.length - 1].id;
-          newestId = Math.max(...page2.map(m => m.id));
-        }
+        const [n2, o2] = await Promise.all([
+          API.chatList({ after_id: targetId, limit: HALF }),
+          API.chatList({ before_id: targetId + 1, limit: HALF }),
+        ]);
+        loaded = n2.concat(o2);
+        if (o2.length) oldestId = o2[o2.length - 1].id;
+        if (n2.length) newestId = n2[0].id;
+        else if (loaded.length) newestId = Math.max(...loaded.map(m => m.id));
+        effectiveNewerPage = n2;
         renderReset();
         el = document.querySelector(
           `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
       }
       if (el) {
-        // Включаем режим: пользователь стоит в середине архива.
-        // Auto-refresh теперь не должен тихо подгружать «новые» —
-        // на самом деле это весь архив выше target, не свежие сообщения.
-        inJumpMode = true;
-        // Проверяем — есть ли реально что-то новее этого сообщения?
-        // Если target = самое свежее в архиве, кнопка «↑ Новее»
-        // бессмысленна. Один дешёвый запрос с limit=1.
-        try {
-          const probe = await API.chatList({
-            ...activeFilters, after_id: targetId, limit: 1,
-          });
-          showLoadNewer(Array.isArray(probe) && probe.length > 0);
-          // Если ничего нет наверху — мы фактически на самом свежем,
-          // auto-refresh снова безопасен.
-          if (!(Array.isArray(probe) && probe.length > 0)) {
-            inJumpMode = false;
-          }
-        } catch (_) {
+        // Кнопка ↑ Новее нужна только если над загруженным окном
+        // есть что-то ещё. Если newerPage заполнил HALF — там точно
+        // есть продолжение; если меньше HALF — мы исчерпали newer.
+        if (effectiveNewerPage.length === HALF) {
+          inJumpMode = true;
           showLoadNewer(true);
+        } else {
+          inJumpMode = false;       // фактически на верхушке
+          showLoadNewer(false);
         }
         requestAnimationFrame(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
