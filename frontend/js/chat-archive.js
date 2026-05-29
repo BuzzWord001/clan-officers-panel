@@ -880,11 +880,24 @@
   }
 
   // ─────────────── Reply click-to-scroll ───────────────
-  // При клике на reply ищем в loaded оригинал по (platform, chat_id,
-  // message_id). Если найден — scroll + flash. Если нет — подгружаем
-  // страницами до тех пор пока не появится в loaded ИЛИ пока не дойдём
-  // до конца. Защита: не больше REPLY_LOOKUP_PAGES страниц.
-  const REPLY_LOOKUP_PAGES = 8;
+  // При клике на reply ищем в loaded оригинал. Если есть msg_id —
+  // точный поиск, можно идти вглубь до 8 страниц. Если только
+  // user+text (исторический reply из JSONL без id) — эвристика, идём
+  // максимум 3 страницы: дальше шанс попадания низкий, а каждая
+  // подгрузка перерисовывает всю ленту и может подвесить браузер.
+  const REPLY_LOOKUP_PAGES_MID = 8;
+  const REPLY_LOOKUP_PAGES_FUZZY = 3;
+
+  // В JSONL архиве reply_to_text сохранён с media-префиксом ([фото],
+  // [GIF], [стикер 😂], [фото, видео], [ссылка] и т.д.). Бот всегда
+  // ставит маркер в формате [...слова без вложенных скобок...] в самом
+  // начале текста, далее либо пробел и реальный текст, либо конец строки.
+  // Оригинал-сообщение в БД хранится БЕЗ префикса — снимаем перед
+  // эвристическим матчем.
+  const MEDIA_PREFIX_RE = /^\s*\[[^\[\]]{1,40}\](?:\s+|$)/;
+  function stripReplyMediaMarker(s) {
+    return (s || "").replace(MEDIA_PREFIX_RE, "");
+  }
 
   function findReplyTargetIndex(platform, chatId, msgId) {
     if (!msgId) return -1;
@@ -901,16 +914,26 @@
 
   // Эвристический поиск оригинала по reply_to_user + reply_to_text,
   // когда msg_id отсутствует (старые исторические reply из JSONL).
+  // reply_to_text может начинаться с media-маркера ([фото]/[GIF]/etc),
+  // его снимаем перед сравнением.
   // Скоринг:
-  //   +3  m.text начинается с reply_to_text[:50]
-  //   +1  reply_to_text[:50] содержится в m.text
+  //   +3  m.text начинается с очищенного reply_to_text[:50]
+  //   +1  очищенный reply_to_text[:50] содержится в m.text
   //   +2  m.user_display точно равен reply_to_user
-  //   +1  m.user_display содержит reply_to_user (или наоборот)
-  // Принимаем матч если score >= 3.
+  //   +1  частичное совпадение user_display ↔ reply_to_user
+  //   +1  оригинал содержит МЕДИА (kind=photo/video/...) если в reply
+  //       был media-маркер — дополнительный сигнал
+  // Принимаем матч если score >= 3 (текст-старт ИЛИ user+contains).
   function findReplyTargetHeuristic(platform, chatId, replyUser, replyText) {
     const userTrim = (replyUser || "").trim();
-    const textTrim = (replyText || "").trim().substring(0, 50);
+    const rawText = (replyText || "").trim();
+    const hadMediaMarker = MEDIA_PREFIX_RE.test(rawText);
+    const cleanText = stripReplyMediaMarker(rawText).trim();
+    const textTrim = cleanText.substring(0, 50);
+    // Если ни юзера, ни осмысленного текста — искать нечего.
     if (!userTrim && !textTrim) return -1;
+    // Если только marker без текста и нет user — тоже бесполезно.
+    if (!textTrim && !userTrim) return -1;
     let best = -1, bestScore = 0;
     for (let i = 0; i < loaded.length; i++) {
       const m = loaded[i];
@@ -925,8 +948,11 @@
       }
       if (userTrim) {
         if (mUser === userTrim) score += 2;
-        else if (mUser.indexOf(userTrim) >= 0
-                 || userTrim.indexOf(mUser) >= 0) score += 1;
+        else if (mUser && (mUser.indexOf(userTrim) >= 0
+                 || userTrim.indexOf(mUser) >= 0)) score += 1;
+      }
+      if (hadMediaMarker && Array.isArray(m.media) && m.media.length > 0) {
+        score += 1;
       }
       if (score > bestScore) { best = i; bestScore = score; }
     }
@@ -953,12 +979,17 @@
   async function scrollToReply(platform, chatId, msgId, replyUser, replyText, btn) {
     let idx = findReplyTarget(platform, chatId, msgId, replyUser, replyText);
     if (idx < 0) {
-      const origLabel = btn ? btn.textContent : "";
+      // По msg_id ищем глубоко, по эвристике — мелко: дальше шанс
+      // правильного матча падает, а каждая подгрузка рисует 80 новых
+      // сообщений → большая нагрузка на DOM.
+      const maxPages = msgId ? REPLY_LOOKUP_PAGES_MID : REPLY_LOOKUP_PAGES_FUZZY;
       if (btn) btn.classList.add("chat-reply-loading");
       try {
-        for (let p = 0; p < REPLY_LOOKUP_PAGES; p++) {
+        for (let p = 0; p < maxPages; p++) {
           if (loaded.length < PAGE_SIZE) break;
           await load(false);
+          // Даём UI отрисоваться/обработать события между подгрузками.
+          await new Promise(r => setTimeout(r, 0));
           idx = findReplyTarget(platform, chatId, msgId, replyUser, replyText);
           if (idx >= 0) break;
           if (loaded.length % PAGE_SIZE !== 0) break;
@@ -972,7 +1003,7 @@
         const prev = btn.getAttribute("title") || "";
         btn.setAttribute("title",
           msgId ? "Оригинал не в архиве (удалён или вне выборки)"
-                : "Оригинал не найден по тексту (попробуй искать вручную)");
+                : "Оригинал не найден по тексту в загруженной выборке");
         setTimeout(() => btn.setAttribute("title", prev), 3000);
       }
       return;
