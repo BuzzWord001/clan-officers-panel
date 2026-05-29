@@ -55,6 +55,8 @@ class ChatIngestIn(BaseModel):
     user_username: str = ""
     text: str = ""
     reply_to_msg_id: str = ""
+    reply_to_user: str = ""    # автор цитируемого
+    reply_to_text: str = ""    # фрагмент текста цитируемого
     media: list[ChatMediaIn] = Field(default_factory=list)
     sent_at: str  # ISO datetime от платформы
 
@@ -118,6 +120,8 @@ def ingest(payload: ChatIngestIn, _=Depends(require_bot_token)) -> dict:
         user_username=payload.user_username,
         text=payload.text,
         reply_to_msg_id=payload.reply_to_msg_id,
+        reply_to_user=payload.reply_to_user,
+        reply_to_text=payload.reply_to_text,
         media=[m.model_dump() for m in payload.media],
         sent_at=payload.sent_at,
     )
@@ -146,7 +150,10 @@ def ingest_batch(payload: ChatIngestBatch,
                 chat_id=m.chat_id, message_id=m.message_id,
                 user_id=m.user_id, user_display=m.user_display,
                 user_username=m.user_username,
-                text=m.text, reply_to_msg_id=m.reply_to_msg_id,
+                text=m.text,
+                reply_to_msg_id=m.reply_to_msg_id,
+                reply_to_user=m.reply_to_user,
+                reply_to_text=m.reply_to_text,
                 media=[mm.model_dump() for mm in m.media],
                 sent_at=m.sent_at,
             )

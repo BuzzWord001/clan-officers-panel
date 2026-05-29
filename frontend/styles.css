@@ -1107,11 +1107,28 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 }
 .chat-reply {
   font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  padding: 3px 8px;
+  border-left: 2px solid var(--accent-dim);
+  background: rgba(0, 255, 65, 0.05);
+}
+.chat-reply b {
+  color: var(--accent);
+  font-weight: 600;
+}
+.chat-reply-dim {
   color: var(--muted);
   font-style: italic;
-  margin-bottom: 4px;
-  padding-left: 8px;
-  border-left: 2px solid var(--muted);
+}
+.chat-time-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+.chat-time-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 .chat-text {
   color: var(--text);

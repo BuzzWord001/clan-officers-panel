@@ -153,6 +153,34 @@
   function platformBadge(p) {
     return p === "tg" ? "TG" : p === "vk" ? "VK" : p.toUpperCase();
   }
+
+  // Ссылка на оригинал сообщения в TG/VK. Возвращает null если ID не
+  // выглядит как реальный (например, для исторических migrated:... id).
+  function originalUrl(m) {
+    const mid = String(m.message_id || "");
+    const cid = String(m.chat_id || "");
+    if (!/^\d+$/.test(mid)) return null;       // mig:..., ts:... — не открыть
+    if (!/^-?\d+$/.test(cid)) return null;
+    if (m.platform === "tg") {
+      // Приватные супергруппы: chat_id вида -100xxxxxxxxxx → t.me/c/xxxxxxxxxx/{msg}
+      const n = parseInt(cid, 10);
+      if (n < -1000000000000) {
+        const internal = -n - 1000000000000;
+        return `https://t.me/c/${internal}/${mid}`;
+      }
+      return null;
+    }
+    if (m.platform === "vk") {
+      // VK мульти-чат: peer = 2000000000 + chat_id → vk.com/im?sel=c{N}&msgid={cmid}
+      const n = parseInt(cid, 10);
+      if (n > 2000000000) {
+        const ci = n - 2000000000;
+        return `https://vk.com/im?sel=c${ci}&msgid=${mid}`;
+      }
+      return null;
+    }
+    return null;
+  }
   function groupLabel(g) {
     return g === "general" ? "общий" : g === "officers" ? "офицерский" : g;
   }
@@ -186,10 +214,19 @@
     return `<div class="chat-media-list">${items.join("")}</div>`;
   }
 
+  function renderReply(m) {
+    if (!m.reply_to_user && !m.reply_to_text && !m.reply_to_msg_id) return "";
+    if (m.reply_to_user || m.reply_to_text) {
+      const author = escapeHtml(m.reply_to_user || "");
+      const text = escapeHtml(m.reply_to_text || "");
+      return `<div class="chat-reply">↩ <b>${author}:</b> ${text}</div>`;
+    }
+    // legacy / migrated: только id, без автора и текста
+    return `<div class="chat-reply chat-reply-dim">↩ ответ на сообщение</div>`;
+  }
+
   function renderMessage(m) {
-    const reply = m.reply_to_msg_id
-      ? `<div class="chat-reply">↩ ответ на сообщение ${escapeHtml(m.reply_to_msg_id)}</div>`
-      : "";
+    const reply = renderReply(m);
 
     const authorEsc = escapeHtml(m.user_display);
     const author = highlight(authorEsc, highlightTerms.author);
@@ -200,6 +237,12 @@
     const delBtn = isAdmin
       ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
       : "";
+    const tsText = fmtTs(m.sent_at);
+    const url = originalUrl(m);
+    const timeHtml = url
+      ? `<a class="chat-time chat-time-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Открыть оригинал в ${platformBadge(m.platform)}">${tsText} ↗</a>`
+      : `<span class="chat-time" title="Оригинал недоступен (бэкфилл из JSONL)">${tsText}</span>`;
+
     return `
       <div class="chat-msg chat-msg-${m.platform}" data-id="${m.id}">
         ${delBtn}
@@ -208,7 +251,7 @@
           ${m.user_username ? `<span class="chat-username">@${escapeHtml(m.user_username)}</span>` : ""}
           <span class="chat-badge chat-badge-${m.platform}">${platformBadge(m.platform)}</span>
           <span class="chat-group-tag">${groupLabel(m.chat_group)}</span>
-          <span class="chat-time">${fmtTs(m.sent_at)}</span>
+          ${timeHtml}
         </div>
         ${reply}
         ${text}

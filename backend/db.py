@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     user_username   TEXT    NOT NULL DEFAULT '', -- @username (tg) или screen_name (vk)
     text            TEXT    NOT NULL DEFAULT '',
     reply_to_msg_id TEXT    NOT NULL DEFAULT '', -- message_id того на которое отвечают
+    reply_to_user   TEXT    NOT NULL DEFAULT '', -- автор цитируемого
+    reply_to_text   TEXT    NOT NULL DEFAULT '', -- фрагмент текста цитируемого
     media_json      TEXT    NOT NULL DEFAULT '[]',
     sent_at         TEXT    NOT NULL,            -- ISO datetime (от платформы)
     ingested_at     TEXT    NOT NULL,            -- когда сохранили
@@ -244,7 +246,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "ALTER TABLE auth_config ADD COLUMN officer_password_plain TEXT NOT NULL DEFAULT ''"
         )
     except sqlite3.OperationalError:
-        pass  # колонка уже есть
+        pass
+
+    # 2026-05-29: reply-цитаты в архиве — храним имя автора и фрагмент текста
+    # того сообщения на которое отвечают. Раньше в архиве был только ID,
+    # пользователю это ничего не говорило.
+    for col in ("reply_to_user TEXT NOT NULL DEFAULT ''",
+                "reply_to_text TEXT NOT NULL DEFAULT ''"):
+        try:
+            conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
 
 
 def init_db() -> None:
@@ -751,6 +763,8 @@ def ingest_chat_message(
     user_username: str = "",
     text: str = "",
     reply_to_msg_id: str = "",
+    reply_to_user: str = "",
+    reply_to_text: str = "",
     media: list[dict[str, Any]] | None = None,
     sent_at: str,
 ) -> dict[str, Any]:
@@ -772,12 +786,15 @@ def ingest_chat_message(
             """INSERT OR IGNORE INTO chat_messages
                (chat_group, platform, chat_id, message_id,
                 user_id, user_display, user_username,
-                text, reply_to_msg_id, media_json,
+                text, reply_to_msg_id, reply_to_user, reply_to_text,
+                media_json,
                 sent_at, ingested_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (chat_group, platform, str(chat_id), str(message_id),
              str(user_id), user_display[:128], user_username[:64],
-             text, str(reply_to_msg_id), media_json,
+             text, str(reply_to_msg_id),
+             (reply_to_user or "")[:128], (reply_to_text or "")[:300],
+             media_json,
              sent_at, now),
         )
         if cur.rowcount == 0:
@@ -796,6 +813,7 @@ def _row_to_chat_message(row: sqlite3.Row) -> dict[str, Any]:
         media = json.loads(row["media_json"]) if row["media_json"] else []
     except json.JSONDecodeError:
         media = []
+    keys = row.keys()
     return {
         "id": row["id"],
         "chat_group": row["chat_group"],
@@ -807,6 +825,8 @@ def _row_to_chat_message(row: sqlite3.Row) -> dict[str, Any]:
         "user_username": row["user_username"],
         "text": row["text"],
         "reply_to_msg_id": row["reply_to_msg_id"],
+        "reply_to_user": row["reply_to_user"] if "reply_to_user" in keys else "",
+        "reply_to_text": row["reply_to_text"] if "reply_to_text" in keys else "",
         "media": media,
         "sent_at": row["sent_at"],
         "ingested_at": row["ingested_at"],
