@@ -703,6 +703,32 @@
   // Переключение чата (Все/Общий/Офицерский) — сразу применяет фильтр
   // без нажатия «Поиск»: естественное поведение для select-а.
   $("f-group").addEventListener("change", applyFilters);
+
+  // Клик по тегам тем в подсказке → подставляет «тема:X» в поле поиска
+  // и сразу запускает. Остальные фильтры (даты, автор, чат) НЕ трогаем —
+  // их можно дополнить и нажать «Поиск» ещё раз.
+  document.querySelectorAll(".chat-hint-themes code").forEach(el => {
+    el.style.cursor = "pointer";
+    el.addEventListener("click", () => {
+      const name = (el.textContent || "").trim();
+      if (!name) return;
+      $("f-search").value = `тема:${name}`;
+      $("f-search").focus();
+      applyFilters();
+    });
+  });
+  // Примеры в первой части подсказки (Мелодька, рейд, "нужна помощь", ...)
+  // — тоже кликабельные. textContent — это сам пример, его и подставляем.
+  document.querySelectorAll(".chat-hint-grid code").forEach(el => {
+    el.style.cursor = "pointer";
+    el.addEventListener("click", () => {
+      const q = (el.textContent || "").trim();
+      if (!q) return;
+      $("f-search").value = q;
+      $("f-search").focus();
+      applyFilters();
+    });
+  });
   $("reset-btn").addEventListener("click", () => {
     for (const id of ["f-group", "f-from", "f-to", "f-user", "f-search"]) {
       $(id).value = "";

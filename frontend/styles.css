@@ -1009,6 +1009,19 @@ footer.bottom {
   font-family: inherit;
   font-size: 10px;
   letter-spacing: 0;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chat-hint-themes code:hover,
+.chat-hint-grid code:hover {
+  background: rgba(0, 255, 65, 0.22);
+  color: #0a0a0a;
+  border-color: var(--accent);
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.6);
+}
+.chat-hint-themes code:active,
+.chat-hint-grid code:active {
+  transform: translateY(1px);
 }
 @media (max-width: 560px) {
   .chat-hint-grid {
