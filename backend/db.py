@@ -1201,6 +1201,47 @@ def _member_name_variants(m: dict) -> list[str]:
     return sorted(out)
 
 
+def resolve_identity_full(token: str) -> dict | None:
+    """Найти участника по любому имени → вернуть полный профиль или None.
+
+    Логика поиска та же что и в resolve_identity (case-insensitive,
+    fold ё→е, ровно 1 матч либо exact-narrowing). Отличие — возвращаем
+    весь словарь участника, а не только список имён.
+    """
+    t = (token or "").strip().lower().replace("ё", "е")
+    if not t or len(t) < 2:
+        return None
+    matched = []
+    members = list_clan_members()
+    for m in members:
+        haystack: list[str] = []
+        for f in ("display_name", "vk_display", "vk_first", "vk_last",
+                  "vk_screen_name", "tg_username", "tg_first_name",
+                  "tg_last_name", "tg_display"):
+            v = (m.get(f) or "").strip()
+            if v:
+                haystack.append(v.lower().replace("ё", "е"))
+        for nick in (m.get("game_nick") or "").split(","):
+            nick = nick.strip().lower().replace("ё", "е")
+            if nick:
+                haystack.append(nick)
+        for h in haystack:
+            if t == h or (len(t) >= 3 and (t in h or h in t)):
+                matched.append(m)
+                break
+    if len(matched) == 1:
+        return matched[0]
+    exact = []
+    for m in matched:
+        for f in _member_name_variants(m):
+            if f.lower().replace("ё", "е") == t:
+                exact.append(m)
+                break
+    if len(exact) == 1:
+        return exact[0]
+    return None
+
+
 def resolve_identity(token: str) -> list[str]:
     """Найти участника клана по любому имени-варианту → вернуть все его
     известные имена. Возвращает [] если не нашли или нашли >1 (неоднозначно).

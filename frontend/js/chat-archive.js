@@ -158,6 +158,191 @@
     return p === "tg" ? "TG" : p === "vk" ? "VK" : p.toUpperCase();
   }
 
+  // ─────────────── Author popover (наведение на ник) ───────────────
+  // Кэш {display_name → profile|null} чтобы не дёргать API на каждое hover.
+  const profileCache = new Map();
+  let popoverEl = null;
+  let popoverShowTimer = null;
+  let popoverHideTimer = null;
+  let popoverFor = null;   // имя для которого открыт текущий popover
+
+  function ensurePopover() {
+    if (popoverEl) return popoverEl;
+    popoverEl = document.createElement("div");
+    popoverEl.className = "chat-popover";
+    popoverEl.hidden = true;
+    popoverEl.addEventListener("mouseenter", () => {
+      if (popoverHideTimer) { clearTimeout(popoverHideTimer); popoverHideTimer = null; }
+    });
+    popoverEl.addEventListener("mouseleave", () => schedulePopoverHide());
+    document.body.appendChild(popoverEl);
+    return popoverEl;
+  }
+
+  async function fetchProfile(name) {
+    if (profileCache.has(name)) return profileCache.get(name);
+    try {
+      const res = await API.chatMemberProfile(name);
+      const p = res && res.found ? res.profile : null;
+      profileCache.set(name, p);
+      return p;
+    } catch (_) {
+      profileCache.set(name, null);
+      return null;
+    }
+  }
+
+  function copyToClipboard(text) {
+    try {
+      navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function renderPopover(name, profile) {
+    if (!profile) {
+      return `<div class="chat-pop-empty">Нет дополнительной информации о ${escapeHtml(name)}</div>`;
+    }
+    const row = (label, value, link, copyable) => {
+      if (!value) return "";
+      const v = escapeHtml(String(value));
+      const linkHtml = link
+        ? `<a class="chat-pop-link" href="${escapeHtml(link)}" target="_blank" rel="noopener" title="Открыть">${v} ↗</a>`
+        : v;
+      const copyHtml = copyable
+        ? `<button class="chat-pop-copy" data-copy="${v}" title="Копировать">⧉</button>`
+        : "";
+      return `<div class="chat-pop-row">
+                <span class="chat-pop-label">${label}</span>
+                <span class="chat-pop-val">${linkHtml}</span>
+                ${copyHtml}
+              </div>`;
+    };
+
+    const game = profile.game_nick || "";
+    const dn = profile.display_name || "";
+    // VK блок
+    const vk_id = profile.vk_id || "";
+    const vk_display = profile.vk_display || (
+      [profile.vk_first, profile.vk_last].filter(Boolean).join(" ").trim()
+    );
+    const vk_screen = profile.vk_screen_name || "";
+    const vk_url = vk_screen ? `https://vk.com/${vk_screen}`
+                  : vk_id ? `https://vk.com/id${vk_id}` : "";
+    const vk = (vk_id || vk_display || vk_screen) ? `
+      <div class="chat-pop-section">
+        <div class="chat-pop-sec-title">ВКонтакте</div>
+        ${row("Имя", vk_display, vk_url, true)}
+        ${row("screen", vk_screen, vk_url, true)}
+        ${row("ID", vk_id, "", true)}
+      </div>` : "";
+
+    // TG блок
+    const tg_id = profile.tg_id || "";
+    const tg_display = profile.tg_display
+      || [profile.tg_first_name, profile.tg_last_name].filter(Boolean).join(" ").trim();
+    const tg_username = profile.tg_username || "";
+    const tg_url = tg_username ? `https://t.me/${tg_username}` : "";
+    const tg = (tg_id || tg_display || tg_username) ? `
+      <div class="chat-pop-section">
+        <div class="chat-pop-sec-title">Telegram</div>
+        ${row("Имя", tg_display, tg_url, true)}
+        ${row("@user", tg_username ? "@" + tg_username : "", tg_url, true)}
+        ${row("ID", tg_id, "", true)}
+      </div>` : "";
+
+    const head = `
+      <div class="chat-pop-head">
+        <span class="chat-pop-name">${escapeHtml(dn || name)}</span>
+      </div>`;
+    const gameRow = game ? `
+      <div class="chat-pop-section">
+        <div class="chat-pop-sec-title">Игра</div>
+        <div class="chat-pop-game">${escapeHtml(game)}</div>
+      </div>` : "";
+
+    return head + gameRow + vk + tg;
+  }
+
+  function positionPopover(anchor) {
+    const r = anchor.getBoundingClientRect();
+    const margin = 8;
+    // По умолчанию справа-снизу от имени
+    let left = r.left;
+    let top = r.bottom + margin;
+    // Проверим что popover влезет — после render-а
+    requestAnimationFrame(() => {
+      const pr = popoverEl.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (left + pr.width + 12 > vw) left = Math.max(8, vw - pr.width - 12);
+      if (top + pr.height + 12 > vh) top = Math.max(8, r.top - pr.height - margin);
+      popoverEl.style.left = left + "px";
+      popoverEl.style.top = top + "px";
+    });
+  }
+
+  function attachPopoverCopyHandlers() {
+    popoverEl.querySelectorAll(".chat-pop-copy").forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const v = btn.dataset.copy || "";
+        if (copyToClipboard(v)) {
+          const old = btn.textContent;
+          btn.textContent = "✓";
+          setTimeout(() => { btn.textContent = old; }, 900);
+        }
+      });
+    });
+  }
+
+  function schedulePopoverShow(anchor, name) {
+    if (popoverHideTimer) { clearTimeout(popoverHideTimer); popoverHideTimer = null; }
+    if (popoverShowTimer) clearTimeout(popoverShowTimer);
+    popoverShowTimer = setTimeout(async () => {
+      popoverShowTimer = null;
+      const profile = await fetchProfile(name);
+      ensurePopover();
+      popoverEl.innerHTML = renderPopover(name, profile);
+      popoverEl.hidden = false;
+      popoverFor = name;
+      positionPopover(anchor);
+      attachPopoverCopyHandlers();
+    }, 250);
+  }
+
+  function schedulePopoverHide() {
+    if (popoverShowTimer) { clearTimeout(popoverShowTimer); popoverShowTimer = null; }
+    if (popoverHideTimer) clearTimeout(popoverHideTimer);
+    popoverHideTimer = setTimeout(() => {
+      popoverHideTimer = null;
+      if (popoverEl) popoverEl.hidden = true;
+      popoverFor = null;
+    }, 200);
+  }
+
+  // Делегированный hover на любую .chat-author внутри ленты.
+  $("chat-feed").addEventListener("mouseover", (ev) => {
+    const t = ev.target.closest(".chat-author");
+    if (!t) return;
+    const name = (t.textContent || "").trim();
+    if (!name) return;
+    schedulePopoverShow(t, name);
+  });
+  $("chat-feed").addEventListener("mouseout", (ev) => {
+    const t = ev.target.closest(".chat-author");
+    if (!t) return;
+    schedulePopoverHide();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && popoverEl && !popoverEl.hidden) {
+      popoverEl.hidden = true;
+      popoverFor = null;
+    }
+  });
+
   // Ссылка на профиль автора в TG / VK.
   //   TG: только если есть @username — у людей без публичного username
   //       единственный способ — поделиться контактом, ссылки нет.

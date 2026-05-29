@@ -156,5 +156,6 @@
     },
     chatMessageDelete: (id) => request("DELETE", `/chat/messages/${id}`),
     chatClearAll:      () => request("DELETE", "/chat/messages?confirm=yes"),
+    chatMemberProfile: (q) => request("GET", `/chat/members/profile?q=${encodeURIComponent(q)}`),
   };
 })();

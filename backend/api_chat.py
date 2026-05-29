@@ -245,6 +245,26 @@ def members_identity(
     return {"query": q, "variants": variants, "matched": bool(variants)}
 
 
+@router.get("/members/profile")
+def members_profile(
+    q: str = Query(..., min_length=1),
+    _: dict = Depends(require_officer),
+) -> dict:
+    """Полный профиль участника клана по любому из его имён.
+
+    Возвращает {found: bool, profile: {...}}. profile содержит
+    game_nick, display_name, tg_*, vk_* поля если они есть в зеркале.
+    """
+    m = db.resolve_identity_full(q)
+    if not m:
+        return {"found": False, "profile": None}
+    # Чистим служебные поля и пустые строки.
+    skip = {"key", "raw_json", "synced_at"}
+    profile = {k: v for k, v in m.items()
+               if k not in skip and v not in (None, "", 0, "0")}
+    return {"found": True, "profile": profile}
+
+
 @router.delete("/messages")
 def clear_archive(
     confirm: str = Query(default="", description="Должно быть 'yes'"),
