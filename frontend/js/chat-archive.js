@@ -1003,6 +1003,35 @@
     return (s || "").replace(MEDIA_PREFIX_RE, "");
   }
 
+  // Бот-мост ретранслирует сообщения между TG и VK. Когда кто-то отвечает
+  // на ретрансляцию, reply_to_text имеет формат "<метка чата> | <Автор>: <текст>",
+  // например «𝗧𝗚 𝗰𝗵𝗮𝘁 | Follk: а люди с вк видят чат в тг?»
+  // Оригинал тогда лежит в ПАРНОЙ платформе/чате, а не там же где reply.
+  const BOT_RELAY_RE = /^([^|]{1,30}?)\s*\|\s*([^:]{1,40}):\s*([\s\S]+)$/;
+  const PAIRED_CHATS = {
+    "2000000001":   "-1003868189678",  // general: vk peer ↔ tg chat
+    "-1003868189678": "2000000001",
+    "2000000002":   "-1003999223250",  // officers: vk peer ↔ tg chat
+    "-1003999223250": "2000000002",
+  };
+  function detectBotRelay(rt) {
+    const m = (rt || "").match(BOT_RELAY_RE);
+    if (!m) return null;
+    // NFKD: «𝗧𝗚 𝗰𝗵𝗮𝘁» → «TG chat», math-bold убирается.
+    const norm = m[1].normalize("NFKD").toLowerCase().trim();
+    let src;
+    if (norm.indexOf("tg") >= 0 || norm.indexOf("тг") >= 0
+        || norm.indexOf("telegram") >= 0) {
+      src = "tg";
+    } else if (norm.indexOf("vk") >= 0 || norm.indexOf("вк") >= 0
+        || norm.indexOf("вконтакте") >= 0) {
+      src = "vk";
+    } else {
+      return null;
+    }
+    return { src, author: m[2].trim(), text: m[3].trim() };
+  }
+
   function findReplyTargetIndex(platform, chatId, msgId) {
     if (!msgId) return -1;
     for (let i = 0; i < loaded.length; i++) {
@@ -1072,11 +1101,23 @@
   }
 
   function findReplyTarget(platform, chatId, msgId, replyUser, replyText) {
-    // Сначала пробуем точный поиск по msg_id, потом эвристику.
+    // 1) Точный поиск по msg_id, если есть.
     if (msgId) {
       const i = findReplyTargetIndex(platform, chatId, msgId);
       if (i >= 0) return i;
     }
+    // 2) Bot-relay: если reply_to_text имеет формат «TG чат | Автор: …»,
+    //    оригинал в ПАРНОЙ платформе/чате. Идём искать туда.
+    const relay = detectBotRelay(replyText);
+    if (relay && relay.src !== platform) {
+      const otherChat = PAIRED_CHATS[String(chatId)];
+      if (otherChat) {
+        const i = findReplyTargetHeuristic(
+          relay.src, otherChat, relay.author, relay.text);
+        if (i >= 0) return i;
+      }
+    }
+    // 3) Обычная эвристика по reply_to_user + reply_to_text
     return findReplyTargetHeuristic(platform, chatId, replyUser, replyText);
   }
 
