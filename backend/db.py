@@ -1455,6 +1455,23 @@ def _member_name_variants(m: dict) -> list[str]:
     return sorted(out)
 
 
+# Карта омоглифов «латиница → кириллица». Очень частая проблема:
+# «Мелодькa» (с латинской `a` в конце), «Лирия!» с латинской `и` и т.п.
+# Без этой нормализации FTS/identity не может сматчить «Мелодька» (кир)
+# с «Мелодькa» (микс) в clan_members → identity-резолв возвращает пусто.
+_HOMOGLYPHS_LAT2CYR = str.maketrans({
+    "a": "а", "e": "е", "o": "о", "p": "р", "c": "с", "y": "у", "x": "х",
+    "i": "і", "k": "к", "m": "м", "h": "н", "t": "т", "b": "ь",
+    "A": "А", "B": "В", "E": "Е", "H": "Н", "K": "К", "M": "М",
+    "O": "О", "P": "Р", "C": "С", "T": "Т", "Y": "У", "X": "Х",
+})
+
+
+def _norm_name(s: str) -> str:
+    """ё→е, lowercase, латинские омоглифы → кириллические."""
+    return (s or "").strip().lower().replace("ё", "е").translate(_HOMOGLYPHS_LAT2CYR)
+
+
 def resolve_identity_full(token: str) -> dict | None:
     """Найти автора по любому имени → вернуть профиль или None.
 
@@ -1467,7 +1484,7 @@ def resolve_identity_full(token: str) -> dict | None:
     Так popover работает И для зарегистрированных через /reg, И просто для
     участников чата которые ничего не регистрировали.
     """
-    t = (token or "").strip().lower().replace("ё", "е")
+    t = _norm_name(token)
     if not t or len(t) < 2:
         return None
 
@@ -1480,9 +1497,9 @@ def resolve_identity_full(token: str) -> dict | None:
                   "tg_last_name", "tg_display"):
             v = (m.get(f) or "").strip()
             if v:
-                haystack.append(v.lower().replace("ё", "е"))
+                haystack.append(_norm_name(v))
         for nick in (m.get("game_nick") or "").split(","):
-            nick = nick.strip().lower().replace("ё", "е")
+            nick = _norm_name(nick)
             if nick:
                 haystack.append(nick)
         for h in haystack:
@@ -1501,7 +1518,7 @@ def resolve_identity_full(token: str) -> dict | None:
     exact = []
     for m in matched:
         for f in _member_name_variants(m):
-            if f.lower().replace("ё", "е") == t:
+            if _norm_name(f) == t:
                 exact.append(m)
                 break
     if len(exact) == 1:
@@ -1547,11 +1564,13 @@ def resolve_identity(token: str) -> list[str]:
     """Найти участника клана по любому имени-варианту → вернуть все его
     известные имена. Возвращает [] если не нашли или нашли >1 (неоднозначно).
 
-    Сравнение case-insensitive с ё→е fold (как в FTS5 индексе).
+    Сравнение case-insensitive с ё→е fold + омоглифы латиницы → кириллицы
+    (Мелодькa с latin-a в clan_members стал бы непомачимым с «Мелодька»
+    кириллицей в запросе без этой нормализации).
     Для одной находки удобно сразу подставить — для нескольких слишком
     рискованно (можно зацепить чужого).
     """
-    t = (token or "").strip().lower().replace("ё", "е")
+    t = _norm_name(token)
     if not t or len(t) < 2:
         return []
     matched = []
@@ -1564,9 +1583,9 @@ def resolve_identity(token: str) -> list[str]:
                   "tg_last_name", "tg_display"):
             v = (m.get(f) or "").strip()
             if v:
-                haystack.append(v.lower().replace("ё", "е"))
+                haystack.append(_norm_name(v))
         for nick in (m.get("game_nick") or "").split(","):
-            nick = nick.strip().lower().replace("ё", "е")
+            nick = _norm_name(nick)
             if nick:
                 haystack.append(nick)
         for h in haystack:
@@ -1583,7 +1602,7 @@ def resolve_identity(token: str) -> list[str]:
     exact = []
     for m in matched:
         for f in _member_name_variants(m):
-            if f.lower().replace("ё", "е") == t:
+            if _norm_name(f) == t:
                 exact.append(m)
                 break
     if len(exact) == 1:
