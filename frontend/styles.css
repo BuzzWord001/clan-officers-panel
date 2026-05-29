@@ -1286,9 +1286,13 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 }
 .chat-time {
   margin-left: auto;
+  /* Все даты одинаковой ширины благодаря табличным цифрам и monospace. */
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: var(--text-dim);
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 .chat-reply {
   font-size: 11px;
@@ -1344,14 +1348,36 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   color: var(--muted);
   font-style: italic;
 }
-.chat-time-link {
+/* Кнопки переходов под сообщением */
+.chat-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.chat-action {
+  display: inline-block;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--accent-dim);
+  background: rgba(0, 0, 0, 0.35);
   color: var(--text-dim);
   text-decoration: none;
-  border-bottom: 1px dotted transparent;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+  border-radius: 2px;
 }
-.chat-time-link:hover {
+.chat-action:hover {
+  border-color: var(--accent);
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: rgba(0, 255, 65, 0.08);
+}
+.chat-action-tg:hover { color: #5dc2f0; border-color: #5dc2f0; }
+.chat-action-vk:hover { color: #87a9d4; border-color: #87a9d4; }
+.chat-action-jump {
+  border-style: dashed;
 }
 
 /* ─────── Author popover ─────── */

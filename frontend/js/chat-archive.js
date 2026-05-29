@@ -408,32 +408,34 @@
     }
   }
 
-  // Ссылка на оригинал сообщения в TG/VK. Возвращает null если ID не
-  // выглядит как реальный (например, для исторических migrated:... id).
-  function originalUrl(m) {
+  // Прямая ссылка на конкретное сообщение в Telegram. Только для приватных
+  // супергрупп вида -100xxxxxxxxxx → https://t.me/c/xxxxxxxxxx/{msg}.
+  // Открывается ТОЛЬКО у участников чата (как и сама ссылка диктует).
+  function originalTgUrl(m) {
+    if (m.platform !== "tg") return null;
     const mid = String(m.message_id || "");
     const cid = String(m.chat_id || "");
     if (!/^\d+$/.test(mid)) return null;       // mig:..., ts:... — не открыть
     if (!/^-?\d+$/.test(cid)) return null;
-    if (m.platform === "tg") {
-      // Приватные супергруппы: chat_id вида -100xxxxxxxxxx → t.me/c/xxxxxxxxxx/{msg}
-      const n = parseInt(cid, 10);
-      if (n < -1000000000000) {
-        const internal = -n - 1000000000000;
-        return `https://t.me/c/${internal}/${mid}`;
-      }
-      return null;
-    }
-    if (m.platform === "vk") {
-      // VK мульти-чат: peer = 2000000000 + chat_id → vk.com/im?sel=c{N}&msgid={cmid}
-      const n = parseInt(cid, 10);
-      if (n > 2000000000) {
-        const ci = n - 2000000000;
-        return `https://vk.com/im?sel=c${ci}&msgid=${mid}`;
-      }
-      return null;
+    const n = parseInt(cid, 10);
+    if (n < -1000000000000) {
+      const internal = -n - 1000000000000;
+      return `https://t.me/c/${internal}/${mid}`;
     }
     return null;
+  }
+
+  // Прямой VK-URL на конкретное сообщение в групповом чате не существует
+  // — peer_id `c{N}` локален для каждого пользователя (с одного аккаунта
+  // открывает СВОЙ N-й чат, а не наш SanTDeviL). Поэтому даём invite-link
+  // на сам чат: открывает у пользователя именно SanTDeviL-чат.
+  const VK_CHAT_INVITES = {
+    general:  "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+    officers: "https://vk.me/join/3tvOJ0uG27KtZXzFJVI6RJWyqLyeXwD9d8Q=",
+  };
+  function vkChatInviteUrl(m) {
+    if (m.platform !== "vk") return null;
+    return VK_CHAT_INVITES[m.chat_group] || null;
   }
   function groupLabel(g) {
     return g === "general" ? "общий" : g === "officers" ? "офицерский" : g;
@@ -686,10 +688,7 @@
     const icon = kind === "join" ? "➜" : "✕";
     const cls  = kind === "join" ? "join" : "leave";
     const time = fmtTs(m.sent_at);
-    const url = originalUrl(m);
-    const timeHtml = url
-      ? `<a class="chat-event-time" href="${escapeHtml(url)}" target="_blank" rel="noopener">${time}</a>`
-      : `<span class="chat-event-time">${time}</span>`;
+    const timeHtml = `<span class="chat-event-time">${time}</span>`;
     const nameHl = highlight(escapeHtml(m.user_display), highlightTerms.author);
     const delBtn = isAdmin
       ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
@@ -728,11 +727,10 @@
     const delBtn = isAdmin
       ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
       : "";
+    // Дата фиксированной ширины через monospace — все строки одинаковые
+    // визуально. Без стрелки/ссылки: переходы вынесены в кнопки внизу.
     const tsText = fmtTs(m.sent_at);
-    const url = originalUrl(m);
-    const timeHtml = url
-      ? `<a class="chat-time chat-time-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Открыть оригинал в ${platformBadge(m.platform)}">${tsText} ↗</a>`
-      : `<span class="chat-time" title="Оригинал недоступен (бэкфилл из JSONL)">${tsText}</span>`;
+    const timeHtml = `<span class="chat-time">${tsText}</span>`;
 
     // В continuation-режиме показываем только время справа компактно,
     // без полной шапки.
@@ -746,6 +744,23 @@
             ${timeHtml}
           </div>`;
 
+    // Кнопки переходов под сообщением. Показываем только в «первом»
+    // сообщении серии (cont=false) чтобы не плодить визуальный мусор.
+    let actions = "";
+    if (!cont) {
+      const parts = [];
+      const tgUrl = originalTgUrl(m);
+      const vkUrl = vkChatInviteUrl(m);
+      if (tgUrl) {
+        parts.push(`<a class="chat-action chat-action-tg" href="${escapeHtml(tgUrl)}" target="_blank" rel="noopener" title="Открыть это сообщение в Telegram">в Telegram ↗</a>`);
+      }
+      if (vkUrl) {
+        parts.push(`<a class="chat-action chat-action-vk" href="${escapeHtml(vkUrl)}" target="_blank" rel="noopener" title="Открыть наш ВК-чат (на конкретное сообщение VK ссылки не даёт)">в ВК ↗</a>`);
+      }
+      parts.push(`<button class="chat-action chat-action-jump" type="button" data-jump-id="${m.id}" title="Перейти к сообщению, сбросить фильтры (кроме выбора чата)">в архиве</button>`);
+      actions = `<div class="chat-actions">${parts.join("")}</div>`;
+    }
+
     return `
       <div class="chat-msg chat-msg-${m.platform}${fresh}${cont}" data-id="${m.id}">
         ${delBtn}
@@ -753,6 +768,7 @@
         ${reply}
         ${text}
         ${media}
+        ${actions}
       </div>
     `;
   }
@@ -1188,6 +1204,60 @@
     const replyText = r.dataset.replyText || "";
     if (!mid && !replyUser && !replyText) return;
     scrollToReply(platform, chatId, mid, replyUser, replyText, r);
+  });
+
+  // «в архиве» — сбрасывает все фильтры КРОМЕ выбора чата (общий/
+  // офицерский/все), затем подгружает страницы пока сообщение не
+  // окажется в loaded, и скроллит к нему с вспышкой.
+  async function jumpInArchive(targetId, btn) {
+    const grp = $("f-group").value;
+    let needReset = false;
+    for (const id of ["f-from", "f-to", "f-user", "f-search"]) {
+      const el = $(id);
+      if (el && el.value) { el.value = ""; el.classList.remove("invalid"); needReset = true; }
+    }
+    if (needReset) {
+      // Применить очищенные фильтры — это перезагрузит ленту без
+      // date/user/search-сужений.
+      await applyFilters();
+    }
+    // Проверяем что выбранный chat_group остался прежним.
+    if ($("f-group").value !== grp) {
+      $("f-group").value = grp;
+      await applyFilters();
+    }
+    if (btn) btn.classList.add("chat-reply-loading");
+    try {
+      let found = null;
+      for (let p = 0; p < 50; p++) {  // ~4000 сообщений lookup
+        const el = document.querySelector(
+          `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
+        if (el) { found = el; break; }
+        if (loaded.length < PAGE_SIZE) break;
+        if (loaded.length % PAGE_SIZE !== 0) break;
+        await load(false);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      if (found) {
+        found.scrollIntoView({ behavior: "smooth", block: "center" });
+        flashMessage(found);
+      } else if (btn) {
+        btn.classList.remove("chat-reply-loading");
+        btn.classList.add("chat-reply-notfound");
+        setTimeout(() => btn.classList.remove("chat-reply-notfound"), 1500);
+      }
+    } finally {
+      if (btn) btn.classList.remove("chat-reply-loading");
+    }
+  }
+
+  $("chat-feed").addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".chat-action-jump");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const id = parseInt(btn.dataset.jumpId, 10);
+    if (id) jumpInArchive(id, btn);
   });
 
   // ─────────────── Hover-zoom для фото/стикеров/GIF ───────────────
