@@ -1156,11 +1156,13 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
             identity_seed = raw_clean.replace('"', '').rstrip('*')
 
         # Identity-расширение: только для позитивов, без явной column-spec
-        # (от:Марина уже сужает колонку — двойное расширение не нужно)
-        # и только для нетривиальных длинных токенов (>=3 чтобы не
-        # расширять «я», «не», и т.п. чем угодно).
+        # (от:Марина уже сужает колонку — двойное расширение не нужно),
+        # НЕ для phrase (точная фраза — это точный запрос, не нужно ловить
+        # ник «Помощь» когда ищем «нужна помощь»), и только для нетривиальных
+        # длинных токенов (>=3 чтобы не расширять «я», «не», и т.п.).
         expanded = None
         if (expand_identity and not negate and column is None
+                and not is_phrase
                 and len(identity_seed.strip()) >= 3):
             try:
                 variants = resolve_identity(identity_seed)
@@ -1211,7 +1213,11 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
 
     if not positives:
         return '""'
-    pos = " ".join(positives)
+
+    # Между позитивами явный AND: implicit-AND через пробел в FTS5
+    # ломается когда соседствуют `column:"X"*` и OR-группа в скобках
+    # (парсер не может однозначно разделить выражения колонки и фразы).
+    pos = " AND ".join(positives)
     if negatives:
         return pos + " NOT (" + " OR ".join(negatives) + ")"
     return pos
