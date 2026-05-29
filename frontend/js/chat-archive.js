@@ -93,12 +93,21 @@
       // column prefix
       let target = "text";
       const lc = tok.toLowerCase();
-      const prefs = ["от:", "автор:", "author:", "from:"];
-      for (const p of prefs) {
+      const authorPrefs = ["от:", "автор:", "author:", "from:"];
+      const mentionPrefs = ["о:", "обсужд:", "упомин:", "mention:", "about:"];
+      let matched = false;
+      for (const p of authorPrefs) {
         if (lc.startsWith(p)) {
-          target = "author";
-          tok = tok.slice(p.length);
-          break;
+          target = "author"; tok = tok.slice(p.length); matched = true; break;
+        }
+      }
+      if (!matched) {
+        for (const p of mentionPrefs) {
+          if (lc.startsWith(p)) {
+            // Упоминания подсвечиваем в тексте (а не в имени автора —
+            // мы ведь нашли где о нём ГОВОРЯТ, не его сообщения).
+            target = "text"; tok = tok.slice(p.length); matched = true; break;
+          }
         }
       }
       if (tok.startsWith('"') && tok.endsWith('"') && tok.length >= 2) {

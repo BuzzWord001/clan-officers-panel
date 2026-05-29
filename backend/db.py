@@ -1009,6 +1009,11 @@ import re as _re
 _AUTHOR_PREFIXES = ("от:", "автор:", "author:", "from:")
 # Префикс явного выбора темы для расширения по словарю синонимов.
 _THEME_PREFIXES = ("тема:", "theme:")
+# Префикс «обсуждают X / говорят про X» — ищет упоминания человека В ТЕКСТАХ
+# других людей. Само имя расширяется через identity-резолв (все варианты
+# ника), но сообщения от самого X исключаются. Работает для всех известных
+# клану людей — clan_members и chat_users.
+_MENTION_PREFIXES = ("о:", "обсужд:", "упомин:", "mention:", "about:")
 # Токенизатор: квотированная фраза с опциональным минусом и звёздочкой,
 # либо обычное слово (тоже с опциональным минусом).
 _FTS_TOK_RE = _re.compile(r'-?"[^"]+"\*?|-?\S+', _re.UNICODE)
@@ -1144,6 +1149,7 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
 
         column = None
         is_theme = False
+        is_mention = False
         lower = raw.lower()
         for px in _AUTHOR_PREFIXES:
             if lower.startswith(px):
@@ -1156,6 +1162,12 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
                     is_theme = True
                     raw = raw[len(px):]
                     break
+            else:
+                for px in _MENTION_PREFIXES:
+                    if lower.startswith(px):
+                        is_mention = True
+                        raw = raw[len(px):]
+                        break
         raw_clean = raw  # без normalize — для identity-резолва
         raw = _normalize_for_fts(raw).strip()
         if not raw:
@@ -1184,6 +1196,47 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
                 continue
             base_phrase = f'"{clean}"*'
             identity_seed = raw_clean.replace('"', '').rstrip('*')
+
+        # «о:Мелодька» — упоминания человека В ТЕКСТАХ других пользователей.
+        # Резолвим все варианты ника через identity и:
+        #   1) Ищем любой вариант в тексте (OR-группа)
+        #   2) Исключаем сообщения где автор сам этот человек.
+        # Если человек не нашёлся — просто ищем по тексту как есть.
+        if is_mention and not negate:
+            try:
+                variants = resolve_identity(identity_seed)
+            except Exception:
+                variants = []
+            # Список всех вариантов имени (включая исходный seed).
+            names = []
+            seen = set()
+            for v in [identity_seed] + variants:
+                nv = (v or "").lower().replace("ё", "е").strip()
+                if not nv or nv in seen:
+                    continue
+                seen.add(nv)
+                safe = _normalize_for_fts(v).replace('"', '').strip()
+                if safe:
+                    names.append(safe)
+            if not names:
+                names = [_normalize_for_fts(identity_seed).replace('"', '').strip()]
+            # OR-группа по содержимому в тексте (text-колонка)
+            text_terms = []
+            user_terms = []
+            for n in names:
+                if " " in n:
+                    text_terms.append(f'text:"{n}"')
+                    user_terms.append(f'user_display:"{n}"')
+                else:
+                    text_terms.append(f'text:"{n}"*')
+                    user_terms.append(f'user_display:"{n}"*')
+            mention_q = (
+                "(" + " OR ".join(text_terms) + ")"
+                + " NOT ("
+                + " OR ".join(user_terms) + ")"
+            )
+            positives.append(mention_q)
+            continue
 
         # Identity-расширение: только для позитивов, без явной column-spec
         # (от:Марина уже сужает колонку — двойное расширение не нужно),
