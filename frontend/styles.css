@@ -20,7 +20,13 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+  font-family: "Cascadia Code", "Consolas", "Courier New", monospace,
+               "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji",
+               "Twemoji Mozilla", "Segoe UI Symbol";
+  /* font-variant-emoji: emoji форсирует цветной рендер на современных
+     Chrome/Edge/Firefox (символы типа ❤️/⭐ иначе могут рисоваться
+     чёрно-белым text-presentation на Linux/старых системах). */
+  font-variant-emoji: emoji;
   overflow-x: hidden;
 }
 
