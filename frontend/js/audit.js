@@ -10,10 +10,10 @@
   const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР" : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;
+  // CSS-гейт админ-группы вкладок через body[data-role].
+  document.body.setAttribute("data-role", me.role);
   const isAdmin = me.role === "admin";
   if (isAdmin) {
-    const tab = $("settings-tab");
-    if (tab) tab.hidden = false;
     $("clear-all").hidden = false;
   }
   $("logout-btn").addEventListener("click", async () => {

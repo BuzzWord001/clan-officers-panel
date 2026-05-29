@@ -822,10 +822,44 @@ footer.bottom {
 
 .tabs {
   display: flex;
+  align-items: flex-end;
   gap: 16px;
   margin-bottom: 16px;
   font-size: 12px;
   letter-spacing: 3px;
+  flex-wrap: wrap;
+}
+
+.tabs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tabs-group-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 2px;
+  opacity: 0.75;
+  font-weight: 600;
+}
+.tabs-group-links {
+  display: flex;
+  gap: 14px;
+}
+.tabs-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--accent-dim) 30%,
+    var(--accent-dim) 70%,
+    transparent
+  );
+  opacity: 0.5;
 }
 
 .tabs a {
@@ -838,6 +872,17 @@ footer.bottom {
   color: var(--accent);
   border-bottom-color: var(--accent);
   text-shadow: 0 0 6px var(--accent);
+}
+
+/* CSS-гейт админских табов: данные admin → body[data-role=admin]
+   выставляется в JS после API.me(). У офицеров и без сессии группа
+   «админ» и её разделитель не отображаются. */
+body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
+
+@media (max-width: 520px) {
+  .tabs { gap: 10px; }
+  .tabs-group-label { font-size: 8px; }
+  .tabs-sep { display: none; }
 }
 
 /* ────────────────────────────────────────────────────────────

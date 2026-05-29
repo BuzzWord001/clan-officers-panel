@@ -16,10 +16,9 @@
     return role.toUpperCase();
   }
   $("who").textContent = `${fmtRoleLabel(me.role)} • ${me.name}`;
-  if (me.role === "admin") {
-    const tab = $("settings-tab");
-    if (tab) tab.hidden = false;
-  }
+  // CSS-гейт админ-группы вкладок: body[data-role=admin] показывает
+  // .admin-only элементы. Без атрибута они скрыты (для офицеров).
+  document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
     window.location.href = "login.html";

@@ -10,6 +10,8 @@
     return;
   }
   $("who").textContent = `АДМИНИСТРАТОР • ${me.name}`;
+  // CSS-гейт админ-группы вкладок через body[data-role=admin].
+  document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
     window.location.href = "admin_login.html";

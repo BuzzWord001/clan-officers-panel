@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Архив переписки</title>
-  <link rel="stylesheet" href="styles.css?v=1779743288">
+  <link rel="stylesheet" href="styles.css?v=1779743289">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779743288" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779743289" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -35,10 +35,27 @@
 
     <main>
       <div class="tabs">
-        <a href="index.html">Реестр</a>
-        <a href="audit.html">История сайта</a>
-        <a href="chat-archive.html" class="active">Архив чатов</a>
-        <a href="settings.html" id="settings-tab" hidden>Настройки</a>
+        <div class="tabs-group">
+          <span class="tabs-group-label">сайт</span>
+          <div class="tabs-group-links">
+            <a href="index.html">Реестр</a>
+            <a href="audit.html">История сайта</a>
+          </div>
+        </div>
+        <div class="tabs-sep" aria-hidden="true"></div>
+        <div class="tabs-group">
+          <span class="tabs-group-label">чаты</span>
+          <div class="tabs-group-links">
+            <a href="chat-archive.html" class="active">Архив чатов</a>
+          </div>
+        </div>
+        <div class="tabs-sep admin-only" aria-hidden="true"></div>
+        <div class="tabs-group admin-only">
+          <span class="tabs-group-label">админ</span>
+          <div class="tabs-group-links">
+            <a href="settings.html" id="settings-tab">Настройки</a>
+          </div>
+        </div>
       </div>
 
       <div class="panel chat-filter-panel">
@@ -122,10 +139,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779743288"></script>
-  <script src="js/matrix.js?v=1779743288"></script>
-  <script src="js/api.js?v=1779743288"></script>
-  <script src="js/dateutil.js?v=1779743288"></script>
-  <script src="js/chat-archive.js?v=1779743288"></script>
+  <script src="config.js?v=1779743289"></script>
+  <script src="js/matrix.js?v=1779743289"></script>
+  <script src="js/api.js?v=1779743289"></script>
+  <script src="js/dateutil.js?v=1779743289"></script>
+  <script src="js/chat-archive.js?v=1779743289"></script>
 </body>
 </html>
