@@ -1440,19 +1440,44 @@ def list_clan_members() -> list[dict]:
 
 
 def _member_name_variants(m: dict) -> list[str]:
-    """Все известные имена-варианты одного человека для FTS5 OR-раскрытия."""
+    """Все известные имена-варианты одного человека для FTS5 OR-раскрытия.
+
+    Для multi-word полей («Марина Лобачёва») возвращаем И полную форму,
+    И отдельные слова (Марина, Лобачёва) длиной >=3 — иначе FTS не
+    найдёт упоминание только по имени без фамилии или наоборот.
+    @-префикс у usernames снимаем (его в реальных упоминаниях обычно нет).
+    """
     out: set[str] = set()
+
+    def add_with_split(v: str) -> None:
+        v = (v or "").strip().lstrip("@").strip()
+        if not v:
+            return
+        out.add(v)
+        # Multi-word → отдельные слова (исключаем стоп-слова и короткое).
+        if " " in v:
+            for word in v.split():
+                word = word.strip(",.;:!?@#-_/\\")
+                # Стоп-слова чтобы не цеплять «Иван Я» → «Я».
+                if len(word) >= 3 and word.lower() not in _NAME_STOPWORDS:
+                    out.add(word)
+
     for f in ("display_name", "vk_display", "vk_first", "vk_last",
               "vk_screen_name", "tg_username", "tg_first_name",
               "tg_last_name", "tg_display"):
-        v = (m.get(f) or "").strip()
-        if v:
-            out.add(v)
+        add_with_split(m.get(f) or "")
     for nick in (m.get("game_nick") or "").split(","):
-        nick = nick.strip()
-        if nick:
-            out.add(nick)
+        add_with_split(nick)
     return sorted(out)
+
+
+# Стоп-слова: служебные слова, склонения, инициалы, которые получаются
+# при split многословных имён и которые нельзя использовать как имя
+# (либо слишком общие, либо пусты по смыслу).
+_NAME_STOPWORDS = {
+    "ник", "имя", "тг", "вк", "tg", "vk", "id", "ид", "the", "and", "или",
+    "из", "от", "на", "по", "не", "да", "ну", "же",
+}
 
 
 # Карта омоглифов «латиница → кириллица». Очень частая проблема:
