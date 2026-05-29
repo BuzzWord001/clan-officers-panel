@@ -356,6 +356,9 @@
   // ─────────────── события ───────────────
 
   $("apply-btn").addEventListener("click", applyFilters);
+  // Переключение чата (Все/Общий/Офицерский) — сразу применяет фильтр
+  // без нажатия «Поиск»: естественное поведение для select-а.
+  $("f-group").addEventListener("change", applyFilters);
   $("reset-btn").addEventListener("click", () => {
     for (const id of ["f-group", "f-from", "f-to", "f-user", "f-search"]) {
       $(id).value = "";
