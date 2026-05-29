@@ -1380,7 +1380,22 @@
         // Auto-refresh теперь не должен тихо подгружать «новые» —
         // на самом деле это весь архив выше target, не свежие сообщения.
         inJumpMode = true;
-        showLoadNewer(true);
+        // Проверяем — есть ли реально что-то новее этого сообщения?
+        // Если target = самое свежее в архиве, кнопка «↑ Новее»
+        // бессмысленна. Один дешёвый запрос с limit=1.
+        try {
+          const probe = await API.chatList({
+            ...activeFilters, after_id: targetId, limit: 1,
+          });
+          showLoadNewer(Array.isArray(probe) && probe.length > 0);
+          // Если ничего нет наверху — мы фактически на самом свежем,
+          // auto-refresh снова безопасен.
+          if (!(Array.isArray(probe) && probe.length > 0)) {
+            inJumpMode = false;
+          }
+        } catch (_) {
+          showLoadNewer(true);
+        }
         requestAnimationFrame(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           flashMessage(el);
