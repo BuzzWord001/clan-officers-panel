@@ -901,9 +901,88 @@ import re as _re
 # Префиксы column-targeted поиска. После префикса значение матчится только
 # по полю user_display в FTS5 индексе.
 _AUTHOR_PREFIXES = ("от:", "автор:", "author:", "from:")
+# Префикс явного выбора темы для расширения по словарю синонимов.
+_THEME_PREFIXES = ("тема:", "theme:")
 # Токенизатор: квотированная фраза с опциональным минусом и звёздочкой,
 # либо обычное слово (тоже с опциональным минусом).
 _FTS_TOK_RE = _re.compile(r'-?"[^"]+"\*?|-?\S+', _re.UNICODE)
+
+
+# ── Клановые темы (словарь синонимов) ────────────────────────────────────
+# Каждая тема = список «стемов». Стем — это короткий корень слова, по
+# которому FTS5 с префикс-матчем (`стем*`) найдёт все формы:
+#   «руга» → ругаться, ругаются, ругань, ругал и т.п.
+#
+# Используется двумя способами:
+#   1. Явно: «тема:ссоры» → раскрывается в OR всех стемов темы.
+#   2. Автоматически: если обычное слово в запросе совпадает с одним из
+#      стемов любой темы — расширяется до OR всех стемов этой темы.
+#      Например, «ссориться» совпадает со стемом «ссор» темы «ссоры»
+#      → поиск найдёт также «ругаются», «конфликт», «обиделась» и т.п.
+CHAT_THEMES: dict[str, list[str]] = {
+    "ссоры":         ["руга", "ссор", "конфликт", "оскорб", "обид",
+                      "скандал", "срач", "токсик", "хамл", "мат"],
+    "рейды":         ["рейд", "поход", "босс", "инст", "пати", "патии",
+                      "сейв", "рб ", "ивент"],
+    "помощь":        ["помог", "помощ", "подскаж", "объясн", "научи",
+                      "ищу", "нужн", "как"],
+    "реклама":       ["рекла", "спам", "прода", "купл", "обмен"],
+    "благодарность": ["спасиб", "благодар", "спс", "thanks", "thx"],
+    "приветствие":   ["привет", "хай", "hello", "здаров", "ку", "йоу"],
+    "прощание":      ["пока", "до встр", "до завтр", "споки", "удач"],
+    "прокачка":      ["кач", "лвл", "уровн", "опыт", "экспа"],
+    "золото":        ["золот", "монет", "бартер", "лоты"],
+    "опоздание":     ["опазд", "опозд", "отсут", "не смогу", "не могу"],
+    "пвп":           ["пвп", "арен", "дуэл", "бой"],
+    "вопрос":        ["?", "почему", "зачем", "когда", "где", "кто"],
+}
+
+# Обратный индекс «стем → имя темы» для быстрого matching в поиске.
+_THEME_BY_STEM: dict[str, str] = {}
+for _t, _stems in CHAT_THEMES.items():
+    for _s in _stems:
+        _THEME_BY_STEM[_s.lower().replace("ё", "е").strip()] = _t
+
+
+def _stems_to_fts_or(stems: list[str]) -> str:
+    """OR-группа префикс-фраз для FTS5: ("стем1"* OR "стем2"* OR ...)."""
+    phrases = []
+    for s in stems:
+        clean = _normalize_for_fts(s).replace('"', '').strip()
+        if not clean:
+            continue
+        if " " in clean:
+            phrases.append(f'"{clean}"')   # FTS5 prefix не работает на phrase
+        else:
+            phrases.append(f'"{clean}"*')
+    return "(" + " OR ".join(phrases) + ")" if phrases else '""'
+
+
+def expand_theme(token: str) -> list[str] | None:
+    """Если token совпадает со стемом какой-то темы, вернёт список стемов
+    этой темы. Иначе None. Используется для автоматического расширения
+    обычных слов в запросе.
+    """
+    t = (token or "").lower().replace("ё", "е").strip()
+    if not t or len(t) < 3:
+        return None
+    if t in _THEME_BY_STEM:
+        return CHAT_THEMES[_THEME_BY_STEM[t]]
+    # Префиксный матч в обе стороны: «ссориться» начинается со «ссор»
+    for stem, theme in _THEME_BY_STEM.items():
+        if len(stem) < 3:
+            continue
+        if t.startswith(stem) or stem.startswith(t):
+            return CHAT_THEMES[theme]
+    return None
+
+
+def get_theme_stems(name: str) -> list[str] | None:
+    """Берёт стемы темы по имени (для синтаксиса тема:X)."""
+    n = (name or "").lower().replace("ё", "е").strip()
+    if not n:
+        return None
+    return CHAT_THEMES.get(n)
 
 
 def _normalize_for_fts(s: str) -> str:
@@ -937,16 +1016,32 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
             continue
 
         column = None
+        is_theme = False
         lower = raw.lower()
         for px in _AUTHOR_PREFIXES:
             if lower.startswith(px):
                 column = "user_display"
                 raw = raw[len(px):]
                 break
+        else:
+            for px in _THEME_PREFIXES:
+                if lower.startswith(px):
+                    is_theme = True
+                    raw = raw[len(px):]
+                    break
         raw_clean = raw  # без normalize — для identity-резолва
         raw = _normalize_for_fts(raw).strip()
         if not raw:
             continue
+
+        # Явный «тема:ссоры» → раскрываем в OR всех стемов темы.
+        if is_theme:
+            stems = get_theme_stems(raw_clean)
+            if stems:
+                phrase = _stems_to_fts_or(stems)
+                (negatives if negate else positives).append(phrase)
+                continue
+            # Тема неизвестна — fallback на обычный поиск этого слова.
 
         # Фраза в кавычках — точное совпадение без префикса
         is_phrase = raw.startswith('"') and raw.endswith('"') and len(raw) >= 2
@@ -995,6 +1090,18 @@ def _build_fts_query(user_q: str, expand_identity: bool = True) -> str:
                     else:
                         phrases.append(f'user_display:"{safe}"*')
                 expanded = "(" + " OR ".join(phrases) + ")"
+
+        # Theme-расширение для обычных слов (не для column, не для фраз):
+        # «ссориться» → "руга"* OR "ссор"* OR "конфликт"* … Срабатывает
+        # только если identity-резолв не нашёл человека (имена приоритетнее).
+        if (expand_identity and not negate and column is None
+                and not is_phrase and expanded is None):
+            stems = expand_theme(identity_seed)
+            if stems:
+                phrases = [base_phrase] + [_stems_to_fts_or(stems).strip("()").split(" OR ")[0]]
+                # Полностью переходим к stem-OR с включением исходного токена
+                base_or = _stems_to_fts_or(stems)
+                expanded = "(" + base_phrase + " OR " + base_or.strip("()") + ")"
 
         if expanded:
             phrase = expanded
