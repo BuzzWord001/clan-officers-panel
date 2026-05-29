@@ -124,7 +124,13 @@
     }
   }
 
+  // ID записи которая сейчас редактируется. Пока не null — auto-refresh
+  // таблицы паузится, чтобы перерисовка не убила inline-редактор пользователя.
+  let editingId = null;
+
   function onEdit(tr, r) {
+    editingId = r.id;
+
     const nickCell  = tr.querySelector(".nick");
     const titleCell = tr.querySelector(".title");
     const dateCell  = tr.querySelector(".date");
@@ -139,8 +145,29 @@
 
     DateRu.bindDateInput(dateCell.querySelector("input"));
 
-    actions.querySelector(".cancel").addEventListener("click", reload);
-    actions.querySelector(".save").addEventListener("click", async () => {
+    // Фокус на первое поле — удобно сразу набирать.
+    setTimeout(() => {
+      try {
+        const i = nickCell.querySelector("input");
+        i.focus();
+        i.select();
+      } catch (_) {}
+    }, 0);
+
+    async function finish() {
+      editingId = null;
+      await reload();
+    }
+
+    // Enter в любом поле = сохранить, Esc = отмена.
+    [nickCell, titleCell, dateCell, noteCell].forEach(cell => {
+      cell.querySelector("input").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); doSave(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); finish(); }
+      });
+    });
+
+    async function doSave() {
       const rusDate = dateCell.querySelector("input").value.trim();
       const iso = DateRu.parseRus(rusDate);
       if (!iso) {
@@ -155,11 +182,14 @@
       };
       try {
         await API.update(r.id, payload);
-        await reload();
+        await finish();
       } catch (e) {
         alert(`Не удалось сохранить: ${e.detail || e.message}`);
       }
-    });
+    }
+
+    actions.querySelector(".cancel").addEventListener("click", finish);
+    actions.querySelector(".save").addEventListener("click", doSave);
   }
 
   function esc(s) {
@@ -167,5 +197,6 @@
   }
 
   await reload();
-  setInterval(reload, 30000);
+  // Auto-refresh раз в 30 сек, но НЕ выбивает пользователя из редактирования.
+  setInterval(() => { if (editingId === null) reload(); }, 30000);
 })();
