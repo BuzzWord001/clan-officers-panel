@@ -1292,15 +1292,23 @@
       }
     }
     try {
-      const params = { ...activeFilters, after_id: newestId, limit: PAGE_SIZE };
-      const page = await API.chatList(params);
-      if (!page.length) {
+      // ASC + after_id = БЛИЖАЙШИЕ к newestId свежее (newestId+1, +2,
+      // ...). DESC дал бы самые свежие в архиве — пропуск целого окна
+      // между текущим положением и верхушкой, чат «телепортируется».
+      const params = {
+        ...activeFilters, after_id: newestId, limit: PAGE_SIZE,
+        order: "asc",
+      };
+      const pageAsc = await API.chatList(params);
+      if (!pageAsc.length) {
         // Дошли до самого свежего — выходим из jump-режима, auto-refresh
         // снова активен.
         showLoadNewer(false);
         inJumpMode = false;
         return;
       }
+      // Backend отдал ASC — разворачиваем в DESC для prepend сверху ленты.
+      const page = pageAsc.slice().reverse();
       const ids = page.map(m => m.id);
       newestId = Math.max(newestId, ...ids);
       loaded = page.concat(loaded);
@@ -1322,7 +1330,12 @@
           }
         });
       }
-      if (page.length < PAGE_SIZE) showLoadNewer(false);
+      // Если backend отдал меньше полной страницы — это самая верхушка,
+      // больше «новее» нет.
+      if (pageAsc.length < PAGE_SIZE) {
+        showLoadNewer(false);
+        inJumpMode = false;
+      }
     } catch (e) {
       console.error("loadNewer failed:", e);
     }
