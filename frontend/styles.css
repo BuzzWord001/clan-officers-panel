@@ -1233,6 +1233,20 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   color: var(--muted);
   cursor: help;
 }
+.chat-pop-unreg {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid #c9a14a;
+  color: #c9a14a;
+  cursor: help;
+}
+.chat-pop-seen {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}
 .chat-pop-section {
   padding: 6px 0;
 }

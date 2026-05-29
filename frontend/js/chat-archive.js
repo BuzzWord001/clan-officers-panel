@@ -257,10 +257,18 @@
     const inactiveBadge = inactive
       ? `<span class="chat-pop-inactive" title="Уже не в клановых чатах. Данные сохранены для архива.">не в чате</span>`
       : "";
+    const unregBadge = (profile.registered === false)
+      ? `<span class="chat-pop-unreg" title="Не зарегистрирован через /reg в клан. Данные взяты автоматически из его сообщений в чате.">не в клане</span>`
+      : "";
+    const seen = (profile._msg_count != null)
+      ? `<div class="chat-pop-seen">${profile._msg_count} сообщ.</div>`
+      : "";
     const head = `
       <div class="chat-pop-head">
         <span class="chat-pop-name">${escapeHtml(dn || name)}</span>
         ${inactiveBadge}
+        ${unregBadge}
+        ${seen}
       </div>`;
     const gameRow = game ? `
       <div class="chat-pop-section">

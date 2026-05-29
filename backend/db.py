@@ -211,6 +211,28 @@ CREATE TRIGGER IF NOT EXISTS chat_messages_au AFTER UPDATE ON chat_messages BEGI
                 REPLACE(REPLACE(new.user_display, 'ё', 'е'), 'Ё', 'Е'));
 END;
 
+-- Накопительная таблица «всех кто хоть раз писал в чат» — независимо от
+-- того зарегистрирован ли человек через /reg в клан или нет. Заполняется
+-- автоматически при каждом /chat/ingest. Для зарегистрированных есть
+-- более полная инфа в clan_members (TG+VK в одной записи); chat_users
+-- хранит только то что видит сам бот-мост: что у человека есть на ОДНОЙ
+-- платформе откуда он пишет.
+CREATE TABLE IF NOT EXISTS chat_users (
+    platform     TEXT NOT NULL,        -- 'tg' | 'vk'
+    user_id      TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    username     TEXT NOT NULL DEFAULT '',  -- @username (tg) / screen_name (vk)
+    first_seen   TEXT NOT NULL,
+    last_seen    TEXT NOT NULL,
+    msg_count    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (platform, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_users_display
+    ON chat_users(display_name);
+CREATE INDEX IF NOT EXISTS idx_chat_users_username
+    ON chat_users(username);
+
 -- Зеркало clan_members.json из clan-reg-bot. Используется для умного поиска
 -- в архиве: «Мелодька» автоматически расширяется в OR со всеми известными
 -- именами этого человека (игровой ник, имя в VK, @username в TG и т.п.).
@@ -768,6 +790,34 @@ CHAT_GROUPS = ("general", "officers")
 CHAT_PLATFORMS = ("tg", "vk")
 
 
+def _upsert_chat_user(conn: sqlite3.Connection, *, platform: str,
+                      user_id: str, display: str, username: str,
+                      sent_at: str) -> None:
+    """Накапливаем метаданные автора в chat_users. Username сохраняется
+    старый, если новый пустой (бот не всегда передаёт @username). Имя
+    наоборот всегда берётся свежее — люди меняют ники, и popover должен
+    показывать актуальное."""
+    if not user_id or user_id == "0":
+        return
+    conn.execute(
+        """INSERT INTO chat_users
+           (platform, user_id, display_name, username,
+            first_seen, last_seen, msg_count)
+           VALUES (?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(platform, user_id) DO UPDATE SET
+             display_name = excluded.display_name,
+             username     = CASE
+                              WHEN excluded.username != '' THEN excluded.username
+                              ELSE chat_users.username
+                            END,
+             last_seen    = excluded.last_seen,
+             msg_count    = chat_users.msg_count + 1
+        """,
+        (platform, str(user_id), display[:128], (username or "")[:64],
+         sent_at, sent_at),
+    )
+
+
 def ingest_chat_message(
     *,
     chat_group: str,
@@ -821,6 +871,12 @@ def ingest_chat_message(
                 (platform, str(chat_id), str(message_id)),
             ).fetchone()
             return {"id": row["id"] if row else 0, "duplicate": True}
+        # Накапливаем метаданные автора в chat_users (видна в popover
+        # для незарегистрированных).
+        _upsert_chat_user(
+            conn, platform=platform, user_id=str(user_id),
+            display=user_display, username=user_username, sent_at=sent_at,
+        )
         return {"id": cur.lastrowid, "duplicate": False}
 
 
@@ -1231,6 +1287,42 @@ def bulk_sync_clan_members(members: list[dict]) -> dict:
             "inactive": inactive, "at": now}
 
 
+def backfill_chat_users() -> dict:
+    """Перестроить chat_users из chat_messages. Используется один раз
+    после миграции, когда таблица только что создана и пустая, а в
+    chat_messages уже есть исторические записи."""
+    with connection() as conn:
+        conn.execute("DELETE FROM chat_users")
+        # GROUP BY platform+user_id, агрегируем счётчик и первое/последнее
+        rows = conn.execute(
+            """SELECT
+                 platform,
+                 user_id,
+                 MAX(user_display) AS display_name,
+                 MAX(user_username) AS username,
+                 MIN(sent_at) AS first_seen,
+                 MAX(sent_at) AS last_seen,
+                 COUNT(*) AS msg_count
+               FROM chat_messages
+               WHERE user_id != '' AND user_id != '0'
+               GROUP BY platform, user_id
+            """
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                """INSERT INTO chat_users
+                   (platform, user_id, display_name, username,
+                    first_seen, last_seen, msg_count)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (r["platform"], r["user_id"],
+                 (r["display_name"] or "")[:128],
+                 (r["username"] or "")[:64],
+                 r["first_seen"], r["last_seen"], r["msg_count"]),
+            )
+        n = conn.execute("SELECT count(*) FROM chat_users").fetchone()[0]
+    return {"created": n}
+
+
 def list_clan_members() -> list[dict]:
     with connection() as conn:
         rows = conn.execute(
@@ -1256,18 +1348,24 @@ def _member_name_variants(m: dict) -> list[str]:
 
 
 def resolve_identity_full(token: str) -> dict | None:
-    """Найти участника по любому имени → вернуть полный профиль или None.
+    """Найти автора по любому имени → вернуть профиль или None.
 
-    Логика поиска та же что и в resolve_identity (case-insensitive,
-    fold ё→е, ровно 1 матч либо exact-narrowing). Отличие — возвращаем
-    весь словарь участника, а не только список имён.
+    Стратегия:
+      1. Сначала ищем среди зарегистрированных (clan_members) — там
+         полная инфа TG+VK сразу. Если нашли — возвращаем + registered=True.
+      2. Если не нашли — fallback в chat_users (накопительная таблица всех
+         кто хоть раз писал). Возвращаем что есть + registered=False.
+
+    Так popover работает И для зарегистрированных через /reg, И просто для
+    участников чата которые ничего не регистрировали.
     """
     t = (token or "").strip().lower().replace("ё", "е")
     if not t or len(t) < 2:
         return None
+
+    # ── 1) clan_members (зарегистрированные) ──
     matched = []
-    members = list_clan_members()
-    for m in members:
+    for m in list_clan_members():
         haystack: list[str] = []
         for f in ("display_name", "vk_display", "vk_first", "vk_last",
                   "vk_screen_name", "tg_username", "tg_first_name",
@@ -1283,8 +1381,15 @@ def resolve_identity_full(token: str) -> dict | None:
             if t == h or (len(t) >= 3 and (t in h or h in t)):
                 matched.append(m)
                 break
+
+    def _mark(m: dict, source: str) -> dict:
+        out = dict(m)
+        out["_source"] = source
+        out["registered"] = (source == "clan_members")
+        return out
+
     if len(matched) == 1:
-        return matched[0]
+        return _mark(matched[0], "clan_members")
     exact = []
     for m in matched:
         for f in _member_name_variants(m):
@@ -1292,7 +1397,41 @@ def resolve_identity_full(token: str) -> dict | None:
                 exact.append(m)
                 break
     if len(exact) == 1:
-        return exact[0]
+        return _mark(exact[0], "clan_members")
+
+    # ── 2) chat_users (просто были в чате) ──
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_users WHERE "
+            "lower(display_name) = ? OR lower(username) = ? OR user_id = ?",
+            (t, t.lstrip("@"), token.strip()),
+        ).fetchall()
+        if not rows:
+            # Substring match (минимум 3 символа чтобы не цеплять «я»/«не»)
+            if len(t) >= 3:
+                rows = conn.execute(
+                    "SELECT * FROM chat_users WHERE "
+                    "lower(display_name) LIKE ? OR lower(username) LIKE ? "
+                    "ORDER BY msg_count DESC LIMIT 5",
+                    (f"%{t}%", f"%{t}%"),
+                ).fetchall()
+        if len(rows) == 1:
+            r = dict(rows[0])
+            # Преобразуем chat_users → совместимый с clan_members popover
+            out = {
+                "display_name": r["display_name"],
+                f"{r['platform']}_id": r["user_id"],
+                f"{r['platform']}_display": r["display_name"],
+                "_first_seen": r["first_seen"],
+                "_last_seen": r["last_seen"],
+                "_msg_count": r["msg_count"],
+            }
+            if r["username"]:
+                if r["platform"] == "tg":
+                    out["tg_username"] = r["username"]
+                else:
+                    out["vk_screen_name"] = r["username"]
+            return _mark(out, "chat_users")
     return None
 
 
