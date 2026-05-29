@@ -951,8 +951,26 @@
       newestId = Math.max(newestId, ...ids);
       ids.forEach(id => freshIds.add(id));
       // Сливаем: новые сверху + старые снизу. Дубликатов не будет — id > newestId.
+      // Если пользователь не в самом верху ленты (scroll > 50px) — фиксируем
+      // позицию anchor чтобы prepend не дёргал текущее место чтения.
+      let anchor = null, anchorTopBefore = 0;
+      if (window.scrollY > 50) {
+        const feed = $("chat-feed");
+        for (const el of feed.children) {
+          const rect = el.getBoundingClientRect();
+          if (rect.bottom > 0) {
+            anchor = el; anchorTopBefore = rect.top; break;
+          }
+        }
+      }
       loaded = page.concat(loaded);
       renderPrependTop(page);
+      if (anchor && anchor.isConnected) {
+        requestAnimationFrame(() => {
+          const delta = anchor.getBoundingClientRect().top - anchorTopBefore;
+          if (delta) window.scrollBy({ top: delta, left: 0, behavior: "instant" });
+        });
+      }
       // Снимаем «свежесть» через 6 сек, чтобы подсветка ушла.
       setTimeout(() => {
         ids.forEach(id => freshIds.delete(id));
@@ -1250,6 +1268,22 @@
   async function loadNewer() {
     if (newestId === null) return;
     $("chat-loading").hidden = false;
+    // Scroll-anchor: фиксируем первый видимый сейчас элемент. После того
+    // как сверху появятся новые сообщения, страница сместится — но мы
+    // восстановим scroll так, чтобы этот anchor остался в том же месте
+    // viewport. Пользователь видит как новые сообщения «выезжают» сверху,
+    // а его текущая позиция не двигается.
+    const feed = $("chat-feed");
+    let anchor = null;
+    let anchorTopBefore = 0;
+    for (const el of feed.children) {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > 0) {  // первый элемент чьё дно ещё в/ниже viewport top
+        anchor = el;
+        anchorTopBefore = rect.top;
+        break;
+      }
+    }
     try {
       const params = { ...activeFilters, after_id: newestId, limit: PAGE_SIZE };
       const page = await API.chatList(params);
@@ -1262,6 +1296,14 @@
       newestId = Math.max(newestId, ...ids);
       loaded = page.concat(loaded);
       renderPrependTop(page);
+      // Восстанавливаем позицию: смещаем scroll на сколько уехал anchor.
+      if (anchor && anchor.isConnected) {
+        requestAnimationFrame(() => {
+          const newRect = anchor.getBoundingClientRect();
+          const delta = newRect.top - anchorTopBefore;
+          if (delta) window.scrollBy({ top: delta, left: 0, behavior: "instant" });
+        });
+      }
       // Если запрос вернул МЕНЬШЕ полной страницы — это самый верх.
       if (page.length < PAGE_SIZE) showLoadNewer(false);
     } catch (e) {
