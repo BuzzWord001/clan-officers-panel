@@ -477,6 +477,21 @@
 
       // Photo / sticker — миниатюра, по клику открывается в новой вкладке,
       // на hover — большой overlay-zoom (см. chat-archive-zoom).
+      // Lottie .tgs (Telegram анимированные стикеры) — браузер не умеет
+      // рендерить через <img>. Показываем placeholder с возможностью скачать.
+      const isLottie = url && (
+        url.toLowerCase().endsWith(".tgs") ||
+        (m.mime || "").toLowerCase() === "application/x-tgsticker"
+      );
+      if (url && isLottie) {
+        const dl = downloadBtn(url, kind, name || "sticker.tgs");
+        return `<div class="chat-media-wrap chat-media-wrap-doc">
+                  <a class="chat-media chat-media-lottie" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Lottie-стикер .tgs — анимированный, скачай для просмотра в Telegram">
+                    🎬 анимированный стикер${size ? ' · ' + escapeHtml(size) : ''}
+                  </a>
+                  ${dl}
+                </div>`;
+      }
       if (url && (kind === "photo" || kind === "sticker" ||
                   kind === "sticker_anim_thumb" || kind === "animation")) {
         const dl = downloadBtn(url, kind, name);

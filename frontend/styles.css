@@ -1476,6 +1476,13 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 }
 .chat-media:hover { color: var(--accent); border-color: var(--accent); }
 .chat-media-placeholder { color: var(--muted); border-bottom-color: var(--muted); }
+.chat-media-lottie {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px dashed var(--accent-dim);
+  border-bottom-style: dashed;
+  background: rgba(0, 255, 65, 0.04);
+}
 
 /* Превью фото/стикеры/GIF */
 .chat-media-thumb {
