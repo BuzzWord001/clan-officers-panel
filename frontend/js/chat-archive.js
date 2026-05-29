@@ -470,7 +470,45 @@
     return `<div class="chat-reply chat-reply-dim">↩ ответ на сообщение</div>`;
   }
 
+  function detectEventKind(m) {
+    // События входа/выхода идут с media.kind = "event_join" / "event_leave".
+    for (const it of (m.media || [])) {
+      if (it && typeof it.kind === "string" && it.kind.startsWith("event_")) {
+        return it.kind.slice(6); // "join" | "leave" | ...
+      }
+    }
+    return null;
+  }
+
+  function renderEvent(m, kind) {
+    const icon = kind === "join" ? "➜" : "✕";
+    const cls  = kind === "join" ? "join" : "leave";
+    const time = fmtTs(m.sent_at);
+    const url = originalUrl(m);
+    const timeHtml = url
+      ? `<a class="chat-event-time" href="${escapeHtml(url)}" target="_blank" rel="noopener">${time}</a>`
+      : `<span class="chat-event-time">${time}</span>`;
+    const nameHl = highlight(escapeHtml(m.user_display), highlightTerms.author);
+    const delBtn = isAdmin
+      ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
+      : "";
+    return `
+      <div class="chat-event chat-event-${cls}" data-id="${m.id}">
+        ${delBtn}
+        <span class="chat-event-icon">${icon}</span>
+        <span class="chat-event-name chat-author">${nameHl}</span>
+        <span class="chat-event-text">${escapeHtml(m.text)}</span>
+        <span class="chat-event-group">${groupLabel(m.chat_group)} · ${platformBadge(m.platform)}</span>
+        ${timeHtml}
+      </div>
+    `;
+  }
+
   function renderMessage(m, prev) {
+    // События — отдельный плоский стиль (нет шапки/реплая/медиа)
+    const eventKind = detectEventKind(m);
+    if (eventKind) return renderEvent(m, eventKind);
+
     const reply = renderReply(m);
     const fresh = freshIds.has(m.id) ? " chat-msg-fresh" : "";
     const cont = isContinuation(m, prev) ? " chat-msg-cont" : "";

@@ -1100,6 +1100,45 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 .chat-msg-fresh {
   animation: chat-fresh-fade 6s ease-out forwards;
 }
+
+/* Системные сообщения о входе/выходе из чата */
+.chat-event {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border-left: 2px solid var(--muted);
+  font-style: italic;
+}
+.chat-event-join { border-left-color: #5fd35f; color: #a8d8a8; }
+.chat-event-leave { border-left-color: #c97a4a; color: #d8a888; }
+.chat-event-icon {
+  font-size: 13px;
+  font-style: normal;
+  font-weight: bold;
+  width: 16px;
+  text-align: center;
+}
+.chat-event-name { font-weight: 600; font-style: normal; }
+.chat-event-group {
+  font-size: 9px;
+  color: var(--muted);
+  margin-left: auto;
+  letter-spacing: 1px;
+  font-style: normal;
+}
+.chat-event-time {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-decoration: none;
+  font-style: normal;
+}
+.chat-event-time:hover { color: var(--accent); }
 @keyframes chat-fresh-fade {
   0%   { background: rgba(0, 255, 65, 0.18); box-shadow: 0 0 14px rgba(0, 255, 65, 0.35); }
   100% { background: rgba(0, 0, 0, 0.32); box-shadow: none; }
