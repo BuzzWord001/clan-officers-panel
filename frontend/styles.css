@@ -983,6 +983,33 @@ footer.bottom {
 .chat-hint-grid span {
   color: var(--text-dim);
 }
+.chat-hint-themes {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--accent-dim);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.9;
+}
+.chat-hint-themes-label {
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-right: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.chat-hint-themes code {
+  display: inline-block;
+  margin: 0 2px;
+  background: rgba(0, 255, 65, 0.08);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 7px;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0;
+}
 @media (max-width: 560px) {
   .chat-hint-grid {
     grid-template-columns: 1fr;
