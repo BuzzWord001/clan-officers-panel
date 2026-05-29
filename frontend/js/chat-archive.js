@@ -572,22 +572,34 @@
 
   function renderReply(m) {
     if (!m.reply_to_user && !m.reply_to_text && !m.reply_to_msg_id) return "";
-    // Платформенный ID цитируемого. Чтобы scroll'нуть к оригиналу, нужно
-    // знать (platform, chat_id, message_id) — chat_id/platform у текущего
-    // сообщения совпадают (ответы только в рамках одного чата).
     const tgtMid = String(m.reply_to_msg_id || "");
-    const dataAttrs = tgtMid
-      ? ` data-reply-platform="${escapeHtml(m.platform)}" data-reply-chat="${escapeHtml(m.chat_id)}" data-reply-mid="${escapeHtml(tgtMid)}"`
+    const replyUser = m.reply_to_user || "";
+    const replyText = m.reply_to_text || "";
+    // Кликабельность: либо есть msg_id (точный поиск), либо есть
+    // user+text — эвристический поиск по тексту в той же ленте.
+    const hasMid = Boolean(tgtMid);
+    const hasUserText = Boolean(replyUser || replyText);
+    const isClickable = hasMid || hasUserText;
+    const dataAttrs =
+      ` data-reply-platform="${escapeHtml(m.platform)}"`
+    + ` data-reply-chat="${escapeHtml(m.chat_id)}"`
+    + (hasMid ? ` data-reply-mid="${escapeHtml(tgtMid)}"` : "")
+    + ` data-reply-user="${escapeHtml(replyUser)}"`
+    + ` data-reply-text="${escapeHtml(replyText)}"`;
+    const cls = "chat-reply"
+              + (isClickable ? " chat-reply-clickable" : "")
+              + ((!replyUser && !replyText) ? " chat-reply-dim" : "");
+    const title = isClickable
+      ? (hasMid ? "Перейти к оригиналу"
+                : "Перейти к оригиналу (поиск по тексту)")
       : "";
-    const cls = "chat-reply" + (tgtMid ? " chat-reply-clickable" : "")
-                + ((!m.reply_to_user && !m.reply_to_text) ? " chat-reply-dim" : "");
-    if (m.reply_to_user || m.reply_to_text) {
-      const author = escapeHtml(m.reply_to_user || "");
-      const text = escapeHtml(m.reply_to_text || "");
-      return `<div class="${cls}"${dataAttrs} title="${tgtMid ? 'Перейти к оригинальному сообщению' : ''}">↩ <b>${author}:</b> ${text}</div>`;
+    if (replyUser || replyText) {
+      const author = escapeHtml(replyUser);
+      const text = escapeHtml(replyText);
+      return `<div class="${cls}"${dataAttrs} title="${title}">↩ <b>${author}:</b> ${text}</div>`;
     }
-    // legacy / migrated: только id, без автора и текста
-    return `<div class="${cls}"${dataAttrs}>↩ ответ на сообщение</div>`;
+    // legacy: только id, без автора и текста
+    return `<div class="${cls}"${dataAttrs} title="${title}">↩ ответ на сообщение</div>`;
   }
 
   function detectEventKind(m) {
@@ -887,6 +899,40 @@
     return -1;
   }
 
+  // Эвристический поиск оригинала по reply_to_user + reply_to_text,
+  // когда msg_id отсутствует (старые исторические reply из JSONL).
+  // Скоринг:
+  //   +3  m.text начинается с reply_to_text[:50]
+  //   +1  reply_to_text[:50] содержится в m.text
+  //   +2  m.user_display точно равен reply_to_user
+  //   +1  m.user_display содержит reply_to_user (или наоборот)
+  // Принимаем матч если score >= 3.
+  function findReplyTargetHeuristic(platform, chatId, replyUser, replyText) {
+    const userTrim = (replyUser || "").trim();
+    const textTrim = (replyText || "").trim().substring(0, 50);
+    if (!userTrim && !textTrim) return -1;
+    let best = -1, bestScore = 0;
+    for (let i = 0; i < loaded.length; i++) {
+      const m = loaded[i];
+      if (m.platform !== platform) continue;
+      if (String(m.chat_id) !== String(chatId)) continue;
+      let score = 0;
+      const mText = (m.text || "");
+      const mUser = (m.user_display || "");
+      if (textTrim) {
+        if (mText.startsWith(textTrim)) score += 3;
+        else if (mText.indexOf(textTrim) >= 0) score += 1;
+      }
+      if (userTrim) {
+        if (mUser === userTrim) score += 2;
+        else if (mUser.indexOf(userTrim) >= 0
+                 || userTrim.indexOf(mUser) >= 0) score += 1;
+      }
+      if (score > bestScore) { best = i; bestScore = score; }
+    }
+    return bestScore >= 3 ? best : -1;
+  }
+
   function flashMessage(el) {
     if (!el) return;
     el.classList.remove("chat-msg-flash");
@@ -895,19 +941,26 @@
     el.classList.add("chat-msg-flash");
   }
 
-  async function scrollToReply(platform, chatId, msgId, btn) {
-    let idx = findReplyTargetIndex(platform, chatId, msgId);
+  function findReplyTarget(platform, chatId, msgId, replyUser, replyText) {
+    // Сначала пробуем точный поиск по msg_id, потом эвристику.
+    if (msgId) {
+      const i = findReplyTargetIndex(platform, chatId, msgId);
+      if (i >= 0) return i;
+    }
+    return findReplyTargetHeuristic(platform, chatId, replyUser, replyText);
+  }
+
+  async function scrollToReply(platform, chatId, msgId, replyUser, replyText, btn) {
+    let idx = findReplyTarget(platform, chatId, msgId, replyUser, replyText);
     if (idx < 0) {
-      // Подгружаем страницами вглубь.
       const origLabel = btn ? btn.textContent : "";
       if (btn) btn.classList.add("chat-reply-loading");
       try {
         for (let p = 0; p < REPLY_LOOKUP_PAGES; p++) {
-          if (loaded.length < PAGE_SIZE) break; // мы и так на дне
+          if (loaded.length < PAGE_SIZE) break;
           await load(false);
-          idx = findReplyTargetIndex(platform, chatId, msgId);
+          idx = findReplyTarget(platform, chatId, msgId, replyUser, replyText);
           if (idx >= 0) break;
-          // дошли до конца архива
           if (loaded.length % PAGE_SIZE !== 0) break;
         }
       } finally {
@@ -915,10 +968,11 @@
       }
     }
     if (idx < 0) {
-      // Не нашли вообще
       if (btn) {
         const prev = btn.getAttribute("title") || "";
-        btn.setAttribute("title", "Оригинал не в архиве (удалён или вне выборки)");
+        btn.setAttribute("title",
+          msgId ? "Оригинал не в архиве (удалён или вне выборки)"
+                : "Оригинал не найден по тексту (попробуй искать вручную)");
         setTimeout(() => btn.setAttribute("title", prev), 3000);
       }
       return;
@@ -938,9 +992,11 @@
     ev.preventDefault();
     const platform = r.dataset.replyPlatform;
     const chatId = r.dataset.replyChat;
-    const mid = r.dataset.replyMid;
-    if (!mid) return;
-    scrollToReply(platform, chatId, mid, r);
+    const mid = r.dataset.replyMid || "";
+    const replyUser = r.dataset.replyUser || "";
+    const replyText = r.dataset.replyText || "";
+    if (!mid && !replyUser && !replyText) return;
+    scrollToReply(platform, chatId, mid, replyUser, replyText, r);
   });
 
   // ─────────────── Hover-zoom для фото/стикеров/GIF ───────────────
