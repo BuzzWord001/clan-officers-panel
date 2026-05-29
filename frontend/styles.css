@@ -1320,6 +1320,14 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   50%  { opacity: 1; }
   100% { opacity: 0.3; }
 }
+/* Visual feedback когда reply кликнули но оригинал не нашли. */
+.chat-reply-notfound {
+  animation: chat-reply-notfound-anim 1.5s ease-out;
+}
+@keyframes chat-reply-notfound-anim {
+  0%   { background: rgba(255, 60, 60, 0.35); border-left-color: #ff5050; }
+  100% { background: rgba(0, 255, 65, 0.05); border-left-color: var(--accent-dim); }
+}
 /* Подсветка сообщения, к которому проскроллили по reply */
 .chat-msg-flash {
   animation: chat-msg-flash-anim 1.6s ease-out;

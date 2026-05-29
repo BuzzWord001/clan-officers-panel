@@ -687,37 +687,73 @@
     `;
   }
 
-  function render(reset) {
-    const feed = $("chat-feed");
-    if (reset) feed.innerHTML = "";
-    // loaded — новые сверху. Для группировки prev для loaded[i] это
-    // loaded[i-1] (то что выше = новее = было отправлено ПОЗЖЕ).
-    feed.innerHTML = loaded.map((m, i) =>
-      renderMessage(m, loaded[i - 1])
-    ).join("");
+  function updateVisibility() {
     $("empty-state").hidden = loaded.length > 0;
     $("load-more-wrap").hidden = loaded.length === 0
       || loaded.length < PAGE_SIZE
       || loaded.length % PAGE_SIZE !== 0;
-    // Привязываем delete handlers (после innerHTML)
-    if (isAdmin) {
-      feed.querySelectorAll(".chat-msg-del").forEach(btn => {
-        btn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          const id = parseInt(btn.dataset.delId, 10);
-          if (!id) return;
-          if (!confirm("Удалить это сообщение из архива?")) return;
-          try {
-            await API.chatMessageDelete(id);
-            loaded = loaded.filter(m => m.id !== id);
-            render(true);
-            refreshStats();
-          } catch (e) {
-            alert("Не удалось удалить: " + (e.detail || e.message));
-          }
-        });
-      });
-    }
+  }
+
+  // Полная перерисовка с нуля (применение фильтров, начальная загрузка,
+  // delete сообщения). Тяжёлая операция — innerHTML wipe + refill, при
+  // 500+ messages блокирует main thread на сотни мс.
+  function renderReset() {
+    const feed = $("chat-feed");
+    feed.innerHTML = loaded.map((m, i) =>
+      renderMessage(m, loaded[i - 1])
+    ).join("");
+    updateVisibility();
+  }
+
+  // Дорисовать новые элементы СНИЗУ (load-more). Старые DOM не трогаем —
+  // никакого мерцания, никакой нагрузки на DOM кроме новых ~80 элементов.
+  // items — новые объекты из БД (уже добавлены в конец loaded[]).
+  function renderAppendBottom(items) {
+    if (!items || !items.length) { updateVisibility(); return; }
+    const feed = $("chat-feed");
+    // prev для первого нового = тот что был последний в loaded ДО append.
+    const prevForFirst = loaded[loaded.length - items.length - 1] || null;
+    const html = items.map((m, i) =>
+      renderMessage(m, i === 0 ? prevForFirst : items[i - 1])
+    ).join("");
+    feed.insertAdjacentHTML("beforeend", html);
+    updateVisibility();
+  }
+
+  // Дорисовать новые элементы СВЕРХУ (auto-refresh свежих сообщений).
+  function renderPrependTop(items) {
+    if (!items || !items.length) { updateVisibility(); return; }
+    const feed = $("chat-feed");
+    // items[items.length-1].prev = первый из старых был при добавлении
+    // последним для items[i-1]; для самого первого items[0] prev=null
+    // (так как это будет верх ленты).
+    const html = items.map((m, i) =>
+      renderMessage(m, items[i - 1])
+    ).join("");
+    feed.insertAdjacentHTML("afterbegin", html);
+    updateVisibility();
+  }
+
+  // Делегированный delete handler: один listener на всю ленту. Раньше
+  // привязывались handler'ы к каждой кнопке на каждом render — O(n) на
+  // каждой подгрузке. Теперь — один.
+  if (isAdmin) {
+    $("chat-feed").addEventListener("click", async (ev) => {
+      const btn = ev.target.closest(".chat-msg-del");
+      if (!btn) return;
+      ev.stopPropagation();
+      const id = parseInt(btn.dataset.delId, 10);
+      if (!id) return;
+      if (!confirm("Удалить это сообщение из архива?")) return;
+      try {
+        await API.chatMessageDelete(id);
+        loaded = loaded.filter(m => m.id !== id);
+        renderReset();
+        refreshStats();
+      } catch (e) {
+        alert("Не удалось удалить: " + (e.detail || e.message));
+      }
+    });
   }
 
   // ─────────────── фильтры ───────────────
@@ -747,17 +783,23 @@
       const params = { ...activeFilters, limit: PAGE_SIZE };
       if (!reset && oldestId !== null) params.before_id = oldestId;
       const page = await API.chatList(params);
-      if (reset) loaded = page;
-      else loaded = loaded.concat(page);
-      if (page.length) oldestId = page[page.length - 1].id;
-      render(reset);
+      if (reset) {
+        loaded = page;
+        if (page.length) oldestId = page[page.length - 1].id;
+        renderReset();
+      } else {
+        // load-more: добавляем новые в КОНЕЦ loaded, дорисовываем снизу
+        // без перерисовки старых.
+        loaded = loaded.concat(page);
+        if (page.length) oldestId = page[page.length - 1].id;
+        renderAppendBottom(page);
+      }
     } catch (e) {
       $("chat-feed").innerHTML =
         `<div class="empty">Ошибка: ${escapeHtml(e.detail || e.message)}</div>`;
     } finally {
       $("chat-loading").hidden = true;
     }
-    // Обновляем newest id для будущих auto-refresh запросов.
     if (loaded.length) newestId = Math.max(...loaded.map(m => m.id));
   }
 
@@ -794,7 +836,7 @@
       ids.forEach(id => freshIds.add(id));
       // Сливаем: новые сверху + старые снизу. Дубликатов не будет — id > newestId.
       loaded = page.concat(loaded);
-      render(true);
+      renderPrependTop(page);
       // Снимаем «свежесть» через 6 сек, чтобы подсветка ушла.
       setTimeout(() => {
         ids.forEach(id => freshIds.delete(id));
@@ -880,13 +922,14 @@
   }
 
   // ─────────────── Reply click-to-scroll ───────────────
-  // При клике на reply ищем в loaded оригинал. Если есть msg_id —
-  // точный поиск, можно идти вглубь до 8 страниц. Если только
-  // user+text (исторический reply из JSONL без id) — эвристика, идём
-  // максимум 3 страницы: дальше шанс попадания низкий, а каждая
-  // подгрузка перерисовывает всю ленту и может подвесить браузер.
+  // При клике на reply ищем в loaded оригинал.
+  // - Если есть msg_id — можно идти вглубь до 8 страниц (точный поиск).
+  // - Если только user+text (исторический reply из JSONL без id) —
+  //   эвристика, БЕЗ подгрузки. Подгрузка не помогает (если оригинал
+  //   старше — text-match ненадёжен и часто промахивается), но каждая
+  //   страница добавляет рендер DOM = мерцание ленты.
   const REPLY_LOOKUP_PAGES_MID = 8;
-  const REPLY_LOOKUP_PAGES_FUZZY = 3;
+  const REPLY_LOOKUP_PAGES_FUZZY = 0;
 
   // В JSONL архиве reply_to_text сохранён с media-префиксом ([фото],
   // [GIF], [стикер 😂], [фото, видео], [ссылка] и т.д.). Бот всегда
@@ -1000,10 +1043,16 @@
     }
     if (idx < 0) {
       if (btn) {
+        // Визуальный flash красным + tooltip — пользователь сразу
+        // видит что попытки перехода была, но не получилось.
+        btn.classList.remove("chat-reply-notfound");
+        void btn.offsetWidth;
+        btn.classList.add("chat-reply-notfound");
+        setTimeout(() => btn.classList.remove("chat-reply-notfound"), 1500);
         const prev = btn.getAttribute("title") || "";
         btn.setAttribute("title",
           msgId ? "Оригинал не в архиве (удалён или вне выборки)"
-                : "Оригинал не найден по тексту в загруженной выборке");
+                : "Оригинал не найден в загруженной выборке");
         setTimeout(() => btn.setAttribute("title", prev), 3000);
       }
       return;
