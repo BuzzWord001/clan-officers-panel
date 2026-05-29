@@ -953,26 +953,20 @@
       // Сливаем: новые сверху + старые снизу. Дубликатов не будет — id > newestId.
       // Если пользователь не в самом верху ленты — фиксируем anchor
       // чтобы prepend не дёргал текущее место чтения.
-      let anchor = null, anchorTopBefore = 0;
+      let anchor = null, anchorViewportTop = 0;
       if (window.scrollY > 50) {
         const feed = $("chat-feed");
         for (const el of feed.children) {
           const rect = el.getBoundingClientRect();
           if (rect.bottom > 0) {
-            anchor = el; anchorTopBefore = rect.top; break;
+            anchor = el; anchorViewportTop = rect.top; break;
           }
         }
       }
       loaded = page.concat(loaded);
       renderPrependTop(page);
       if (anchor && anchor.isConnected) {
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          const delta = anchor.getBoundingClientRect().top - anchorTopBefore;
-          if (Math.abs(delta) > 0.5) {
-            const sc = document.scrollingElement || document.documentElement;
-            sc.scrollTop = sc.scrollTop + delta;
-          }
-        }));
+        window.scrollTo(0, Math.max(0, anchor.offsetTop - anchorViewportTop));
       }
       // Снимаем «свежесть» через 6 сек, чтобы подсветка ушла.
       setTimeout(() => {
@@ -1270,19 +1264,20 @@
 
   async function loadNewer() {
     if (newestId === null) return;
-    // Scroll-anchor: фиксируем верхний видимый элемент. Используем
-    // прямой scrollTop вместо scrollBy({behavior:"instant"}) — instant
-    // поддерживается не во всех браузерах, а scrollTop=N работает
-    // надёжно везде. Двойной RAF гарантирует что layout успел обновиться
-    // после insertAdjacentHTML.
+    // Scroll-anchor через offsetTop. После prepend целевое поведение:
+    //   newScrollY = anchor.offsetTop - anchorViewportTopBefore
+    // т.е. подгоняем scroll так, чтобы anchor оказался в той же точке
+    // viewport где был перед prepend. offsetTop устойчив к перерендеру
+    // и не страдает от race с layout (в отличие от getBoundingClientRect
+    // прямо после innerHTML modification).
     const feed = $("chat-feed");
     let anchor = null;
-    let anchorTopBefore = 0;
+    let anchorViewportTop = 0;
     for (const el of feed.children) {
       const rect = el.getBoundingClientRect();
       if (rect.bottom > 0) {
         anchor = el;
-        anchorTopBefore = rect.top;
+        anchorViewportTop = rect.top;
         break;
       }
     }
@@ -1298,16 +1293,21 @@
       loaded = page.concat(loaded);
       renderPrependTop(page);
       if (anchor && anchor.isConnected) {
-        // Двойной RAF: 1й — отдаём управление, браузер делает paint
-        // и layout; 2й — после этого читаем actual position.
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          const newTop = anchor.getBoundingClientRect().top;
-          const delta = newTop - anchorTopBefore;
-          if (Math.abs(delta) > 0.5) {
-            const sc = document.scrollingElement || document.documentElement;
-            sc.scrollTop = sc.scrollTop + delta;
+        // Сразу синхронно (после insertAdjacentHTML layout уже корректен
+        // для offsetTop — он не требует paint). Никаких RAF, никаких
+        // окон когда браузер успеет «помочь» своим scroll-anchoring.
+        const newScrollY = anchor.offsetTop - anchorViewportTop;
+        window.scrollTo(0, Math.max(0, newScrollY));
+        // Страховка: ещё раз после следующего frame — на случай если
+        // изображения только сейчас догрузились и подвинули layout.
+        requestAnimationFrame(() => {
+          if (anchor.isConnected) {
+            const corrected = anchor.offsetTop - anchorViewportTop;
+            if (Math.abs(corrected - window.scrollY) > 1) {
+              window.scrollTo(0, Math.max(0, corrected));
+            }
           }
-        }));
+        });
       }
       if (page.length < PAGE_SIZE) showLoadNewer(false);
     } catch (e) {
