@@ -936,17 +936,14 @@
   function showZoom(anchor, url) {
     ensureZoom();
     zoomEl.innerHTML = `<img src="${escapeHtml(url)}" alt="zoom">`;
-    // На время загрузки прячем за экран (CSS уже ставит left:-10000),
-    // чтобы не было flash в (0,0). Hidden=false здесь не ставим — это
-    // делает reposition после первого вычисления координат.
     zoomEl.style.left = "-10000px";
     zoomEl.hidden = false;
     zoomFor = anchor;
 
     const reposition = () => {
-      // Anchor мог уже не существовать (DOM обновился) — в этом случае
-      // прячем zoom.
-      if (!anchor.isConnected || zoomFor !== anchor) { hideZoom(); return; }
+      // Если за время raf пользователь уже отвёл мышь / открыл другой
+      // zoom — не позиционируем. hideZoom уже сработал отдельно.
+      if (zoomFor !== anchor || !anchor.isConnected) return;
       const r = anchor.getBoundingClientRect();
       const zr = zoomEl.getBoundingClientRect();
       const vw = window.innerWidth, vh = window.innerHeight;
@@ -963,9 +960,6 @@
     };
 
     requestAnimationFrame(reposition);
-    // Если картинка ещё не загрузилась — getBoundingClientRect вернёт
-    // некорректные размеры и условие «не влезает» сработает мимо. После
-    // загрузки пересчитываем.
     const img = zoomEl.querySelector("img");
     if (img && !img.complete) {
       img.addEventListener("load", () => requestAnimationFrame(reposition),
@@ -974,13 +968,24 @@
   }
 
   function hideZoom() {
-    if (zoomEl) zoomEl.hidden = true;
+    if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null; }
+    if (zoomEl) {
+      zoomEl.hidden = true;
+      zoomEl.style.left = "-10000px";
+    }
     zoomFor = null;
   }
 
+  // mouseenter/mouseleave не bubble и не работают через делегацию. Поэтому
+  // используем mouseover/mouseout + relatedTarget guard: переход между
+  // потомками одного thumb не должен считаться уходом.
   $("chat-feed").addEventListener("mouseover", (ev) => {
     const t = ev.target.closest(".chat-media-thumb");
     if (!t) return;
+    // Уже навели на этот же thumb — таймер не перезапускаем.
+    if (zoomFor === t) return;
+    const from = ev.relatedTarget;
+    if (from && t.contains(from)) return;
     const url = t.dataset.zoomUrl || "";
     if (!url) return;
     if (zoomTimer) clearTimeout(zoomTimer);
@@ -989,10 +994,31 @@
   $("chat-feed").addEventListener("mouseout", (ev) => {
     const t = ev.target.closest(".chat-media-thumb");
     if (!t) return;
-    if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null; }
+    const to = ev.relatedTarget;
+    // Уход на потомка того же thumb — не считаем выходом, оверлей живёт.
+    if (to && t.contains(to)) return;
+    hideZoom();
+  });
+  // Safety-net: если пользователь перевёл фокус мыши на тело страницы вне
+  // .chat-feed (через scroll, alt+tab, …) — гарантированно прячем оверлей.
+  document.addEventListener("mousemove", (ev) => {
+    if (!zoomFor) return;
+    const r = zoomFor.getBoundingClientRect();
+    const x = ev.clientX, y = ev.clientY;
+    // Outside текущего thumb по ОБЕИМ осям + outside зоны самого overlay
+    // (overlay pointer-events:none, но координатно может перекрывать).
+    const insideThumb = x >= r.left - 2 && x <= r.right + 2
+                     && y >= r.top - 2 && y <= r.bottom + 2;
+    if (insideThumb) return;
+    const zr = zoomEl && !zoomEl.hidden ? zoomEl.getBoundingClientRect() : null;
+    const insideZoom = zr
+      && x >= zr.left - 2 && x <= zr.right + 2
+      && y >= zr.top - 2 && y <= zr.bottom + 2;
+    if (insideZoom) return;
     hideZoom();
   });
   window.addEventListener("scroll", hideZoom, true);
+  window.addEventListener("blur", hideZoom);
 
   // ─────────────── Download fallback (blob) ───────────────
   // Атрибут `download` у <a> не сработает если R2 шлёт inline без
