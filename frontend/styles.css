@@ -983,6 +983,24 @@ footer.bottom {
 .chat-hint-grid span {
   color: var(--text-dim);
 }
+.chat-hint-note {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent-dim);
+  background: rgba(0, 255, 65, 0.04);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.chat-hint-note code {
+  background: rgba(0, 255, 65, 0.08);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0;
+}
 .chat-hint-themes {
   margin-top: 8px;
   padding-top: 8px;

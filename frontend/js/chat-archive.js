@@ -718,17 +718,19 @@
     });
   });
   // Примеры в первой части подсказки (Мелодька, рейд, "нужна помощь", ...)
-  // — тоже кликабельные. textContent — это сам пример, его и подставляем.
-  document.querySelectorAll(".chat-hint-grid code").forEach(el => {
-    el.style.cursor = "pointer";
-    el.addEventListener("click", () => {
-      const q = (el.textContent || "").trim();
-      if (!q) return;
-      $("f-search").value = q;
-      $("f-search").focus();
-      applyFilters();
+  // и в строке про минус — все <code> кликабельные. textContent даёт сам
+  // запрос как есть, его и подставляем.
+  document.querySelectorAll(".chat-hint-grid code, .chat-hint-note code")
+    .forEach(el => {
+      el.style.cursor = "pointer";
+      el.addEventListener("click", () => {
+        const q = (el.textContent || "").trim();
+        if (!q) return;
+        $("f-search").value = q;
+        $("f-search").focus();
+        applyFilters();
+      });
     });
-  });
   $("reset-btn").addEventListener("click", () => {
     for (const id of ["f-group", "f-from", "f-to", "f-user", "f-search"]) {
       $(id).value = "";
