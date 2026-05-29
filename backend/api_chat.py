@@ -328,6 +328,94 @@ def media_backfill_update(payload: BackfillUpdateIn,
     return {"updated": 1}
 
 
+# ── MEDIA DOWNLOAD PROXY ──────────────────────────────────────────────────
+# R2 dev URL не даёт CORS, поэтому fetch+blob с фронта не работает напрямую.
+# Прокси из FastAPI: офицер → backend → R2 → офицер с Content-Disposition.
+# Whitelist URL'ов: только наш R2 public domain, ничего другого.
+
+import re as _re
+from urllib.parse import urlparse, unquote
+from fastapi.responses import StreamingResponse
+
+
+_R2_DOMAIN_RE = _re.compile(
+    r"^pub-[0-9a-f]+\.r2\.dev$|"
+    r"^[0-9a-f]+\.r2\.cloudflarestorage\.com$",
+    _re.IGNORECASE,
+)
+
+
+def _safe_filename(name: str, fallback: str = "file") -> str:
+    """Безопасное имя для Content-Disposition. Убираем спецсимволы.
+    Не позволяем path-traversal или новые строки."""
+    name = (name or "").strip()
+    if not name:
+        name = fallback
+    # Только буквы/цифры/основные знаки. Иные → подчёркивание.
+    name = _re.sub(r"[\\/:*?\"<>|\r\n\x00-\x1f]", "_", name)
+    return name[:200] or fallback
+
+
+@router.get("/media/download")
+def media_download(
+    u: str = Query(..., description="R2 URL (наш public домен)"),
+    name: str | None = Query(default=None, description="Имя файла для save-as"),
+    _: dict = Depends(require_officer),
+):
+    """Проксирует скачивание R2 → клиенту с Content-Disposition: attachment.
+    Без этого браузер при cross-origin fetch упирается в CORS и не может
+    отдать blob; а `<a download>` с непрямым атрибутом всё равно открывает
+    inline для image/video/audio mime."""
+    # Проверка URL
+    try:
+        parsed = urlparse(u)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_url")
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_scheme")
+    if not _R2_DOMAIN_RE.match(parsed.netloc or ""):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "domain_not_allowed")
+
+    import requests as _req
+    try:
+        upstream = _req.get(u, stream=True, timeout=30)
+    except Exception as e:
+        log.warning("media proxy fail %s: %s", u[:80], e)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "upstream_error")
+    if upstream.status_code != 200:
+        upstream.close()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY,
+                            f"upstream_{upstream.status_code}")
+
+    ctype = upstream.headers.get("Content-Type", "application/octet-stream")
+    clen = upstream.headers.get("Content-Length")
+
+    # Имя файла: query param > последний segment URL > "file"
+    if not name:
+        try:
+            name = (parsed.path or "").rsplit("/", 1)[-1]
+            name = unquote(name) or "file"
+        except Exception:
+            name = "file"
+    safe = _safe_filename(name)
+
+    def gen():
+        try:
+            for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{safe}"',
+        "Cache-Control": "private, max-age=0, no-store",
+    }
+    if clen:
+        headers["Content-Length"] = clen
+    return StreamingResponse(gen(), media_type=ctype, headers=headers)
+
+
 @router.post("/members/bulk-sync")
 def members_bulk_sync(payload: MembersBulkSync,
                       _=Depends(require_bot_token)) -> dict:

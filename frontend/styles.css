@@ -1574,7 +1574,17 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 }
 /* Видео-обёртка — кнопку чуть глубже от рамки чтобы не перекрывать controls */
 .chat-media-wrap-video .chat-media-dl { top: 6px; right: 6px; }
-.chat-media-wrap-audio .chat-media-dl,
+/* У audio плеера нет «угла» как такового — добавляем padding-top чтобы
+   кнопка не перекрывала контролы, и держим её абсолютно в правом верхнем. */
+.chat-media-wrap-audio {
+  padding-top: 0;
+}
+.chat-media-wrap-audio .chat-media-dl {
+  top: 4px;
+  right: 4px;
+  opacity: 1;
+}
+/* Document — плоская карточка без рамки; кнопку оставляем inline. */
 .chat-media-wrap-doc .chat-media-dl {
   position: static;
   opacity: 1;

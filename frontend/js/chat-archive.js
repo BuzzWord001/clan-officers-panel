@@ -454,16 +454,26 @@
     return kind || "file";
   }
 
-  // Маленькая «скачать» кнопка-оверлей. Cross-origin download через
-  // <a download> для R2 работает (Cloudflare CORS public bucket позволяет
-  // GET с Origin=*); если браузер всё же откроет файл вместо скачивания,
-  // fallback на blob делает chat-archive-download-fallback.
+  // Маленькая «скачать» кнопка-оверлей. Под капотом — backend-proxy
+  // /chat/media/download (с Content-Disposition: attachment). Клик
+  // перехватывается JS: fetch с Bearer-токеном → blob → программный
+  // click — браузер сохраняет файл, а не открывает inline.
+  function buildDownloadHref(url, name) {
+    const base = ((window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL)
+                  || "").replace(/\/$/, "");
+    if (!base) return url;
+    const u = new URL(base + "/chat/media/download");
+    u.searchParams.set("u", url);
+    if (name) u.searchParams.set("name", name);
+    return u.toString();
+  }
   function downloadBtn(url, kind, name) {
     if (!url) return "";
-    const fn = escapeHtml(downloadFileName(url, kind, name));
-    return `<a class="chat-media-dl" href="${escapeHtml(url)}" download="${fn}"
-              data-dl-url="${escapeHtml(url)}" data-dl-name="${fn}"
-              title="Скачать ${fn}">⬇</a>`;
+    const fn = downloadFileName(url, kind, name);
+    const dlHref = buildDownloadHref(url, fn);
+    return `<a class="chat-media-dl" href="${escapeHtml(dlHref)}" download="${escapeHtml(fn)}"
+              data-dl-href="${escapeHtml(dlHref)}" data-dl-name="${escapeHtml(fn)}"
+              title="Скачать ${escapeHtml(fn)}">⬇</a>`;
   }
 
   function renderMedia(media) {
@@ -492,8 +502,10 @@
                   ${dl}
                 </div>`;
       }
-      if (url && (kind === "photo" || kind === "sticker" ||
-                  kind === "sticker_anim_thumb" || kind === "animation")) {
+      // Hover-zoom только для kind=photo. У стикеров/смайликов/GIF
+      // оригинал такого же мелкого размера (~512px), и зум только
+      // мешает — оставляем привычный thumbnail.
+      if (url && kind === "photo") {
         const dl = downloadBtn(url, kind, name);
         return `<div class="chat-media-wrap">
                   <a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-zoom-url="${escapeHtml(url)}" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
@@ -502,25 +514,39 @@
                   ${dl}
                 </div>`;
       }
-      // Video / video_note / animated sticker — нативный плеер прямо в ленте.
+      if (url && (kind === "sticker" ||
+                  kind === "sticker_anim_thumb" || kind === "animation")) {
+        const dl = downloadBtn(url, kind, name);
+        return `<div class="chat-media-wrap">
+                  <a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
+                    <img loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(kind)}">
+                  </a>
+                  ${dl}
+                </div>`;
+      }
+      // Video / video_note / sticker_video — нативный плеер прямо в ленте.
+      // controlslist=nodownload убирает встроенный «download» из 3-точечного
+      // меню — оставляем единственный путь через нашу кнопку ⬇.
       if (url && (kind === "video" || kind === "video_note" ||
                   kind === "sticker_video")) {
         const dl = downloadBtn(url, kind, name);
         return `<div class="chat-media-wrap chat-media-wrap-video">
-                  <video class="chat-media-video" controls preload="metadata" src="${escapeHtml(url)}">
+                  <video class="chat-media-video" controls controlslist="nodownload" preload="metadata" src="${escapeHtml(url)}">
                     <a href="${escapeHtml(url)}" target="_blank" rel="noopener">скачать видео</a>
                   </video>
                   ${dl}
                 </div>`;
       }
-      // Voice / audio — audio-плеер.
+      // Voice / audio — audio-плеер. controlslist=nodownload убирает
+      // встроенную «скачать» из 3-точечного меню — оставляем единственный
+      // путь через нашу кнопку ⬇ (она угол wrap'а).
       if (url && (kind === "voice" || kind === "audio")) {
         const icon = kind === "voice" ? "🎙" : "🎵";
         const dl = downloadBtn(url, kind, name);
         return `<div class="chat-media-wrap chat-media-wrap-audio">
                   <div class="chat-media-audio">
                     <span class="chat-media-audio-icon">${icon}</span>
-                    <audio controls preload="none" src="${escapeHtml(url)}"></audio>
+                    <audio controls controlslist="nodownload" preload="none" src="${escapeHtml(url)}"></audio>
                   </div>
                   ${dl}
                 </div>`;
@@ -1020,20 +1046,26 @@
   window.addEventListener("scroll", hideZoom, true);
   window.addEventListener("blur", hideZoom);
 
-  // ─────────────── Download fallback (blob) ───────────────
-  // Атрибут `download` у <a> не сработает если R2 шлёт inline без
-  // Content-Disposition. Делегированно перехватываем клик, делаем fetch
-  // → blob → программный клик. Если fetch упал (CORS) — даём оригинальной
-  // ссылке открыть файл (preventDefault не зовём в этом случае).
+  // Скачивание: перехватываем клик, шлём fetch с Authorization Bearer
+  // (cross-origin cookies в Brave/Yandex/ETP могут не доходить — Bearer
+  // фолбэк надёжнее). Получаем blob, сохраняем через программный <a>.
   $("chat-feed").addEventListener("click", async (ev) => {
     const btn = ev.target.closest(".chat-media-dl");
     if (!btn) return;
-    const url = btn.dataset.dlUrl;
+    const href = btn.dataset.dlHref;
     const name = btn.dataset.dlName || "file";
-    if (!url) return;
+    if (!href) return;
     ev.preventDefault();
+    let tok = "";
+    try { tok = localStorage.getItem("officer_session_token") || ""; }
+    catch (_) {}
+    const origLabel = btn.textContent;
+    btn.textContent = "…";
     try {
-      const r = await fetch(url);
+      const r = await fetch(href, {
+        credentials: "include",
+        headers: tok ? { "Authorization": "Bearer " + tok } : {},
+      });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const blob = await r.blob();
       const objUrl = URL.createObjectURL(blob);
@@ -1044,9 +1076,12 @@
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
-    } catch (_) {
-      // CORS / network — открываем в новой вкладке
-      window.open(url, "_blank", "noopener");
+      btn.textContent = "✓";
+      setTimeout(() => { btn.textContent = origLabel; }, 1000);
+    } catch (e) {
+      btn.textContent = origLabel;
+      console.error("download failed:", e);
+      alert("Не удалось скачать файл: " + (e.message || e));
     }
   });
 
