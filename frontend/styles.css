@@ -1692,6 +1692,19 @@ video.chat-media-thumb {
   text-align: center;
   margin-top: 16px;
 }
+.chat-load-newer {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.chat-load-newer button {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+}
+.chat-load-newer button:hover {
+  background: rgba(0, 255, 65, 0.1);
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    Таблица «Участники» (chat-members.html)

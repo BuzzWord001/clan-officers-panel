@@ -922,6 +922,9 @@
     oldestId = null;
     newestId = null;
     freshIds.clear();
+    // Обычный поиск всегда начинается с самой свежей страницы — кнопка
+    // «↑ загрузить новее» не нужна.
+    showLoadNewer(false);
     await load(true);
     await refreshStats();
   }
@@ -1026,6 +1029,8 @@
     applyFilters();
   });
   $("load-more-btn").addEventListener("click", () => load(false));
+  const loadNewerBtn = $("load-newer-btn");
+  if (loadNewerBtn) loadNewerBtn.addEventListener("click", () => loadNewer());
 
   // Enter в любом поле фильтров = поиск
   for (const id of ["f-from", "f-to", "f-user", "f-search"]) {
@@ -1233,6 +1238,39 @@
     scrollToReply(platform, chatId, mid, replyUser, replyText, r);
   });
 
+  // Когда jumpInArchive прыгнул в середину архива, появляется кнопка
+  // «↑ Загрузить более новые» — она показывает что лента сейчас не
+  // упёрта в самый верх и можно догрузить более свежие сообщения над
+  // ней.
+  function showLoadNewer(visible) {
+    const w = $("load-newer-wrap");
+    if (w) w.hidden = !visible;
+  }
+
+  async function loadNewer() {
+    if (newestId === null) return;
+    $("chat-loading").hidden = false;
+    try {
+      const params = { ...activeFilters, after_id: newestId, limit: PAGE_SIZE };
+      const page = await API.chatList(params);
+      if (!page.length) {
+        // Дошли до самого свежего — кнопку скрываем.
+        showLoadNewer(false);
+        return;
+      }
+      const ids = page.map(m => m.id);
+      newestId = Math.max(newestId, ...ids);
+      loaded = page.concat(loaded);
+      renderPrependTop(page);
+      // Если запрос вернул МЕНЬШЕ полной страницы — это самый верх.
+      if (page.length < PAGE_SIZE) showLoadNewer(false);
+    } catch (e) {
+      console.error("loadNewer failed:", e);
+    } finally {
+      $("chat-loading").hidden = true;
+    }
+  }
+
   // «в архиве» — сбрасывает все фильтры КРОМЕ выбора чата и сразу
   // загружает страницу архива С target-сообщения вглубь. before_id=
   // target+1 гарантирует что target попадёт первым в выдаче — никаких
@@ -1281,6 +1319,10 @@
           `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
       }
       if (el) {
+        // После прыжка показываем кнопку «↑ Загрузить более новые» —
+        // пользователь стоит где-то в середине архива и над лентой
+        // ещё есть свежие сообщения.
+        showLoadNewer(true);
         requestAnimationFrame(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           flashMessage(el);
