@@ -35,6 +35,12 @@
   let loaded = [];
   // Минимальный id страницы — для следующего before_id.
   let oldestId = null;
+  // Флаг «прыгнули в середину архива». В этом режиме auto-refresh
+  // НЕ должен подгружать новые сообщения сверху сам — пользователь
+  // читает старый кусок, авто-добавления свежих ломают позицию.
+  // Сбрасывается при applyFilters / достижении верхушки через
+  // ↑ Загрузить более новые / Сброс.
+  let inJumpMode = false;
   // Максимальный id (самое свежее) — для auto-refresh after_id.
   let newestId = null;
   // Активные фильтры — фиксируем при «Поиск», чтобы load-more тянул ту же выборку.
@@ -923,8 +929,9 @@
     newestId = null;
     freshIds.clear();
     // Обычный поиск всегда начинается с самой свежей страницы — кнопка
-    // «↑ загрузить новее» не нужна.
+    // «↑ загрузить новее» не нужна, auto-refresh снова работает.
     showLoadNewer(false);
+    inJumpMode = false;
     await load(true);
     await refreshStats();
   }
@@ -942,6 +949,9 @@
   async function autoRefreshTick() {
     if (document.visibilityState !== "visible") return;
     if (newestId === null) return;
+    // В режиме jumpInArchive пользователь читает старый кусок —
+    // тихая подгрузка свежих сообщений сверху ломает его место.
+    if (inJumpMode) return;
     try {
       const params = { ...activeFilters, after_id: newestId, limit: 200 };
       const page = await API.chatList(params);
@@ -1285,7 +1295,10 @@
       const params = { ...activeFilters, after_id: newestId, limit: PAGE_SIZE };
       const page = await API.chatList(params);
       if (!page.length) {
+        // Дошли до самого свежего — выходим из jump-режима, auto-refresh
+        // снова активен.
         showLoadNewer(false);
+        inJumpMode = false;
         return;
       }
       const ids = page.map(m => m.id);
@@ -1363,9 +1376,10 @@
           `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
       }
       if (el) {
-        // После прыжка показываем кнопку «↑ Загрузить более новые» —
-        // пользователь стоит где-то в середине архива и над лентой
-        // ещё есть свежие сообщения.
+        // Включаем режим: пользователь стоит в середине архива.
+        // Auto-refresh теперь не должен тихо подгружать «новые» —
+        // на самом деле это весь архив выше target, не свежие сообщения.
+        inJumpMode = true;
         showLoadNewer(true);
         requestAnimationFrame(() => {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
