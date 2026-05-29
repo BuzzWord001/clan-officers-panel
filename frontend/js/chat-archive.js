@@ -205,6 +205,7 @@
     if (!profile) {
       return `<div class="chat-pop-empty">Нет дополнительной информации о ${escapeHtml(name)}</div>`;
     }
+    const inactive = profile.is_active === 0 || profile.is_active === false;
     const row = (label, value, link, copyable) => {
       if (!value) return "";
       const v = escapeHtml(String(value));
@@ -253,9 +254,13 @@
         ${row("ID", tg_id, "", true)}
       </div>` : "";
 
+    const inactiveBadge = inactive
+      ? `<span class="chat-pop-inactive" title="Уже не в клановых чатах. Данные сохранены для архива.">не в чате</span>`
+      : "";
     const head = `
       <div class="chat-pop-head">
         <span class="chat-pop-name">${escapeHtml(dn || name)}</span>
+        ${inactiveBadge}
       </div>`;
     const gameRow = game ? `
       <div class="chat-pop-section">

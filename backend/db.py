@@ -231,7 +231,12 @@ CREATE TABLE IF NOT EXISTS clan_members (
     tg_first_name   TEXT    NOT NULL DEFAULT '',
     tg_last_name    TEXT    NOT NULL DEFAULT '',
     raw_json        TEXT    NOT NULL DEFAULT '',  -- полный исходный объект на всякий случай
-    synced_at       TEXT    NOT NULL
+    synced_at       TEXT    NOT NULL,
+    -- 1 если человек был в последнем sync. 0 если ушёл из чатов и его
+    -- удалили из clan_members.json — данные остаются для identity-резолва
+    -- по архиву, но в UI помечены как «не в чате».
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    last_seen_at    TEXT    NOT NULL DEFAULT ''
 );
 """
 
@@ -255,6 +260,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 "reply_to_text TEXT NOT NULL DEFAULT ''"):
         try:
             conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
+
+    # 2026-05-29 (вечер): сохраняем участников клана даже после выхода из
+    # чатов — для identity-резолва в архиве. is_active помечает кто
+    # сейчас в зеркале clan_members.json, кто уже нет. last_seen_at — когда
+    # человек последний раз попадал в синхронизацию.
+    for col in ("is_active INTEGER NOT NULL DEFAULT 1",
+                "last_seen_at TEXT NOT NULL DEFAULT ''"):
+        try:
+            conn.execute(f"ALTER TABLE clan_members ADD COLUMN {col}")
         except sqlite3.OperationalError:
             pass
 
@@ -1136,11 +1152,20 @@ _MEMBER_FIELDS = (
 
 
 def bulk_sync_clan_members(members: list[dict]) -> dict:
-    """Полная синхронизация: затирает текущее зеркало и записывает то что прислали.
+    """Аддитивная синхронизация зеркала clan_members.json.
+
+    Старые записи НЕ удаляются — это критично для архива: если человек
+    вышел из обоих чатов и его удалили из clan_members.json, мы всё
+    равно должны уметь резолвить его имя в архиве переписки. Иначе
+    popover и identity-расширение перестали бы работать для бывших
+    участников.
+
+    Логика:
+      1. ВСЕ существующие записи помечаются is_active=0.
+      2. UPSERT каждой записи из payload (is_active=1, обновляются поля).
+      3. Те, кого нет в payload, остаются с is_active=0 и старыми данными.
 
     members — список словарей в формате clan_members.json (см. clan-reg-bot).
-    Ключ берётся из поля 'key' либо вычисляется как `{platform}_{platform_id}`
-    чтобы матчилось с UNIQUE-ключом исходной БД.
     """
     now = datetime.utcnow().isoformat(timespec="seconds")
     rows = []
@@ -1155,26 +1180,55 @@ def bulk_sync_clan_members(members: list[dict]) -> dict:
         rows.append(row)
 
     with connection() as conn:
-        conn.execute("DELETE FROM clan_members")
+        # Шаг 1: все текущие помечаются «не в чате» как стартовая точка.
+        conn.execute("UPDATE clan_members SET is_active = 0")
+        # Шаг 2: UPSERT каждого из payload — снова активный, поля свежие.
         for r in rows:
+            raw = json.dumps(
+                _serialise({k: v for k, v in r.items() if k != "raw_json"}),
+                ensure_ascii=False,
+            )
             conn.execute(
                 """INSERT INTO clan_members
                    (key, game_nick, display_name, vk_id, vk_display,
                     vk_first, vk_last, vk_screen_name, tg_id, tg_display,
                     tg_username, tg_first_name, tg_last_name,
-                    raw_json, synced_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    raw_json, synced_at, is_active, last_seen_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+                   ON CONFLICT(key) DO UPDATE SET
+                     game_nick      = excluded.game_nick,
+                     display_name   = excluded.display_name,
+                     vk_id          = excluded.vk_id,
+                     vk_display     = excluded.vk_display,
+                     vk_first       = excluded.vk_first,
+                     vk_last        = excluded.vk_last,
+                     vk_screen_name = excluded.vk_screen_name,
+                     tg_id          = excluded.tg_id,
+                     tg_display     = excluded.tg_display,
+                     tg_username    = excluded.tg_username,
+                     tg_first_name  = excluded.tg_first_name,
+                     tg_last_name   = excluded.tg_last_name,
+                     raw_json       = excluded.raw_json,
+                     synced_at      = excluded.synced_at,
+                     is_active      = 1,
+                     last_seen_at   = excluded.last_seen_at
+                """,
                 (r["key"], r["game_nick"], r["display_name"],
                  r["vk_id"], r["vk_display"], r["vk_first"], r["vk_last"],
                  r["vk_screen_name"],
                  r["tg_id"], r["tg_display"], r["tg_username"],
                  r["tg_first_name"], r["tg_last_name"],
-                 json.dumps(_serialise({k: v for k, v in r.items()
-                                        if k != "raw_json"}),
-                            ensure_ascii=False),
-                 now),
+                 raw, now, now),
             )
-    return {"synced": len(rows), "at": now}
+        # Статистика после операции
+        active = conn.execute(
+            "SELECT count(*) FROM clan_members WHERE is_active = 1"
+        ).fetchone()[0]
+        inactive = conn.execute(
+            "SELECT count(*) FROM clan_members WHERE is_active = 0"
+        ).fetchone()[0]
+    return {"synced": len(rows), "active": active,
+            "inactive": inactive, "at": now}
 
 
 def list_clan_members() -> list[dict]:

@@ -1213,12 +1213,25 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   padding-bottom: 6px;
   margin-bottom: 8px;
   border-bottom: 1px dashed var(--accent-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .chat-pop-name {
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 1px;
   font-size: 13px;
+}
+.chat-pop-inactive {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  cursor: help;
 }
 .chat-pop-section {
   padding: 6px 0;
