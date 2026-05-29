@@ -947,6 +947,7 @@ def list_chat_messages(
     limit: int = 100,
     before_id: int | None = None,
     after_id: int | None = None,
+    order: str = "desc",
 ) -> list[dict[str, Any]]:
     """Возвращает сообщения в обратном хронологическом порядке (новые сверху).
 
@@ -955,9 +956,15 @@ def list_chat_messages(
     after_id   — auto-refresh: «всё что id > after_id». Возвращается тоже
                  в обратном хронологическом порядке (id DESC), но фронт
                  ожидает только дельту чтобы вставить сверху.
+    order      — "desc" (по умолчанию, новые сверху) или "asc". ASC нужен
+                 для «контекста» при jump в архив: запрашиваем N сообщений
+                 СРАЗУ ПОСЛЕ target (ближайшие свежее, не самые свежие в
+                 архиве). Frontend потом разворачивает в DESC.
 
     search использует FTS5; остальное — обычные индексы.
     """
+    order = (order or "desc").lower()
+    order_sql = "ASC" if order == "asc" else "DESC"
     clauses = []
     params: list[Any] = []
     if chat_group:
@@ -993,14 +1000,14 @@ def list_chat_messages(
                 "WHERE id IN (SELECT rowid FROM chat_messages_fts "
                 "             WHERE chat_messages_fts MATCH ?) "
                 f"AND {where} "
-                "ORDER BY id DESC LIMIT ?"
+                f"ORDER BY id {order_sql} LIMIT ?"
             )
             rows = conn.execute(sql, [fts_q, *params, limit]).fetchall()
         else:
             where = " WHERE " + " AND ".join(clauses) if clauses else ""
             sql = (
                 f"SELECT * FROM chat_messages{where} "
-                "ORDER BY id DESC LIMIT ?"
+                f"ORDER BY id {order_sql} LIMIT ?"
             )
             rows = conn.execute(sql, [*params, limit]).fetchall()
         return [_row_to_chat_message(r) for r in rows]

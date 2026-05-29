@@ -184,6 +184,7 @@ def list_msgs(
     before_id: int | None = Query(default=None),
     after_id: int | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
     _: dict = Depends(require_officer),
 ) -> list[dict]:
     return db.list_chat_messages(
@@ -195,6 +196,7 @@ def list_msgs(
         before_id=before_id,
         after_id=after_id,
         limit=limit,
+        order=order,
     )
 
 

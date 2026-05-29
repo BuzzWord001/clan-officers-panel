@@ -1345,15 +1345,23 @@
     freshIds.clear();
     $("chat-loading").hidden = false;
     try {
-      // Грузим в обе стороны от target — половина страницы новее
-      // (after_id=target) и половина старее (before_id=target+1).
-      // Так пользователь сразу видит контекст «вокруг» сообщения.
+      // Грузим в обе стороны от target — половина страницы свежее target
+      // и половина старее. Так пользователь сразу видит реальный контекст
+      // ВОКРУГ сообщения, а не "target + самые свежие в архиве".
+      //
+      // Важно: для newer нужно `order=asc` — backend по умолчанию DESC,
+      // что вернуло бы 40 САМЫХ свежих в архиве, а не 40 БЛИЖАЙШИХ к
+      // target. ASC от after_id даёт ровно нужные 40 сразу после target,
+      // потом разворачиваем в DESC для frontend-формата.
       const HALF = Math.floor(PAGE_SIZE / 2);   // 40
-      const [newerPage, olderPage] = await Promise.all([
-        API.chatList({ ...activeFilters, after_id:  targetId,    limit: HALF }),
+      const [newerAsc, olderPage] = await Promise.all([
+        API.chatList({ ...activeFilters, after_id:  targetId,    limit: HALF, order: "asc" }),
         API.chatList({ ...activeFilters, before_id: targetId + 1, limit: HALF }),
       ]);
-      // Backend отдаёт DESC. Объединяем: новые сверху + старые снизу.
+      // newerAsc — отсортирован по возрастанию (ближайшие к target первыми).
+      // Разворачиваем чтобы получить DESC: свежее сверху.
+      const newerPage = newerAsc.slice().reverse();
+      // Объединяем: новые сверху + target и старее снизу.
       loaded = newerPage.concat(olderPage);
       if (olderPage.length) oldestId = olderPage[olderPage.length - 1].id;
       if (newerPage.length) {
@@ -1371,10 +1379,11 @@
       if (!el && activeFilters.chat_group) {
         $("f-group").value = "";
         activeFilters = collectFilters();
-        const [n2, o2] = await Promise.all([
-          API.chatList({ after_id: targetId, limit: HALF }),
+        const [n2asc, o2] = await Promise.all([
+          API.chatList({ after_id: targetId, limit: HALF, order: "asc" }),
           API.chatList({ before_id: targetId + 1, limit: HALF }),
         ]);
+        const n2 = n2asc.slice().reverse();
         loaded = n2.concat(o2);
         if (o2.length) oldestId = o2[o2.length - 1].id;
         if (n2.length) newestId = n2[0].id;
