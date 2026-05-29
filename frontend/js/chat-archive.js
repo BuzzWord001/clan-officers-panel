@@ -936,21 +936,41 @@
   function showZoom(anchor, url) {
     ensureZoom();
     zoomEl.innerHTML = `<img src="${escapeHtml(url)}" alt="zoom">`;
+    // На время загрузки прячем за экран (CSS уже ставит left:-10000),
+    // чтобы не было flash в (0,0). Hidden=false здесь не ставим — это
+    // делает reposition после первого вычисления координат.
+    zoomEl.style.left = "-10000px";
     zoomEl.hidden = false;
     zoomFor = anchor;
-    // Позиционируем рядом с thumb: справа если влезает, иначе слева,
-    // и центрируем по высоте viewport если высота превышает.
-    requestAnimationFrame(() => {
+
+    const reposition = () => {
+      // Anchor мог уже не существовать (DOM обновился) — в этом случае
+      // прячем zoom.
+      if (!anchor.isConnected || zoomFor !== anchor) { hideZoom(); return; }
       const r = anchor.getBoundingClientRect();
       const zr = zoomEl.getBoundingClientRect();
       const vw = window.innerWidth, vh = window.innerHeight;
       let left = r.right + 12;
-      if (left + zr.width > vw - 8) left = Math.max(8, r.left - zr.width - 12);
+      if (left + zr.width > vw - 8) {
+        left = Math.max(8, r.left - zr.width - 12);
+      }
       let top = r.top;
-      if (top + zr.height > vh - 8) top = Math.max(8, vh - zr.height - 8);
+      if (top + zr.height > vh - 8) {
+        top = Math.max(8, vh - zr.height - 8);
+      }
       zoomEl.style.left = left + "px";
       zoomEl.style.top = top + "px";
-    });
+    };
+
+    requestAnimationFrame(reposition);
+    // Если картинка ещё не загрузилась — getBoundingClientRect вернёт
+    // некорректные размеры и условие «не влезает» сработает мимо. После
+    // загрузки пересчитываем.
+    const img = zoomEl.querySelector("img");
+    if (img && !img.complete) {
+      img.addEventListener("load", () => requestAnimationFrame(reposition),
+                          { once: true });
+    }
   }
 
   function hideZoom() {
