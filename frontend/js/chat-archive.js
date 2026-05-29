@@ -445,15 +445,43 @@
   function renderMedia(media) {
     if (!media || !media.length) return "";
     const items = media.map(m => {
+      const kind = m.kind || "";
+      const url = m.url || "";
+      const name = m.name || "";
+      const size = m.size ? formatBytes(m.size) : "";
+      const sizePart = size ? ` · ${escapeHtml(size)}` : "";
+
+      // Photo / sticker — миниатюра, по клику открывается в новой вкладке.
+      if (url && (kind === "photo" || kind === "sticker" ||
+                  kind === "sticker_anim_thumb" || kind === "animation")) {
+        return `<a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
+                  <img loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(kind)}">
+                </a>`;
+      }
+      // Video / video_note / animated sticker — нативный плеер прямо в ленте.
+      if (url && (kind === "video" || kind === "video_note" ||
+                  kind === "sticker_video")) {
+        return `<video class="chat-media-video" controls preload="metadata" src="${escapeHtml(url)}">
+                  <a href="${escapeHtml(url)}" target="_blank" rel="noopener">скачать видео</a>
+                </video>`;
+      }
+      // Voice / audio — audio-плеер.
+      if (url && (kind === "voice" || kind === "audio")) {
+        const icon = kind === "voice" ? "🎙" : "🎵";
+        return `<div class="chat-media-audio">
+                  <span class="chat-media-audio-icon">${icon}</span>
+                  <audio controls preload="none" src="${escapeHtml(url)}"></audio>
+                </div>`;
+      }
+      // Document / unknown — карточка с скачать.
       const kindRu = {
         photo: "фото", video: "видео", document: "файл",
         audio: "аудио", voice: "голос", sticker: "стикер",
-      }[m.kind] || m.kind;
-      const name = m.name || m.mime || "";
-      const size = m.size ? ` · ${formatBytes(m.size)}` : "";
-      const inner = `📎 ${kindRu}${name ? " · " + escapeHtml(name) : ""}${size}`;
-      return m.url
-        ? `<a class="chat-media" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${inner}</a>`
+        animation: "GIF", wall: "репост стены",
+      }[kind] || kind;
+      const inner = `📎 ${kindRu}${name ? " · " + escapeHtml(name) : ""}${sizePart}`;
+      return url
+        ? `<a class="chat-media" href="${escapeHtml(url)}" target="_blank" rel="noopener">${inner}</a>`
         : `<span class="chat-media chat-media-placeholder">${inner}</span>`;
     });
     return `<div class="chat-media-list">${items.join("")}</div>`;

@@ -1433,8 +1433,9 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 .chat-media-list {
   margin-top: 6px;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
 }
 .chat-media {
   font-size: 11px;
@@ -1445,6 +1446,54 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 }
 .chat-media:hover { color: var(--accent); border-color: var(--accent); }
 .chat-media-placeholder { color: var(--muted); border-bottom-color: var(--muted); }
+
+/* Превью фото/стикеры/GIF */
+.chat-media-thumb {
+  display: inline-block;
+  max-width: 220px;
+  max-height: 220px;
+  border: 1px solid var(--accent-dim);
+  background: rgba(0, 0, 0, 0.3);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.chat-media-thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+.chat-media-thumb:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.35);
+}
+
+/* Видео/видеосообщения */
+.chat-media-video {
+  max-width: 320px;
+  max-height: 260px;
+  border: 1px solid var(--accent-dim);
+  background: #000;
+  outline: none;
+}
+
+/* Голос/аудио */
+.chat-media-audio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--accent-dim);
+  padding: 4px 8px;
+  border-radius: 2px;
+  max-width: 340px;
+}
+.chat-media-audio-icon { font-size: 14px; }
+.chat-media-audio audio {
+  height: 28px;
+  flex: 1;
+}
 
 .chat-loading {
   text-align: center;
