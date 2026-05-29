@@ -1296,6 +1296,36 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   color: var(--accent);
   font-weight: 600;
 }
+.chat-reply-clickable {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.chat-reply-clickable:hover {
+  background: rgba(0, 255, 65, 0.12);
+  border-left-color: var(--accent);
+}
+.chat-reply-loading::after {
+  content: " ...";
+  color: var(--accent);
+  animation: chat-reply-spin 1s infinite;
+}
+@keyframes chat-reply-spin {
+  0%   { opacity: 0.3; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+/* Подсветка сообщения, к которому проскроллили по reply */
+.chat-msg-flash {
+  animation: chat-msg-flash-anim 1.6s ease-out;
+}
+.chat-event-flash,
+.chat-msg-flash {
+  position: relative;
+}
+@keyframes chat-msg-flash-anim {
+  0%   { box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(0,255,65,0.6); background: rgba(0,255,65,0.18); }
+  100% { box-shadow: none; background: transparent; }
+}
 .chat-reply-dim {
   color: var(--muted);
   font-style: italic;
@@ -1493,6 +1523,79 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 .chat-media-audio audio {
   height: 28px;
   flex: 1;
+}
+
+/* ── Wrapper для медиа с overlay-кнопкой скачать ── */
+.chat-media-wrap {
+  position: relative;
+  display: inline-block;
+}
+.chat-media-wrap-video,
+.chat-media-wrap-audio,
+.chat-media-wrap-doc {
+  display: inline-block;
+  vertical-align: top;
+}
+.chat-media-dl {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  font-size: 13px;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 2;
+}
+.chat-media-wrap:hover .chat-media-dl,
+.chat-media-dl:focus {
+  opacity: 1;
+}
+.chat-media-dl:hover {
+  background: var(--accent);
+  color: #000;
+}
+/* Видео-обёртка — кнопку чуть глубже от рамки чтобы не перекрывать controls */
+.chat-media-wrap-video .chat-media-dl { top: 6px; right: 6px; }
+.chat-media-wrap-audio .chat-media-dl,
+.chat-media-wrap-doc .chat-media-dl {
+  position: static;
+  opacity: 1;
+  margin-left: 6px;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+/* ── Hover-zoom overlay для фото/стикеров/GIF ── */
+.chat-media-zoom {
+  position: fixed;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 24px rgba(0, 255, 65, 0.45);
+  padding: 4px;
+  pointer-events: none;
+  max-width: 70vw;
+  max-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-media-zoom img {
+  display: block;
+  max-width: 70vw;
+  max-height: calc(80vh - 8px);
+  object-fit: contain;
 }
 
 .chat-loading {

@@ -442,6 +442,30 @@
     return (b / (1024 * 1024)).toFixed(1) + "МБ";
   }
 
+  // Имя для атрибута download — берём из name либо синтезируем по kind.
+  function downloadFileName(url, kind, name) {
+    if (name) return name;
+    // Берём последний segment из URL.
+    try {
+      const u = new URL(url);
+      const last = u.pathname.split("/").pop() || "";
+      if (last) return last;
+    } catch (_) {}
+    return kind || "file";
+  }
+
+  // Маленькая «скачать» кнопка-оверлей. Cross-origin download через
+  // <a download> для R2 работает (Cloudflare CORS public bucket позволяет
+  // GET с Origin=*); если браузер всё же откроет файл вместо скачивания,
+  // fallback на blob делает chat-archive-download-fallback.
+  function downloadBtn(url, kind, name) {
+    if (!url) return "";
+    const fn = escapeHtml(downloadFileName(url, kind, name));
+    return `<a class="chat-media-dl" href="${escapeHtml(url)}" download="${fn}"
+              data-dl-url="${escapeHtml(url)}" data-dl-name="${fn}"
+              title="Скачать ${fn}">⬇</a>`;
+  }
+
   function renderMedia(media) {
     if (!media || !media.length) return "";
     const items = media.map(m => {
@@ -451,26 +475,39 @@
       const size = m.size ? formatBytes(m.size) : "";
       const sizePart = size ? ` · ${escapeHtml(size)}` : "";
 
-      // Photo / sticker — миниатюра, по клику открывается в новой вкладке.
+      // Photo / sticker — миниатюра, по клику открывается в новой вкладке,
+      // на hover — большой overlay-zoom (см. chat-archive-zoom).
       if (url && (kind === "photo" || kind === "sticker" ||
                   kind === "sticker_anim_thumb" || kind === "animation")) {
-        return `<a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
-                  <img loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(kind)}">
-                </a>`;
+        const dl = downloadBtn(url, kind, name);
+        return `<div class="chat-media-wrap">
+                  <a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-zoom-url="${escapeHtml(url)}" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
+                    <img loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(kind)}">
+                  </a>
+                  ${dl}
+                </div>`;
       }
       // Video / video_note / animated sticker — нативный плеер прямо в ленте.
       if (url && (kind === "video" || kind === "video_note" ||
                   kind === "sticker_video")) {
-        return `<video class="chat-media-video" controls preload="metadata" src="${escapeHtml(url)}">
-                  <a href="${escapeHtml(url)}" target="_blank" rel="noopener">скачать видео</a>
-                </video>`;
+        const dl = downloadBtn(url, kind, name);
+        return `<div class="chat-media-wrap chat-media-wrap-video">
+                  <video class="chat-media-video" controls preload="metadata" src="${escapeHtml(url)}">
+                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener">скачать видео</a>
+                  </video>
+                  ${dl}
+                </div>`;
       }
       // Voice / audio — audio-плеер.
       if (url && (kind === "voice" || kind === "audio")) {
         const icon = kind === "voice" ? "🎙" : "🎵";
-        return `<div class="chat-media-audio">
-                  <span class="chat-media-audio-icon">${icon}</span>
-                  <audio controls preload="none" src="${escapeHtml(url)}"></audio>
+        const dl = downloadBtn(url, kind, name);
+        return `<div class="chat-media-wrap chat-media-wrap-audio">
+                  <div class="chat-media-audio">
+                    <span class="chat-media-audio-icon">${icon}</span>
+                    <audio controls preload="none" src="${escapeHtml(url)}"></audio>
+                  </div>
+                  ${dl}
                 </div>`;
       }
       // Document / unknown — карточка с скачать.
@@ -480,22 +517,36 @@
         animation: "GIF", wall: "репост стены",
       }[kind] || kind;
       const inner = `📎 ${kindRu}${name ? " · " + escapeHtml(name) : ""}${sizePart}`;
-      return url
-        ? `<a class="chat-media" href="${escapeHtml(url)}" target="_blank" rel="noopener">${inner}</a>`
-        : `<span class="chat-media chat-media-placeholder">${inner}</span>`;
+      if (!url) {
+        return `<span class="chat-media chat-media-placeholder">${inner}</span>`;
+      }
+      const dl = downloadBtn(url, kind, name);
+      return `<span class="chat-media-wrap chat-media-wrap-doc">
+                <a class="chat-media" href="${escapeHtml(url)}" target="_blank" rel="noopener">${inner}</a>
+                ${dl}
+              </span>`;
     });
     return `<div class="chat-media-list">${items.join("")}</div>`;
   }
 
   function renderReply(m) {
     if (!m.reply_to_user && !m.reply_to_text && !m.reply_to_msg_id) return "";
+    // Платформенный ID цитируемого. Чтобы scroll'нуть к оригиналу, нужно
+    // знать (platform, chat_id, message_id) — chat_id/platform у текущего
+    // сообщения совпадают (ответы только в рамках одного чата).
+    const tgtMid = String(m.reply_to_msg_id || "");
+    const dataAttrs = tgtMid
+      ? ` data-reply-platform="${escapeHtml(m.platform)}" data-reply-chat="${escapeHtml(m.chat_id)}" data-reply-mid="${escapeHtml(tgtMid)}"`
+      : "";
+    const cls = "chat-reply" + (tgtMid ? " chat-reply-clickable" : "")
+                + ((!m.reply_to_user && !m.reply_to_text) ? " chat-reply-dim" : "");
     if (m.reply_to_user || m.reply_to_text) {
       const author = escapeHtml(m.reply_to_user || "");
       const text = escapeHtml(m.reply_to_text || "");
-      return `<div class="chat-reply">↩ <b>${author}:</b> ${text}</div>`;
+      return `<div class="${cls}"${dataAttrs} title="${tgtMid ? 'Перейти к оригинальному сообщению' : ''}">↩ <b>${author}:</b> ${text}</div>`;
     }
     // legacy / migrated: только id, без автора и текста
-    return `<div class="chat-reply chat-reply-dim">↩ ответ на сообщение</div>`;
+    return `<div class="${cls}"${dataAttrs}>↩ ответ на сообщение</div>`;
   }
 
   function detectEventKind(m) {
@@ -774,6 +825,169 @@
       if (e.key === "Enter") applyFilters();
     });
   }
+
+  // ─────────────── Reply click-to-scroll ───────────────
+  // При клике на reply ищем в loaded оригинал по (platform, chat_id,
+  // message_id). Если найден — scroll + flash. Если нет — подгружаем
+  // страницами до тех пор пока не появится в loaded ИЛИ пока не дойдём
+  // до конца. Защита: не больше REPLY_LOOKUP_PAGES страниц.
+  const REPLY_LOOKUP_PAGES = 8;
+
+  function findReplyTargetIndex(platform, chatId, msgId) {
+    if (!msgId) return -1;
+    for (let i = 0; i < loaded.length; i++) {
+      const m = loaded[i];
+      if (m.platform === platform
+          && String(m.chat_id) === String(chatId)
+          && String(m.message_id) === String(msgId)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function flashMessage(el) {
+    if (!el) return;
+    el.classList.remove("chat-msg-flash");
+    // reflow → restart animation
+    void el.offsetWidth;
+    el.classList.add("chat-msg-flash");
+  }
+
+  async function scrollToReply(platform, chatId, msgId, btn) {
+    let idx = findReplyTargetIndex(platform, chatId, msgId);
+    if (idx < 0) {
+      // Подгружаем страницами вглубь.
+      const origLabel = btn ? btn.textContent : "";
+      if (btn) btn.classList.add("chat-reply-loading");
+      try {
+        for (let p = 0; p < REPLY_LOOKUP_PAGES; p++) {
+          if (loaded.length < PAGE_SIZE) break; // мы и так на дне
+          await load(false);
+          idx = findReplyTargetIndex(platform, chatId, msgId);
+          if (idx >= 0) break;
+          // дошли до конца архива
+          if (loaded.length % PAGE_SIZE !== 0) break;
+        }
+      } finally {
+        if (btn) btn.classList.remove("chat-reply-loading");
+      }
+    }
+    if (idx < 0) {
+      // Не нашли вообще
+      if (btn) {
+        const prev = btn.getAttribute("title") || "";
+        btn.setAttribute("title", "Оригинал не в архиве (удалён или вне выборки)");
+        setTimeout(() => btn.setAttribute("title", prev), 3000);
+      }
+      return;
+    }
+    const target = loaded[idx];
+    const el = document.querySelector(
+      `.chat-msg[data-id="${target.id}"], .chat-event[data-id="${target.id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      flashMessage(el);
+    }
+  }
+
+  $("chat-feed").addEventListener("click", (ev) => {
+    const r = ev.target.closest(".chat-reply-clickable");
+    if (!r) return;
+    ev.preventDefault();
+    const platform = r.dataset.replyPlatform;
+    const chatId = r.dataset.replyChat;
+    const mid = r.dataset.replyMid;
+    if (!mid) return;
+    scrollToReply(platform, chatId, mid, r);
+  });
+
+  // ─────────────── Hover-zoom для фото/стикеров/GIF ───────────────
+  // Большой overlay-предпросмотр поверх thumb при наведении. Открывается
+  // через 350мс задержки чтобы случайные movement не дёргали zoom.
+  let zoomEl = null;
+  let zoomTimer = null;
+  let zoomFor = null;
+
+  function ensureZoom() {
+    if (zoomEl) return zoomEl;
+    zoomEl = document.createElement("div");
+    zoomEl.className = "chat-media-zoom";
+    zoomEl.hidden = true;
+    document.body.appendChild(zoomEl);
+    return zoomEl;
+  }
+
+  function showZoom(anchor, url) {
+    ensureZoom();
+    zoomEl.innerHTML = `<img src="${escapeHtml(url)}" alt="zoom">`;
+    zoomEl.hidden = false;
+    zoomFor = anchor;
+    // Позиционируем рядом с thumb: справа если влезает, иначе слева,
+    // и центрируем по высоте viewport если высота превышает.
+    requestAnimationFrame(() => {
+      const r = anchor.getBoundingClientRect();
+      const zr = zoomEl.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      let left = r.right + 12;
+      if (left + zr.width > vw - 8) left = Math.max(8, r.left - zr.width - 12);
+      let top = r.top;
+      if (top + zr.height > vh - 8) top = Math.max(8, vh - zr.height - 8);
+      zoomEl.style.left = left + "px";
+      zoomEl.style.top = top + "px";
+    });
+  }
+
+  function hideZoom() {
+    if (zoomEl) zoomEl.hidden = true;
+    zoomFor = null;
+  }
+
+  $("chat-feed").addEventListener("mouseover", (ev) => {
+    const t = ev.target.closest(".chat-media-thumb");
+    if (!t) return;
+    const url = t.dataset.zoomUrl || "";
+    if (!url) return;
+    if (zoomTimer) clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => showZoom(t, url), 350);
+  });
+  $("chat-feed").addEventListener("mouseout", (ev) => {
+    const t = ev.target.closest(".chat-media-thumb");
+    if (!t) return;
+    if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null; }
+    hideZoom();
+  });
+  window.addEventListener("scroll", hideZoom, true);
+
+  // ─────────────── Download fallback (blob) ───────────────
+  // Атрибут `download` у <a> не сработает если R2 шлёт inline без
+  // Content-Disposition. Делегированно перехватываем клик, делаем fetch
+  // → blob → программный клик. Если fetch упал (CORS) — даём оригинальной
+  // ссылке открыть файл (preventDefault не зовём в этом случае).
+  $("chat-feed").addEventListener("click", async (ev) => {
+    const btn = ev.target.closest(".chat-media-dl");
+    if (!btn) return;
+    const url = btn.dataset.dlUrl;
+    const name = btn.dataset.dlName || "file";
+    if (!url) return;
+    ev.preventDefault();
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+    } catch (_) {
+      // CORS / network — открываем в новой вкладке
+      window.open(url, "_blank", "noopener");
+    }
+  });
 
   if (isAdmin) {
     $("clear-archive-btn").addEventListener("click", async () => {
