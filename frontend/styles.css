@@ -1692,6 +1692,12 @@ video.chat-media-thumb {
   text-align: center;
   margin-top: 16px;
 }
+/* Отключаем браузерное auto scroll-anchoring у ленты — мы делаем своё
+   через JS (точно знаем какой элемент anchor и куда smещать scroll).
+   Иначе Chrome может пытаться удержать что-то своё и мешать. */
+.chat-feed { overflow-anchor: none; }
+.chat-feed > * { overflow-anchor: none; }
+
 .chat-load-newer {
   margin-top: 0;
   margin-bottom: 12px;

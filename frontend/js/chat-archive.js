@@ -951,8 +951,8 @@
       newestId = Math.max(newestId, ...ids);
       ids.forEach(id => freshIds.add(id));
       // Сливаем: новые сверху + старые снизу. Дубликатов не будет — id > newestId.
-      // Если пользователь не в самом верху ленты (scroll > 50px) — фиксируем
-      // позицию anchor чтобы prepend не дёргал текущее место чтения.
+      // Если пользователь не в самом верху ленты — фиксируем anchor
+      // чтобы prepend не дёргал текущее место чтения.
       let anchor = null, anchorTopBefore = 0;
       if (window.scrollY > 50) {
         const feed = $("chat-feed");
@@ -966,10 +966,13 @@
       loaded = page.concat(loaded);
       renderPrependTop(page);
       if (anchor && anchor.isConnected) {
-        requestAnimationFrame(() => {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
           const delta = anchor.getBoundingClientRect().top - anchorTopBefore;
-          if (delta) window.scrollBy({ top: delta, left: 0, behavior: "instant" });
-        });
+          if (Math.abs(delta) > 0.5) {
+            const sc = document.scrollingElement || document.documentElement;
+            sc.scrollTop = sc.scrollTop + delta;
+          }
+        }));
       }
       // Снимаем «свежесть» через 6 сек, чтобы подсветка ушла.
       setTimeout(() => {
@@ -1267,18 +1270,17 @@
 
   async function loadNewer() {
     if (newestId === null) return;
-    $("chat-loading").hidden = false;
-    // Scroll-anchor: фиксируем первый видимый сейчас элемент. После того
-    // как сверху появятся новые сообщения, страница сместится — но мы
-    // восстановим scroll так, чтобы этот anchor остался в том же месте
-    // viewport. Пользователь видит как новые сообщения «выезжают» сверху,
-    // а его текущая позиция не двигается.
+    // Scroll-anchor: фиксируем верхний видимый элемент. Используем
+    // прямой scrollTop вместо scrollBy({behavior:"instant"}) — instant
+    // поддерживается не во всех браузерах, а scrollTop=N работает
+    // надёжно везде. Двойной RAF гарантирует что layout успел обновиться
+    // после insertAdjacentHTML.
     const feed = $("chat-feed");
     let anchor = null;
     let anchorTopBefore = 0;
     for (const el of feed.children) {
       const rect = el.getBoundingClientRect();
-      if (rect.bottom > 0) {  // первый элемент чьё дно ещё в/ниже viewport top
+      if (rect.bottom > 0) {
         anchor = el;
         anchorTopBefore = rect.top;
         break;
@@ -1288,7 +1290,6 @@
       const params = { ...activeFilters, after_id: newestId, limit: PAGE_SIZE };
       const page = await API.chatList(params);
       if (!page.length) {
-        // Дошли до самого свежего — кнопку скрываем.
         showLoadNewer(false);
         return;
       }
@@ -1296,20 +1297,21 @@
       newestId = Math.max(newestId, ...ids);
       loaded = page.concat(loaded);
       renderPrependTop(page);
-      // Восстанавливаем позицию: смещаем scroll на сколько уехал anchor.
       if (anchor && anchor.isConnected) {
-        requestAnimationFrame(() => {
-          const newRect = anchor.getBoundingClientRect();
-          const delta = newRect.top - anchorTopBefore;
-          if (delta) window.scrollBy({ top: delta, left: 0, behavior: "instant" });
-        });
+        // Двойной RAF: 1й — отдаём управление, браузер делает paint
+        // и layout; 2й — после этого читаем actual position.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const newTop = anchor.getBoundingClientRect().top;
+          const delta = newTop - anchorTopBefore;
+          if (Math.abs(delta) > 0.5) {
+            const sc = document.scrollingElement || document.documentElement;
+            sc.scrollTop = sc.scrollTop + delta;
+          }
+        }));
       }
-      // Если запрос вернул МЕНЬШЕ полной страницы — это самый верх.
       if (page.length < PAGE_SIZE) showLoadNewer(false);
     } catch (e) {
       console.error("loadNewer failed:", e);
-    } finally {
-      $("chat-loading").hidden = true;
     }
   }
 
