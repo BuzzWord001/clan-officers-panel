@@ -127,6 +127,43 @@ def ingest(payload: ChatIngestIn, _=Depends(require_bot_token)) -> dict:
     return res
 
 
+class ChatIngestBatch(BaseModel):
+    messages: list[ChatIngestIn]
+
+
+@router.post("/ingest-batch")
+def ingest_batch(payload: ChatIngestBatch,
+                 _=Depends(require_bot_token)) -> dict:
+    """Батч-ингест для миграции исторического JSONL архива. Каждое
+    сообщение проходит ту же UNIQUE-дедупликацию что и /ingest."""
+    inserted = 0
+    duplicates = 0
+    errors: list[str] = []
+    for i, m in enumerate(payload.messages):
+        try:
+            res = db.ingest_chat_message(
+                chat_group=m.chat_group, platform=m.platform,
+                chat_id=m.chat_id, message_id=m.message_id,
+                user_id=m.user_id, user_display=m.user_display,
+                user_username=m.user_username,
+                text=m.text, reply_to_msg_id=m.reply_to_msg_id,
+                media=[mm.model_dump() for mm in m.media],
+                sent_at=m.sent_at,
+            )
+            if res["duplicate"]:
+                duplicates += 1
+            else:
+                inserted += 1
+        except Exception as e:
+            errors.append(f"[{i}] {e}")
+    return {
+        "received": len(payload.messages),
+        "inserted": inserted,
+        "duplicates": duplicates,
+        "errors": errors[:10],  # первые 10 для диагностики
+    }
+
+
 @router.get("/list", response_model=list[ChatMessageOut])
 def list_msgs(
     chat_group: str | None = Query(default=None,
