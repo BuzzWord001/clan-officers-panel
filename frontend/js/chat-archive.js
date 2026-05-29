@@ -501,22 +501,40 @@
   // /chat/media/download (с Content-Disposition: attachment). Клик
   // перехватывается JS: fetch с Bearer-токеном → blob → программный
   // click — браузер сохраняет файл, а не открывает inline.
-  function buildDownloadHref(url, name) {
+  //
+  // Для стикеров (kind=sticker / sticker_anim_thumb) добавляется ?as=png:
+  // backend конвертирует .webp → .png через Pillow. Делаем потому что
+  // .webp не открывается двойным кликом в Проводнике Windows у части
+  // пользователей — браузер видит как inline и открывается там.
+  function buildDownloadHref(url, name, kind) {
     const base = ((window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL)
                   || "").replace(/\/$/, "");
     if (!base) return url;
     const u = new URL(base + "/chat/media/download");
     u.searchParams.set("u", url);
     if (name) u.searchParams.set("name", name);
+    // Стикеры конвертируем в PNG. sticker_video оставляем .webm —
+    // браузер/VLC его проигрывают. animation тоже не трогаем.
+    if (kind === "sticker" || kind === "sticker_anim_thumb") {
+      u.searchParams.set("as", "png");
+    }
     return u.toString();
   }
   function downloadBtn(url, kind, name) {
     if (!url) return "";
-    const fn = downloadFileName(url, kind, name);
-    const dlHref = buildDownloadHref(url, fn);
-    return `<a class="chat-media-dl" href="${escapeHtml(dlHref)}" download="${escapeHtml(fn)}"
+    let fn = downloadFileName(url, kind, name);
+    // Подменяем расширение для PNG-конверсии (чтобы blob a.download
+    // сохранил с правильным суффиксом).
+    if (kind === "sticker" || kind === "sticker_anim_thumb") {
+      fn = fn.replace(/\.[a-z0-9]{1,5}$/i, "") + ".png";
+    }
+    const dlHref = buildDownloadHref(url, name, kind);
+    // <button> вместо <a> — гарантия что default navigation никогда не
+    // сработает (раньше с <a href=...> в редких случаях когда JS успевал
+    // не сразу, browser открывал URL в новой вкладке).
+    return `<button type="button" class="chat-media-dl"
               data-dl-href="${escapeHtml(dlHref)}" data-dl-name="${escapeHtml(fn)}"
-              title="Скачать ${escapeHtml(fn)}">⬇</a>`;
+              title="Скачать ${escapeHtml(fn)}">⬇</button>`;
   }
 
   function renderMedia(media) {

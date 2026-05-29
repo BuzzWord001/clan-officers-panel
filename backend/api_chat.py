@@ -362,12 +362,22 @@ def _safe_filename(name: str, fallback: str = "file") -> str:
 def media_download(
     u: str = Query(..., description="R2 URL (наш public домен)"),
     name: str | None = Query(default=None, description="Имя файла для save-as"),
+    as_: str | None = Query(default=None, alias="as",
+                            pattern="^(png|jpg)$",
+                            description="Конвертировать в PNG/JPG (для стикеров)"),
     _: dict = Depends(require_officer),
 ):
     """Проксирует скачивание R2 → клиенту с Content-Disposition: attachment.
+
     Без этого браузер при cross-origin fetch упирается в CORS и не может
     отдать blob; а `<a download>` с непрямым атрибутом всё равно открывает
-    inline для image/video/audio mime."""
+    inline для image/video/audio mime.
+
+    Параметр `as=png` (или `as=jpg`) — конвертирует .webp в .png/.jpg на
+    лету через Pillow. Нужно для стикеров: .webp сохраняется как файл,
+    но многие пользователи не могут открыть его двойным кликом в
+    проводнике Windows (нет ассоциации) — открывается в браузере.
+    """
     # Проверка URL
     try:
         parsed = urlparse(u)
@@ -401,6 +411,44 @@ def media_download(
             name = "file"
     safe = _safe_filename(name)
 
+    # Конверсия (например для стикеров .webp → .png)
+    if as_ in ("png", "jpg"):
+        try:
+            data = upstream.content  # уже всё загружено
+        finally:
+            upstream.close()
+        try:
+            from io import BytesIO
+            from PIL import Image
+            img = Image.open(BytesIO(data))
+            # Animated WebP / GIF — берём первый кадр.
+            if getattr(img, "is_animated", False):
+                img.seek(0)
+            out = BytesIO()
+            if as_ == "png":
+                img = img.convert("RGBA") if img.mode not in ("RGB", "RGBA", "P") else img
+                img.save(out, "PNG")
+                ctype = "image/png"
+                safe = _re.sub(r"\.[a-zA-Z0-9]{1,5}$", "", safe) + ".png"
+            else:  # jpg
+                img = img.convert("RGB")
+                img.save(out, "JPEG", quality=92)
+                ctype = "image/jpeg"
+                safe = _re.sub(r"\.[a-zA-Z0-9]{1,5}$", "", safe) + ".jpg"
+            data = out.getvalue()
+            clen = str(len(data))
+        except Exception as e:
+            log.warning("convert %s → %s failed: %s", safe, as_, e)
+            # fallback на оригинал
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{safe}"',
+            "Cache-Control": "private, max-age=0, no-store",
+            "Content-Length": clen,
+        }
+        return StreamingResponse(iter([data]), media_type=ctype, headers=headers)
+
+    # Обычный стрим (без конверсии)
     def gen():
         try:
             for chunk in upstream.iter_content(chunk_size=64 * 1024):
