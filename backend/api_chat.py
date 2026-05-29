@@ -180,6 +180,7 @@ def list_msgs(
     user: str | None = Query(default=None),
     search: str | None = Query(default=None),
     before_id: int | None = Query(default=None),
+    after_id: int | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     _: dict = Depends(require_officer),
 ) -> list[dict]:
@@ -190,6 +191,7 @@ def list_msgs(
         user=user,
         search=search,
         before_id=before_id,
+        after_id=after_id,
         limit=limit,
     )
 

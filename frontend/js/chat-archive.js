@@ -35,10 +35,14 @@
   let loaded = [];
   // Минимальный id страницы — для следующего before_id.
   let oldestId = null;
+  // Максимальный id (самое свежее) — для auto-refresh after_id.
+  let newestId = null;
   // Активные фильтры — фиксируем при «Поиск», чтобы load-more тянул ту же выборку.
   let activeFilters = {};
   // Термины для подсветки (только позитивы, без -минусов и без от:).
   let highlightTerms = [];
+  // Set ID'шников новых сообщений за последний tick — для подсветки в ленте.
+  let freshIds = new Set();
 
   // ─────────────── даты ───────────────
 
@@ -227,6 +231,7 @@
 
   function renderMessage(m) {
     const reply = renderReply(m);
+    const fresh = freshIds.has(m.id) ? " chat-msg-fresh" : "";
 
     const authorEsc = escapeHtml(m.user_display);
     const author = highlight(authorEsc, highlightTerms.author);
@@ -244,7 +249,7 @@
       : `<span class="chat-time" title="Оригинал недоступен (бэкфилл из JSONL)">${tsText}</span>`;
 
     return `
-      <div class="chat-msg chat-msg-${m.platform}" data-id="${m.id}">
+      <div class="chat-msg chat-msg-${m.platform}${fresh}" data-id="${m.id}">
         ${delBtn}
         <div class="chat-head">
           <span class="chat-author">${author}</span>
@@ -326,15 +331,60 @@
     } finally {
       $("chat-loading").hidden = true;
     }
+    // Обновляем newest id для будущих auto-refresh запросов.
+    if (loaded.length) newestId = Math.max(...loaded.map(m => m.id));
   }
 
   async function applyFilters() {
     activeFilters = collectFilters();
     highlightTerms = extractHighlightTerms(activeFilters.search);
     oldestId = null;
+    newestId = null;
+    freshIds.clear();
     await load(true);
     await refreshStats();
   }
+
+  // ─────────────── auto-refresh (polling) ───────────────
+  // Polling каждые AUTO_REFRESH_MS если:
+  //   - вкладка видна (document.visibilityState === 'visible')
+  //   - нет активного редактирования (тут нечего редактировать, но
+  //     сохраняем семантику для будущего)
+  //   - есть newestId (значит первая загрузка прошла)
+  // Параллельный поиск с активными фильтрами тоже работает: backend сам
+  // отфильтрует и after_id, и group/date/user/search вместе.
+  const AUTO_REFRESH_MS = 20000;
+
+  async function autoRefreshTick() {
+    if (document.visibilityState !== "visible") return;
+    if (newestId === null) return;
+    try {
+      const params = { ...activeFilters, after_id: newestId, limit: 200 };
+      const page = await API.chatList(params);
+      if (!page.length) return;
+      // newer выше — front-end ожидает новые сверху. backend вернул DESC.
+      const ids = page.map(m => m.id);
+      newestId = Math.max(newestId, ...ids);
+      ids.forEach(id => freshIds.add(id));
+      // Сливаем: новые сверху + старые снизу. Дубликатов не будет — id > newestId.
+      loaded = page.concat(loaded);
+      render(true);
+      // Снимаем «свежесть» через 6 сек, чтобы подсветка ушла.
+      setTimeout(() => {
+        ids.forEach(id => freshIds.delete(id));
+        // Не перерисовываем — CSS-transition сам мягко уберёт класс.
+      }, 6000);
+      // Обновим статистику (счётчики) фоном.
+      refreshStats();
+    } catch (_) {
+      // тихо: сеть отвалилась, ничего страшного, в следующий tick попробуем
+    }
+  }
+  setInterval(autoRefreshTick, AUTO_REFRESH_MS);
+  // При возвращении на вкладку — сразу пытаемся подтянуть пропущенное.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") autoRefreshTick();
+  });
 
   async function refreshStats() {
     try {

@@ -1096,6 +1096,15 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
 .chat-msg-vk { border-left-color: #4a7fb8; }
 .chat-msg-tg { border-left-color: #38a4d8; }
 
+/* Свежие сообщения от auto-refresh — мягкая подсветка которая угасает */
+.chat-msg-fresh {
+  animation: chat-fresh-fade 6s ease-out forwards;
+}
+@keyframes chat-fresh-fade {
+  0%   { background: rgba(0, 255, 65, 0.18); box-shadow: 0 0 14px rgba(0, 255, 65, 0.35); }
+  100% { background: rgba(0, 0, 0, 0.32); box-shadow: none; }
+}
+
 .chat-head {
   display: flex;
   flex-wrap: wrap;

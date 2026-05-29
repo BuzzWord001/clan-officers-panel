@@ -842,12 +842,15 @@ def list_chat_messages(
     search: str | None = None,
     limit: int = 100,
     before_id: int | None = None,
+    after_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Возвращает сообщения в обратном хронологическом порядке (новые сверху).
 
-    before_id используется для пагинации — следующая страница это «всё что
-    id < before_id». Это устойчиво к новым ingest'ам в процессе листания,
-    в отличие от offset.
+    before_id  — пагинация: «всё что id < before_id». Устойчиво к новым
+                 ingest'ам в процессе листания, в отличие от offset.
+    after_id   — auto-refresh: «всё что id > after_id». Возвращается тоже
+                 в обратном хронологическом порядке (id DESC), но фронт
+                 ожидает только дельту чтобы вставить сверху.
 
     search использует FTS5; остальное — обычные индексы.
     """
@@ -870,6 +873,9 @@ def list_chat_messages(
     if before_id:
         clauses.append("id < ?")
         params.append(before_id)
+    if after_id:
+        clauses.append("id > ?")
+        params.append(after_id)
 
     with connection() as conn:
         if search:
