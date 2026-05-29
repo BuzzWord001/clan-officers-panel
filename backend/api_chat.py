@@ -507,6 +507,17 @@ def members_profile(
     return {"found": True, "profile": profile}
 
 
+@router.get("/members/activity")
+def members_activity(_: dict = Depends(require_officer)) -> list[dict]:
+    """Полный список участников clan_members + их активность в архиве.
+
+    Сводка для табличного представления: сколько сообщений в общем/
+    офицерском чате, символов, медиа, первое/последнее, гистограмма
+    по неделям за 12 недель.
+    """
+    return db.list_members_activity()
+
+
 @router.delete("/messages")
 def clear_archive(
     confirm: str = Query(default="", description="Должно быть 'yes'"),

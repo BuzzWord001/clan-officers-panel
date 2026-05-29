@@ -169,6 +169,10 @@ CREATE INDEX IF NOT EXISTS idx_chat_group_date
     ON chat_messages(chat_group, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_user
     ON chat_messages(user_display);
+-- Для агрегата активности по участникам clan_members нужно быстро
+-- выбирать сообщения по (platform, user_id) и группировать.
+CREATE INDEX IF NOT EXISTS idx_chat_platform_user
+    ON chat_messages(platform, user_id);
 
 -- FTS5 индекс для полнотекстового поиска по тексту и автору. unicode61
 -- + remove_diacritics=2 нормализует ёжё → ее, а заглавные в строчные —
@@ -1722,6 +1726,109 @@ def dedup_stats() -> dict[str, Any]:
         ).fetchone()[0] or 0
     return {"total_unique": total, "by_kind": by_kind,
             "bytes_saved_via_dedup": int(saved)}
+
+
+def list_members_activity() -> list[dict[str, Any]]:
+    """Список всех зарегистрированных участников клана + их активность в
+    архиве: сколько сообщений (общий/офицерский), символов, медиа,
+    первое/последнее сообщение и гистограмма по неделям за 12 недель.
+
+    Один человек обычно есть и в TG (tg_id), и в VK (vk_id). Сумма по
+    обоим. Если оба ID пустые — статистика 0.
+    """
+    from datetime import datetime, timedelta
+    WEEKS = 12
+
+    with connection() as conn:
+        # Считаем активность сразу одним проходом по chat_messages,
+        # без N+1. Индекс idx_chat_platform_user делает это быстро.
+        rows = list(conn.execute(
+            "SELECT platform, user_id, chat_group, sent_at, text, media_json "
+            "FROM chat_messages"
+        ))
+
+        # Группируем по (platform, user_id)
+        from collections import defaultdict
+        per_user: dict[tuple[str, str], dict] = defaultdict(
+            lambda: {"msgs": 0, "msgs_general": 0, "msgs_officers": 0,
+                     "chars": 0, "media": 0,
+                     "first_seen": None, "last_seen": None,
+                     "weeks": [0] * WEEKS})
+        now = datetime.utcnow()
+        week_zero = now - timedelta(weeks=WEEKS)
+        week_zero_iso = week_zero.strftime("%Y-%m-%dT%H:%M:%S")
+
+        for r in rows:
+            key = (r["platform"], str(r["user_id"]))
+            p = per_user[key]
+            p["msgs"] += 1
+            if r["chat_group"] == "general":
+                p["msgs_general"] += 1
+            elif r["chat_group"] == "officers":
+                p["msgs_officers"] += 1
+            p["chars"] += len(r["text"] or "")
+            if r["media_json"] not in ("", "[]"):
+                p["media"] += 1
+            sa = r["sent_at"]
+            if p["first_seen"] is None or sa < p["first_seen"]:
+                p["first_seen"] = sa
+            if p["last_seen"] is None or sa > p["last_seen"]:
+                p["last_seen"] = sa
+            # Histogram по неделям
+            if sa >= week_zero_iso:
+                try:
+                    dt = datetime.fromisoformat(sa)
+                    days = (dt - week_zero).days
+                    if 0 <= days < WEEKS * 7:
+                        p["weeks"][days // 7] += 1
+                except Exception:
+                    pass
+
+        # Теперь идём по clan_members
+        out: list[dict[str, Any]] = []
+        members = list_clan_members()
+        skip_fields = {"key", "raw_json", "synced_at"}
+
+        for m in members:
+            tg_id = (m.get("tg_id") or "").strip()
+            vk_id = (m.get("vk_id") or "").strip()
+
+            agg = {"msgs": 0, "msgs_general": 0, "msgs_officers": 0,
+                   "chars": 0, "media": 0,
+                   "first_seen": None, "last_seen": None,
+                   "weeks": [0] * WEEKS}
+
+            for key in (("tg", tg_id), ("vk", vk_id)):
+                if not key[1]:
+                    continue
+                src = per_user.get(key)
+                if not src:
+                    continue
+                agg["msgs"]          += src["msgs"]
+                agg["msgs_general"]  += src["msgs_general"]
+                agg["msgs_officers"] += src["msgs_officers"]
+                agg["chars"]         += src["chars"]
+                agg["media"]         += src["media"]
+                for i in range(WEEKS):
+                    agg["weeks"][i] += src["weeks"][i]
+                if src["first_seen"] and (agg["first_seen"] is None
+                                          or src["first_seen"] < agg["first_seen"]):
+                    agg["first_seen"] = src["first_seen"]
+                if src["last_seen"] and (agg["last_seen"] is None
+                                         or src["last_seen"] > agg["last_seen"]):
+                    agg["last_seen"] = src["last_seen"]
+
+            profile = {k: v for k, v in m.items()
+                       if k not in skip_fields and v not in (None, "", 0, "0")}
+            out.append({
+                "key":          m["key"],
+                "profile":      profile,
+                "stats":        agg,
+            })
+
+        # Сортируем по убыванию количества сообщений.
+        out.sort(key=lambda x: -x["stats"]["msgs"])
+        return out
 
 
 def list_backfill_targets(

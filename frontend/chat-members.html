@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <title>SanTDeviL — Участники чатов</title>
+  <link rel="stylesheet" href="styles.css?v=1779749000">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <img class="bg-girl" src="assets/bg.png?v=1779743290" alt="" aria-hidden="true">
+  <div class="scanlines"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
+        <div class="brand-name">SanTDeviL</div>
+        <span class="classified-badge">Только для офицеров</span>
+      </div>
+      <div class="user-bar" id="user-bar">
+        <span class="who" id="who"></span>
+        <button id="logout-btn">Выйти</button>
+      </div>
+    </header>
+
+    <section class="title-block">
+      <div class="glitch">S a n T D e v i L</div>
+      <div class="subtitle">Активность участников клана</div>
+    </section>
+
+    <main>
+      <div class="tabs">
+        <div class="tabs-group">
+          <span class="tabs-group-label">сайт</span>
+          <div class="tabs-group-links">
+            <a href="index.html">Реестр</a>
+            <a href="audit.html">История сайта</a>
+          </div>
+        </div>
+        <div class="tabs-sep" aria-hidden="true"></div>
+        <div class="tabs-group">
+          <span class="tabs-group-label">чаты</span>
+          <div class="tabs-group-links">
+            <a href="chat-archive.html">Архив чатов</a>
+            <a href="chat-members.html" class="active">Участники</a>
+          </div>
+        </div>
+        <div class="tabs-sep admin-only" aria-hidden="true"></div>
+        <div class="tabs-group admin-only">
+          <span class="tabs-group-label">админ</span>
+          <div class="tabs-group-links">
+            <a href="settings.html" id="settings-tab">Настройки</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel members-panel">
+        <div class="members-header">
+          <div class="members-stats" id="members-stats"></div>
+          <div class="members-search">
+            <input type="text" id="members-filter"
+                   placeholder="Фильтр: ник / имя / TG / VK">
+          </div>
+        </div>
+
+        <div id="members-loading" class="chat-loading" hidden>Загрузка…</div>
+
+        <div class="members-table-wrap">
+          <table class="members-table" id="members-table">
+            <thead>
+              <tr>
+                <th class="m-col-name"      data-sort="name">Участник</th>
+                <th class="m-col-num"       data-sort="msgs_total" data-dir="desc">Всего</th>
+                <th class="m-col-num"       data-sort="msgs_general">Общий</th>
+                <th class="m-col-num"       data-sort="msgs_officers">Офицерский</th>
+                <th class="m-col-num"       data-sort="chars">Символов</th>
+                <th class="m-col-num"       data-sort="media">Медиа</th>
+                <th class="m-col-act"       data-sort="last_seen">Активность<br><small>12 недель</small></th>
+                <th class="m-col-time">Период</th>
+              </tr>
+            </thead>
+            <tbody id="members-tbody"></tbody>
+          </table>
+        </div>
+        <div id="members-empty" class="empty" hidden>Никто не найден</div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/config.js?v=1779749000"></script>
+  <script src="js/matrix-bg.js?v=1779749000"></script>
+  <script src="js/api.js?v=1779749000"></script>
+  <script src="js/chat-members.js?v=1779749000"></script>
+</body>
+</html>
