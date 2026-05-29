@@ -224,6 +224,110 @@ class MembersBulkSync(BaseModel):
     members: list[dict]
 
 
+class DedupCheckIn(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=32)
+    key: str  = Field(..., min_length=1, max_length=300)
+
+
+class DedupRecordIn(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=32)
+    key: str  = Field(..., min_length=1, max_length=300)
+    r2_url: str
+    r2_key: str
+    mime: str = ""
+    size: int = 0
+    media_kind: str = ""
+    width: int = 0
+    height: int = 0
+
+
+@router.post("/media/dedup-check")
+def media_dedup_check(payload: DedupCheckIn,
+                      _=Depends(require_bot_token)) -> dict:
+    """Бот проверяет: не залит ли этот контент уже в R2.
+
+    kind может быть:
+      'tg_unique'   — TG file_unique_id (стабильный для одного контента)
+      'vk_sticker'  — VK sticker_id (число как строка)
+      'vk_doc'      — VK doc owner_id + doc_id (формат 'owner_doc')
+      'sha256'      — SHA256 hex от bytes файла (универсальный fallback)
+    """
+    row = db.dedup_lookup(payload.kind, payload.key)
+    if not row:
+        return {"found": False}
+    return {
+        "found": True,
+        "url":        row["r2_url"],
+        "r2_key":     row["r2_key"],
+        "mime":       row["mime"],
+        "size":       row["size"],
+        "media_kind": row["media_kind"],
+        "width":      row["width"],
+        "height":     row["height"],
+    }
+
+
+@router.post("/media/dedup-record")
+def media_dedup_record(payload: DedupRecordIn,
+                       _=Depends(require_bot_token)) -> dict:
+    """Бот после успешной заливки сообщает: вот ключ → вот URL.
+    При попадании на дубль (race condition) — bump hit_count."""
+    res = db.dedup_record(
+        kind=payload.kind, key=payload.key,
+        r2_url=payload.r2_url, r2_key=payload.r2_key,
+        mime=payload.mime, size=payload.size,
+        media_kind=payload.media_kind,
+        width=payload.width, height=payload.height,
+    )
+    return res
+
+
+@router.get("/media/dedup-stats")
+def media_dedup_stats(_: dict = Depends(require_officer)) -> dict:
+    """Сводка для офицеров — сколько уникальных медиа, сколько сэкономлено."""
+    return db.dedup_stats()
+
+
+# ── BACKFILL endpoints ────────────────────────────────────────────────────
+
+@router.get("/media/backfill-targets")
+def media_backfill_targets(
+    platform: str | None = Query(default=None, pattern="^(tg|vk)$"),
+    chat_group: str | None = Query(default=None,
+                                   pattern="^(general|officers)$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    before_id: int | None = Query(default=None),
+    _=Depends(require_bot_token),
+) -> dict:
+    """Сообщения архива с медиа БЕЗ R2 URL — кандидаты для backfill.
+
+    Курсор: before_id — id последнего сообщения предыдущей страницы.
+    Сортировка id DESC (новые → старые), чтобы шагать пагинацией.
+    """
+    rows = db.list_backfill_targets(
+        platform=platform, chat_group=chat_group,
+        limit=limit, before_id=before_id,
+    )
+    next_before = rows[-1]["id"] if rows else None
+    return {"items": rows, "next_before_id": next_before}
+
+
+class BackfillUpdateIn(BaseModel):
+    id: int
+    media: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/media/backfill-update")
+def media_backfill_update(payload: BackfillUpdateIn,
+                          _=Depends(require_bot_token)) -> dict:
+    """Перезаписать media_json одного сообщения после backfill.
+    Бот после успешной заливки/dedup-hit'а сообщает новые объекты media."""
+    ok = db.update_chat_message_media(payload.id, payload.media)
+    if not ok:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    return {"updated": 1}
+
+
 @router.post("/members/bulk-sync")
 def members_bulk_sync(payload: MembersBulkSync,
                       _=Depends(require_bot_token)) -> dict:

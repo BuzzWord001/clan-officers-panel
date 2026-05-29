@@ -296,6 +296,34 @@ def _migrate(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass
 
+    # 2026-05-29 (поздно вечером): дедуп медиа. Стикеры/GIF/часто повторяющиеся
+    # картинки бесполезно качать и заливать снова — раз уже в R2, ссылка та же.
+    # Двухключевая дедупликация: платформенный file_unique_id (стабилен в
+    # пределах одного бота) и SHA256 содержимого (универсально).
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS media_dedup (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind        TEXT NOT NULL,   -- 'tg_unique' | 'vk_sticker' | 'vk_doc' | 'sha256'
+                key         TEXT NOT NULL,
+                r2_url      TEXT NOT NULL,
+                r2_key      TEXT NOT NULL,
+                mime        TEXT NOT NULL DEFAULT '',
+                size        INTEGER NOT NULL DEFAULT 0,
+                media_kind  TEXT NOT NULL DEFAULT '',
+                width       INTEGER NOT NULL DEFAULT 0,
+                height      INTEGER NOT NULL DEFAULT 0,
+                first_seen  TEXT NOT NULL,
+                last_seen   TEXT NOT NULL,
+                hit_count   INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(kind, key)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_media_dedup_lookup "
+                     "ON media_dedup(kind, key)")
+    except sqlite3.OperationalError:
+        pass
+
 
 def init_db() -> None:
     db_path = Path(settings.db_path)
@@ -1528,6 +1556,144 @@ def clear_chat_archive() -> int:
         conn.execute("INSERT INTO chat_messages_fts(chat_messages_fts) "
                      "VALUES ('rebuild')")
         return n
+
+
+# ── media dedup ──────────────────────────────────────────────────────────
+
+def dedup_lookup(kind: str, key: str) -> dict[str, Any] | None:
+    """Найти уже залитое в R2 медиа. Возвращает запись или None.
+    При попадании инкрементируется hit_count и обновляется last_seen."""
+    if not kind or not key:
+        return None
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM media_dedup WHERE kind = ? AND key = ?",
+            (kind, key),
+        ).fetchone()
+        if not row:
+            return None
+        # bump stats
+        now = datetime.utcnow().isoformat(timespec="seconds")
+        conn.execute(
+            "UPDATE media_dedup SET hit_count = hit_count + 1, last_seen = ? "
+            "WHERE id = ?",
+            (now, row["id"]),
+        )
+        return dict(row)
+
+
+def dedup_record(*, kind: str, key: str, r2_url: str, r2_key: str,
+                 mime: str = "", size: int = 0, media_kind: str = "",
+                 width: int = 0, height: int = 0) -> dict[str, Any]:
+    """Записать дедуп. Если запись уже есть (race condition) — bump hit_count."""
+    if not kind or not key or not r2_url:
+        raise ValueError("kind, key, r2_url обязательны")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO media_dedup
+               (kind, key, r2_url, r2_key, mime, size, media_kind,
+                width, height, first_seen, last_seen, hit_count)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
+               ON CONFLICT(kind, key) DO UPDATE SET
+                 hit_count = hit_count + 1,
+                 last_seen = excluded.last_seen""",
+            (kind, key, r2_url, r2_key, mime, size, media_kind,
+             width, height, now, now),
+        )
+        row = conn.execute(
+            "SELECT id, hit_count FROM media_dedup WHERE kind = ? AND key = ?",
+            (kind, key),
+        ).fetchone()
+    return {"id": row["id"], "hit_count": row["hit_count"]}
+
+
+def dedup_stats() -> dict[str, Any]:
+    """Сводка для UI/мониторинга."""
+    with connection() as conn:
+        total = conn.execute(
+            "SELECT count(*) FROM media_dedup"
+        ).fetchone()[0]
+        by_kind = {}
+        for r in conn.execute(
+            "SELECT kind, count(*) AS n, sum(hit_count) AS hits "
+            "FROM media_dedup GROUP BY kind"
+        ):
+            by_kind[r["kind"]] = {"unique": r["n"], "hits": r["hits"]}
+        saved = conn.execute(
+            "SELECT sum(size * (hit_count - 1)) FROM media_dedup"
+        ).fetchone()[0] or 0
+    return {"total_unique": total, "by_kind": by_kind,
+            "bytes_saved_via_dedup": int(saved)}
+
+
+def list_backfill_targets(
+    *, platform: str | None = None,
+    chat_group: str | None = None,
+    limit: int = 200,
+    before_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Сообщения с media БЕЗ R2-URL — кандидаты на бэкфилл.
+
+    Кандидат = media_json содержит хотя бы один элемент с пустым url
+    (и kind != 'wall' / 'link' — это нечего качать).
+    Сортировка id DESC чтобы курсорно идти к более старым.
+    """
+    where = ["media_json NOT IN ('','[]')"]
+    params: list[Any] = []
+    if platform:
+        where.append("platform = ?"); params.append(platform)
+    if chat_group:
+        where.append("chat_group = ?"); params.append(chat_group)
+    if before_id is not None:
+        where.append("id < ?"); params.append(int(before_id))
+    sql = f"""SELECT id, chat_group, platform, chat_id, message_id,
+                     user_id, user_display, text, media_json, sent_at
+              FROM chat_messages
+              WHERE {' AND '.join(where)}
+              ORDER BY id DESC
+              LIMIT ?"""
+    params.append(int(limit))
+    out: list[dict[str, Any]] = []
+    with connection() as conn:
+        for r in conn.execute(sql, params):
+            try:
+                media = json.loads(r["media_json"])
+            except Exception:
+                media = []
+            # фильтр: оставляем только те где есть пустой url у качаемого медиа
+            need = [m for m in media
+                    if isinstance(m, dict) and not (m.get("url") or "")
+                    and (m.get("kind") or "") not in
+                        ("", "text", "wall", "link", "unknown")]
+            if not need:
+                continue
+            out.append({
+                "id": r["id"],
+                "chat_group": r["chat_group"],
+                "platform": r["platform"],
+                "chat_id": r["chat_id"],
+                "message_id": r["message_id"],
+                "user_id": r["user_id"],
+                "user_display": r["user_display"],
+                "text": r["text"][:120],
+                "media": media,
+                "sent_at": r["sent_at"],
+            })
+    return out
+
+
+def update_chat_message_media(msg_id: int,
+                              media: list[dict[str, Any]]) -> bool:
+    """Перезаписать media_json одной записи (для backfill).
+    Возвращает True если запись существовала."""
+    media_json = json.dumps(media or [], ensure_ascii=False)
+    with connection() as conn:
+        cur = conn.execute(
+            "UPDATE chat_messages SET media_json = ? WHERE id = ?",
+            (media_json, int(msg_id)),
+        )
+        return cur.rowcount > 0
 
 
 def chat_archive_stats() -> dict[str, Any]:
