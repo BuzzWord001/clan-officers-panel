@@ -72,6 +72,8 @@ class ChatMessageOut(BaseModel):
     user_username: str
     text: str
     reply_to_msg_id: str
+    reply_to_user: str = ""
+    reply_to_text: str = ""
     media: list[dict[str, Any]]
     sent_at: str
     ingested_at: str
