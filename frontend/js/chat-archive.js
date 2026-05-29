@@ -158,6 +158,49 @@
     return p === "tg" ? "TG" : p === "vk" ? "VK" : p.toUpperCase();
   }
 
+  // Ссылка на профиль автора в TG / VK.
+  //   TG: только если есть @username — у людей без публичного username
+  //       единственный способ — поделиться контактом, ссылки нет.
+  //   VK: vk.com/id<sender_id> всегда работает даже без screen_name.
+  function authorProfileUrl(m) {
+    if (m.platform === "tg") {
+      const u = String(m.user_username || "").trim();
+      if (u && /^[a-zA-Z0-9_]{4,}$/.test(u)) {
+        return `https://t.me/${u}`;
+      }
+      return null;
+    }
+    if (m.platform === "vk") {
+      const uid = String(m.user_id || "").trim();
+      if (uid && /^\d+$/.test(uid) && uid !== "0") {
+        return `https://vk.com/id${uid}`;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  // Группировка подряд идущих сообщений одного автора. Если предыдущее
+  // сообщение от того же user_id + platform + chat_group и временной
+  // разрыв < GROUP_WINDOW_MS, скрываем шапку — лента визуально плотнее.
+  const GROUP_WINDOW_MS = 5 * 60 * 1000;
+  function isContinuation(curr, prev) {
+    if (!prev) return false;
+    if (curr.platform !== prev.platform) return false;
+    if (curr.chat_group !== prev.chat_group) return false;
+    if (String(curr.user_id) !== String(prev.user_id)) return false;
+    if (!curr.user_id || curr.user_id === "0") return false;
+    try {
+      const t1 = new Date(curr.sent_at + "Z").getTime();
+      const t2 = new Date(prev.sent_at + "Z").getTime();
+      // loaded — отсортирован новые сверху, prev в массиве идёт раньше (=новее),
+      // значит curr старее prev → t1 < t2.
+      return (t2 - t1) <= GROUP_WINDOW_MS && (t2 - t1) >= 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Ссылка на оригинал сообщения в TG/VK. Возвращает null если ID не
   // выглядит как реальный (например, для исторических migrated:... id).
   function originalUrl(m) {
@@ -229,12 +272,17 @@
     return `<div class="chat-reply chat-reply-dim">↩ ответ на сообщение</div>`;
   }
 
-  function renderMessage(m) {
+  function renderMessage(m, prev) {
     const reply = renderReply(m);
     const fresh = freshIds.has(m.id) ? " chat-msg-fresh" : "";
+    const cont = isContinuation(m, prev) ? " chat-msg-cont" : "";
 
     const authorEsc = escapeHtml(m.user_display);
-    const author = highlight(authorEsc, highlightTerms.author);
+    const authorHl = highlight(authorEsc, highlightTerms.author);
+    const profileUrl = authorProfileUrl(m);
+    const author = profileUrl
+      ? `<a class="chat-author chat-author-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" title="Открыть профиль в ${platformBadge(m.platform)}">${authorHl}</a>`
+      : `<span class="chat-author">${authorHl}</span>`;
     const textEsc = escapeHtml(m.text);
     const textHl = highlight(textEsc, highlightTerms.text);
     const text = m.text ? `<div class="chat-text">${textHl}</div>` : "";
@@ -248,16 +296,22 @@
       ? `<a class="chat-time chat-time-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Открыть оригинал в ${platformBadge(m.platform)}">${tsText} ↗</a>`
       : `<span class="chat-time" title="Оригинал недоступен (бэкфилл из JSONL)">${tsText}</span>`;
 
+    // В continuation-режиме показываем только время справа компактно,
+    // без полной шапки.
+    const head = cont
+      ? `<div class="chat-head chat-head-cont">${timeHtml}</div>`
+      : `<div class="chat-head">
+            ${author}
+            ${m.user_username ? `<span class="chat-username">@${escapeHtml(m.user_username)}</span>` : ""}
+            <span class="chat-badge chat-badge-${m.platform}">${platformBadge(m.platform)}</span>
+            <span class="chat-group-tag">${groupLabel(m.chat_group)}</span>
+            ${timeHtml}
+          </div>`;
+
     return `
-      <div class="chat-msg chat-msg-${m.platform}${fresh}" data-id="${m.id}">
+      <div class="chat-msg chat-msg-${m.platform}${fresh}${cont}" data-id="${m.id}">
         ${delBtn}
-        <div class="chat-head">
-          <span class="chat-author">${author}</span>
-          ${m.user_username ? `<span class="chat-username">@${escapeHtml(m.user_username)}</span>` : ""}
-          <span class="chat-badge chat-badge-${m.platform}">${platformBadge(m.platform)}</span>
-          <span class="chat-group-tag">${groupLabel(m.chat_group)}</span>
-          ${timeHtml}
-        </div>
+        ${head}
         ${reply}
         ${text}
         ${media}
@@ -268,7 +322,11 @@
   function render(reset) {
     const feed = $("chat-feed");
     if (reset) feed.innerHTML = "";
-    feed.innerHTML = loaded.map(renderMessage).join("");
+    // loaded — новые сверху. Для группировки prev для loaded[i] это
+    // loaded[i-1] (то что выше = новее = было отправлено ПОЗЖЕ).
+    feed.innerHTML = loaded.map((m, i) =>
+      renderMessage(m, loaded[i - 1])
+    ).join("");
     $("empty-state").hidden = loaded.length > 0;
     $("load-more-wrap").hidden = loaded.length === 0
       || loaded.length < PAGE_SIZE

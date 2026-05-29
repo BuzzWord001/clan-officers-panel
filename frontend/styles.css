@@ -1117,6 +1117,33 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   color: var(--accent);
   font-weight: 600;
 }
+.chat-author-link {
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+.chat-author-link:hover {
+  border-bottom-color: var(--accent);
+  text-shadow: 0 0 6px var(--accent);
+}
+
+/* Continuation: подряд идущие сообщения одного автора — плотнее,
+   без верхнего отступа в .chat-feed flex-gap, акцент-полоска ярче. */
+.chat-msg-cont {
+  margin-top: -8px;          /* съедает gap из .chat-feed (gap: 10px) */
+  padding-top: 4px;
+  padding-bottom: 6px;
+  border-left-width: 3px;
+}
+.chat-head-cont {
+  justify-content: flex-end;
+  min-height: 0;
+  margin-bottom: 0;
+}
+.chat-head-cont .chat-time {
+  margin-left: 0;
+  opacity: 0.55;
+  font-size: 9px;
+}
 .chat-username {
   color: var(--text-dim);
   font-size: 10px;
