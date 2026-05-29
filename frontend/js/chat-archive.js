@@ -1233,48 +1233,68 @@
     scrollToReply(platform, chatId, mid, replyUser, replyText, r);
   });
 
-  // «в архиве» — сбрасывает все фильтры КРОМЕ выбора чата (общий/
-  // офицерский/все), затем подгружает страницы пока сообщение не
-  // окажется в loaded, и скроллит к нему с вспышкой.
+  // «в архиве» — сбрасывает все фильтры КРОМЕ выбора чата и сразу
+  // загружает страницу архива С target-сообщения вглубь. before_id=
+  // target+1 гарантирует что target попадёт первым в выдаче — никаких
+  // подгрузок 50 страниц.
   async function jumpInArchive(targetId, btn) {
-    const grp = $("f-group").value;
-    let needReset = false;
+    // Сброс фильтров (кроме f-group)
     for (const id of ["f-from", "f-to", "f-user", "f-search"]) {
       const el = $(id);
-      if (el && el.value) { el.value = ""; el.classList.remove("invalid"); needReset = true; }
+      if (el) { el.value = ""; el.classList.remove("invalid"); }
     }
-    if (needReset) {
-      // Применить очищенные фильтры — это перезагрузит ленту без
-      // date/user/search-сужений.
-      await applyFilters();
-    }
-    // Проверяем что выбранный chat_group остался прежним.
-    if ($("f-group").value !== grp) {
-      $("f-group").value = grp;
-      await applyFilters();
-    }
-    if (btn) btn.classList.add("chat-reply-loading");
+    activeFilters = collectFilters();
+    highlightTerms = extractHighlightTerms("");
+    oldestId = null;
+    newestId = null;
+    freshIds.clear();
+    $("chat-loading").hidden = false;
     try {
-      let found = null;
-      for (let p = 0; p < 50; p++) {  // ~4000 сообщений lookup
-        const el = document.querySelector(
-          `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
-        if (el) { found = el; break; }
-        if (loaded.length < PAGE_SIZE) break;
-        if (loaded.length % PAGE_SIZE !== 0) break;
-        await load(false);
-        await new Promise(r => setTimeout(r, 0));
+      // before_id = targetId + 1 → страница начинается с target ID и
+      // идёт вглубь по убыванию.
+      const params = { ...activeFilters, limit: PAGE_SIZE,
+                       before_id: targetId + 1 };
+      const page = await API.chatList(params);
+      loaded = page;
+      if (page.length) {
+        oldestId = page[page.length - 1].id;
+        newestId = Math.max(...page.map(m => m.id));
       }
-      if (found) {
-        found.scrollIntoView({ behavior: "smooth", block: "center" });
-        flashMessage(found);
-      } else if (btn) {
-        btn.classList.remove("chat-reply-loading");
+      renderReset();
+      await refreshStats();
+      let el = document.querySelector(
+        `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
+      // Не нашли — попробуем без chat_group фильтра (target может быть
+      // в другом чате, а пользователь хочет именно к нему).
+      if (!el && activeFilters.chat_group) {
+        $("f-group").value = "";
+        activeFilters = collectFilters();
+        const page2 = await API.chatList({ limit: PAGE_SIZE,
+                                           before_id: targetId + 1 });
+        loaded = page2;
+        if (page2.length) {
+          oldestId = page2[page2.length - 1].id;
+          newestId = Math.max(...page2.map(m => m.id));
+        }
+        renderReset();
+        el = document.querySelector(
+          `.chat-msg[data-id="${targetId}"], .chat-event[data-id="${targetId}"]`);
+      }
+      if (el) {
+        requestAnimationFrame(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          flashMessage(el);
+        });
+      } else if (btn && btn.isConnected) {
         btn.classList.add("chat-reply-notfound");
         setTimeout(() => btn.classList.remove("chat-reply-notfound"), 1500);
       }
+    } catch (e) {
+      console.error("jumpInArchive failed:", e);
+      $("chat-feed").innerHTML =
+        `<div class="empty">Ошибка перехода: ${escapeHtml(e.detail || e.message)}</div>`;
     } finally {
-      if (btn) btn.classList.remove("chat-reply-loading");
+      $("chat-loading").hidden = true;
     }
   }
 
