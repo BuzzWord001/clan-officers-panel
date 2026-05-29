@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Архив переписки</title>
-  <link rel="stylesheet" href="styles.css?v=1779743286">
+  <link rel="stylesheet" href="styles.css?v=1779743287">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779743286" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779743287" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -77,14 +77,18 @@
           </div>
         </div>
         <div class="chat-search-hint">
-          <div class="chat-hint-title">Как искать</div>
+          <div class="chat-hint-title">Примеры поиска (клик подставляет)</div>
           <div class="chat-hint-grid">
-            <code>Мелодька</code><span>— все её сообщения по любому её нику или имени в ВК/Telegram</span>
-            <code>рейд</code><span>— все упоминания этого слова</span>
-            <code>"нужна помощь"</code><span>— только эта точная фраза в кавычках</span>
-            <code>рейд -реклама</code><span>— про рейд, но без слова «реклама»</span>
-            <code>от:Лир</code><span>— только сообщения этого человека (имя, игровой ник или @username)</span>
-            <code>тема:ссоры</code><span>— разговоры на одну из клановых тем (см. ниже)</span>
+            <code>Мелодька</code><span>— всё про этого человека по любому из его имён (ВК, Telegram, ник в игре)</span>
+            <code>рейд</code><span>— все сообщения, где упомянут рейд</span>
+            <code>"нужна помощь"</code><span>— найти эту точную фразу целиком, а не каждое слово отдельно</span>
+            <code>от:Лир рейд</code><span>— что Лир писал именно про рейды</span>
+            <code>тема:ссоры от:Мелодька</code><span>— когда Мелодька с кем-то ругалась</span>
+            <code>тема:уходы</code><span>— кто и когда покидал чаты</span>
+          </div>
+          <div class="chat-hint-note">
+            Знак минуса <code>−слово</code> убирает результаты с этим словом. Пример:
+            <code>Мелодька -спасибо</code> — все её сообщения, кроме её благодарностей.
           </div>
           <div class="chat-hint-themes">
             <span class="chat-hint-themes-label">Темы (клик ищет):</span>
@@ -119,10 +123,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779743286"></script>
-  <script src="js/matrix.js?v=1779743286"></script>
-  <script src="js/api.js?v=1779743286"></script>
-  <script src="js/dateutil.js?v=1779743286"></script>
-  <script src="js/chat-archive.js?v=1779743286"></script>
+  <script src="config.js?v=1779743287"></script>
+  <script src="js/matrix.js?v=1779743287"></script>
+  <script src="js/api.js?v=1779743287"></script>
+  <script src="js/dateutil.js?v=1779743287"></script>
+  <script src="js/chat-archive.js?v=1779743287"></script>
 </body>
 </html>
