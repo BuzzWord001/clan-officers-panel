@@ -435,6 +435,49 @@
       '"': "&quot;", "'": "&#39;",
     }[c]));
   }
+
+  // Распознаём ссылки в тексте и делаем их кликабельными. Поддержанные:
+  //   - http(s)://...
+  //   - www.example.com
+  //   - t.me/foo, vk.com/foo (без протокола — добавим https://)
+  // URL прерывается на пробелах, переносах строк и стандартных
+  // pre-trail знаках препинания (.,!?)»);]} — чтобы они не уходили
+  // внутрь ссылки.
+  const URL_RE = /\b(?:https?:\/\/|www\.|t\.me\/|vk\.com\/|vk\.me\/|github\.com\/|youtu\.be\/|youtube\.com\/|telegra\.ph\/)[^\s<>"' ]+/gi;
+  // Хвостовая пунктуация которую НЕ включаем в URL (закрывающие
+  // скобки/кавычки тоже снимем для безопасности).
+  const URL_TRAIL_RE = /[.,!?;:)»\]>}'"]+$/;
+
+  function linkifyAndHighlight(text, terms) {
+    if (!text) return "";
+    let result = "";
+    let last = 0;
+    let m;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(text)) !== null) {
+      // Хвостовая пунктуация — за пределами URL'а.
+      let url = m[0];
+      const tail = (url.match(URL_TRAIL_RE) || [""])[0];
+      if (tail) url = url.slice(0, -tail.length);
+      const start = m.index;
+      const end = start + url.length;
+      // Текст до URL'а
+      const before = text.slice(last, start);
+      if (before) result += highlight(escapeHtml(before), terms);
+      // Сам URL — кликабельная ссылка.
+      const escUrl = escapeHtml(url);
+      const href = /^https?:/i.test(url) ? url : ("https://" + url);
+      result += `<a class="chat-link" href="${escapeHtml(href)}" target="_blank" rel="noopener nofollow">${escUrl}</a>`;
+      // Tail-пунктуацию (если была) добавляем как обычный текст ПОСЛЕ ссылки.
+      if (tail) result += escapeHtml(tail);
+      last = end + tail.length;
+      URL_RE.lastIndex = last;
+    }
+    if (last < text.length) {
+      result += highlight(escapeHtml(text.slice(last)), terms);
+    }
+    return result;
+  }
   function formatBytes(b) {
     if (!b) return "";
     if (b < 1024) return b + "Б";
@@ -651,9 +694,9 @@
     const author = profileUrl
       ? `<a class="chat-author chat-author-link" href="${escapeHtml(profileUrl)}" target="_blank" rel="noopener" title="Открыть профиль в ${platformBadge(m.platform)}">${authorHl}</a>`
       : `<span class="chat-author">${authorHl}</span>`;
-    const textEsc = escapeHtml(m.text);
-    const textHl = highlight(textEsc, highlightTerms.text);
-    const text = m.text ? `<div class="chat-text">${textHl}</div>` : "";
+    // Текст: ссылки кликабельные, поисковые термины подсвечены.
+    const textHtml = linkifyAndHighlight(m.text, highlightTerms.text);
+    const text = m.text ? `<div class="chat-text">${textHtml}</div>` : "";
     const media = renderMedia(m.media);
     const delBtn = isAdmin
       ? `<button class="chat-msg-del" data-del-id="${m.id}" title="Удалить из архива">✕</button>`
@@ -922,14 +965,14 @@
   }
 
   // ─────────────── Reply click-to-scroll ───────────────
-  // При клике на reply ищем в loaded оригинал.
-  // - Если есть msg_id — можно идти вглубь до 8 страниц (точный поиск).
-  // - Если только user+text (исторический reply из JSONL без id) —
-  //   эвристика, БЕЗ подгрузки. Подгрузка не помогает (если оригинал
-  //   старше — text-match ненадёжен и часто промахивается), но каждая
-  //   страница добавляет рендер DOM = мерцание ленты.
-  const REPLY_LOOKUP_PAGES_MID = 8;
-  const REPLY_LOOKUP_PAGES_FUZZY = 0;
+  // При клике на reply ищем в loaded оригинал. Если не нашли — автоматически
+  // подгружаем архив страница за страницей пока не найдём ИЛИ пока не
+  // достигнем лимита. Для эвристики лимит чуть меньше — там шанс ложного
+  // совпадения растёт с глубиной (одинаковые тексты от разных людей).
+  // Благодаря renderAppendBottom (insertAdjacentHTML) подгрузка дешёвая —
+  // не перерисовывает ленту, поэтому глубокий поиск не вызывает мерцания.
+  const REPLY_LOOKUP_PAGES_MID = 30;    // ~2400 сообщений
+  const REPLY_LOOKUP_PAGES_FUZZY = 20;  // ~1600 сообщений
 
   // В JSONL архиве reply_to_text сохранён с media-префиксом ([фото],
   // [GIF], [стикер 😂], [фото, видео], [ссылка] и т.д.). Бот всегда

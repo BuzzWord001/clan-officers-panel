@@ -1489,6 +1489,20 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   padding-bottom: 1px;
 }
 .chat-media:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Кликабельные ссылки в текстах сообщений */
+.chat-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-dim);
+  text-underline-offset: 2px;
+  word-break: break-all;
+  cursor: pointer;
+}
+.chat-link:hover {
+  text-decoration-color: var(--accent);
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.55);
+}
 .chat-media-placeholder { color: var(--muted); border-bottom-color: var(--muted); }
 .chat-media-lottie {
   display: inline-block;
