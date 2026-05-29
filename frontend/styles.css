@@ -1555,6 +1555,15 @@ body:not([data-role="admin"]) .chat-admin-bar { display: none !important; }
   max-height: 220px;
   object-fit: contain;
 }
+/* GIF / sticker_video — video tag в качестве thumb. */
+video.chat-media-thumb {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.3);
+}
+.chat-media-anim { cursor: default; }
 .chat-media-thumb:hover {
   border-color: var(--accent);
   box-shadow: 0 0 12px rgba(0, 255, 65, 0.35);

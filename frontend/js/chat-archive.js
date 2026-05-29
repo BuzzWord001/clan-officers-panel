@@ -586,8 +586,29 @@
                   ${dl}
                 </div>`;
       }
-      if (url && (kind === "sticker" ||
-                  kind === "sticker_anim_thumb" || kind === "animation")) {
+      // GIF / animation: в TG GIF приходит как .mp4 (mime=video/mp4),
+      // в VK doc.gif — настоящий .gif. Решаем по mime / расширению:
+      // mp4/webm → video с autoplay+loop+muted (выглядит как GIF),
+      // gif → обычный <img>.
+      const mime = (m.mime || "").toLowerCase();
+      const isVideoFile = mime.startsWith("video/")
+                       || /\.(mp4|webm|mov|m4v)($|\?)/i.test(url);
+      if (url && kind === "animation") {
+        const dl = downloadBtn(url, kind, name);
+        if (isVideoFile) {
+          return `<div class="chat-media-wrap">
+                    <video class="chat-media-thumb chat-media-anim" loop muted autoplay playsinline preload="metadata" src="${escapeHtml(url)}" title="${escapeHtml(name || 'GIF')}${size ? ' · ' + size : ''}"></video>
+                    ${dl}
+                  </div>`;
+        }
+        return `<div class="chat-media-wrap">
+                  <a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(name || 'GIF')}${size ? ' · ' + size : ''}">
+                    <img loading="lazy" src="${escapeHtml(url)}" alt="animation">
+                  </a>
+                  ${dl}
+                </div>`;
+      }
+      if (url && (kind === "sticker" || kind === "sticker_anim_thumb")) {
         const dl = downloadBtn(url, kind, name);
         return `<div class="chat-media-wrap">
                   <a class="chat-media-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(name || kind)}${size ? ' · ' + size : ''}">
@@ -596,11 +617,17 @@
                   ${dl}
                 </div>`;
       }
-      // Video / video_note / sticker_video — нативный плеер прямо в ленте.
-      // controlslist=nodownload убирает встроенный «download» из 3-точечного
-      // меню — оставляем единственный путь через нашу кнопку ⬇.
-      if (url && (kind === "video" || kind === "video_note" ||
-                  kind === "sticker_video")) {
+      // sticker_video — TG video-стикер (webm). Авто-плеер без контролов,
+      // ведёт себя как обычный анимированный стикер.
+      if (url && kind === "sticker_video") {
+        const dl = downloadBtn(url, kind, name);
+        return `<div class="chat-media-wrap">
+                  <video class="chat-media-thumb chat-media-anim" loop muted autoplay playsinline preload="metadata" src="${escapeHtml(url)}" title="${escapeHtml(name || 'sticker')}"></video>
+                  ${dl}
+                </div>`;
+      }
+      // Полноценное video / video_note — плеер с контролами.
+      if (url && (kind === "video" || kind === "video_note")) {
         const dl = downloadBtn(url, kind, name);
         return `<div class="chat-media-wrap chat-media-wrap-video">
                   <video class="chat-media-video" controls controlslist="nodownload" preload="metadata" src="${escapeHtml(url)}">
