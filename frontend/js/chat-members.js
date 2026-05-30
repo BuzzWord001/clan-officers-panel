@@ -180,11 +180,13 @@
     }
     if (trend.recent_pct !== null && trend.recent_pct !== undefined
         && trend.recent_window) {
-      parts.push(`Последние ${trend.recent_window}: ${trend.recent_pct > 0 ? "+" : ""}${trend.recent_pct}% (${trend.recent_direction})`);
+      const w = trend.recent_window;
+      const label = w === 1 ? "Последний период" : `Последние ${w}`;
+      parts.push(`${label}: ${trend.recent_pct > 0 ? "+" : ""}${trend.recent_pct}% (${trend.recent_direction})`);
     } else if (trend.recent_direction === "dead") {
-      parts.push(`Последние ${trend.recent_window} периодов: затихли`);
+      parts.push(`Последний период: затихли`);
     } else if (trend.recent_direction === "new") {
-      parts.push(`Последние ${trend.recent_window} периодов: всплеск`);
+      parts.push(`Последний всплеск`);
     }
     return `<span class="m-trend m-trend-${d}" title="${escapeHtml(parts.join("\n"))}">${label}</span>`;
   }
@@ -525,11 +527,13 @@
     if (trend.recent_pct !== null && trend.recent_pct !== undefined
         && trend.recent_window) {
       const rsign = trend.recent_pct > 0 ? "+" : "";
-      tipParts.push(`Последние ${trend.recent_window} периодов: ${rsign}${trend.recent_pct}% (${trend.recent_direction})`);
+      const w = trend.recent_window;
+      const label = w === 1 ? "Последний период" : `Последние ${w} периодов`;
+      tipParts.push(`${label}: ${rsign}${trend.recent_pct}% (${trend.recent_direction})`);
     } else if (trend.recent_direction === "new") {
-      tipParts.push(`Последние ${trend.recent_window} периодов: новый всплеск`);
+      tipParts.push(`Последний всплеск (был молчок)`);
     } else if (trend.recent_direction === "dead") {
-      tipParts.push(`Последние ${trend.recent_window} периодов: затихли`);
+      tipParts.push(`Последний период: затихли`);
     }
 
     // Предупреждение: общий тренд up, но недавний down (и наоборот)

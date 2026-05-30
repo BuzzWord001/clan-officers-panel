@@ -1867,10 +1867,20 @@ def _compute_trend(counts: list[int]) -> dict[str, Any]:
     # Это критично: общий тренд может быть «up» из-за роста месяц
     # назад, а ПРЯМО СЕЙЧАС активность падает. Помогает поймать
     # ранние сигналы угасания которые тонут в долгом среднем.
+    #
+    # Адаптивный размер окна:
+    #   day-granularity   (n≈60-90):  окно 15-22 дня
+    #   week-granularity  (n≈10-12):  окно 2-3 недели
+    #   month-granularity (n≈3-12):   окно 1-3 месяца (MoM при малом n)
+    #   year-granularity  (n≈1-3):    обычно отключено (n<3)
+    # Минимум 1 точка чтобы для month/quarter был MoM/QoQ.
     recent_pct = None
     recent_dir = None
-    recent_n = max(2, n // 4)   # 2 точки минимум, 25% от общего
-    if n >= recent_n * 2:
+    recent_n = max(1, n // 4)
+    # n>=3 чтобы и overall (first half + second half) и recent (последние
+    # N + предыдущие N) имели разные точки. При n=2 recent просто
+    # повторил бы overall PoP.
+    if n >= 3 and n >= recent_n * 2:
         recent  = sum(counts[-recent_n:])
         prev    = sum(counts[-2 * recent_n:-recent_n])
         if recent == 0 and prev == 0:
