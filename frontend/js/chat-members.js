@@ -178,6 +178,14 @@
       const conf = r2 >= 0.5 ? "сильный" : r2 >= 0.15 ? "умеренный" : "шумный";
       parts.push(`R² = ${r2} (${conf} тренд)`);
     }
+    if (trend.recent_pct !== null && trend.recent_pct !== undefined
+        && trend.recent_window) {
+      parts.push(`Последние ${trend.recent_window}: ${trend.recent_pct > 0 ? "+" : ""}${trend.recent_pct}% (${trend.recent_direction})`);
+    } else if (trend.recent_direction === "dead") {
+      parts.push(`Последние ${trend.recent_window} периодов: затихли`);
+    } else if (trend.recent_direction === "new") {
+      parts.push(`Последние ${trend.recent_window} периодов: всплеск`);
+    }
     return `<span class="m-trend m-trend-${d}" title="${escapeHtml(parts.join("\n"))}">${label}</span>`;
   }
 
@@ -504,21 +512,50 @@
     } else if (d === "dead") {
       tipParts.push(`Было ${trend.first_half} сообщений, сейчас 0`);
     } else {
-      tipParts.push(`PoP: первая половина ${trend.first_half} → вторая ${trend.second_half}`);
+      tipParts.push(`Общий PoP: ${trend.first_half} → ${trend.second_half}`);
     }
     if (trend.slope_pct !== null && trend.slope_pct !== undefined) {
-      tipParts.push(`Slope (наклон линии тренда): ${trend.slope_pct > 0 ? "+" : ""}${trend.slope_pct}% за период`);
+      tipParts.push(`Slope (наклон линии): ${trend.slope_pct > 0 ? "+" : ""}${trend.slope_pct}% за период`);
     }
     if (trend.r_squared !== null && trend.r_squared !== undefined) {
       const r2 = trend.r_squared;
-      const conf = r2 >= 0.5 ? "сильный" : r2 >= 0.15 ? "умеренный" : "шумный (стат. незначимый)";
-      tipParts.push(`R² = ${r2} — ${conf}`);
+      const conf = r2 >= 0.5 ? "сильный" : r2 >= 0.15 ? "умеренный" : "шумный";
+      tipParts.push(`R² = ${r2} (${conf} тренд)`);
     }
+    if (trend.recent_pct !== null && trend.recent_pct !== undefined
+        && trend.recent_window) {
+      const rsign = trend.recent_pct > 0 ? "+" : "";
+      tipParts.push(`Последние ${trend.recent_window} периодов: ${rsign}${trend.recent_pct}% (${trend.recent_direction})`);
+    } else if (trend.recent_direction === "new") {
+      tipParts.push(`Последние ${trend.recent_window} периодов: новый всплеск`);
+    } else if (trend.recent_direction === "dead") {
+      tipParts.push(`Последние ${trend.recent_window} периодов: затихли`);
+    }
+
+    // Предупреждение: общий тренд up, но недавний down (и наоборот)
+    let warning = "";
+    if (trend.recent_direction
+        && trend.recent_direction !== d
+        && (d === "up" || d === "down")
+        && (trend.recent_direction === "up"
+            || trend.recent_direction === "down"
+            || trend.recent_direction === "dead")) {
+      if (trend.recent_direction === "down" || trend.recent_direction === "dead") {
+        warning = ` <span class="tl-trend-warn" title="${escapeHtml(
+          "Общий тренд позитивный, но в недавних периодах активность снижается. Сигнал ранне-угасания."
+        )}">⚠ но сейчас ▼ ${trend.recent_pct}%</span>`;
+      } else if (trend.recent_direction === "up") {
+        warning = ` <span class="tl-trend-warn tl-trend-warn-up" title="${escapeHtml(
+          "Общий тренд негативный, но в недавних периодах рост — возможно восстановление."
+        )}">⚡ но сейчас ▲ +${trend.recent_pct}%</span>`;
+      }
+    }
+
     return `<span class="tl-trend-big tl-trend-${level}"
                   title="${escapeHtml(tipParts.join("\n"))}">
               <b>тренд:</b> ${arrow} ${pctText}
               <span class="tl-trend-emoji">${emoji}</span>
-              <i>${word}</i>
+              <i>${word}</i>${warning}
             </span>`;
   }
 

@@ -1884,6 +1884,23 @@ video.chat-media-thumb {
   font-size: 16px; line-height: 1;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
+/* Предупреждение когда recent_trend отличается от общего */
+.tl-trend-warn {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 2px;
+  cursor: help;
+}
+.tl-trend-warn.tl-trend-warn-up {
+  background: rgba(74, 222, 128, 0.16);
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.4);
+}
 .tl-trend-up   { color: #4ade80; background: rgba(74, 222, 128, 0.14);
                  border: 1px solid rgba(74, 222, 128, 0.4); }
 .tl-trend-down { color: #f87171; background: rgba(248, 113, 113, 0.14);

@@ -1863,6 +1863,31 @@ def _compute_trend(counts: list[int]) -> dict[str, Any]:
             direction = "down"
         else:
             direction = "flat"
+    # Recent trend — последние ~25% периодов vs предыдущие ~25%.
+    # Это критично: общий тренд может быть «up» из-за роста месяц
+    # назад, а ПРЯМО СЕЙЧАС активность падает. Помогает поймать
+    # ранние сигналы угасания которые тонут в долгом среднем.
+    recent_pct = None
+    recent_dir = None
+    recent_n = max(2, n // 4)   # 2 точки минимум, 25% от общего
+    if n >= recent_n * 2:
+        recent  = sum(counts[-recent_n:])
+        prev    = sum(counts[-2 * recent_n:-recent_n])
+        if recent == 0 and prev == 0:
+            recent_dir = "flat"
+            recent_pct = 0
+        elif prev == 0 and recent > 0:
+            recent_dir = "new"
+            recent_pct = None
+        elif recent == 0 and prev > 0:
+            recent_dir = "dead"
+            recent_pct = -100.0
+        else:
+            recent_pct = (recent - prev) / prev * 100.0
+            if recent_pct > 5:    recent_dir = "up"
+            elif recent_pct < -5: recent_dir = "down"
+            else:                 recent_dir = "flat"
+
     return {
         "first_half": first,
         "second_half": second,
@@ -1870,6 +1895,9 @@ def _compute_trend(counts: list[int]) -> dict[str, Any]:
         "slope_pct": round(slope_pct, 1),
         "r_squared": round(r2, 3),
         "direction": direction,
+        "recent_pct": None if recent_pct is None else round(recent_pct, 1),
+        "recent_direction": recent_dir,
+        "recent_window": recent_n,
     }
 
 
