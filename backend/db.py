@@ -2027,12 +2027,17 @@ def members_activity_timeline(
         "trend":  _compute_trend(total_counts),
     }
 
+    # Счётчик ушедших — для UI (даже если они исключены параметром
+    # include_inactive=False, фронт хочет показать «скрыто N»).
+    n_left_total = sum(1 for m in members
+                       if not bool(m.get("is_active", 1)))
     return {
         "granularity": g,
         "chat_group": chat_group,
         "periods": periods,
         "series": series,
         "overall": overall,
+        "inactive_count": n_left_total,
     }
 
 
@@ -2144,6 +2149,18 @@ def list_members_activity() -> list[dict[str, Any]]:
         # Сортируем по убыванию количества сообщений.
         out.sort(key=lambda x: -x["stats"]["msgs"])
         return out
+
+
+def members_activity_meta() -> dict[str, int]:
+    """Сводка по статусам участников clan_members для UI-фильтров."""
+    with connection() as conn:
+        n_active = conn.execute(
+            "SELECT count(*) FROM clan_members WHERE is_active = 1"
+        ).fetchone()[0]
+        n_left = conn.execute(
+            "SELECT count(*) FROM clan_members WHERE is_active = 0"
+        ).fetchone()[0]
+    return {"active": n_active, "left": n_left, "total": n_active + n_left}
 
 
 def list_backfill_targets(

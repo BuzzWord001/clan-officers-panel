@@ -326,6 +326,7 @@
     const active = allItems.filter(x => (x.stats.msgs || 0) > 0).length;
     const chars  = allItems.reduce((a, x) => a + (x.stats.chars || 0), 0);
     const media  = allItems.reduce((a, x) => a + (x.stats.media || 0), 0);
+    const nLeft = allItems.filter(x => x.is_active === false).length;
     $("members-stats").innerHTML = `
       <span>зарегистрировано: <b>${totalMembers}</b></span>
       <span>писали в чате: <b>${active}</b></span>
@@ -333,6 +334,33 @@
       <span>символов: <b>${fmtNum(chars)}</b></span>
       <span>медиа: <b>${fmtNum(media)}</b></span>
     `;
+    updateHideLeftControl("members-hide-left",
+                         "members-left-count",
+                         "members-hide-left-wrap",
+                         nLeft);
+  }
+
+  // Обновляет label/счётчик/disabled чекбокса «скрыть ушедших».
+  // Если ушедших нет — чекбокс выключен с поясняющим title.
+  function updateHideLeftControl(checkboxId, countId, wrapId, nLeft) {
+    const cb  = $(checkboxId);
+    const cnt = $(countId);
+    const wrap = $(wrapId);
+    if (!cb || !cnt || !wrap) return;
+    if (nLeft > 0) {
+      cnt.textContent = `(${nLeft})`;
+      cb.disabled = false;
+      wrap.classList.remove("hide-left-disabled");
+      wrap.title = `Скрыть ${nLeft} ушедших из выборки`;
+    } else {
+      cnt.textContent = "(0)";
+      cb.disabled = true;
+      cb.checked = false;
+      wrap.classList.add("hide-left-disabled");
+      wrap.title = "Сейчас никого с пометкой «ушёл» нет. " +
+        "Запусти clan-reg-bot/reconcile_membership.py --apply " +
+        "чтобы обновить статусы.";
+    }
   }
 
   // ── Events ─────────────────────────────────────────────────────────
@@ -673,6 +701,10 @@
       const trendHtml = overall
         ? renderTrendBig(overall)
         : "";
+      // Обновляем чекбокс «скрыть ушедших» на основании backend-счётчика
+      updateHideLeftControl("tl-hide-left", "tl-left-count",
+                            "tl-hide-left-wrap", TL.raw.inactive_count || 0);
+
       const chatLabel = TL.raw.chat_group === "general"  ? "только общий"
                       : TL.raw.chat_group === "officers" ? "только офицерский"
                       : "оба чата";

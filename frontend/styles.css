@@ -1906,6 +1906,27 @@ video.chat-media-thumb {
 .tl-hide-left:has(input:checked) input {
   accent-color: #f87171;
 }
+.members-hide-left.hide-left-disabled,
+.tl-hide-left.hide-left-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.members-hide-left.hide-left-disabled input,
+.tl-hide-left.hide-left-disabled input {
+  cursor: not-allowed;
+}
+.members-hide-left small,
+.tl-hide-left small {
+  font-size: 10px;
+  margin-left: 3px;
+  color: var(--accent-dim);
+  font-family: "Cascadia Code", monospace;
+}
+.members-hide-left:has(input:checked) small,
+.tl-hide-left:has(input:checked) small {
+  color: #fca5a5;
+}
 .tl-legend-leaver { opacity: 0.65; }
 .tl-legend-left { font-size: 10px; }
 
