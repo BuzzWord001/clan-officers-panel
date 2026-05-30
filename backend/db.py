@@ -1735,31 +1735,58 @@ def dedup_stats() -> dict[str, Any]:
             "bytes_saved_via_dedup": int(saved)}
 
 
+# Минимальный объём суммарной активности чтобы тренд считался «надёжным».
+# При очень малых выборках (1-3 сообщения за пол-периода) percentage даёт
+# ложное ощущение тренда — лучше показать «недостаточно данных».
+_TREND_NOISE_FLOOR = 3
+
+
 def _compute_trend(counts: list[int]) -> dict[str, Any]:
     """Сравнение последней половины периодов с предыдущей половиной.
 
     Возвращает:
       first_half  — сумма ранней половины
       second_half — сумма поздней половины
-      pct         — (second-first)/first * 100. None если данных мало
-                    или прошлое = 0 и текущее = 0 (нечего сравнивать).
-      direction   — "up" / "down" / "flat" / "new" / null
+      pct         — (second-first)/first*100 либо null
+      direction   — "up" | "down" | "flat" | "new" | "dead" | null
 
-    «new» — пользователь не писал в ранней половине, но активен в поздней
-    (трактуем как «пришёл недавно», pct отображается как +100% но в UI
-    можно показать иной маркер).
+    Семантика direction:
+      up    — second > first более чем на 5% (рост)
+      down  — second < first более чем на 5% (спад)
+      flat  — изменение в пределах ±5% (стабильно)
+      new   — first = 0, second > 0 (пользователь раньше молчал)
+      dead  — first > 0, second = 0 (был активен, перестал писать)
+      null  — нечего сравнивать (n<2, обе половины нулевые, шум)
+
+    Edge cases:
+      - n < 2 → null (мало периодов)
+      - first=0 и second=0 → null (вообще не писал)
+      - first+second < _TREND_NOISE_FLOOR → flat (статистически шумно)
     """
     n = len(counts or [])
     if n < 2:
-        return {"first_half": 0, "second_half": 0, "pct": None, "direction": None}
+        return {"first_half": 0, "second_half": 0,
+                "pct": None, "direction": None}
     mid = n // 2
     first = sum(counts[:mid])
     second = sum(counts[mid:])
-    if first == 0 and second == 0:
-        return {"first_half": 0, "second_half": 0, "pct": None, "direction": None}
+    total = first + second
+    if total == 0:
+        return {"first_half": 0, "second_half": 0,
+                "pct": None, "direction": None}
+    # Слишком малая выборка — % не показателен, считаем стабильным
+    if total < _TREND_NOISE_FLOOR:
+        return {"first_half": first, "second_half": second,
+                "pct": 0, "direction": "flat"}
+    # «Был активен — теперь молчит»
+    if second == 0:
+        return {"first_half": first, "second_half": 0,
+                "pct": -100.0, "direction": "dead"}
+    # «Раньше молчал — стал писать»
     if first == 0:
         return {"first_half": 0, "second_half": second,
-                "pct": 100.0, "direction": "new"}
+                "pct": None,         # деления на ноль избегаем
+                "direction": "new"}
     pct = (second - first) / first * 100.0
     if pct > 5:    direction = "up"
     elif pct < -5: direction = "down"

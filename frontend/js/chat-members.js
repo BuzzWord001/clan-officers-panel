@@ -145,20 +145,27 @@
   }
 
   function renderTrend(trend) {
-    if (!trend || trend.pct === null || trend.pct === undefined) {
-      return `<span class="m-trend m-trend-none" title="Недостаточно данных">—</span>`;
+    if (!trend || trend.direction === null || trend.direction === undefined) {
+      return `<span class="m-trend m-trend-none" title="Недостаточно данных для сравнения">—</span>`;
     }
     const d = trend.direction;
     const pct = trend.pct;
     const arrow = d === "up"   ? "▲"
                 : d === "down" ? "▼"
                 : d === "new"  ? "★"
+                : d === "dead" ? "✕"
                 : "▬";
-    const sign = pct > 0 ? "+" : "";
-    const tip  = d === "new"
-      ? `Новичок: в первой половине периода не писал, во второй — ${trend.second_half}`
-      : `Первая половина: ${trend.first_half} • Вторая: ${trend.second_half}`;
-    return `<span class="m-trend m-trend-${d}" title="${escapeHtml(tip)}">${arrow} ${sign}${pct}%</span>`;
+    // Текст: для new pct=null, для dead pct=-100, остальное — рассчитано
+    let label;
+    if (d === "new")       label = "★ new";
+    else if (d === "dead") label = "✕ -100%";
+    else                   label = `${arrow} ${pct > 0 ? "+" : ""}${pct}%`;
+    const tip = d === "new"
+      ? `Раньше не писал, в недавней половине: ${trend.second_half} сообщ.`
+      : d === "dead"
+      ? `Был активен (${trend.first_half} сообщ.), сейчас перестал писать`
+      : `Первая половина: ${trend.first_half} сообщ. · Вторая: ${trend.second_half} сообщ.`;
+    return `<span class="m-trend m-trend-${d}" title="${escapeHtml(tip)}">${label}</span>`;
   }
 
   function renderMemberRow(item) {
@@ -410,51 +417,73 @@
   }
 
   function renderTrendBig(trend) {
-    if (!trend || trend.pct === null || trend.pct === undefined) return "";
+    if (!trend || trend.direction === null || trend.direction === undefined) {
+      return "";
+    }
     const d = trend.direction;
     const pct = trend.pct;
-    const sign = pct > 0 ? "+" : "";
 
-    // 5 уровней силы тренда + 1 для новичка.
-    // Выбираем эмодзи и формулировку по фактической величине pct,
-    // не только по direction (он бинарный up/down/flat).
-    let emoji, word, level;
+    // 7 уровней силы + 2 особых случая (new/dead).
+    // Эмодзи и формулировка по фактической величине pct, не только
+    // по direction (up/down/flat — бинарные).
+    let emoji, word, level, pctText;
     if (d === "new") {
-      emoji = "⭐";  word = "взрывной рост — новые активные";   level = "new";
+      emoji = "⭐"; word = "новые активные участники"; level = "new";
+      pctText = "★";
+    } else if (d === "dead") {
+      emoji = "💀"; word = "чат вымер"; level = "down";
+      pctText = "−100%";
     } else if (pct >= 50) {
-      emoji = "🚀";  word = "чат бурлит — клан оживает!";        level = "up";
+      emoji = "🚀"; word = "чат бурлит — клан оживает!"; level = "up";
+      pctText = "+" + pct + "%";
     } else if (pct >= 15) {
-      emoji = "📈";  word = "активность растёт";                  level = "up";
+      emoji = "📈"; word = "активность растёт"; level = "up";
+      pctText = "+" + pct + "%";
     } else if (pct > 5) {
-      emoji = "🔼";  word = "лёгкий подъём";                       level = "up";
+      emoji = "🔼"; word = "лёгкий подъём"; level = "up";
+      pctText = "+" + pct + "%";
     } else if (pct >= -5) {
-      emoji = "⚖️"; word = "ровный фон — стабильно";              level = "flat";
+      emoji = "⚖️"; word = "ровный фон — стабильно"; level = "flat";
+      pctText = (pct > 0 ? "+" : "") + pct + "%";
     } else if (pct > -15) {
-      emoji = "🔽";  word = "лёгкий спад";                          level = "down";
+      emoji = "🔽"; word = "лёгкий спад"; level = "down";
+      pctText = pct + "%";
     } else if (pct > -50) {
-      emoji = "📉";  word = "активность падает";                   level = "down";
+      emoji = "📉"; word = "активность падает"; level = "down";
+      pctText = pct + "%";
     } else {
-      emoji = "💤";  word = "чат затихает — может угаснуть";      level = "down";
+      emoji = "💤"; word = "чат затихает — может угаснуть"; level = "down";
+      pctText = pct + "%";
     }
 
     const arrow = level === "up" ? "▲"
                 : level === "down" ? "▼"
                 : level === "new" ? "★" : "▬";
+    const tip = d === "new"
+      ? `Раньше клан молчал, в недавней половине: ${trend.second_half}`
+      : d === "dead"
+      ? `Было ${trend.first_half} сообщений, сейчас 0`
+      : `Первая половина периода: ${trend.first_half} · Вторая: ${trend.second_half}`;
     return `<span class="tl-trend-big tl-trend-${level}"
-                  title="Сравнение второй половины периода с первой">
-              <b>тренд:</b> ${arrow} ${sign}${pct}%
+                  title="${escapeHtml(tip)}">
+              <b>тренд:</b> ${arrow} ${pctText}
               <span class="tl-trend-emoji">${emoji}</span>
               <i>${word}</i>
             </span>`;
   }
 
   function renderTrendSmall(trend) {
-    if (!trend || trend.pct === null || trend.pct === undefined) return "";
+    if (!trend || trend.direction === null || trend.direction === undefined) return "";
     const d = trend.direction;
-    const arrow = d === "up" ? "▲" : d === "down" ? "▼"
-                : d === "new" ? "★" : "▬";
-    const sign = trend.pct > 0 ? "+" : "";
-    return ` <span class="tl-trend-mini tl-trend-${d}">${arrow}${sign}${trend.pct}%</span>`;
+    const arrow = d === "up"   ? "▲"
+                : d === "down" ? "▼"
+                : d === "new"  ? "★"
+                : d === "dead" ? "✕" : "▬";
+    let text;
+    if (d === "new")       text = "new";
+    else if (d === "dead") text = "-100%";
+    else                   text = (trend.pct > 0 ? "+" : "") + trend.pct + "%";
+    return ` <span class="tl-trend-mini tl-trend-${d}">${arrow}${text}</span>`;
   }
 
   function renderLegend() {
