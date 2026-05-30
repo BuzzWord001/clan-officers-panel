@@ -1967,6 +1967,25 @@ video.chat-media-thumb {
   box-shadow: 0 0 6px rgba(0,255,65,0.25);
 }
 .timeline-controls input { min-width: 140px; }
+.timeline-controls button {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit; font-size: 12px;
+}
+.timeline-controls button:hover {
+  background: rgba(0,255,65,0.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px rgba(0,255,65,0.25);
+}
+.tl-stamp {
+  color: var(--accent-dim) !important;
+  font-style: italic;
+  font-size: 10px !important;
+}
+.tl-stamp::before { content: "● "; color: var(--accent); }
 .timeline-stats {
   display: flex; flex-wrap: wrap; gap: 16px;
   font-size: 11px; color: var(--text-dim);

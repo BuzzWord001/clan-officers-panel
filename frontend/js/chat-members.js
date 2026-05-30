@@ -624,12 +624,15 @@
       const chatLabel = TL.raw.chat_group === "general"  ? "только общий"
                       : TL.raw.chat_group === "officers" ? "только офицерский"
                       : "оба чата";
+      const ts = new Date().toLocaleTimeString("ru-RU",
+                  { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       $("timeline-stats").innerHTML = `
         <span>чат: <b>${escapeHtml(chatLabel)}</b></span>
         <span>период: <b>${escapeHtml(period0)} → ${escapeHtml(periodN)}</b></span>
         <span>всего сообщений: <b>${fmtNum(totalMsgs)}</b></span>
         <span>активных участников: <b>${TL.raw.series.length}</b></span>
         <span>интервалов: <b>${TL.raw.periods.length}</b></span>
+        <span class="tl-stamp" title="Последнее обновление с сервера">обновлено в ${ts}</span>
         ${trendHtml}
       `;
 
@@ -653,6 +656,11 @@
   $("tl-chat-group").addEventListener("change", () => {
     // Смена чата = другой топ-актив, сбрасываем visible/solo.
     TL.soloKey = null;
+    loadTimeline();
+  });
+  $("tl-refresh").addEventListener("click", () => {
+    // Просто перезапрос с теми же параметрами — обновит timestamp
+    // и подтянет любые новые сообщения с последнего загруза.
     loadTimeline();
   });
   $("tl-mode").addEventListener("change", () => {
