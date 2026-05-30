@@ -1739,60 +1739,113 @@ def dedup_stats() -> dict[str, Any]:
 # При очень малых выборках (1-3 сообщения за пол-периода) percentage даёт
 # ложное ощущение тренда — лучше показать «недостаточно данных».
 _TREND_NOISE_FLOOR = 3
+# Порог R² для определения значимости тренда. Если R² < 0.15 —
+# активность скачет хаотично, slope не показателен → trend = "flat".
+_R2_SIGNIFICANCE = 0.15
+
+
+def _linear_regression(counts: list[int]) -> tuple[float, float]:
+    """OLS slope + R² через все точки серии.
+
+    slope — наклон линии least-squares fit (y = a + slope*x), где x
+    это индекс периода 0..n-1. R² — насколько хорошо данные ложатся
+    на эту линию (0..1).
+
+    Возвращает (slope, r_squared). Для n<2 или нулевой дисперсии x — (0, 0).
+    """
+    n = len(counts)
+    if n < 2:
+        return 0.0, 0.0
+    xs = list(range(n))
+    x_mean = sum(xs) / n
+    y_mean = sum(counts) / n
+    sxx = sum((x - x_mean) ** 2 for x in xs)
+    sxy = sum((xs[i] - x_mean) * (counts[i] - y_mean) for i in range(n))
+    syy = sum((y - y_mean) ** 2 for y in counts)
+    if sxx == 0:
+        return 0.0, 0.0
+    slope = sxy / sxx
+    if syy == 0:
+        r2 = 0.0
+    else:
+        r2 = (sxy * sxy) / (sxx * syy)
+    return slope, r2
 
 
 def _compute_trend(counts: list[int]) -> dict[str, Any]:
-    """Сравнение последней половины периодов с предыдущей половиной.
+    """Тренд активности по всему периоду.
 
-    Возвращает:
-      first_half  — сумма ранней половины
-      second_half — сумма поздней половины
-      pct         — (second-first)/first*100 либо null
-      direction   — "up" | "down" | "flat" | "new" | "dead" | null
+    Использует ДВЕ метрики:
+      1. Linear regression slope — наклон линии через все точки.
+         Менее чувствителен к выбросам в крайних точках чем half-vs-half,
+         и реально отражает рост/падение на колеблющейся активности.
+      2. PoP (period-over-period): половина первая vs последняя —
+         даёт «человеческий» % сравнения для tooltip.
 
-    Семантика direction:
-      up    — second > first более чем на 5% (рост)
-      down  — second < first более чем на 5% (спад)
-      flat  — изменение в пределах ±5% (стабильно)
-      new   — first = 0, second > 0 (пользователь раньше молчал)
-      dead  — first > 0, second = 0 (был активен, перестал писать)
-      null  — нечего сравнивать (n<2, обе половины нулевые, шум)
+    direction формируется по slope + R²:
+      slope > 0 и R² >= 0.15 → up
+      slope < 0 и R² >= 0.15 → down
+      R² < 0.15              → flat (шум, нет статистически значимого
+                                     тренда несмотря на любой slope)
+      Особые случаи:
+        first=0, second>0 → new (новичок)
+        first>0, second=0 → dead (был активен, перестал)
+        total=0           → null (никогда не писал)
+        total<3           → flat (выборка слишком мала)
 
-    Edge cases:
-      - n < 2 → null (мало периодов)
-      - first=0 и second=0 → null (вообще не писал)
-      - first+second < _TREND_NOISE_FLOOR → flat (статистически шумно)
+    pct в результате — это PoP %: (second_half - first_half)/first_half * 100.
+    slope_pct — % изменения PER ПЕРИОД относительно среднего значения
+              (т.е. сколько в среднем растёт/падает между соседними
+              периодами в % от typical активности).
     """
     n = len(counts or [])
     if n < 2:
         return {"first_half": 0, "second_half": 0,
-                "pct": None, "direction": None}
+                "pct": None, "slope_pct": None, "r_squared": None,
+                "direction": None}
     mid = n // 2
     first = sum(counts[:mid])
     second = sum(counts[mid:])
     total = first + second
     if total == 0:
         return {"first_half": 0, "second_half": 0,
-                "pct": None, "direction": None}
-    # Слишком малая выборка — % не показателен, считаем стабильным
+                "pct": None, "slope_pct": None, "r_squared": None,
+                "direction": None}
     if total < _TREND_NOISE_FLOOR:
         return {"first_half": first, "second_half": second,
-                "pct": 0, "direction": "flat"}
-    # «Был активен — теперь молчит»
-    if second == 0:
-        return {"first_half": first, "second_half": 0,
-                "pct": -100.0, "direction": "dead"}
-    # «Раньше молчал — стал писать»
-    if first == 0:
-        return {"first_half": 0, "second_half": second,
-                "pct": None,         # деления на ноль избегаем
-                "direction": "new"}
-    pct = (second - first) / first * 100.0
-    if pct > 5:    direction = "up"
-    elif pct < -5: direction = "down"
-    else:          direction = "flat"
-    return {"first_half": first, "second_half": second,
-            "pct": round(pct, 1), "direction": direction}
+                "pct": 0, "slope_pct": 0, "r_squared": 0,
+                "direction": "flat"}
+    # Linear regression — основной метод
+    slope, r2 = _linear_regression(counts)
+    mean_y = total / n
+    # slope_pct: за период slope сообщений / mean = ~%/период
+    slope_pct = (slope / mean_y * 100.0) if mean_y > 0 else 0.0
+    # PoP для отображения
+    if second == 0 and first > 0:
+        direction = "dead"
+        pct = -100.0
+    elif first == 0 and second > 0:
+        direction = "new"
+        pct = None  # бесконечность
+    else:
+        pct = (second - first) / first * 100.0
+        # direction по slope+R² — статистически более правильно
+        if r2 < _R2_SIGNIFICANCE:
+            direction = "flat"
+        elif slope > 0:
+            direction = "up"
+        elif slope < 0:
+            direction = "down"
+        else:
+            direction = "flat"
+    return {
+        "first_half": first,
+        "second_half": second,
+        "pct": None if pct is None else round(pct, 1),
+        "slope_pct": round(slope_pct, 1),
+        "r_squared": round(r2, 3),
+        "direction": direction,
+    }
 
 
 def members_activity_timeline(

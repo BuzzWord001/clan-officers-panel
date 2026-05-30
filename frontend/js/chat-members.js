@@ -155,17 +155,30 @@
                 : d === "new"  ? "★"
                 : d === "dead" ? "✕"
                 : "▬";
-    // Текст: для new pct=null, для dead pct=-100, остальное — рассчитано
     let label;
     if (d === "new")       label = "★ new";
     else if (d === "dead") label = "✕ -100%";
     else                   label = `${arrow} ${pct > 0 ? "+" : ""}${pct}%`;
-    const tip = d === "new"
-      ? `Раньше не писал, в недавней половине: ${trend.second_half} сообщ.`
-      : d === "dead"
-      ? `Был активен (${trend.first_half} сообщ.), сейчас перестал писать`
-      : `Первая половина: ${trend.first_half} сообщ. · Вторая: ${trend.second_half} сообщ.`;
-    return `<span class="m-trend m-trend-${d}" title="${escapeHtml(tip)}">${label}</span>`;
+
+    // Полный tooltip: PoP + регрессия + R²
+    const parts = [];
+    if (d === "new") {
+      parts.push(`Раньше молчал, недавно: ${trend.second_half} сообщ.`);
+    } else if (d === "dead") {
+      parts.push(`Было ${trend.first_half} сообщ., сейчас 0`);
+    } else {
+      parts.push(`PoP (вторая/первая половина): ${trend.first_half} → ${trend.second_half} сообщ.`);
+    }
+    if (trend.slope_pct !== null && trend.slope_pct !== undefined) {
+      const sp = trend.slope_pct;
+      parts.push(`Slope: ${sp > 0 ? "+" : ""}${sp}% за период`);
+    }
+    if (trend.r_squared !== null && trend.r_squared !== undefined) {
+      const r2 = trend.r_squared;
+      const conf = r2 >= 0.5 ? "сильный" : r2 >= 0.15 ? "умеренный" : "шумный";
+      parts.push(`R² = ${r2} (${conf} тренд)`);
+    }
+    return `<span class="m-trend m-trend-${d}" title="${escapeHtml(parts.join("\n"))}">${label}</span>`;
   }
 
   function renderMemberRow(item) {
@@ -459,13 +472,25 @@
     const arrow = level === "up" ? "▲"
                 : level === "down" ? "▼"
                 : level === "new" ? "★" : "▬";
-    const tip = d === "new"
-      ? `Раньше клан молчал, в недавней половине: ${trend.second_half}`
-      : d === "dead"
-      ? `Было ${trend.first_half} сообщений, сейчас 0`
-      : `Первая половина периода: ${trend.first_half} · Вторая: ${trend.second_half}`;
+    // Расширенный tooltip с обеими метриками
+    const tipParts = [];
+    if (d === "new") {
+      tipParts.push(`Раньше клан молчал, недавно: ${trend.second_half} сообщений`);
+    } else if (d === "dead") {
+      tipParts.push(`Было ${trend.first_half} сообщений, сейчас 0`);
+    } else {
+      tipParts.push(`PoP: первая половина ${trend.first_half} → вторая ${trend.second_half}`);
+    }
+    if (trend.slope_pct !== null && trend.slope_pct !== undefined) {
+      tipParts.push(`Slope (наклон линии тренда): ${trend.slope_pct > 0 ? "+" : ""}${trend.slope_pct}% за период`);
+    }
+    if (trend.r_squared !== null && trend.r_squared !== undefined) {
+      const r2 = trend.r_squared;
+      const conf = r2 >= 0.5 ? "сильный" : r2 >= 0.15 ? "умеренный" : "шумный (стат. незначимый)";
+      tipParts.push(`R² = ${r2} — ${conf}`);
+    }
     return `<span class="tl-trend-big tl-trend-${level}"
-                  title="${escapeHtml(tip)}">
+                  title="${escapeHtml(tipParts.join("\n"))}">
               <b>тренд:</b> ${arrow} ${pctText}
               <span class="tl-trend-emoji">${emoji}</span>
               <i>${word}</i>
