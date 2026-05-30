@@ -1853,6 +1853,31 @@ video.chat-media-thumb {
   opacity: 0.55;  /* участники не писавшие в чате — тише визуально */
 }
 .m-row-silent .m-cell-total { color: var(--muted); }
+.m-row-left {
+  background: rgba(120, 100, 100, 0.06);
+}
+.m-row-left .m-name { color: var(--text-dim); }
+.m-left-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 9px;
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 2px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.members-hide-left, .tl-hide-left {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-dim);
+  cursor: pointer; user-select: none;
+}
+.members-hide-left input, .tl-hide-left input { margin: 0; cursor: pointer; }
+.tl-legend-leaver { opacity: 0.65; }
+.tl-legend-left { font-size: 10px; }
 
 /* Тренд (recent vs prev) — в таблице и в графике */
 .m-cell-trend { text-align: center; }

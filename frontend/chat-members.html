@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Участники чатов</title>
-  <link rel="stylesheet" href="styles.css?v=1779760900">
+  <link rel="stylesheet" href="styles.css?v=1779761000">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -63,6 +63,10 @@
         <div class="members-header">
           <div class="members-stats" id="members-stats"></div>
           <div class="members-search">
+            <label class="members-hide-left">
+              <input type="checkbox" id="members-hide-left">
+              <span>скрыть ушедших</span>
+            </label>
             <input type="text" id="members-filter"
                    placeholder="Фильтр: ник / имя / TG / VK">
           </div>
@@ -126,6 +130,10 @@
               </select>
             </label>
             <input type="text" id="tl-filter" placeholder="фильтр имён">
+            <label class="tl-hide-left">
+              <input type="checkbox" id="tl-hide-left">
+              <span>скрыть ушедших</span>
+            </label>
             <button id="tl-refresh" type="button" title="Перезапросить с сервера">⟳ обновить</button>
           </div>
         </div>
@@ -145,10 +153,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779760900"></script>
-  <script src="js/matrix.js?v=1779760900"></script>
-  <script src="js/api.js?v=1779760900"></script>
+  <script src="config.js?v=1779761000"></script>
+  <script src="js/matrix.js?v=1779761000"></script>
+  <script src="js/api.js?v=1779761000"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="js/chat-members.js?v=1779760900"></script>
+  <script src="js/chat-members.js?v=1779761000"></script>
 </body>
 </html>

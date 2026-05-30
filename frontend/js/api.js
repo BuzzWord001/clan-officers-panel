@@ -158,9 +158,10 @@
     chatClearAll:      () => request("DELETE", "/chat/messages?confirm=yes"),
     chatMemberProfile: (q) => request("GET", `/chat/members/profile?q=${encodeURIComponent(q)}`),
     chatMembersActivity: () => request("GET", "/chat/members/activity"),
-    chatMembersTimeline: (granularity, chatGroup) => {
+    chatMembersTimeline: (granularity, chatGroup, includeInactive) => {
       let qs = "granularity=" + encodeURIComponent(granularity || "week");
       if (chatGroup) qs += "&chat_group=" + encodeURIComponent(chatGroup);
+      if (includeInactive === false) qs += "&include_inactive=false";
       return request("GET", "/chat/members/timeline?" + qs);
     },
   };

@@ -1914,6 +1914,7 @@ def _compute_trend(counts: list[int]) -> dict[str, Any]:
 def members_activity_timeline(
     granularity: str = "week",
     chat_group: str | None = None,
+    include_inactive: bool = True,
 ) -> dict[str, Any]:
     """Гистограмма сообщений каждого участника clan_members по периодам.
 
@@ -1996,12 +1997,16 @@ def members_activity_timeline(
         total = sum(counts)
         if total == 0:
             continue   # «тихих» в график не выводим
+        is_active = bool(m.get("is_active", 1))
+        if not include_inactive and not is_active:
+            continue
         name = _primary_display_name(m)
         series.append({
             "key": m["key"],
             "name": name,
             "total": total,
             "counts": counts,
+            "is_active": is_active,
         })
 
     # Тренд per-user (по тем периодам что прислали)
@@ -2123,12 +2128,17 @@ def list_members_activity() -> list[dict[str, Any]]:
 
             # Тренд за последние 12 недель: первая половина vs вторая.
             agg["trend"] = _compute_trend(agg["weeks"])
+            # is_active НЕ фильтруем: 0 это значимое значение «ушёл»,
+            # фронт должен видеть факт чтобы поставить бейдж.
             profile = {k: v for k, v in m.items()
-                       if k not in skip_fields and v not in (None, "", 0, "0")}
+                       if k not in skip_fields
+                       and (k == "is_active"
+                            or v not in (None, "", 0, "0"))}
             out.append({
                 "key":          m["key"],
                 "profile":      profile,
                 "stats":        agg,
+                "is_active":    bool(m.get("is_active", 1)),
             })
 
         # Сортируем по убыванию количества сообщений.

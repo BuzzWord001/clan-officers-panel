@@ -228,8 +228,11 @@
     const vk = platformLink("vk", p);
     if (tg) subs.push(`<span class="m-plat">TG ${tg}</span>`);
     if (vk) subs.push(`<span class="m-plat">VK ${vk}</span>`);
+    const leftBadge = item.is_active === false
+      ? `<span class="m-left-badge" title="Покинул все клановые чаты (по reconcile)">🚪 ушёл</span>`
+      : "";
     const nameBlock = `
-      <div class="m-name"><span class="m-expand-icon">▸</span> ${escapeHtml(dn)}</div>
+      <div class="m-name"><span class="m-expand-icon">▸</span> ${escapeHtml(dn)} ${leftBadge}</div>
       ${subs.length ? `<div class="m-sub">${subs.join(" · ")}</div>` : ""}
     `;
     const total = s.msgs || 0;
@@ -238,7 +241,7 @@
       : `<span class="m-period m-period-empty">—</span>`;
     const detailsHtml = renderProfileDetails(p);
     return `
-      <tr class="m-row${total ? "" : " m-row-silent"}" data-key="${escapeHtml(item.key)}">
+      <tr class="m-row${total ? "" : " m-row-silent"}${item.is_active === false ? " m-row-left" : ""}" data-key="${escapeHtml(item.key)}">
         <td class="m-cell-name">${nameBlock}</td>
         <td class="m-cell-num m-cell-total">${fmtNum(total)}</td>
         <td class="m-cell-num">${fmtNum(s.msgs_general)}</td>
@@ -288,7 +291,11 @@
 
   function applyFilterAndRender() {
     const q = ($("members-filter").value || "").trim().toLowerCase();
+    const hideLeft = $("members-hide-left").checked;
     let items = allItems;
+    if (hideLeft) {
+      items = items.filter(it => it.is_active !== false);
+    }
     if (q) {
       items = allItems.filter(it => {
         const p = it.profile || {};
@@ -348,6 +355,7 @@
     if (filterTimer) clearTimeout(filterTimer);
     filterTimer = setTimeout(applyFilterAndRender, 150);
   });
+  $("members-hide-left").addEventListener("change", applyFilterAndRender);
 
   // Раскрытие полных данных профиля по клику на строку.
   document.getElementById("members-tbody").addEventListener("click", (ev) => {
@@ -586,10 +594,12 @@
       const visible = TL.mode === "solo"
         ? (TL.soloKey === s.key)
         : TL.visibleKeys.has(s.key);
-      return `<span class="tl-legend-item${visible ? "" : " tl-legend-off"}"
+      const leftMark = s.is_active === false
+        ? ` <span class="tl-legend-left" title="Покинул все клановые чаты">🚪</span>` : "";
+      return `<span class="tl-legend-item${visible ? "" : " tl-legend-off"}${s.is_active === false ? " tl-legend-leaver" : ""}"
                     data-key="${escapeHtml(s.key)}">
                 <span class="tl-legend-dot" style="background:${colorFor(idx)}"></span>
-                ${escapeHtml(s.name)} <span class="tl-legend-total">${fmtNum(s.total)}</span>${renderTrendSmall(s.trend)}
+                ${escapeHtml(s.name)}${leftMark} <span class="tl-legend-total">${fmtNum(s.total)}</span>${renderTrendSmall(s.trend)}
               </span>`;
     }).join("");
     container.innerHTML = html;
@@ -643,9 +653,10 @@
   async function loadTimeline() {
     const g = $("tl-granularity").value;
     const cg = $("tl-chat-group").value || null;
+    const includeInactive = !$("tl-hide-left").checked;
     $("timeline-loading").hidden = false;
     try {
-      const data = await API.chatMembersTimeline(g, cg);
+      const data = await API.chatMembersTimeline(g, cg, includeInactive);
       TL.raw = data;
       // По умолчанию показываем top-N. После смены фильтра топ
       // пересчитывается на сервере по нужному chat_group, потому что
@@ -702,6 +713,10 @@
   $("tl-refresh").addEventListener("click", () => {
     // Просто перезапрос с теми же параметрами — обновит timestamp
     // и подтянет любые новые сообщения с последнего загруза.
+    loadTimeline();
+  });
+  $("tl-hide-left").addEventListener("change", () => {
+    TL.soloKey = null;
     loadTimeline();
   });
   $("tl-mode").addEventListener("change", () => {
