@@ -1731,14 +1731,18 @@ video.chat-media-thumb {
 .members-stats span b {
   color: var(--accent); margin-left: 4px; font-weight: 600;
 }
-.members-search { min-width: 220px; }
-.members-search input {
-  width: 100%; padding: 6px 10px;
+.members-search {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 14px;
+  min-width: 360px;
+}
+.members-search > input[type="text"] {
+  flex: 1; min-width: 180px;
+  padding: 6px 10px;
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--accent-dim); color: var(--text);
   font-family: inherit; font-size: 13px;
 }
-.members-search input:focus {
+.members-search > input[type="text"]:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 8px rgba(0, 255, 65, 0.25);
 }
@@ -1871,11 +1875,37 @@ video.chat-media-thumb {
   letter-spacing: 0.5px;
 }
 .members-hide-left, .tl-hide-left {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-dim);
   cursor: pointer; user-select: none;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.members-hide-left input, .tl-hide-left input { margin: 0; cursor: pointer; }
+.members-hide-left:hover, .tl-hide-left:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0, 255, 65, 0.08);
+}
+.members-hide-left input, .tl-hide-left input {
+  margin: 0; cursor: pointer;
+  /* Acent-цвет для чекбокса в современных браузерах */
+  accent-color: var(--accent);
+}
+/* Активное состояние: чекбокс отмечен → подсветка контейнера */
+.members-hide-left:has(input:checked),
+.tl-hide-left:has(input:checked) {
+  border-color: #f87171;
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.12);
+}
+.members-hide-left:has(input:checked) input,
+.tl-hide-left:has(input:checked) input {
+  accent-color: #f87171;
+}
 .tl-legend-leaver { opacity: 0.65; }
 .tl-legend-left { font-size: 10px; }
 
@@ -2008,7 +2038,9 @@ video.chat-media-thumb {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 6px rgba(0,255,65,0.25);
 }
-.timeline-controls input { min-width: 140px; }
+.timeline-controls > input[type="text"] {
+  width: 180px; min-width: 140px;
+}
 .timeline-controls button {
   background: rgba(0,0,0,0.4);
   border: 1px solid var(--accent-dim);
