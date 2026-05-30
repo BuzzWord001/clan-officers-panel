@@ -412,17 +412,39 @@
   function renderTrendBig(trend) {
     if (!trend || trend.pct === null || trend.pct === undefined) return "";
     const d = trend.direction;
-    const sign = trend.pct > 0 ? "+" : "";
-    const word = d === "up"   ? "клан оживает"
-               : d === "down" ? "активность падает"
-               : d === "flat" ? "стабильно"
-               : d === "new"  ? "взрывной рост"
-               : "";
-    const arrow = d === "up" ? "▲" : d === "down" ? "▼"
-                : d === "flat" ? "▬" : d === "new" ? "★" : "";
-    return `<span class="tl-trend-big tl-trend-${d}"
+    const pct = trend.pct;
+    const sign = pct > 0 ? "+" : "";
+
+    // 5 уровней силы тренда + 1 для новичка.
+    // Выбираем эмодзи и формулировку по фактической величине pct,
+    // не только по direction (он бинарный up/down/flat).
+    let emoji, word, level;
+    if (d === "new") {
+      emoji = "⭐";  word = "взрывной рост — новые активные";   level = "new";
+    } else if (pct >= 50) {
+      emoji = "🚀";  word = "чат бурлит — клан оживает!";        level = "up";
+    } else if (pct >= 15) {
+      emoji = "📈";  word = "активность растёт";                  level = "up";
+    } else if (pct > 5) {
+      emoji = "🔼";  word = "лёгкий подъём";                       level = "up";
+    } else if (pct >= -5) {
+      emoji = "⚖️"; word = "ровный фон — стабильно";              level = "flat";
+    } else if (pct > -15) {
+      emoji = "🔽";  word = "лёгкий спад";                          level = "down";
+    } else if (pct > -50) {
+      emoji = "📉";  word = "активность падает";                   level = "down";
+    } else {
+      emoji = "💤";  word = "чат затихает — может угаснуть";      level = "down";
+    }
+
+    const arrow = level === "up" ? "▲"
+                : level === "down" ? "▼"
+                : level === "new" ? "★" : "▬";
+    return `<span class="tl-trend-big tl-trend-${level}"
                   title="Сравнение второй половины периода с первой">
-              <b>тренд:</b> ${arrow} ${sign}${trend.pct}% <i>${word}</i>
+              <b>тренд:</b> ${arrow} ${sign}${pct}%
+              <span class="tl-trend-emoji">${emoji}</span>
+              <i>${word}</i>
             </span>`;
   }
 
