@@ -1875,6 +1875,7 @@ def _compute_trend(counts: list[int]) -> dict[str, Any]:
 
 def members_activity_timeline(
     granularity: str = "week",
+    chat_group: str | None = None,
 ) -> dict[str, Any]:
     """Гистограмма сообщений каждого участника clan_members по периодам.
 
@@ -1884,9 +1885,15 @@ def members_activity_timeline(
       month — %Y-%m     (для всей истории клана)
       year  — %Y
 
+    chat_group:
+      None       — оба чата суммарно (default)
+      "general"  — только общий чат
+      "officers" — только офицерский
+
     Возвращает {
-      granularity, periods (отсортированы ASC),
-      series: [{key, name, total, counts: [n_period0, n_period1, ...]}]
+      granularity, chat_group, periods (отсортированы ASC),
+      series: [{key, name, total, counts, trend}],
+      overall: {total, counts, trend}
     }
     """
     g = (granularity or "week").lower()
@@ -1897,13 +1904,23 @@ def members_activity_timeline(
         "year":  "%Y",
     }.get(g, "%Y-W%W")
 
+    where = ""
+    params: list[Any] = []
+    if chat_group:
+        if chat_group not in CHAT_GROUPS:
+            raise ValueError(f"invalid chat_group: {chat_group!r}")
+        where = "WHERE chat_group = ?"
+        params.append(chat_group)
+
     with connection() as conn:
         # Все периоды сразу с user_id+platform
         rows = list(conn.execute(
             f"""SELECT strftime('{fmt}', sent_at) AS period,
                        platform, user_id, COUNT(*) AS n
                 FROM chat_messages
-                GROUP BY period, platform, user_id"""
+                {where}
+                GROUP BY period, platform, user_id""",
+            params,
         ))
 
     # Собираем все периоды (отсортированно)
@@ -1969,6 +1986,7 @@ def members_activity_timeline(
 
     return {
         "granularity": g,
+        "chat_group": chat_group,
         "periods": periods,
         "series": series,
         "overall": overall,

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Участники чатов</title>
-  <link rel="stylesheet" href="styles.css?v=1779760600">
+  <link rel="stylesheet" href="styles.css?v=1779760700">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -95,6 +95,13 @@
         <div class="timeline-header">
           <div class="timeline-title">График активности участников</div>
           <div class="timeline-controls">
+            <label>Чат:
+              <select id="tl-chat-group">
+                <option value="" selected>оба чата</option>
+                <option value="general">только общий</option>
+                <option value="officers">только офицерский</option>
+              </select>
+            </label>
             <label>Период:
               <select id="tl-granularity">
                 <option value="day">по дням</option>
@@ -137,10 +144,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779760600"></script>
-  <script src="js/matrix.js?v=1779760600"></script>
-  <script src="js/api.js?v=1779760600"></script>
+  <script src="config.js?v=1779760700"></script>
+  <script src="js/matrix.js?v=1779760700"></script>
+  <script src="js/api.js?v=1779760700"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="js/chat-members.js?v=1779760600"></script>
+  <script src="js/chat-members.js?v=1779760700"></script>
 </body>
 </html>

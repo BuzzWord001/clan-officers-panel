@@ -512,14 +512,21 @@ def members_profile(
 @router.get("/members/timeline")
 def members_timeline(
     granularity: str = Query(default="week", pattern="^(day|week|month|year)$"),
+    chat_group: str | None = Query(default=None,
+                                   pattern="^(general|officers)$"),
     _: dict = Depends(require_officer),
 ) -> dict:
     """Гистограмма активности всех зарегистрированных по периодам.
 
+    Параметры:
+      granularity — день/неделя/месяц/год
+      chat_group  — фильтр по чату (general | officers). null = оба.
+
     Возвращает структуру для line/area chart на фронте: periods + series по
     каждому активному участнику. «Тихие» (msgs=0) исключаются.
     """
-    return db.members_activity_timeline(granularity=granularity)
+    return db.members_activity_timeline(granularity=granularity,
+                                        chat_group=chat_group)
 
 
 @router.get("/members/activity")

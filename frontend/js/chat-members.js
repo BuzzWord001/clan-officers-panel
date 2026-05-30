@@ -601,11 +601,14 @@
 
   async function loadTimeline() {
     const g = $("tl-granularity").value;
+    const cg = $("tl-chat-group").value || null;
     $("timeline-loading").hidden = false;
     try {
-      const data = await API.chatMembersTimeline(g);
+      const data = await API.chatMembersTimeline(g, cg);
       TL.raw = data;
-      // По умолчанию показываем top-N
+      // По умолчанию показываем top-N. После смены фильтра топ
+      // пересчитывается на сервере по нужному chat_group, потому что
+      // series отсортированы по total в выбранном чате.
       const all = visibleSeries();
       TL.visibleKeys = new Set(all.map(s => s.key));
       if (!TL.soloKey && all.length) TL.soloKey = all[0].key;
@@ -618,7 +621,11 @@
       const trendHtml = overall
         ? renderTrendBig(overall)
         : "";
+      const chatLabel = TL.raw.chat_group === "general"  ? "только общий"
+                      : TL.raw.chat_group === "officers" ? "только офицерский"
+                      : "оба чата";
       $("timeline-stats").innerHTML = `
+        <span>чат: <b>${escapeHtml(chatLabel)}</b></span>
         <span>период: <b>${escapeHtml(period0)} → ${escapeHtml(periodN)}</b></span>
         <span>всего сообщений: <b>${fmtNum(totalMsgs)}</b></span>
         <span>активных участников: <b>${TL.raw.series.length}</b></span>
@@ -637,7 +644,17 @@
   }
 
   // Events
-  $("tl-granularity").addEventListener("change", () => loadTimeline());
+  $("tl-granularity").addEventListener("change", () => {
+    // При смене гранулярности сбрасываем solo-выбор: иначе можем
+    // ссылаться на отсутствующий ключ.
+    TL.soloKey = null;
+    loadTimeline();
+  });
+  $("tl-chat-group").addEventListener("change", () => {
+    // Смена чата = другой топ-актив, сбрасываем visible/solo.
+    TL.soloKey = null;
+    loadTimeline();
+  });
   $("tl-mode").addEventListener("change", () => {
     TL.mode = $("tl-mode").value;
     renderChart();
