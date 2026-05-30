@@ -1772,6 +1772,31 @@ def _linear_regression(counts: list[int]) -> tuple[float, float]:
     return slope, r2
 
 
+def _primary_display_name(m: dict) -> str:
+    """Имя участника для UI с приоритетом ИГРОВОГО ника.
+
+    Логика:
+      1. game_nick (первый из через запятую) — основной приоритет, потому
+         что в клане людей знают по игровым именам, а не по @username.
+      2. display_name (если задан вручную в clan-reg-bot/GUI).
+      3. VK display (если есть TG-only — будет пусто).
+      4. TG display / username.
+      5. ключ записи как последний fallback.
+    """
+    gn = (m.get("game_nick") or "").strip()
+    if gn:
+        # game_nick может быть «Мелодькa, БорЩиК» — берём первый ник.
+        first = gn.split(",")[0].strip()
+        if first:
+            return first
+    for f in ("display_name", "vk_display", "tg_display",
+              "tg_username", "vk_screen_name"):
+        v = (m.get(f) or "").strip()
+        if v:
+            return v
+    return m.get("key") or "(без имени)"
+
+
 def _compute_trend(counts: list[int]) -> dict[str, Any]:
     """Тренд активности по всему периоду.
 
@@ -1916,8 +1941,7 @@ def members_activity_timeline(
         total = sum(counts)
         if total == 0:
             continue   # «тихих» в график не выводим
-        name = (m.get("display_name") or m.get("game_nick")
-                or m.get("vk_display") or m.get("tg_display") or m["key"])
+        name = _primary_display_name(m)
         series.append({
             "key": m["key"],
             "name": name,

@@ -181,13 +181,39 @@
     return `<span class="m-trend m-trend-${d}" title="${escapeHtml(parts.join("\n"))}">${label}</span>`;
   }
 
+  // Имя участника для UI с приоритетом игрового ника, согласовано с
+  // backend _primary_display_name. game_nick первым: в клане людей
+  // знают по нику, не по @username.
+  function primaryName(p, fallbackKey) {
+    const gn = (p.game_nick || "").trim();
+    if (gn) {
+      const first = gn.split(",")[0].trim();
+      if (first) return first;
+    }
+    for (const f of ["display_name", "vk_display", "tg_display",
+                     "tg_username", "vk_screen_name"]) {
+      const v = (p[f] || "").trim();
+      if (v) return v;
+    }
+    return fallbackKey || "(без имени)";
+  }
+
   function renderMemberRow(item) {
     const p = item.profile || {};
     const s = item.stats || {};
-    const dn = p.display_name || p.game_nick || p.vk_display || p.tg_display
-             || `(${item.key})`;
+    const dn = primaryName(p, item.key);
+    // Подпись под именем: остальные ники из game_nick (если их несколько
+    // через запятую — показываем тех что не вошли в primary) и
+    // display_name если он отличается.
     const subs = [];
-    if (p.game_nick && p.game_nick !== dn) subs.push(`<span class="m-game">${escapeHtml(p.game_nick)}</span>`);
+    const gnAll = (p.game_nick || "").trim();
+    if (gnAll && gnAll.indexOf(",") >= 0) {
+      // Несколько игровых ников — покажем все целиком в саб-строке.
+      subs.push(`<span class="m-game">${escapeHtml(gnAll)}</span>`);
+    }
+    if (p.display_name && p.display_name !== dn && p.display_name !== gnAll) {
+      subs.push(`<span class="m-game">${escapeHtml(p.display_name)}</span>`);
+    }
     const tg = platformLink("tg", p);
     const vk = platformLink("vk", p);
     if (tg) subs.push(`<span class="m-plat">TG ${tg}</span>`);
@@ -221,8 +247,7 @@
 
   // ── Сортировка ─────────────────────────────────────────────────────
   const SORT_FNS = {
-    name:          x => (x.profile.display_name
-                       || x.profile.game_nick || x.key || "").toLowerCase(),
+    name:          x => primaryName(x.profile, x.key).toLowerCase(),
     msgs_total:    x => x.stats.msgs || 0,
     msgs_general:  x => x.stats.msgs_general || 0,
     msgs_officers: x => x.stats.msgs_officers || 0,
