@@ -158,5 +158,6 @@
     chatClearAll:      () => request("DELETE", "/chat/messages?confirm=yes"),
     chatMemberProfile: (q) => request("GET", `/chat/members/profile?q=${encodeURIComponent(q)}`),
     chatMembersActivity: () => request("GET", "/chat/members/activity"),
+    chatMembersTimeline: (granularity) => request("GET", "/chat/members/timeline?granularity=" + encodeURIComponent(granularity || "week")),
   };
 })();

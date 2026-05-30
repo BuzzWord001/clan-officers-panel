@@ -509,6 +509,19 @@ def members_profile(
     return {"found": True, "profile": profile}
 
 
+@router.get("/members/timeline")
+def members_timeline(
+    granularity: str = Query(default="week", pattern="^(day|week|month|year)$"),
+    _: dict = Depends(require_officer),
+) -> dict:
+    """Гистограмма активности всех зарегистрированных по периодам.
+
+    Возвращает структуру для line/area chart на фронте: periods + series по
+    каждому активному участнику. «Тихие» (msgs=0) исключаются.
+    """
+    return db.members_activity_timeline(granularity=granularity)
+
+
 @router.get("/members/activity")
 def members_activity(_: dict = Depends(require_officer)) -> list[dict]:
     """Полный список участников clan_members + их активность в архиве.

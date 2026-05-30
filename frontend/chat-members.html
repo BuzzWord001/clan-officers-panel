@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Участники чатов</title>
-  <link rel="stylesheet" href="styles.css?v=1779750000">
+  <link rel="stylesheet" href="styles.css?v=1779760100">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -89,14 +89,57 @@
         </div>
         <div id="members-empty" class="empty" hidden>Никто не найден</div>
       </div>
+
+      <div class="panel timeline-panel">
+        <div class="timeline-header">
+          <div class="timeline-title">График активности участников</div>
+          <div class="timeline-controls">
+            <label>Период:
+              <select id="tl-granularity">
+                <option value="day">по дням</option>
+                <option value="week" selected>по неделям</option>
+                <option value="month">по месяцам</option>
+                <option value="year">по годам</option>
+              </select>
+            </label>
+            <label>Режим:
+              <select id="tl-mode">
+                <option value="stacked" selected>сложить (общий тренд)</option>
+                <option value="lines">по линиям (сравнение)</option>
+                <option value="solo">отдельный участник</option>
+              </select>
+            </label>
+            <label>Топ:
+              <select id="tl-topn">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="0">все активные</option>
+              </select>
+            </label>
+            <input type="text" id="tl-filter" placeholder="фильтр имён">
+          </div>
+        </div>
+        <div class="timeline-stats" id="timeline-stats"></div>
+        <div class="timeline-chart-wrap">
+          <div class="timeline-loading" id="timeline-loading" hidden>Загрузка…</div>
+          <canvas id="timeline-canvas"></canvas>
+        </div>
+        <div class="timeline-legend" id="timeline-legend"></div>
+        <div class="timeline-hint">
+          Клик по имени в легенде — скрыть / показать. В режиме «отдельный
+          участник» выбери одного из легенды для детального просмотра.
+        </div>
+      </div>
     </main>
 
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779750000"></script>
-  <script src="js/matrix.js?v=1779750000"></script>
-  <script src="js/api.js?v=1779750000"></script>
-  <script src="js/chat-members.js?v=1779750000"></script>
+  <script src="config.js?v=1779760100"></script>
+  <script src="js/matrix.js?v=1779760100"></script>
+  <script src="js/api.js?v=1779760100"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/chat-members.js?v=1779760100"></script>
 </body>
 </html>

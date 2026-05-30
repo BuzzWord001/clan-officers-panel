@@ -1735,6 +1735,93 @@ def dedup_stats() -> dict[str, Any]:
             "bytes_saved_via_dedup": int(saved)}
 
 
+def members_activity_timeline(
+    granularity: str = "week",
+) -> dict[str, Any]:
+    """Гистограмма сообщений каждого участника clan_members по периодам.
+
+    granularity:
+      day   — %Y-%m-%d  (для последних 1-3 месяцев, иначе слишком много точек)
+      week  — %Y-%W     (по умолчанию, для года-двух)
+      month — %Y-%m     (для всей истории клана)
+      year  — %Y
+
+    Возвращает {
+      granularity, periods (отсортированы ASC),
+      series: [{key, name, total, counts: [n_period0, n_period1, ...]}]
+    }
+    """
+    g = (granularity or "week").lower()
+    fmt = {
+        "day":   "%Y-%m-%d",
+        "week":  "%Y-W%W",
+        "month": "%Y-%m",
+        "year":  "%Y",
+    }.get(g, "%Y-W%W")
+
+    with connection() as conn:
+        # Все периоды сразу с user_id+platform
+        rows = list(conn.execute(
+            f"""SELECT strftime('{fmt}', sent_at) AS period,
+                       platform, user_id, COUNT(*) AS n
+                FROM chat_messages
+                GROUP BY period, platform, user_id"""
+        ))
+
+    # Собираем все периоды (отсортированно)
+    periods = sorted({r["period"] for r in rows if r["period"]})
+    period_idx = {p: i for i, p in enumerate(periods)}
+
+    # Считаем по (platform, user_id)
+    from collections import defaultdict
+    per_user: dict[tuple[str, str], list[int]] = defaultdict(
+        lambda: [0] * len(periods)
+    )
+    for r in rows:
+        p = r["period"]
+        if not p:
+            continue
+        per_user[(r["platform"], str(r["user_id"]))][period_idx[p]] += r["n"]
+
+    # Сводим к clan_members
+    members = list_clan_members()
+    skip_fields = {"key", "raw_json", "synced_at"}
+    series: list[dict[str, Any]] = []
+
+    for m in members:
+        tg_id = (m.get("tg_id") or "").strip()
+        vk_id = (m.get("vk_id") or "").strip()
+        counts = [0] * len(periods)
+        for key in (("tg", tg_id), ("vk", vk_id)):
+            if not key[1]:
+                continue
+            src = per_user.get(key)
+            if not src:
+                continue
+            for i, v in enumerate(src):
+                counts[i] += v
+        total = sum(counts)
+        if total == 0:
+            continue   # «тихих» в график не выводим
+        name = (m.get("display_name") or m.get("game_nick")
+                or m.get("vk_display") or m.get("tg_display") or m["key"])
+        series.append({
+            "key": m["key"],
+            "name": name,
+            "total": total,
+            "counts": counts,
+        })
+
+    # Сортируем по total DESC чтобы топ-активные сразу попали в default-выборку
+    series.sort(key=lambda s: -s["total"])
+
+    return {
+        "granularity": g,
+        "periods": periods,
+        "series": series,
+    }
+
+
 def list_members_activity() -> list[dict[str, Any]]:
     """Список всех зарегистрированных участников клана + их активность в
     архиве: сколько сообщений (общий/офицерский), символов, медиа,

@@ -299,4 +299,236 @@
   } finally {
     $("members-loading").hidden = true;
   }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Timeline активности — большой график внизу страницы.
+  // ────────────────────────────────────────────────────────────────────
+
+  // Палитра 24 различимых цветов (HSL равномерно, насыщенность 70%,
+  // светлота 60% — хорошо видно на тёмном фоне).
+  const PALETTE = (() => {
+    const out = [];
+    for (let i = 0; i < 24; i++) {
+      out.push(`hsl(${Math.round((i * 360) / 24)}, 70%, 60%)`);
+    }
+    return out;
+  })();
+  function colorFor(idx) { return PALETTE[idx % PALETTE.length]; }
+
+  // Локальное состояние timeline
+  const TL = {
+    chart: null,
+    raw: null,           // {granularity, periods, series}
+    visibleKeys: new Set(),
+    soloKey: null,
+    mode: "stacked",
+    topN: 10,
+    filter: "",
+  };
+
+  function fmtPeriodLabel(p, granularity) {
+    if (granularity === "week") {
+      const m = p.match(/(\d{4})-W(\d{1,2})/);
+      if (m) return `${m[1]} нед.${m[2]}`;
+      return p;
+    }
+    if (granularity === "month") {
+      const m = p.match(/(\d{4})-(\d{2})/);
+      if (m) {
+        const months = ["янв","фев","мар","апр","май","июн",
+                        "июл","авг","сен","окт","ноя","дек"];
+        return `${months[+m[2]-1]} ${m[1]}`;
+      }
+    }
+    return p;
+  }
+
+  function visibleSeries() {
+    if (!TL.raw) return [];
+    let s = TL.raw.series;
+    if (TL.filter) {
+      const q = TL.filter.toLowerCase();
+      s = s.filter(x => x.name.toLowerCase().indexOf(q) >= 0);
+    }
+    if (TL.topN > 0) s = s.slice(0, TL.topN);
+    return s;
+  }
+
+  function buildDatasets() {
+    if (!TL.raw) return [];
+    const all = visibleSeries();
+    let chosen;
+    if (TL.mode === "solo" && TL.soloKey) {
+      chosen = all.filter(s => s.key === TL.soloKey);
+    } else {
+      chosen = all.filter(s => TL.visibleKeys.has(s.key));
+    }
+    return chosen.map((s, i) => ({
+      label: s.name,
+      data: s.counts,
+      borderColor: colorFor(allSeriesIndex(s.key)),
+      backgroundColor: TL.mode === "stacked"
+        ? colorFor(allSeriesIndex(s.key)).replace("hsl", "hsla").replace(")", ", 0.55)")
+        : "transparent",
+      borderWidth: TL.mode === "stacked" ? 1 : 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      fill: TL.mode === "stacked",
+      tension: 0.25,
+      _key: s.key,
+    }));
+  }
+
+  // Индекс серии в полном списке (для стабильного цвета даже после
+  // фильтрации и toggle).
+  function allSeriesIndex(key) {
+    if (!TL.raw) return 0;
+    return TL.raw.series.findIndex(s => s.key === key);
+  }
+
+  function renderLegend() {
+    if (!TL.raw) return;
+    const container = $("timeline-legend");
+    const all = visibleSeries();
+    const html = all.map(s => {
+      const idx = allSeriesIndex(s.key);
+      const visible = TL.mode === "solo"
+        ? (TL.soloKey === s.key)
+        : TL.visibleKeys.has(s.key);
+      return `<span class="tl-legend-item${visible ? "" : " tl-legend-off"}"
+                    data-key="${escapeHtml(s.key)}">
+                <span class="tl-legend-dot" style="background:${colorFor(idx)}"></span>
+                ${escapeHtml(s.name)} <span class="tl-legend-total">${fmtNum(s.total)}</span>
+              </span>`;
+    }).join("");
+    container.innerHTML = html;
+  }
+
+  function renderChart() {
+    if (!TL.raw) return;
+    const ctx = $("timeline-canvas").getContext("2d");
+    if (TL.chart) { TL.chart.destroy(); TL.chart = null; }
+    const labels = TL.raw.periods.map(p => fmtPeriodLabel(p, TL.raw.granularity));
+    const datasets = buildDatasets();
+    TL.chart = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },     // своя легенда
+          tooltip: {
+            backgroundColor: "rgba(0,0,0,0.92)",
+            borderColor: "#00ff41",
+            borderWidth: 1,
+            titleColor: "#00ff41",
+            bodyColor: "#cfd",
+            callbacks: {
+              title: (items) => items[0]?.label || "",
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: "#9aa", maxRotation: 60, minRotation: 30,
+                     autoSkip: true, maxTicksLimit: 16 },
+            grid:  { color: "rgba(0,255,65,0.05)" },
+            stacked: TL.mode === "stacked",
+          },
+          y: {
+            ticks: { color: "#9aa" },
+            grid:  { color: "rgba(0,255,65,0.07)" },
+            stacked: TL.mode === "stacked",
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+  }
+
+  async function loadTimeline() {
+    const g = $("tl-granularity").value;
+    $("timeline-loading").hidden = false;
+    try {
+      const data = await API.chatMembersTimeline(g);
+      TL.raw = data;
+      // По умолчанию показываем top-N
+      const all = visibleSeries();
+      TL.visibleKeys = new Set(all.map(s => s.key));
+      if (!TL.soloKey && all.length) TL.soloKey = all[0].key;
+
+      // Сводка
+      const totalMsgs = TL.raw.series.reduce((a, s) => a + s.total, 0);
+      const period0 = TL.raw.periods[0] || "—";
+      const periodN = TL.raw.periods[TL.raw.periods.length - 1] || "—";
+      $("timeline-stats").innerHTML = `
+        <span>период: <b>${escapeHtml(period0)} → ${escapeHtml(periodN)}</b></span>
+        <span>всего сообщений: <b>${fmtNum(totalMsgs)}</b></span>
+        <span>активных участников: <b>${TL.raw.series.length}</b></span>
+        <span>интервалов: <b>${TL.raw.periods.length}</b></span>
+      `;
+
+      renderChart();
+      renderLegend();
+    } catch (e) {
+      $("timeline-stats").innerHTML =
+        `<span class="m-error">Ошибка: ${escapeHtml(e.detail || e.message)}</span>`;
+    } finally {
+      $("timeline-loading").hidden = true;
+    }
+  }
+
+  // Events
+  $("tl-granularity").addEventListener("change", () => loadTimeline());
+  $("tl-mode").addEventListener("change", () => {
+    TL.mode = $("tl-mode").value;
+    renderChart();
+    renderLegend();
+  });
+  $("tl-topn").addEventListener("change", () => {
+    TL.topN = parseInt($("tl-topn").value, 10) || 0;
+    // Обновляем visibleKeys для нового топа
+    if (TL.raw) {
+      const all = visibleSeries();
+      TL.visibleKeys = new Set(all.map(s => s.key));
+    }
+    renderChart();
+    renderLegend();
+  });
+  let tlFilterTimer = null;
+  $("tl-filter").addEventListener("input", () => {
+    if (tlFilterTimer) clearTimeout(tlFilterTimer);
+    tlFilterTimer = setTimeout(() => {
+      TL.filter = $("tl-filter").value.trim();
+      if (TL.raw) {
+        const all = visibleSeries();
+        TL.visibleKeys = new Set(all.map(s => s.key));
+        if (all.length && !all.find(s => s.key === TL.soloKey)) {
+          TL.soloKey = all[0].key;
+        }
+      }
+      renderChart();
+      renderLegend();
+    }, 200);
+  });
+
+  // Toggle участника в легенде
+  $("timeline-legend").addEventListener("click", (ev) => {
+    const item = ev.target.closest(".tl-legend-item");
+    if (!item) return;
+    const key = item.dataset.key;
+    if (TL.mode === "solo") {
+      TL.soloKey = key;
+    } else {
+      if (TL.visibleKeys.has(key)) TL.visibleKeys.delete(key);
+      else TL.visibleKeys.add(key);
+    }
+    renderChart();
+    renderLegend();
+  });
+
+  loadTimeline();
 })();
