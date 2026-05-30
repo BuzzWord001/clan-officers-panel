@@ -1773,10 +1773,11 @@ video.chat-media-thumb {
 }
 .members-table th.sort-asc::after  { border-bottom: 5px solid var(--accent); }
 .members-table th.sort-desc::after { border-top:    5px solid var(--accent); }
-.members-table .m-col-num   { text-align: right;  width: 8%; }
-.members-table .m-col-act   { width: 12%; text-align: center; }
-.members-table .m-col-time  { width: 8%; }
-.members-table .m-col-name  { min-width: 220px; }
+.members-table .m-col-num   { text-align: right;  width: 7%; }
+.members-table .m-col-act   { width: 11%; text-align: center; }
+.members-table .m-col-trend { width: 8%; text-align: center; }
+.members-table .m-col-time  { width: 7%; }
+.members-table .m-col-name  { min-width: 200px; }
 .members-table tbody tr.m-row {
   border-bottom: 1px solid rgba(0, 255, 65, 0.08);
   transition: background 0.1s;
@@ -1852,6 +1853,51 @@ video.chat-media-thumb {
   opacity: 0.55;  /* участники не писавшие в чате — тише визуально */
 }
 .m-row-silent .m-cell-total { color: var(--muted); }
+
+/* Тренд (recent vs prev) — в таблице и в графике */
+.m-cell-trend { text-align: center; }
+.m-trend {
+  display: inline-block;
+  font-family: "Cascadia Code", monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.m-trend-up   { color: #4ade80; background: rgba(74, 222, 128, 0.10); }
+.m-trend-down { color: #f87171; background: rgba(248, 113, 113, 0.10); }
+.m-trend-flat { color: var(--text-dim); }
+.m-trend-new  { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+.m-trend-none { color: var(--muted); font-style: italic; }
+
+/* Тренд в шапке графика — крупный заметный */
+.tl-trend-big {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 2px;
+  font-size: 12px; font-family: "Cascadia Code", monospace;
+}
+.tl-trend-big b { color: inherit; opacity: 0.8; }
+.tl-trend-big i { font-style: normal; opacity: 0.7; }
+.tl-trend-up   { color: #4ade80; background: rgba(74, 222, 128, 0.14);
+                 border: 1px solid rgba(74, 222, 128, 0.4); }
+.tl-trend-down { color: #f87171; background: rgba(248, 113, 113, 0.14);
+                 border: 1px solid rgba(248, 113, 113, 0.4); }
+.tl-trend-flat { color: var(--text-dim); border: 1px solid var(--accent-dim); }
+.tl-trend-new  { color: #fbbf24; background: rgba(251, 191, 36, 0.14);
+                 border: 1px solid rgba(251, 191, 36, 0.4); }
+
+/* Тренд в легенде — маленький, после total */
+.tl-trend-mini {
+  font-size: 10px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+.tl-trend-mini.tl-trend-up   { color: #4ade80; }
+.tl-trend-mini.tl-trend-down { color: #f87171; }
+.tl-trend-mini.tl-trend-flat { color: var(--text-dim); opacity: 0.6; }
+.tl-trend-mini.tl-trend-new  { color: #fbbf24; }
 
 /* Sparkline (12 weeks) */
 .m-cell-act { text-align: center; }

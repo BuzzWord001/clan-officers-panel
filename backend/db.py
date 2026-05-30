@@ -1735,6 +1735,39 @@ def dedup_stats() -> dict[str, Any]:
             "bytes_saved_via_dedup": int(saved)}
 
 
+def _compute_trend(counts: list[int]) -> dict[str, Any]:
+    """Сравнение последней половины периодов с предыдущей половиной.
+
+    Возвращает:
+      first_half  — сумма ранней половины
+      second_half — сумма поздней половины
+      pct         — (second-first)/first * 100. None если данных мало
+                    или прошлое = 0 и текущее = 0 (нечего сравнивать).
+      direction   — "up" / "down" / "flat" / "new" / null
+
+    «new» — пользователь не писал в ранней половине, но активен в поздней
+    (трактуем как «пришёл недавно», pct отображается как +100% но в UI
+    можно показать иной маркер).
+    """
+    n = len(counts or [])
+    if n < 2:
+        return {"first_half": 0, "second_half": 0, "pct": None, "direction": None}
+    mid = n // 2
+    first = sum(counts[:mid])
+    second = sum(counts[mid:])
+    if first == 0 and second == 0:
+        return {"first_half": 0, "second_half": 0, "pct": None, "direction": None}
+    if first == 0:
+        return {"first_half": 0, "second_half": second,
+                "pct": 100.0, "direction": "new"}
+    pct = (second - first) / first * 100.0
+    if pct > 5:    direction = "up"
+    elif pct < -5: direction = "down"
+    else:          direction = "flat"
+    return {"first_half": first, "second_half": second,
+            "pct": round(pct, 1), "direction": direction}
+
+
 def members_activity_timeline(
     granularity: str = "week",
 ) -> dict[str, Any]:
@@ -1812,13 +1845,29 @@ def members_activity_timeline(
             "counts": counts,
         })
 
+    # Тренд per-user (по тем периодам что прислали)
+    for s in series:
+        s["trend"] = _compute_trend(s["counts"])
+
     # Сортируем по total DESC чтобы топ-активные сразу попали в default-выборку
     series.sort(key=lambda s: -s["total"])
+
+    # Общий тренд клана: суммируем counts по всем сериям, считаем trend
+    total_counts = [0] * len(periods)
+    for s in series:
+        for i, c in enumerate(s["counts"]):
+            total_counts[i] += c
+    overall = {
+        "total":  sum(total_counts),
+        "counts": total_counts,
+        "trend":  _compute_trend(total_counts),
+    }
 
     return {
         "granularity": g,
         "periods": periods,
         "series": series,
+        "overall": overall,
     }
 
 
@@ -1912,6 +1961,8 @@ def list_members_activity() -> list[dict[str, Any]]:
                                          or src["last_seen"] > agg["last_seen"]):
                     agg["last_seen"] = src["last_seen"]
 
+            # Тренд за последние 12 недель: первая половина vs вторая.
+            agg["trend"] = _compute_trend(agg["weeks"])
             profile = {k: v for k, v in m.items()
                        if k not in skip_fields and v not in (None, "", 0, "0")}
             out.append({

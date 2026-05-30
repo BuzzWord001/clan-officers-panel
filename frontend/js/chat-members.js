@@ -144,6 +144,23 @@
     return `<dl class="m-details">${rows.join("")}</dl>`;
   }
 
+  function renderTrend(trend) {
+    if (!trend || trend.pct === null || trend.pct === undefined) {
+      return `<span class="m-trend m-trend-none" title="Недостаточно данных">—</span>`;
+    }
+    const d = trend.direction;
+    const pct = trend.pct;
+    const arrow = d === "up"   ? "▲"
+                : d === "down" ? "▼"
+                : d === "new"  ? "★"
+                : "▬";
+    const sign = pct > 0 ? "+" : "";
+    const tip  = d === "new"
+      ? `Новичок: в первой половине периода не писал, во второй — ${trend.second_half}`
+      : `Первая половина: ${trend.first_half} • Вторая: ${trend.second_half}`;
+    return `<span class="m-trend m-trend-${d}" title="${escapeHtml(tip)}">${arrow} ${sign}${pct}%</span>`;
+  }
+
   function renderMemberRow(item) {
     const p = item.profile || {};
     const s = item.stats || {};
@@ -173,10 +190,11 @@
         <td class="m-cell-num">${fmtNum(s.chars)}</td>
         <td class="m-cell-num">${fmtNum(s.media)}</td>
         <td class="m-cell-act">${renderSparkline(s.weeks)}</td>
+        <td class="m-cell-trend">${renderTrend(s.trend)}</td>
         <td class="m-cell-time">${period}</td>
       </tr>
       <tr class="m-row-details" data-for="${escapeHtml(item.key)}" hidden>
-        <td colspan="8">${detailsHtml}</td>
+        <td colspan="9">${detailsHtml}</td>
       </tr>
     `;
   }
@@ -191,6 +209,11 @@
     chars:         x => x.stats.chars || 0,
     media:         x => x.stats.media || 0,
     last_seen:     x => x.stats.last_seen || "",
+    trend:         x => {
+      const t = x.stats.trend;
+      if (!t || t.pct === null || t.pct === undefined) return -1e9;
+      return t.pct;
+    },
   };
   let currentSort = { key: "msgs_total", dir: "desc" };
 
@@ -295,7 +318,7 @@
     applyFilterAndRender();
   } catch (e) {
     $("members-tbody").innerHTML =
-      `<tr><td colspan="8" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
+      `<tr><td colspan="9" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
   } finally {
     $("members-loading").hidden = true;
   }
@@ -386,6 +409,32 @@
     return TL.raw.series.findIndex(s => s.key === key);
   }
 
+  function renderTrendBig(trend) {
+    if (!trend || trend.pct === null || trend.pct === undefined) return "";
+    const d = trend.direction;
+    const sign = trend.pct > 0 ? "+" : "";
+    const word = d === "up"   ? "клан оживает"
+               : d === "down" ? "активность падает"
+               : d === "flat" ? "стабильно"
+               : d === "new"  ? "взрывной рост"
+               : "";
+    const arrow = d === "up" ? "▲" : d === "down" ? "▼"
+                : d === "flat" ? "▬" : d === "new" ? "★" : "";
+    return `<span class="tl-trend-big tl-trend-${d}"
+                  title="Сравнение второй половины периода с первой">
+              <b>тренд:</b> ${arrow} ${sign}${trend.pct}% <i>${word}</i>
+            </span>`;
+  }
+
+  function renderTrendSmall(trend) {
+    if (!trend || trend.pct === null || trend.pct === undefined) return "";
+    const d = trend.direction;
+    const arrow = d === "up" ? "▲" : d === "down" ? "▼"
+                : d === "new" ? "★" : "▬";
+    const sign = trend.pct > 0 ? "+" : "";
+    return ` <span class="tl-trend-mini tl-trend-${d}">${arrow}${sign}${trend.pct}%</span>`;
+  }
+
   function renderLegend() {
     if (!TL.raw) return;
     const container = $("timeline-legend");
@@ -398,7 +447,7 @@
       return `<span class="tl-legend-item${visible ? "" : " tl-legend-off"}"
                     data-key="${escapeHtml(s.key)}">
                 <span class="tl-legend-dot" style="background:${colorFor(idx)}"></span>
-                ${escapeHtml(s.name)} <span class="tl-legend-total">${fmtNum(s.total)}</span>
+                ${escapeHtml(s.name)} <span class="tl-legend-total">${fmtNum(s.total)}</span>${renderTrendSmall(s.trend)}
               </span>`;
     }).join("");
     container.innerHTML = html;
@@ -460,15 +509,20 @@
       TL.visibleKeys = new Set(all.map(s => s.key));
       if (!TL.soloKey && all.length) TL.soloKey = all[0].key;
 
-      // Сводка
+      // Сводка + общий trend
       const totalMsgs = TL.raw.series.reduce((a, s) => a + s.total, 0);
       const period0 = TL.raw.periods[0] || "—";
       const periodN = TL.raw.periods[TL.raw.periods.length - 1] || "—";
+      const overall = TL.raw.overall && TL.raw.overall.trend;
+      const trendHtml = overall
+        ? renderTrendBig(overall)
+        : "";
       $("timeline-stats").innerHTML = `
         <span>период: <b>${escapeHtml(period0)} → ${escapeHtml(periodN)}</b></span>
         <span>всего сообщений: <b>${fmtNum(totalMsgs)}</b></span>
         <span>активных участников: <b>${TL.raw.series.length}</b></span>
         <span>интервалов: <b>${TL.raw.periods.length}</b></span>
+        ${trendHtml}
       `;
 
       renderChart();
