@@ -2367,3 +2367,22 @@ video.chat-media-thumb {
   z-index: -1;
   pointer-events: none;
 }
+
+/* Колонка «Данные VK / Telegram» */
+.socials-cell { font-size: 11px; line-height: 1.6; }
+.soc {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-decoration: none;
+  font-family: "Cascadia Code", monospace;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.soc-vk { color: #6691c8; background: rgba(102, 145, 200, 0.08);
+          border-color: rgba(102, 145, 200, 0.25); }
+.soc-vk:hover { background: rgba(102, 145, 200, 0.18); }
+.soc-tg { color: #69b7e4; background: rgba(105, 183, 228, 0.08);
+          border-color: rgba(105, 183, 228, 0.25); margin-left: 4px; }
+.soc-tg:hover { background: rgba(105, 183, 228, 0.18); }

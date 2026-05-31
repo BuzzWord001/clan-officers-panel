@@ -92,6 +92,32 @@
     return (m[key] || "").toString().toLowerCase();
   }
 
+  function renderSocials(s) {
+    if (!s) return `<span style="color:#555">—</span>`;
+    const out = [];
+    // VK
+    if (s.vk_screen_name) {
+      out.push(`<a class="soc soc-vk" target="_blank" rel="noopener"
+        href="https://vk.com/${esc(s.vk_screen_name)}"
+        title="VK: ${esc(s.vk_display || '')}">VK · ${esc(s.vk_screen_name)}</a>`);
+    } else if (s.vk_id) {
+      out.push(`<a class="soc soc-vk" target="_blank" rel="noopener"
+        href="https://vk.com/id${esc(s.vk_id)}"
+        title="VK: ${esc(s.vk_display || '')}">VK · id${esc(s.vk_id)}</a>`);
+    }
+    // TG
+    if (s.tg_username) {
+      out.push(`<a class="soc soc-tg" target="_blank" rel="noopener"
+        href="https://t.me/${esc(s.tg_username)}"
+        title="Telegram: ${esc(s.tg_display || '')}">TG · @${esc(s.tg_username)}</a>`);
+    } else if (s.tg_id) {
+      // tg_id без username не даёт прямую ссылку, но показываем
+      out.push(`<span class="soc soc-tg" title="Telegram: ${esc(s.tg_display || '')}"
+        >TG · id ${esc(s.tg_id)}</span>`);
+    }
+    return out.join(" ") || `<span style="color:#555">—</span>`;
+  }
+
   function renderTrend(t) {
     if (!t) {
       return `<span class="trend trend-none" title="нет данных предыдущей недели">—</span>`;
@@ -158,11 +184,13 @@
         normLabel = `<span style="color:#888" title="нет данных доблести">?</span>`;
       }
       const trendCell = renderTrend(m.trend);
+      const socialCell = renderSocials(m.socials);
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
           <td class="m-cell-name"><b>${esc(m.nick)}</b></td>
           <td>${esc(m.true_name)}</td>
+          <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="hist-cell" data-field="title">${esc(m.title)}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>

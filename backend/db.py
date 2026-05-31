@@ -2503,6 +2503,117 @@ def _valor_canon(nick: str) -> str:
 _HIST_FIELDS = ("rank", "title", "level", "class", "valor")
 
 
+# ── Имена / диминутивы (для нормализации «TatyanaMarkina» → «Таня») ──
+# Транслит частых ASCII-форм русских имён в кириллицу.
+_NAME_TRANSLIT = {
+    "tatyana": "татьяна", "tatiana": "татьяна",
+    "alexander": "александр", "aleksandr": "александр",
+    "alexandra": "александра", "alex": "александр",
+    "alexey": "алексей", "aleksey": "алексей",
+    "alena": "алёна", "alyona": "алёна",
+    "anastasia": "анастасия", "anastasiya": "анастасия",
+    "andrey": "андрей", "andrei": "андрей",
+    "anna": "анна", "anton": "антон", "anatoly": "анатолий",
+    "boris": "борис",
+    "denis": "денис", "dima": "дмитрий",
+    "dmitry": "дмитрий", "dmitri": "дмитрий", "dmitriy": "дмитрий",
+    "ekaterina": "екатерина", "elena": "елена",
+    "evgeny": "евгений", "evgeniy": "евгений", "evgenia": "евгения",
+    "german": "герман",
+    "irina": "ирина", "ivan": "иван",
+    "katya": "катя", "konstantin": "константин", "kostya": "константин",
+    "kirill": "кирилл", "ksenia": "ксения", "kseniya": "ксения",
+    "larisa": "лариса", "lera": "лера",
+    "maksim": "максим", "maxim": "максим",
+    "marina": "марина", "maria": "мария", "mariya": "мария",
+    "mikhail": "михаил", "misha": "михаил",
+    "natalya": "наталья", "natalia": "наталья", "natasha": "наталья",
+    "nikita": "никита",
+    "nikolay": "николай", "nikolai": "николай",
+    "olga": "ольга", "olya": "ольга",
+    "pavel": "павел", "pasha": "павел",
+    "petr": "пётр", "petya": "пётр",
+    "polina": "полина",
+    "roman": "роман", "roma": "роман",
+    "ruslan": "руслан",
+    "sasha": "александр", "sergey": "сергей", "sergei": "сергей",
+    "stas": "станислав", "stanislav": "станислав",
+    "svetlana": "светлана", "sveta": "светлана",
+    "tanya": "татьяна",
+    "tim": "тимофей", "tima": "тимофей", "timofey": "тимофей",
+    "valera": "валерий", "valery": "валерий",
+    "valeria": "валерия", "valeriya": "валерия",
+    "vlad": "владислав", "vladimir": "владимир", "vova": "владимир",
+    "yury": "юрий", "yuri": "юрий", "yulia": "юлия", "yuliya": "юлия",
+    "vitya": "виктор", "victor": "виктор", "viktor": "виктор",
+    "vasily": "василий",
+}
+
+# Полное имя → уменьшительная форма.
+_DIMINUTIVES = {
+    "татьяна": "Таня",
+    "александр": "Саша", "александра": "Саша",
+    "алексей": "Лёша", "анастасия": "Настя",
+    "сергей": "Серёжа",
+    "андрей": "Андрей",
+    "владимир": "Володя", "владислав": "Влад",
+    "екатерина": "Катя", "елена": "Лена",
+    "ольга": "Оля", "наталья": "Наташа", "светлана": "Света",
+    "виктория": "Вика", "анна": "Аня", "мария": "Маша",
+    "ирина": "Ира", "евгений": "Женя", "евгения": "Женя",
+    "дмитрий": "Дима", "михаил": "Миша", "юрий": "Юра",
+    "николай": "Коля", "константин": "Костя", "максим": "Макс",
+    "артём": "Тёма", "артем": "Тёма", "роман": "Рома",
+    "павел": "Паша", "пётр": "Петя", "петр": "Петя",
+    "юлия": "Юля", "ярослав": "Ярик", "валерий": "Валера",
+    "валерия": "Лера", "тимофей": "Тима", "филипп": "Филя",
+    "степан": "Стёпа", "лидия": "Лида", "вячеслав": "Слава",
+    "станислав": "Стас", "арсений": "Сеня", "вадим": "Вадим",
+    "даниил": "Даня", "данила": "Даня", "лев": "Лёва",
+    "леонид": "Лёня", "виктор": "Витя",
+    "надежда": "Надя", "любовь": "Люба", "галина": "Галя",
+    "людмила": "Люся", "валентина": "Валя", "валентин": "Валя",
+    "марина": "Марина", "ангелина": "Геля", "альбина": "Аля",
+    "софия": "Соня", "софья": "Соня", "арина": "Арина",
+    "полина": "Поля", "ксения": "Ксюша", "елизавета": "Лиза",
+}
+
+
+def _camel_split(s: str) -> list[str]:
+    """TatyanaMarkina → ['Tatyana', 'Markina'].
+    Между нижним регистром и верхним вставляем разделитель."""
+    return re.findall(r"[A-Z][a-zA-Zа-яё]*|[a-zа-яё]+", s or "")
+
+
+def _normalize_name(raw: str) -> str:
+    """«TatyanaMarkina» / «Татьяна» / «Tatyana» → «Таня».
+
+    1) разрезаем camelCase, оставляем первое слово (= имя)
+    2) если ASCII — мэппим через _NAME_TRANSLIT в кириллицу
+    3) если получившаяся форма в _DIMINUTIVES — возвращаем уменьшительное
+    4) иначе возвращаем исходное «Имя» с заглавной буквы
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    # Если строка содержит пробелы — берём первое слово
+    if " " in s:
+        s = s.split()[0]
+    else:
+        parts = _camel_split(s)
+        if parts:
+            s = parts[0]
+    if not s:
+        return ""
+    key = s.lower()
+    if re.fullmatch(r"[a-z']+", key):
+        key = _NAME_TRANSLIT.get(key, key)  # translit если знаем
+    if key in _DIMINUTIVES:
+        return _DIMINUTIVES[key]
+    # Не нашли уменьшительное — отдаём капитализированный original
+    return s[0].upper() + s[1:]
+
+
 def _enrich_true_names_from_clan_members(members: list[dict]) -> int:
     """Если у member пустое true_name — ищем имя в clan_members JOIN
     по canon одного из game_nick'ов человека.
@@ -2517,19 +2628,28 @@ def _enrich_true_names_from_clan_members(members: list[dict]) -> int:
     """
     with connection() as conn:
         rows = conn.execute(
-            """SELECT game_nick, display_name, vk_first, tg_first_name
+            """SELECT game_nick, display_name, vk_first, tg_first_name,
+                      tg_username
                FROM clan_members WHERE is_active = 1"""
         ).fetchall()
     lookup: dict[str, str] = {}
     for r in rows:
-        name = ((r["vk_first"] or "").strip()
-                or (r["tg_first_name"] or "").strip())
-        if not name:
-            dn = (r["display_name"] or "").strip()
-            # display_name может быть «Анна Бесценная» — возьмём первое
-            # слово как имя.
-            if dn:
-                name = dn.split()[0]
+        # Источники имени по приоритету
+        candidates = [
+            (r["vk_first"] or "").strip(),
+            (r["tg_first_name"] or "").strip(),
+        ]
+        dn = (r["display_name"] or "").strip()
+        if dn:
+            candidates.append(dn.split()[0])
+        # TG-username (TatyanaMarkina) — последний резерв
+        candidates.append((r["tg_username"] or "").strip())
+        name = ""
+        for c in candidates:
+            if c:
+                name = _normalize_name(c)
+                if name:
+                    break
         if not name:
             continue
         for nick in (r["game_nick"] or "").split(","):
@@ -2798,6 +2918,28 @@ def valor_get_current() -> dict[str, Any]:
                 prev_valor[r["nick_canon"]] = (
                     r["valor"] if r["valor"] is not None else None)
 
+        # Социалки по canon — для UI колонки «Данные VK / Telegram».
+        socials: dict[str, dict] = {}
+        for r in conn.execute(
+            """SELECT game_nick, vk_id, vk_screen_name, vk_display,
+                      tg_id, tg_username, tg_display
+               FROM clan_members WHERE is_active = 1"""
+        ):
+            entry = {
+                "vk_id":          (r["vk_id"] or "") or None,
+                "vk_screen_name": (r["vk_screen_name"] or "") or None,
+                "vk_display":     (r["vk_display"] or "") or None,
+                "tg_id":          (r["tg_id"] or "") or None,
+                "tg_username":    (r["tg_username"] or "") or None,
+                "tg_display":     (r["tg_display"] or "") or None,
+            }
+            if not any(entry.values()):
+                continue
+            for nick in (r["game_nick"] or "").split(","):
+                cn = _valor_canon(nick)
+                if cn and cn not in socials:
+                    socials[cn] = entry
+
         rows = conn.execute(
             """SELECT * FROM valor_members
                WHERE snapshot_id = ?
@@ -2812,6 +2954,8 @@ def valor_get_current() -> dict[str, Any]:
             m["flag_ocr_suspect"] = bool(m["flag_ocr_suspect"])
             if m["norm_met"] is not None:
                 m["norm_met"] = bool(m["norm_met"])
+            # Соцсети (по canon ника)
+            m["socials"] = socials.get(m["nick_canon"]) or None
             # Тренд: разница с прошлой неделей.
             #   pct = (cur - prev) / max(prev, 1) * 100
             # Если человека не было на прошлой неделе → "new".
