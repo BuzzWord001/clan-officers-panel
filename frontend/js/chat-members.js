@@ -303,13 +303,16 @@
     const vk = platformLink("vk", p);
     if (tg) subs.push(`<span class="m-plat">TG ${tg}</span>`);
     if (vk) subs.push(`<span class="m-plat">VK ${vk}</span>`);
-    const leftBadge = item.is_active === false
-      ? `<span class="m-status-out" title="Покинули все клановые чаты (TG и VK). Запись хранится в архиве для истории сообщений.">вне чатов</span>`
-      : "";
+    let statusBadge = "";
+    if (item.unregistered) {
+      statusBadge = `<span class="m-status-unreg" title="Пишет в чатах, но через /reg в боте не регистрировался. Когда зарегистрируется — статистика автоматически объединится с его игровым ником.">без регистрации</span>`;
+    } else if (item.is_active === false) {
+      statusBadge = `<span class="m-status-out" title="Покинули все клановые чаты (TG и VK). Запись хранится в архиве для истории сообщений.">вне чатов</span>`;
+    }
     const nameBlock = `
       <div class="m-name-row">
         <div class="m-name"><span class="m-expand-icon">▸</span> ${escapeHtml(dn)}</div>
-        ${leftBadge}
+        ${statusBadge}
       </div>
       ${subs.length ? `<div class="m-sub">${subs.join(" · ")}</div>` : ""}
     `;
@@ -328,8 +331,12 @@
     const silentTitle = total ? "" : (isManual
       ? "Ни одного сообщения в архиве. Запись добавлена админом через GUI (manual_*) — возможно tg_id/vk_id указан неточно или человек реально не пишет в чатах."
       : "Ни одного сообщения в архиве за всё время сбора (TG с 13.04.2026, VK с 29.03.2026).");
+    const rowClasses = "m-row"
+      + (total ? "" : " m-row-silent")
+      + (item.is_active === false ? " m-row-left" : "")
+      + (item.unregistered ? " m-row-unreg" : "");
     return `
-      <tr class="m-row${total ? "" : " m-row-silent"}${item.is_active === false ? " m-row-left" : ""}"
+      <tr class="${rowClasses}"
           data-key="${escapeHtml(item.key)}"${silentTitle ? ` title="${escapeHtml(silentTitle)}"` : ""}>
         <td class="m-cell-idx">${idxNum}</td>
         <td class="m-cell-name">${nameBlock}</td>
@@ -412,14 +419,20 @@
   }
 
   function updateOverallStats() {
-    const totalMembers = allItems.length;
+    const registered   = allItems.filter(x => !x.unregistered);
+    const unregistered = allItems.filter(x =>  x.unregistered);
+    const totalMembers = registered.length;
     const totalMsgs = allItems.reduce((a, x) => a + (x.stats.msgs || 0), 0);
     const active = allItems.filter(x => (x.stats.msgs || 0) > 0).length;
     const chars  = allItems.reduce((a, x) => a + (x.stats.chars || 0), 0);
     const media  = allItems.reduce((a, x) => a + (x.stats.media || 0), 0);
-    const nLeft = allItems.filter(x => x.is_active === false).length;
+    const nLeft = registered.filter(x => x.is_active === false).length;
+    const unregBadge = unregistered.length
+      ? `<span title="Пишут в чатах, но через /reg в боте не зарегистрированы. Учитываются в общих числах ниже.">без рег.: <b>${unregistered.length}</b></span>`
+      : "";
     $("members-stats").innerHTML = `
       <span>зарегистрировано: <b>${totalMembers}</b></span>
+      ${unregBadge}
       <span>писали в чате: <b>${active}</b></span>
       <span>всего сообщений: <b>${fmtNum(totalMsgs)}</b></span>
       <span>символов: <b>${fmtNum(chars)}</b></span>

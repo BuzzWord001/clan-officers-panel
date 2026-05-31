@@ -2040,6 +2040,47 @@ def members_activity_timeline(
             "total": total,
             "counts": counts,
             "is_active": is_active,
+            "unregistered": False,
+        })
+
+    # ── Незарегистрированные в таймлайне ──
+    # Те (platform, user_id) что есть в per_user но не привязаны ни к
+    # одной clan_members записи. При регистрации (bulk_sync) автоматически
+    # переедут в зарегистрированных без потери истории.
+    known_keys: set[tuple[str, str]] = set()
+    for m in members:
+        if m.get("tg_id"): known_keys.add(("tg", str(m["tg_id"])))
+        if m.get("vk_id"): known_keys.add(("vk", str(m["vk_id"])))
+
+    with connection() as conn:
+        user_lookup = {
+            (r["platform"], r["user_id"]): (r["display_name"], r["username"])
+            for r in conn.execute(
+                "SELECT platform, user_id, display_name, username FROM chat_users"
+            )
+        }
+
+    for (platform, user_id), counts in per_user.items():
+        if (platform, user_id) in known_keys:
+            continue
+        if not user_id or user_id in ("0", "None"):
+            continue
+        total = sum(counts)
+        if total == 0:
+            continue
+        disp, uname = user_lookup.get((platform, user_id), ("", ""))
+        if not disp and not uname:
+            continue
+        # is_active = True (пишут активно) — фильтр include_inactive их не
+        # касается, он только про clan_members.is_active.
+        name = (disp or uname or f"{platform} id {user_id}")
+        series.append({
+            "key":          f"unreg_{platform}_{user_id}",
+            "name":         name,
+            "total":        total,
+            "counts":       list(counts),
+            "is_active":    True,
+            "unregistered": True,
         })
 
     # Тренд per-user (по тем периодам что прислали)
@@ -2177,6 +2218,70 @@ def list_members_activity() -> list[dict[str, Any]]:
                 "profile":      profile,
                 "stats":        agg,
                 "is_active":    bool(m.get("is_active", 1)),
+                "unregistered": False,
+            })
+
+        # ── Незарегистрированные ──
+        # Те (platform, user_id) что есть в per_user, но не сматчились ни
+        # с одним tg_id/vk_id в clan_members. Это люди которые активно
+        # пишут в чатах но через /reg не проходили. Берём имя из
+        # chat_users (last_seen display/username); если человека там нет —
+        # пропускаем. Когда он зарегистрируется через бота — clan_members
+        # пополнится, его (platform, user_id) сматчится с одной из
+        # записей выше, и unregistered-строка исчезнет автоматически
+        # (statistика та же — суммируется по user_id, не по member.key).
+        known_keys: set[tuple[str, str]] = set()
+        for m in members:
+            if m.get("tg_id"): known_keys.add(("tg", str(m["tg_id"])))
+            if m.get("vk_id"): known_keys.add(("vk", str(m["vk_id"])))
+
+        # Один SQL для всех display'ев в chat_users — N+1 не нужен.
+        with connection() as conn:
+            user_lookup = {
+                (r["platform"], r["user_id"]): (r["display_name"], r["username"])
+                for r in conn.execute(
+                    "SELECT platform, user_id, display_name, username "
+                    "FROM chat_users"
+                )
+            }
+
+        for (platform, user_id), src in per_user.items():
+            if (platform, user_id) in known_keys:
+                continue
+            # Сообщения с user_id='0' (потеря id в старом backfill) —
+            # не имеет смысла показывать как отдельного человека.
+            if not user_id or user_id in ("0", "None"):
+                continue
+            disp, uname = user_lookup.get((platform, user_id), ("", ""))
+            if not disp and not uname:
+                # Не нашли в chat_users — может это совсем старая запись.
+                # Не показываем, иначе будут безымянные «id 123456789».
+                continue
+            agg = {
+                "msgs":          src["msgs"],
+                "msgs_general":  src["msgs_general"],
+                "msgs_officers": src["msgs_officers"],
+                "chars":         src["chars"],
+                "media":         src["media"],
+                "first_seen":    src["first_seen"],
+                "last_seen":     src["last_seen"],
+                "weeks":         list(src["weeks"]),
+            }
+            agg["trend"] = _compute_trend(agg["weeks"])
+            profile = {
+                "display_name": disp or uname or f"{platform} id {user_id}",
+                f"{platform}_id":         user_id,
+            }
+            if platform == "tg" and uname:
+                profile["tg_username"] = uname
+            if platform == "vk" and uname:
+                profile["vk_screen_name"] = uname
+            out.append({
+                "key":          f"unreg_{platform}_{user_id}",
+                "profile":      profile,
+                "stats":        agg,
+                "is_active":    True,
+                "unregistered": True,
             })
 
         # Сортируем по убыванию количества сообщений.
