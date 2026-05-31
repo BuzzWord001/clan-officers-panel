@@ -143,7 +143,8 @@
       else if (m.norm_met === false) rowCls += " row-bad";
       else if (m.norm_met === true)  rowCls += " row-good";
       const valorCell = m.valor == null
-        ? `<span style="color:#888">—</span>` : esc(m.valor);
+        ? `<span class="hist-cell" data-field="valor" style="color:#888">—</span>`
+        : `<span class="hist-cell" data-field="valor">${esc(m.valor)}</span>`;
       let normLabel;
       const wc = m.warning_count || 0;
       if (m.is_afk) normLabel = `<span style="color:#ffd080" title="на этой неделе АФК — норматив не оценивается">АФК</span>`;
@@ -204,10 +205,13 @@
     const nick = tr.dataset.nick;
     const field = cell.dataset.field;
     const fieldLabel = {rank:"должности", title:"титула",
-                         level:"уровня", class:"класса"}[field];
+                         level:"уровня", class:"класса",
+                         valor:"доблести"}[field];
     closePopover();
     const popover = document.createElement("div");
     popover.className = "valor-popover";
+    const wideClass = field === "valor" ? " valor-history" : "";
+    popover.className += wideClass;
     popover.innerHTML = `<div class="hl">История ${fieldLabel}
       <b>${esc(nick)}</b></div><div class="body">Загрузка…</div>`;
     document.body.appendChild(popover);
@@ -219,6 +223,54 @@
       const hist = (data[field] || []).slice();
       if (!hist.length) {
         popover.querySelector(".body").textContent = "(пусто)";
+      } else if (field === "valor") {
+        // Биржевой вид: дата | значение | Δ | %
+        // hist приходит от backend ORDER BY week DESC. Развернём для
+        // расчёта дельт от предыдущей недели и снова показ desc.
+        const asc = hist.slice().reverse();  // самая ранняя сверху
+        for (let i = 0; i < asc.length; i++) {
+          const cur = parseInt(asc[i].value, 10);
+          const prev = i > 0 ? parseInt(asc[i-1].value, 10) : null;
+          asc[i]._val = isNaN(cur) ? null : cur;
+          if (prev != null && !isNaN(prev) && asc[i]._val != null) {
+            asc[i]._delta = asc[i]._val - prev;
+            asc[i]._pct = prev === 0
+              ? null
+              : Math.round((asc[i]._delta / prev) * 1000) / 10;
+          } else {
+            asc[i]._delta = null;
+            asc[i]._pct = null;
+          }
+        }
+        const desc = asc.slice().reverse();  // newest first
+        const max = Math.max(1, ...asc.map(h => h._val || 0));
+        popover.querySelector(".body").innerHTML = `
+          <div class="vh-head">
+            <span>неделя</span>
+            <span>доблесть</span>
+            <span>Δ</span>
+            <span>%</span>
+          </div>
+          ${desc.map(h => {
+            const cls = h._delta == null ? "n"
+              : h._delta > 0 ? "u" : h._delta < 0 ? "d" : "f";
+            const sign = h._delta > 0 ? "+" : "";
+            const pctTxt = h._pct == null ? ""
+              : `${sign}${h._pct}%`;
+            const dTxt = h._delta == null ? ""
+              : `${sign}${h._delta}`;
+            const pct = h._val == null ? 0
+              : Math.round((h._val / max) * 100);
+            return `
+              <div class="vh-row vh-${cls}">
+                <span class="w">${esc(h.week)}</span>
+                <span class="v">${h._val ?? "—"}</span>
+                <span class="d">${dTxt}</span>
+                <span class="p">${pctTxt}</span>
+                <div class="bar" style="width:${pct}%"></div>
+              </div>`;
+          }).join("")}
+        `;
       } else {
         popover.querySelector(".body").innerHTML = hist.map(h => `
           <div class="row"><span class="w">${esc(h.week)}</span>

@@ -2496,8 +2496,11 @@ def _valor_canon(nick: str) -> str:
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
 
 
-# Какие поля валидно отслеживать в valor_history
-_HIST_FIELDS = ("rank", "title", "level", "class")
+# Какие поля валидно отслеживать в valor_history.
+# valor — пишется каждую неделю даже без изменений (для timeline и
+# popover-биржевого вида). rank/title/level/class пишутся только при
+# смене значения.
+_HIST_FIELDS = ("rank", "title", "level", "class", "valor")
 
 
 def valor_save_snapshot(
@@ -2669,11 +2672,30 @@ def valor_save_snapshot(
             for fld in _HIST_FIELDS:
                 if fld == "class":
                     val = (m.get("class_") or m.get("class") or "").strip()
-                elif fld == "level":
-                    raw = m.get("level")
+                elif fld in ("level", "valor"):
+                    raw = m.get(fld)
                     val = str(raw) if isinstance(raw, int) else ""
                 else:
                     val = (m.get(fld) or "").strip()
+                # valor пишется ВСЕГДА (для биржевого графика по неделям).
+                # Остальные — только при смене значения относительно
+                # последней записи на ника.
+                if fld == "valor":
+                    # Удаляем предыдущую запись этой же недели если есть
+                    # (REPLACE — на случай ре-аплоада)
+                    conn.execute(
+                        """DELETE FROM valor_history
+                           WHERE nick_canon = ? AND field = ? AND week = ?""",
+                        (canon, fld, week),
+                    )
+                    conn.execute(
+                        """INSERT INTO valor_history
+                           (nick_canon, field, value, week, captured_at)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (canon, fld, val, week, now),
+                    )
+                    history_added += 1
+                    continue
                 # Последнее значение для этого ника+поля
                 prev = conn.execute(
                     """SELECT value FROM valor_history

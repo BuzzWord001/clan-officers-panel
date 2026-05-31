@@ -2319,3 +2319,51 @@ video.chat-media-thumb {
   background: rgba(255, 80, 120, 0.10);
   border: 1px solid rgba(255, 80, 120, 0.45);
 }
+
+/* Биржевой попап истории доблести */
+.valor-popover.valor-history { min-width: 340px; max-width: 460px; }
+.valor-popover.valor-history .vh-head {
+  display: grid;
+  grid-template-columns: 90px 1fr 70px 80px;
+  gap: 6px;
+  padding: 0 4px 4px 4px;
+  border-bottom: 1px solid var(--accent-dim);
+  margin-bottom: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+.valor-popover.valor-history .vh-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 70px 80px;
+  gap: 6px;
+  padding: 4px;
+  position: relative;
+  font-family: "Cascadia Code", monospace;
+  font-size: 12px;
+  z-index: 1;
+  border-bottom: 1px dashed rgba(255,255,255,0.04);
+}
+.valor-popover.valor-history .vh-row:last-child { border-bottom: 0; }
+.valor-popover.valor-history .vh-row .w { color: var(--text-dim); }
+.valor-popover.valor-history .vh-row .v { color: var(--text); font-weight: 600; }
+.valor-popover.valor-history .vh-row .d,
+.valor-popover.valor-history .vh-row .p { text-align: right; font-weight: 600; }
+.valor-popover.valor-history .vh-row.vh-u .d,
+.valor-popover.valor-history .vh-row.vh-u .p { color: #88ff88; }
+.valor-popover.valor-history .vh-row.vh-d .d,
+.valor-popover.valor-history .vh-row.vh-d .p { color: #ff8080; }
+.valor-popover.valor-history .vh-row.vh-f .d,
+.valor-popover.valor-history .vh-row.vh-f .p { color: #c0c0c0; }
+.valor-popover.valor-history .vh-row.vh-n .d,
+.valor-popover.valor-history .vh-row.vh-n .p { color: #888; }
+/* Bar высотой во всю строку, на заднем плане */
+.valor-popover.valor-history .vh-row .bar {
+  position: absolute;
+  left: 4px; top: 0; bottom: 0;
+  background: rgba(255, 107, 128, 0.10);
+  border-right: 1px solid rgba(255, 107, 128, 0.25);
+  z-index: -1;
+  pointer-events: none;
+}
