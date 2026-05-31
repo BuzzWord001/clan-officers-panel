@@ -2240,3 +2240,52 @@ video.chat-media-thumb {
   .timeline-controls { font-size: 11px; }
 }
 
+
+/* ── Доблесть / Архив доблести ─────────────────────────────────────── */
+.members-table tr.row-afk  { background: rgba(255, 200, 100, 0.05); }
+.members-table tr.row-good { background: rgba( 80, 220,  80, 0.04); }
+.members-table tr.row-bad  { background: rgba(255,  80, 120, 0.07); }
+
+.hist-cell { cursor: pointer; }
+.hist-cell:hover {
+  background: rgba(255, 107, 128, 0.10);
+  color: var(--accent);
+}
+
+.valor-popover {
+  position: absolute;
+  z-index: 100;
+  min-width: 260px;
+  max-width: 380px;
+  background: #1a0e10;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+  padding: 10px 12px;
+  font-family: "Cascadia Code", monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+.valor-popover .hl {
+  border-bottom: 1px solid var(--accent-dim);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.valor-popover .body .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.05);
+}
+.valor-popover .body .row:last-child { border-bottom: 0; }
+.valor-popover .body .w {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.valor-popover .body .v { color: var(--text); }

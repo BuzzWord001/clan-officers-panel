@@ -164,5 +164,14 @@
       if (includeInactive === false) qs += "&include_inactive=false";
       return request("GET", "/chat/members/timeline?" + qs);
     },
+
+    valorCurrent:   () => request("GET", "/valor/current"),
+    valorSessions:  () => request("GET", "/valor/sessions"),
+    valorTimeline:  (weeks = 12) => request("GET", "/valor/timeline?weeks=" + weeks),
+    valorHistory:   (nick, field) => {
+      let qs = "nick=" + encodeURIComponent(nick);
+      if (field) qs += "&field=" + encodeURIComponent(field);
+      return request("GET", "/valor/history?" + qs);
+    },
   };
 })();

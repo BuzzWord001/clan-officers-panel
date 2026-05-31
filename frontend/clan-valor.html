@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
-  <title>SanTDeviL — История изменений</title>
-  <link rel="stylesheet" href="styles.css?v=1779743290">
+  <title>SanTDeviL — Доблесть</title>
+  <link rel="stylesheet" href="styles.css?v=1779800000">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -30,7 +30,7 @@
 
     <section class="title-block">
       <div class="glitch">S a n T D e v i L</div>
-      <div class="subtitle">История изменений на сайте</div>
+      <div class="subtitle">Доблесть участников клана</div>
     </section>
 
     <main>
@@ -39,7 +39,7 @@
           <span class="tabs-group-label">сайт</span>
           <div class="tabs-group-links">
             <a href="index.html">Реестр</a>
-            <a href="audit.html" class="active">История сайта</a>
+            <a href="audit.html">История сайта</a>
           </div>
         </div>
         <div class="tabs-sep" aria-hidden="true"></div>
@@ -54,7 +54,7 @@
         <div class="tabs-group">
           <span class="tabs-group-label">клан</span>
           <div class="tabs-group-links">
-            <a href="clan-valor.html">Доблесть</a>
+            <a href="clan-valor.html" class="active">Доблесть</a>
             <a href="clan-archive.html">Архив доблести</a>
           </div>
         </div>
@@ -67,25 +67,45 @@
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Последние изменения</h2>
-          <button id="clear-all" class="danger" hidden>Очистить всю историю</button>
+      <div class="panel members-panel">
+        <div class="members-header">
+          <div class="members-stats" id="valor-summary"></div>
+          <div class="members-search">
+            <input type="text" id="valor-filter"
+                   placeholder="Фильтр: ник / истинное имя / класс / должность">
+          </div>
         </div>
-        <div class="audit-scroll">
-          <div class="audit-list" id="audit-list"></div>
+
+        <div id="valor-loading" class="chat-loading" hidden>Загрузка…</div>
+
+        <div class="members-table-wrap">
+          <table class="members-table" id="valor-table">
+            <thead>
+              <tr>
+                <th class="m-col-idx">#</th>
+                <th class="m-col-name"      data-sort="nick">Ник</th>
+                <th data-sort="true_name">Истинное имя</th>
+                <th data-sort="rank">Должность</th>
+                <th data-sort="title">Титул</th>
+                <th class="m-col-num"  data-sort="level">Ур.</th>
+                <th data-sort="class">Класс</th>
+                <th class="m-col-num"  data-sort="valor" data-dir="desc">Доблесть</th>
+                <th class="m-col-num"  data-sort="norm">Норматив</th>
+              </tr>
+            </thead>
+            <tbody id="valor-tbody"></tbody>
+          </table>
         </div>
-        <div class="empty" id="empty-state" hidden>История пуста</div>
+        <div id="valor-empty" class="empty" hidden>Снимков нет ещё</div>
       </div>
     </main>
 
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779743290"></script>
-  <script src="js/matrix.js?v=1779743290"></script>
-  <script src="js/api.js?v=1779743290"></script>
-  <script src="js/dateutil.js?v=1779743290"></script>
-  <script src="js/audit.js?v=1779743290"></script>
+  <script src="config.js?v=1779800000"></script>
+  <script src="js/matrix.js?v=1779800000"></script>
+  <script src="js/api.js?v=1779800000"></script>
+  <script src="js/clan-valor.js?v=1779800000"></script>
 </body>
 </html>
