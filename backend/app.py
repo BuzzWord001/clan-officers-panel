@@ -129,3 +129,5 @@ app.include_router(api_snapshots.router)
 app.include_router(api_admin_logs.router)
 app.include_router(api_admin_logs.telemetry_router)
 app.include_router(api_chat.router)
+import api_valor
+app.include_router(api_valor.router)

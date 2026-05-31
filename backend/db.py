@@ -264,6 +264,61 @@ CREATE TABLE IF NOT EXISTS clan_members (
     is_active       INTEGER NOT NULL DEFAULT 1,
     last_seen_at    TEXT    NOT NULL DEFAULT ''
 );
+
+-- ── Доблесть (pw-valor-tracker) ───────────────────────────────────────
+-- Каждый запуск pw-valor-tracker = один valor_snapshots row + N
+-- valor_members. Лир собирает раз в неделю в воскресенье; для одной
+-- недели хранится один свежий снимок (REPLACE при повторе).
+CREATE TABLE IF NOT EXISTS valor_snapshots (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    week          TEXT    NOT NULL UNIQUE,    -- 2026-W22
+    captured_at   TEXT    NOT NULL,           -- ISO timestamp
+    valor_norm    INTEGER NOT NULL,           -- норматив на эту неделю
+    screens_count INTEGER NOT NULL DEFAULT 0, -- сколько кадров было
+    members_count INTEGER NOT NULL DEFAULT 0,
+    notes         TEXT    NOT NULL DEFAULT ''
+);
+
+-- Каждый соклан в каждом снапшоте.
+-- nick_canon — для join'а history (один и тот же человек в разных
+-- неделях даст разные nick если OCR drift'нул, но canon стабилен).
+-- true_name — отдельная стабильная колонка (мэйн/настоящее имя), её
+-- задаёт автор файлов на десктопе (true_names.py).
+CREATE TABLE IF NOT EXISTS valor_members (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id      INTEGER NOT NULL REFERENCES valor_snapshots(id) ON DELETE CASCADE,
+    nick             TEXT    NOT NULL,
+    nick_canon       TEXT    NOT NULL,
+    true_name        TEXT    NOT NULL DEFAULT '',
+    rank             TEXT    NOT NULL DEFAULT '',
+    title            TEXT    NOT NULL DEFAULT '',
+    level            INTEGER,
+    class_           TEXT    NOT NULL DEFAULT '',
+    valor            INTEGER,
+    is_afk           INTEGER NOT NULL DEFAULT 0,
+    norm_met         INTEGER,   -- NULL=АФК (не оценивается), 0=нет, 1=да
+    flag_new_nick    INTEGER NOT NULL DEFAULT 0,
+    flag_ocr_suspect INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_valor_members_canon
+    ON valor_members(nick_canon);
+CREATE INDEX IF NOT EXISTS idx_valor_members_snapshot
+    ON valor_members(snapshot_id);
+
+-- История по полям должность/титул/уровень/класс — пишется ТОЛЬКО когда
+-- значение сменилось относительно предыдущего снимка для того же ника.
+-- Это позволяет в UI кликнуть по титулу и увидеть "Капитан с 2026-W20,
+-- до того был Лейтенант с 2026-W14".
+CREATE TABLE IF NOT EXISTS valor_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    nick_canon  TEXT    NOT NULL,
+    field       TEXT    NOT NULL,           -- rank|title|level|class
+    value       TEXT    NOT NULL DEFAULT '',
+    week        TEXT    NOT NULL,
+    captured_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_valor_history_member
+    ON valor_history(nick_canon, field, week);
 """
 
 
@@ -2400,3 +2455,269 @@ def _serialise(obj: Any) -> Any:
     if isinstance(obj, sqlite3.Row):
         return {k: obj[k] for k in obj.keys()}
     return obj
+
+
+# ═══════ Доблесть (pw-valor-tracker) ════════════════════════════════════
+# Canon ника — для join'а history. Простая нормализация: lower + strip
+# whitespace + удаление пунктуации. Полный homoglyph-replace делается на
+# стороне десктоп-приложения; здесь мы доверяем что nick уже нормализован
+# в эталон через nick_registry.
+def _valor_canon(nick: str) -> str:
+    import re
+    s = (nick or "").strip().lower()
+    return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
+
+
+# Какие поля валидно отслеживать в valor_history
+_HIST_FIELDS = ("rank", "title", "level", "class")
+
+
+def valor_save_snapshot(
+    *,
+    week: str,
+    valor_norm: int,
+    members: list[dict],
+    screens_count: int = 0,
+    notes: str = "",
+) -> dict[str, Any]:
+    """Сохраняет недельный снапшот. Если запись на эту неделю уже есть
+    — REPLACE (старые valor_members удаляются каскадом).
+
+    members — список dict из CSV/desktop с полями nick, true_name, rank,
+    title, level, class_, valor, is_afk, flag_new_nick, flag_ocr_suspect,
+    norm_met.
+
+    Возвращает {snapshot_id, members, history_added}.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        # Удаляем старый снимок на эту неделю (если был) — каскад
+        # уберёт valor_members.
+        old = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)
+        ).fetchone()
+        if old:
+            conn.execute(
+                "DELETE FROM valor_snapshots WHERE id = ?", (old["id"],)
+            )
+
+        cur = conn.execute(
+            """INSERT INTO valor_snapshots
+               (week, captured_at, valor_norm, screens_count,
+                members_count, notes)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (week, now, int(valor_norm), int(screens_count),
+             len(members), notes),
+        )
+        snap_id = cur.lastrowid
+
+        # Вставляем участников
+        for m in members:
+            nick = (m.get("nick") or "").strip()
+            if not nick:
+                continue
+            cls = m.get("class_") or m.get("class") or ""
+            conn.execute(
+                """INSERT INTO valor_members
+                   (snapshot_id, nick, nick_canon, true_name, rank, title,
+                    level, class_, valor, is_afk, norm_met,
+                    flag_new_nick, flag_ocr_suspect)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    snap_id,
+                    nick,
+                    _valor_canon(nick),
+                    (m.get("true_name") or "").strip(),
+                    (m.get("rank") or "").strip(),
+                    (m.get("title") or "").strip(),
+                    m.get("level") if isinstance(m.get("level"), int) else None,
+                    cls.strip(),
+                    m.get("valor") if isinstance(m.get("valor"), int) else None,
+                    1 if m.get("is_afk") else 0,
+                    None if m.get("norm_met") is None
+                    else (1 if m.get("norm_met") else 0),
+                    1 if m.get("flag_new_nick") else 0,
+                    1 if m.get("flag_ocr_suspect") else 0,
+                ),
+            )
+
+        # История: для каждого поля сравниваем с последней записью на
+        # этого ника. Если значение поменялось — добавляем строку.
+        history_added = 0
+        for m in members:
+            nick = (m.get("nick") or "").strip()
+            if not nick:
+                continue
+            canon = _valor_canon(nick)
+            for fld in _HIST_FIELDS:
+                if fld == "class":
+                    val = (m.get("class_") or m.get("class") or "").strip()
+                elif fld == "level":
+                    raw = m.get("level")
+                    val = str(raw) if isinstance(raw, int) else ""
+                else:
+                    val = (m.get(fld) or "").strip()
+                # Последнее значение для этого ника+поля
+                prev = conn.execute(
+                    """SELECT value FROM valor_history
+                       WHERE nick_canon = ? AND field = ?
+                       ORDER BY week DESC LIMIT 1""",
+                    (canon, fld),
+                ).fetchone()
+                if prev is None or prev["value"] != val:
+                    conn.execute(
+                        """INSERT INTO valor_history
+                           (nick_canon, field, value, week, captured_at)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (canon, fld, val, week, now),
+                    )
+                    history_added += 1
+
+    return {
+        "snapshot_id": snap_id,
+        "members": len(members),
+        "history_added": history_added,
+    }
+
+
+def valor_get_current() -> dict[str, Any]:
+    """Самый свежий снапшот + все его участники."""
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 1"
+        ).fetchone()
+        if snap is None:
+            return {"snapshot": None, "members": []}
+        rows = conn.execute(
+            """SELECT * FROM valor_members
+               WHERE snapshot_id = ?
+               ORDER BY valor DESC NULLS LAST, nick""",
+            (snap["id"],),
+        ).fetchall()
+        members = [dict(r) for r in rows]
+        # Сериализация bool из integer
+        for m in members:
+            m["is_afk"] = bool(m["is_afk"])
+            m["flag_new_nick"] = bool(m["flag_new_nick"])
+            m["flag_ocr_suspect"] = bool(m["flag_ocr_suspect"])
+            if m["norm_met"] is not None:
+                m["norm_met"] = bool(m["norm_met"])
+        return {
+            "snapshot": dict(snap),
+            "members": members,
+        }
+
+
+def valor_list_sessions() -> list[dict[str, Any]]:
+    """Все снапшоты по убыванию недели — для UI «Архив доблести»."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM valor_snapshots ORDER BY week DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:
+    """История по полям для одного ника. Если field — только для этого
+    поля. Иначе — словарь {field: [{week, value, captured_at}, ...]}."""
+    canon = _valor_canon(nick)
+    if not canon:
+        return {}
+    if field and field not in _HIST_FIELDS:
+        raise ValueError(f"unknown field: {field!r}")
+    with connection() as conn:
+        if field:
+            rows = conn.execute(
+                """SELECT week, value, captured_at FROM valor_history
+                   WHERE nick_canon = ? AND field = ?
+                   ORDER BY week DESC""",
+                (canon, field),
+            ).fetchall()
+            return {field: [dict(r) for r in rows]}
+        else:
+            out: dict[str, list[dict[str, Any]]] = {f: [] for f in _HIST_FIELDS}
+            for r in conn.execute(
+                """SELECT field, week, value, captured_at FROM valor_history
+                   WHERE nick_canon = ?
+                   ORDER BY week DESC""",
+                (canon,),
+            ):
+                out[r["field"]].append({
+                    "week": r["week"],
+                    "value": r["value"],
+                    "captured_at": r["captured_at"],
+                })
+            return out
+
+
+def valor_timeline(weeks: int = 12) -> dict[str, Any]:
+    """Timeline доблести по неделям для всех сокланов.
+
+    weeks — сколько последних недель показывать.
+    Возвращает: {periods, series, overall}
+       periods = ['2026-W14', '2026-W15', ...]
+       series  = [{nick, true_name, total, counts[]}]
+       overall = сумма по всем неделям
+    """
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT week FROM valor_snapshots ORDER BY week DESC LIMIT ?",
+            (weeks,),
+        ).fetchall()
+        periods = sorted([r["week"] for r in rows])
+        if not periods:
+            return {"periods": [], "series": [], "overall": {}}
+        period_idx = {w: i for i, w in enumerate(periods)}
+
+        # Все members за период
+        snap_ids_rows = conn.execute(
+            f"""SELECT id, week FROM valor_snapshots
+                WHERE week IN ({','.join('?' * len(periods))})""",
+            tuple(periods),
+        ).fetchall()
+        snap_to_week = {r["id"]: r["week"] for r in snap_ids_rows}
+        snap_ids = list(snap_to_week.keys())
+
+        # Группируем по canon
+        from collections import defaultdict
+        per_canon: dict[str, dict] = defaultdict(
+            lambda: {"nick": "", "true_name": "",
+                     "counts": [0] * len(periods)})
+        for r in conn.execute(
+            f"""SELECT snapshot_id, nick, nick_canon, true_name, valor
+                FROM valor_members
+                WHERE snapshot_id IN ({','.join('?' * len(snap_ids))})""",
+            tuple(snap_ids),
+        ):
+            week = snap_to_week.get(r["snapshot_id"])
+            if not week or week not in period_idx:
+                continue
+            canon = r["nick_canon"]
+            p = per_canon[canon]
+            p["nick"] = r["nick"]
+            if r["true_name"]:
+                p["true_name"] = r["true_name"]
+            v = r["valor"] if r["valor"] is not None else 0
+            p["counts"][period_idx[week]] = v
+
+        series = []
+        for canon, p in per_canon.items():
+            total = sum(p["counts"])
+            series.append({
+                "canon":     canon,
+                "nick":      p["nick"],
+                "true_name": p["true_name"],
+                "counts":    p["counts"],
+                "total":     total,
+            })
+        series.sort(key=lambda s: -s["total"])
+
+        overall = {
+            "total":  sum(s["total"] for s in series),
+            "people": len(series),
+        }
+        return {
+            "periods": periods,
+            "series":  series,
+            "overall": overall,
+        }
