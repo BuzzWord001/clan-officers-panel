@@ -2503,6 +2503,50 @@ def _valor_canon(nick: str) -> str:
 _HIST_FIELDS = ("rank", "title", "level", "class", "valor")
 
 
+def _enrich_true_names_from_clan_members(members: list[dict]) -> int:
+    """Если у member пустое true_name — ищем имя в clan_members JOIN
+    по canon одного из game_nick'ов человека.
+
+    Источники имени в clan_members (по приоритету):
+      1. vk_first  (точное «Имя» из VK)
+      2. tg_first_name (имя из TG)
+      3. первое слово display_name (если оно похоже на одно имя,
+         а не на полное «Имя Фамилия» — взято для безопасности)
+
+    Возвращает количество заполненных записей.
+    """
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT game_nick, display_name, vk_first, tg_first_name
+               FROM clan_members WHERE is_active = 1"""
+        ).fetchall()
+    lookup: dict[str, str] = {}
+    for r in rows:
+        name = ((r["vk_first"] or "").strip()
+                or (r["tg_first_name"] or "").strip())
+        if not name:
+            dn = (r["display_name"] or "").strip()
+            # display_name может быть «Анна Бесценная» — возьмём первое
+            # слово как имя.
+            if dn:
+                name = dn.split()[0]
+        if not name:
+            continue
+        for nick in (r["game_nick"] or "").split(","):
+            cn = _valor_canon(nick)
+            if cn and cn not in lookup:
+                lookup[cn] = name
+    filled = 0
+    for m in members:
+        if (m.get("true_name") or "").strip():
+            continue
+        cn = _valor_canon(m.get("nick", ""))
+        if cn in lookup:
+            m["true_name"] = lookup[cn]
+            filled += 1
+    return filled
+
+
 def valor_save_snapshot(
     *,
     week: str,
@@ -2520,6 +2564,8 @@ def valor_save_snapshot(
 
     Возвращает {snapshot_id, members, history_added}.
     """
+    # ── 0. Обогащение пустых true_name из clan_members (рег-бот) ──
+    enriched = _enrich_true_names_from_clan_members(members)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with connection() as conn:
         # ── 1. Prev-snapshot для streak'а warning_count + departed ──
@@ -2718,6 +2764,7 @@ def valor_save_snapshot(
         "history_added": history_added,
         "departed_added": len(departed_now),
         "returned": returned,
+        "true_name_enriched": enriched,
     }
 
 
