@@ -319,8 +319,18 @@
       : `<span class="m-period m-period-empty">—</span>`;
     const detailsHtml = renderProfileDetails(p);
     const idxNum = (typeof idx === "number" ? idx + 1 : "");
+    // Подсветка-«молчун»: 0 сообщений в архиве. Чаще всего это
+    // MANUAL-регистрация через GUI (key начинается с manual_) —
+    // админ занёс ник вручную, юзер сам в чатах не писал ИЛИ его
+    // tg_id/vk_id указан админом неточно и не матчится с сообщениями.
+    // Tooltip объясняет это, чтобы офицер не думал что баг.
+    const isManual = (item.key || "").startsWith("manual_");
+    const silentTitle = total ? "" : (isManual
+      ? "Ни одного сообщения в архиве. Запись добавлена админом через GUI (manual_*) — возможно tg_id/vk_id указан неточно или человек реально не пишет в чатах."
+      : "Ни одного сообщения в архиве за всё время сбора (TG с 13.04.2026, VK с 29.03.2026).");
     return `
-      <tr class="m-row${total ? "" : " m-row-silent"}${item.is_active === false ? " m-row-left" : ""}" data-key="${escapeHtml(item.key)}">
+      <tr class="m-row${total ? "" : " m-row-silent"}${item.is_active === false ? " m-row-left" : ""}"
+          data-key="${escapeHtml(item.key)}"${silentTitle ? ` title="${escapeHtml(silentTitle)}"` : ""}>
         <td class="m-cell-idx">${idxNum}</td>
         <td class="m-cell-name">${nameBlock}</td>
         <td class="m-cell-num m-cell-total">${fmtNum(total)}</td>
