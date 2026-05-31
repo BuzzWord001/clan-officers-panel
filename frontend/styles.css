@@ -2306,3 +2306,16 @@ video.chat-media-thumb {
 .trend-new  { color: #ffd080; background: rgba(255,200,100,0.08); border-color: rgba(255,200,100,0.3); }
 .trend-dead { color: #888;    background: rgba(120,120,120,0.05); border-color: rgba(120,120,120,0.2); }
 .trend-none { color: #888; }
+
+/* Warning-бейдж (счётчик стрика невыполненного норматива) */
+.warn-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: "Cascadia Code", monospace;
+  font-weight: 700;
+  color: #ff8080;
+  background: rgba(255, 80, 120, 0.10);
+  border: 1px solid rgba(255, 80, 120, 0.45);
+}

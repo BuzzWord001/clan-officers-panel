@@ -86,6 +86,12 @@ def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     return db.valor_list_sessions()
 
 
+@router.get("/departed")
+def valor_departed(_: dict = Depends(require_officer)) -> list[dict]:
+    """Ушедшие из клана с последними известными данными."""
+    return db.valor_get_departed()
+
+
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,

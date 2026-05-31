@@ -319,6 +319,23 @@ CREATE TABLE IF NOT EXISTS valor_history (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_history_member
     ON valor_history(nick_canon, field, week);
+
+-- Архив ушедших из клана. При save_snapshot, если ник был в prev,
+-- но в current его нет — INSERT/UPDATE сюда (последние известные
+-- данные). Если ник снова появился в новом снапшоте — DELETE.
+CREATE TABLE IF NOT EXISTS valor_departed (
+    nick_canon    TEXT    PRIMARY KEY,
+    nick          TEXT    NOT NULL,
+    true_name     TEXT    NOT NULL DEFAULT '',
+    last_week     TEXT    NOT NULL,
+    last_rank     TEXT    NOT NULL DEFAULT '',
+    last_title    TEXT    NOT NULL DEFAULT '',
+    last_level    INTEGER,
+    last_class    TEXT    NOT NULL DEFAULT '',
+    last_valor    INTEGER,
+    warning_count INTEGER NOT NULL DEFAULT 0,
+    departed_at   TEXT    NOT NULL
+);
 """
 
 
@@ -361,6 +378,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE clan_members ADD COLUMN {col}")
         except sqlite3.OperationalError:
             pass
+
+    # 2026-06-01: счётчик стрика невыполненного норматива в valor_members.
+    # 0 — выполнил в эту неделю (или АФК). При невыполнении +1 от prev.
+    # При выполнении сбрасывается до 0.
+    try:
+        conn.execute(
+            "ALTER TABLE valor_members ADD COLUMN "
+            "warning_count INTEGER NOT NULL DEFAULT 0"
+        )
+    except sqlite3.OperationalError:
+        pass
 
     # 2026-05-29 (поздно вечером): дедуп медиа. Стикеры/GIF/часто повторяющиеся
     # картинки бесполезно качать и заливать снова — раз уже в R2, ссылка та же.
@@ -2491,8 +2519,28 @@ def valor_save_snapshot(
     """
     now = datetime.utcnow().isoformat(timespec="seconds")
     with connection() as conn:
-        # Удаляем старый снимок на эту неделю (если был) — каскад
-        # уберёт valor_members.
+        # ── 1. Prev-snapshot для streak'а warning_count + departed ──
+        prev_snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week < ? "
+            "ORDER BY week DESC LIMIT 1",
+            (week,)
+        ).fetchone()
+        prev_warnings: dict[str, int] = {}
+        prev_canons: set[str] = set()
+        prev_snapshot_data: dict[str, dict] = {}  # canon → row dict
+        if prev_snap:
+            for r in conn.execute(
+                """SELECT nick, nick_canon, true_name, rank, title, level,
+                          class_, valor, warning_count
+                   FROM valor_members WHERE snapshot_id = ?""",
+                (prev_snap["id"],)
+            ):
+                cn = r["nick_canon"]
+                prev_canons.add(cn)
+                prev_warnings[cn] = r["warning_count"] or 0
+                prev_snapshot_data[cn] = dict(r)
+
+        # ── 2. REPLACE snapshot на эту неделю (если уже был) ──
         old = conn.execute(
             "SELECT id FROM valor_snapshots WHERE week = ?", (week,)
         ).fetchone()
@@ -2511,35 +2559,104 @@ def valor_save_snapshot(
         )
         snap_id = cur.lastrowid
 
-        # Вставляем участников
+        # ── 3. Вставляем участников с расчётом warning_count ──
+        current_canons: set[str] = set()
         for m in members:
             nick = (m.get("nick") or "").strip()
             if not nick:
                 continue
             cls = m.get("class_") or m.get("class") or ""
+            canon = _valor_canon(nick)
+            current_canons.add(canon)
+
+            is_afk = bool(m.get("is_afk"))
+            norm_met_raw = m.get("norm_met")
+            # Streak warning_count:
+            #   выполнил норматив или АФК → 0 (сброс)
+            #   не выполнил → prev_warnings[canon] + 1
+            #   нет prev → если не выполнил → 1, иначе 0
+            if is_afk or norm_met_raw is True:
+                warning_count = 0
+            else:
+                warning_count = prev_warnings.get(canon, 0) + 1
+
             conn.execute(
                 """INSERT INTO valor_members
                    (snapshot_id, nick, nick_canon, true_name, rank, title,
                     level, class_, valor, is_afk, norm_met,
-                    flag_new_nick, flag_ocr_suspect)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    flag_new_nick, flag_ocr_suspect, warning_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     snap_id,
                     nick,
-                    _valor_canon(nick),
+                    canon,
                     (m.get("true_name") or "").strip(),
                     (m.get("rank") or "").strip(),
                     (m.get("title") or "").strip(),
                     m.get("level") if isinstance(m.get("level"), int) else None,
                     cls.strip(),
                     m.get("valor") if isinstance(m.get("valor"), int) else None,
-                    1 if m.get("is_afk") else 0,
-                    None if m.get("norm_met") is None
-                    else (1 if m.get("norm_met") else 0),
+                    1 if is_afk else 0,
+                    None if norm_met_raw is None
+                    else (1 if norm_met_raw else 0),
                     1 if m.get("flag_new_nick") else 0,
                     1 if m.get("flag_ocr_suspect") else 0,
+                    warning_count,
                 ),
             )
+
+        # ── 4. Departed / Returned ──
+        # Кто был в prev_canons но НЕ в current_canons — ушёл из клана.
+        # Снимаем последние известные данные и кладём в valor_departed.
+        departed_now = prev_canons - current_canons
+        for cn in departed_now:
+            row = prev_snapshot_data.get(cn)
+            if not row:
+                continue
+            conn.execute(
+                """INSERT INTO valor_departed
+                   (nick_canon, nick, true_name, last_week, last_rank,
+                    last_title, last_level, last_class, last_valor,
+                    warning_count, departed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(nick_canon) DO UPDATE SET
+                     nick          = excluded.nick,
+                     true_name     = excluded.true_name,
+                     last_week     = excluded.last_week,
+                     last_rank     = excluded.last_rank,
+                     last_title    = excluded.last_title,
+                     last_level    = excluded.last_level,
+                     last_class    = excluded.last_class,
+                     last_valor    = excluded.last_valor,
+                     warning_count = excluded.warning_count,
+                     departed_at   = excluded.departed_at
+                """,
+                (
+                    cn,
+                    row["nick"],
+                    row.get("true_name", "") or "",
+                    # last_week — это prev_snap week
+                    conn.execute(
+                        "SELECT week FROM valor_snapshots WHERE id = ?",
+                        (prev_snap["id"],),
+                    ).fetchone()["week"],
+                    row.get("rank", "") or "",
+                    row.get("title", "") or "",
+                    row.get("level"),
+                    row.get("class_", "") or "",
+                    row.get("valor"),
+                    row.get("warning_count", 0) or 0,
+                    now,
+                ),
+            )
+        # Returned: кто появился в current и был в valor_departed → удалим
+        # из архива.
+        returned = 0
+        for cn in current_canons:
+            cur_del = conn.execute(
+                "DELETE FROM valor_departed WHERE nick_canon = ?", (cn,)
+            )
+            returned += cur_del.rowcount or 0
 
         # История: для каждого поля сравниваем с последней записью на
         # этого ника. Если значение поменялось — добавляем строку.
@@ -2577,7 +2694,18 @@ def valor_save_snapshot(
         "snapshot_id": snap_id,
         "members": len(members),
         "history_added": history_added,
+        "departed_added": len(departed_now),
+        "returned": returned,
     }
+
+
+def valor_get_departed() -> list[dict[str, Any]]:
+    """Список ушедших из клана с последними известными данными."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM valor_departed ORDER BY departed_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def valor_get_current() -> dict[str, Any]:

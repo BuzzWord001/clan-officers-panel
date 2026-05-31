@@ -77,9 +77,10 @@
       return m[key] == null ? -1 : m[key];
     if (key === "class") return (m.class_ || "").toLowerCase();
     if (key === "norm") {
-      if (m.norm_met === true)  return 2;
-      if (m.norm_met === false) return 0;
-      return 1;
+      // Сортируем по тяжести: выполнено → АФК → не выполнено (по warnings DESC)
+      if (m.norm_met === true)  return 1e6;
+      if (m.is_afk)             return 5e5;
+      return -(m.warning_count || 0);
     }
     if (key === "trend") {
       const t = m.trend;
@@ -144,10 +145,17 @@
       const valorCell = m.valor == null
         ? `<span style="color:#888">—</span>` : esc(m.valor);
       let normLabel;
-      if (m.is_afk) normLabel = `<span style="color:#ffd080">АФК</span>`;
-      else if (m.norm_met === true)  normLabel = `<span style="color:#88ff88">✓</span>`;
-      else if (m.norm_met === false) normLabel = `<span style="color:#ff8080">✕</span>`;
-      else normLabel = `<span style="color:#888">?</span>`;
+      const wc = m.warning_count || 0;
+      if (m.is_afk) normLabel = `<span style="color:#ffd080" title="на этой неделе АФК — норматив не оценивается">АФК</span>`;
+      else if (m.norm_met === true) {
+        normLabel = wc === 0
+          ? `<span style="color:#88ff88" title="норматив выполнен">✓</span>`
+          : `<span style="color:#88ff88" title="выполнен в эту неделю — стрик предупреждений сброшен">✓</span>`;
+      } else if (m.norm_met === false) {
+        normLabel = `<span class="warn-badge" title="${wc} подряд недель без норматива">⚠ ${wc}</span>`;
+      } else {
+        normLabel = `<span style="color:#888" title="нет данных доблести">?</span>`;
+      }
       const trendCell = renderTrend(m.trend);
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
@@ -331,6 +339,43 @@
   $("tl-topn").addEventListener("change", renderTimeline);
   $("tl-filter").addEventListener("input", renderTimeline);
 
+  // ── Departed ────────────────────────────────────────────────────
+  let DEPARTED = [];
+  async function loadDeparted() {
+    try {
+      DEPARTED = await API.valorDeparted();
+    } catch (e) {
+      DEPARTED = [];
+    }
+    $("dep-count").textContent =
+      DEPARTED.length ? `(${DEPARTED.length})` : "(никого)";
+    if (!DEPARTED.length) return;
+    $("dep-tbody").innerHTML = DEPARTED.map(d => `
+      <tr class="m-row">
+        <td><b>${esc(d.nick)}</b></td>
+        <td>${esc(d.true_name)}</td>
+        <td>${esc(d.last_week)}</td>
+        <td>${esc(d.last_rank)}</td>
+        <td>${esc(d.last_title)}</td>
+        <td class="m-cell-num">${d.last_level ?? ""}</td>
+        <td>${esc(d.last_class)}</td>
+        <td class="m-cell-num">${d.last_valor ?? ""}</td>
+        <td class="m-cell-num">
+          ${(d.warning_count || 0) > 0
+            ? `<span class="warn-badge">⚠ ${d.warning_count}</span>`
+            : '—'}
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  $("dep-toggle").addEventListener("click", () => {
+    const w = $("dep-wrap");
+    const open = w.style.display !== "none";
+    w.style.display = open ? "none" : "block";
+    $("dep-arrow").textContent = open ? "▶" : "▼";
+  });
+
   loadMe();
-  load().then(loadTimeline);
+  load().then(() => { loadTimeline(); loadDeparted(); });
 })();

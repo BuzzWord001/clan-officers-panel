@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Доблесть</title>
-  <link rel="stylesheet" href="styles.css?v=1779800100">
+  <link rel="stylesheet" href="styles.css?v=1779800200">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -84,20 +84,50 @@
               <tr>
                 <th class="m-col-idx">#</th>
                 <th class="m-col-name"      data-sort="nick">Ник</th>
-                <th data-sort="true_name">Истинное имя</th>
+                <th data-sort="true_name">Имя или Ник мэйн аккаунта</th>
                 <th data-sort="rank">Должность</th>
                 <th data-sort="title">Титул</th>
                 <th class="m-col-num"  data-sort="level">Ур.</th>
                 <th data-sort="class">Класс</th>
                 <th class="m-col-num"  data-sort="valor" data-dir="desc">Доблесть</th>
                 <th class="m-col-num"  data-sort="trend">Тренд<br><small>vs прошлая нед.</small></th>
-                <th class="m-col-num"  data-sort="norm">Норматив</th>
+                <th class="m-col-num"  data-sort="norm">Норматив<br><small>предупр.</small></th>
               </tr>
             </thead>
             <tbody id="valor-tbody"></tbody>
           </table>
         </div>
         <div id="valor-empty" class="empty" hidden>Снимков нет ещё</div>
+      </div>
+
+      <div class="panel members-panel" id="departed-panel" style="margin-top:14px">
+        <div class="members-header" style="cursor:pointer" id="dep-toggle">
+          <div>
+            <span id="dep-arrow">▶</span>
+            <b>Ушли из клана</b>
+            <small id="dep-count" style="color:var(--text-dim);margin-left:6px"></small>
+          </div>
+        </div>
+        <div id="dep-wrap" style="display:none">
+          <div class="members-table-wrap">
+            <table class="members-table">
+              <thead>
+                <tr>
+                  <th>Ник</th>
+                  <th>Имя или Ник мэйн аккаунта</th>
+                  <th>Последняя неделя</th>
+                  <th>Должность</th>
+                  <th>Титул</th>
+                  <th class="m-col-num">Ур.</th>
+                  <th>Класс</th>
+                  <th class="m-col-num">Доблесть</th>
+                  <th class="m-col-num">Предупр.</th>
+                </tr>
+              </thead>
+              <tbody id="dep-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="panel timeline-panel">
@@ -134,10 +164,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779800100"></script>
-  <script src="js/matrix.js?v=1779800100"></script>
-  <script src="js/api.js?v=1779800100"></script>
+  <script src="config.js?v=1779800200"></script>
+  <script src="js/matrix.js?v=1779800200"></script>
+  <script src="js/api.js?v=1779800200"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="js/clan-valor.js?v=1779800100"></script>
+  <script src="js/clan-valor.js?v=1779800200"></script>
 </body>
 </html>
