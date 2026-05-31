@@ -2581,9 +2581,16 @@ _DIMINUTIVES = {
 
 def _camel_split(s: str) -> list[str]:
     """TatyanaMarkina → ['Tatyana', 'Markina'].
-    Между нижним регистром и верхним вставляем разделитель."""
+    Татьяна → ['Татьяна'] (одно слово, не camelCase).
+    Между нижним регистром и верхним (lat ИЛИ cyr) вставляем пробел,
+    затем split по пробелу."""
     import re as _re
-    return _re.findall(r"[A-Z][a-zA-Zа-яё]*|[a-zа-яё]+", s or "")
+    if not s:
+        return []
+    # Вставляем разделитель между «строчная буква» и «прописная буква»,
+    # поддерживая и латиницу, и кириллицу.
+    out = _re.sub(r"([a-zа-яё])([A-ZА-ЯЁ])", r"\1 \2", s)
+    return [w for w in out.split() if w]
 
 
 def _normalize_name(raw: str) -> str:
