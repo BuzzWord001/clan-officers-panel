@@ -77,12 +77,38 @@
       return m[key] == null ? -1 : m[key];
     if (key === "class") return (m.class_ || "").toLowerCase();
     if (key === "norm") {
-      // выполнено(1) → невыполнено(0) → АФК(null)
       if (m.norm_met === true)  return 2;
       if (m.norm_met === false) return 0;
       return 1;
     }
+    if (key === "trend") {
+      const t = m.trend;
+      if (!t) return -1e9;
+      if (t.kind === "new")  return 1e8;
+      if (t.kind === "lost") return -1e8;
+      return t.pct == null ? t.delta : t.pct;
+    }
     return (m[key] || "").toString().toLowerCase();
+  }
+
+  function renderTrend(t) {
+    if (!t) {
+      return `<span class="trend trend-none" title="нет данных предыдущей недели">—</span>`;
+    }
+    if (t.kind === "new") {
+      return `<span class="trend trend-new" title="вступил в клан с прошлой недели"
+        >★ new</span>`;
+    }
+    if (t.kind === "lost") {
+      return `<span class="trend trend-dead" title="нет данных доблести сейчас">✕</span>`;
+    }
+    const arrow = t.kind === "up" ? "▲" : t.kind === "down" ? "▼" : "▬";
+    const sign = t.delta > 0 ? "+" : "";
+    const pctLabel = t.pct == null ? "" : ` ${sign}${t.pct}%`;
+    const tipPct = t.pct == null ? "" : ` (${sign}${t.pct}%)`;
+    const tip = `${sign}${t.delta} доблести${tipPct} к прошлой неделе`;
+    return `<span class="trend trend-${t.kind}" title="${esc(tip)}"
+      >${arrow} ${sign}${t.delta}${pctLabel}</span>`;
   }
 
   function applyFilterSort() {
@@ -122,6 +148,7 @@
       else if (m.norm_met === true)  normLabel = `<span style="color:#88ff88">✓</span>`;
       else if (m.norm_met === false) normLabel = `<span style="color:#ff8080">✕</span>`;
       else normLabel = `<span style="color:#888">?</span>`;
+      const trendCell = renderTrend(m.trend);
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
@@ -132,6 +159,7 @@
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>
+          <td class="m-cell-num">${trendCell}</td>
           <td class="m-cell-num">${normLabel}</td>
         </tr>`;
     }).join("");
@@ -204,6 +232,105 @@
         !e.target.closest(".hist-cell")) closePopover();
   });
 
+  // ── Timeline-график доблести ──
+  let CHART = null;
+  let TL_RAW = null;
+
+  async function loadTimeline() {
+    $("tl-loading").hidden = false;
+    try {
+      const weeks = +$("tl-weeks").value || 12;
+      TL_RAW = await API.valorTimeline(weeks);
+      renderTimeline();
+    } catch (e) {
+      $("tl-stats").innerHTML =
+        `<span style="color:#ff8080">Ошибка timeline: ${esc(e.detail || e.message)}</span>`;
+    } finally {
+      $("tl-loading").hidden = true;
+    }
+  }
+
+  function pickColor(i, n) {
+    const hue = Math.round((i / Math.max(1, n)) * 320);
+    return `hsl(${hue} 70% 60%)`;
+  }
+
+  function renderTimeline() {
+    if (!TL_RAW || !TL_RAW.periods.length) {
+      $("tl-stats").innerHTML =
+        `<span>график появится со следующего снапшота</span>`;
+      if (CHART) { CHART.destroy(); CHART = null; }
+      $("tl-legend").innerHTML = "";
+      return;
+    }
+    const top = +$("tl-topn").value;
+    const q = ($("tl-filter").value || "").trim().toLowerCase();
+    let series = TL_RAW.series.slice();
+    if (q) {
+      series = series.filter(s =>
+        (s.nick + " " + (s.true_name || "")).toLowerCase().includes(q));
+    }
+    if (top > 0) series = series.slice(0, top);
+
+    $("tl-stats").innerHTML = `
+      <span>недель: <b>${TL_RAW.periods.length}</b></span>
+      <span>в графике: <b>${series.length}</b></span>
+      <span>всего сокланов на графике: <b>${TL_RAW.overall.people}</b></span>
+      <span>сумма доблести: <b>${TL_RAW.overall.total}</b></span>
+    `;
+
+    const ctx = $("tl-canvas").getContext("2d");
+    if (CHART) CHART.destroy();
+    CHART = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: TL_RAW.periods,
+        datasets: series.map((s, i) => ({
+          label: s.nick + (s.true_name ? "  ·  " + s.true_name : ""),
+          data: s.counts,
+          borderColor: pickColor(i, series.length),
+          backgroundColor: pickColor(i, series.length),
+          tension: 0.2,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+          x: { ticks: { color: "#a0a0a0" }, grid: { color: "rgba(255,255,255,0.03)" } },
+          y: { ticks: { color: "#a0a0a0" }, grid: { color: "rgba(255,255,255,0.05)" },
+                beginAtZero: true },
+        },
+      },
+    });
+    // Своя легенда — кликабельная (toggle dataset)
+    $("tl-legend").innerHTML = series.map((s, i) => `
+      <span class="leg-item" data-i="${i}" style="color:${pickColor(i, series.length)}"
+        >● ${esc(s.nick)}${s.true_name ? " · " + esc(s.true_name) : ""}
+        <small>(${s.total})</small></span>
+    `).join(" ");
+    $("tl-legend").querySelectorAll(".leg-item").forEach(el => {
+      el.addEventListener("click", () => {
+        const i = +el.dataset.i;
+        const meta = CHART.getDatasetMeta(i);
+        meta.hidden = !meta.hidden;
+        el.classList.toggle("leg-off", meta.hidden);
+        CHART.update();
+      });
+    });
+  }
+
+  $("tl-weeks").addEventListener("change", loadTimeline);
+  $("tl-topn").addEventListener("change", renderTimeline);
+  $("tl-filter").addEventListener("input", renderTimeline);
+
   loadMe();
-  load();
+  load().then(loadTimeline);
 })();

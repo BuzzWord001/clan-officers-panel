@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Доблесть</title>
-  <link rel="stylesheet" href="styles.css?v=1779800000">
+  <link rel="stylesheet" href="styles.css?v=1779800100">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -90,6 +90,7 @@
                 <th class="m-col-num"  data-sort="level">Ур.</th>
                 <th data-sort="class">Класс</th>
                 <th class="m-col-num"  data-sort="valor" data-dir="desc">Доблесть</th>
+                <th class="m-col-num"  data-sort="trend">Тренд<br><small>vs прошлая нед.</small></th>
                 <th class="m-col-num"  data-sort="norm">Норматив</th>
               </tr>
             </thead>
@@ -98,14 +99,45 @@
         </div>
         <div id="valor-empty" class="empty" hidden>Снимков нет ещё</div>
       </div>
+
+      <div class="panel timeline-panel">
+        <div class="timeline-header">
+          <div class="timeline-title">График доблести по неделям</div>
+          <div class="timeline-controls">
+            <label>Период:
+              <select id="tl-weeks">
+                <option value="6">6 недель</option>
+                <option value="12" selected>12 недель</option>
+                <option value="24">24 недели</option>
+              </select>
+            </label>
+            <label>Топ:
+              <select id="tl-topn">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="0">все</option>
+              </select>
+            </label>
+            <input type="text" id="tl-filter" placeholder="фильтр имён">
+          </div>
+        </div>
+        <div class="timeline-stats" id="tl-stats"></div>
+        <div class="timeline-chart-wrap">
+          <div class="timeline-loading" id="tl-loading" hidden>Загрузка…</div>
+          <canvas id="tl-canvas"></canvas>
+        </div>
+        <div class="timeline-legend" id="tl-legend"></div>
+      </div>
     </main>
 
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779800000"></script>
-  <script src="js/matrix.js?v=1779800000"></script>
-  <script src="js/api.js?v=1779800000"></script>
-  <script src="js/clan-valor.js?v=1779800000"></script>
+  <script src="config.js?v=1779800100"></script>
+  <script src="js/matrix.js?v=1779800100"></script>
+  <script src="js/api.js?v=1779800100"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/clan-valor.js?v=1779800100"></script>
 </body>
 </html>

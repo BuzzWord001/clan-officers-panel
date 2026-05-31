@@ -2581,29 +2581,67 @@ def valor_save_snapshot(
 
 
 def valor_get_current() -> dict[str, Any]:
-    """Самый свежий снапшот + все его участники."""
+    """Самый свежий снапшот + все его участники + тренд vs предыдущий
+    снапшот (если есть)."""
     with connection() as conn:
-        snap = conn.execute(
-            "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 1"
-        ).fetchone()
-        if snap is None:
-            return {"snapshot": None, "members": []}
+        snaps = conn.execute(
+            "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 2"
+        ).fetchall()
+        if not snaps:
+            return {"snapshot": None, "previous_week": None, "members": []}
+        cur = snaps[0]
+        prev = snaps[1] if len(snaps) >= 2 else None
+        # Предыдущая доблесть по canon — для расчёта тренда (delta + %).
+        prev_valor: dict[str, int | None] = {}
+        if prev is not None:
+            for r in conn.execute(
+                "SELECT nick_canon, valor FROM valor_members WHERE snapshot_id = ?",
+                (prev["id"],)
+            ):
+                prev_valor[r["nick_canon"]] = (
+                    r["valor"] if r["valor"] is not None else None)
+
         rows = conn.execute(
             """SELECT * FROM valor_members
                WHERE snapshot_id = ?
                ORDER BY valor DESC NULLS LAST, nick""",
-            (snap["id"],),
+            (cur["id"],),
         ).fetchall()
-        members = [dict(r) for r in rows]
-        # Сериализация bool из integer
-        for m in members:
+        members = []
+        for r in rows:
+            m = dict(r)
             m["is_afk"] = bool(m["is_afk"])
             m["flag_new_nick"] = bool(m["flag_new_nick"])
             m["flag_ocr_suspect"] = bool(m["flag_ocr_suspect"])
             if m["norm_met"] is not None:
                 m["norm_met"] = bool(m["norm_met"])
+            # Тренд: разница с прошлой неделей.
+            #   pct = (cur - prev) / max(prev, 1) * 100
+            # Если человека не было на прошлой неделе → "new".
+            pv = prev_valor.get(m["nick_canon"])
+            cv = m["valor"]
+            if prev is None:
+                m["trend"] = None
+            elif pv is None and cv is None:
+                m["trend"] = None
+            elif pv is None:
+                m["trend"] = {"kind": "new", "delta": cv, "pct": None}
+            elif cv is None:
+                m["trend"] = {"kind": "lost", "delta": -pv, "pct": -100}
+            else:
+                delta = cv - pv
+                if pv == 0 and cv == 0:
+                    pct = 0
+                elif pv == 0:
+                    pct = None  # делить на 0 — нет нормированного % роста
+                else:
+                    pct = round(delta / pv * 100, 1)
+                kind = "up" if delta > 0 else "down" if delta < 0 else "flat"
+                m["trend"] = {"kind": kind, "delta": delta, "pct": pct}
+            members.append(m)
         return {
-            "snapshot": dict(snap),
+            "snapshot": dict(cur),
+            "previous_week": prev["week"] if prev else None,
             "members": members,
         }
 
