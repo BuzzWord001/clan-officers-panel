@@ -2582,7 +2582,8 @@ _DIMINUTIVES = {
 def _camel_split(s: str) -> list[str]:
     """TatyanaMarkina → ['Tatyana', 'Markina'].
     Между нижним регистром и верхним вставляем разделитель."""
-    return re.findall(r"[A-Z][a-zA-Zа-яё]*|[a-zа-яё]+", s or "")
+    import re as _re
+    return _re.findall(r"[A-Z][a-zA-Zа-яё]*|[a-zа-яё]+", s or "")
 
 
 def _normalize_name(raw: str) -> str:
@@ -2605,8 +2606,9 @@ def _normalize_name(raw: str) -> str:
             s = parts[0]
     if not s:
         return ""
+    import re as _re
     key = s.lower()
-    if re.fullmatch(r"[a-z']+", key):
+    if _re.fullmatch(r"[a-z']+", key):
         key = _NAME_TRANSLIT.get(key, key)  # translit если знаем
     if key in _DIMINUTIVES:
         return _DIMINUTIVES[key]
