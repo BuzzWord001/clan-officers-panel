@@ -1913,18 +1913,37 @@ video.chat-media-thumb {
   background: rgba(120, 100, 100, 0.06);
 }
 .m-row-left .m-name { color: var(--text-dim); }
-.m-left-badge {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 6px;
+
+/* Имя слева, бейдж «вне чатов» справа в той же строке —
+   читается как мета-метка, не сливается с самим ником. */
+.m-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.m-name-row .m-name { margin-bottom: 0; }
+.m-status-out {
+  flex-shrink: 0;
+  padding: 2px 8px;
   font-size: 9px;
-  background: rgba(248, 113, 113, 0.14);
-  color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.4);
-  border-radius: 2px;
-  vertical-align: middle;
+  font-weight: 600;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #b08080;
+  background: rgba(176, 128, 128, 0.06);
+  border: 1px solid rgba(176, 128, 128, 0.3);
+  border-radius: 2px;
+  white-space: nowrap;
+  user-select: none;
+  cursor: help;
+  transition: all 0.15s;
+}
+.m-status-out:hover {
+  color: #d49a9a;
+  background: rgba(176, 128, 128, 0.12);
+  border-color: rgba(176, 128, 128, 0.5);
 }
 .members-hide-left, .tl-hide-left {
   display: inline-flex; align-items: center; gap: 6px;

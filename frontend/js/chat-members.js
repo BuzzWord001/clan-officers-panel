@@ -304,10 +304,13 @@
     if (tg) subs.push(`<span class="m-plat">TG ${tg}</span>`);
     if (vk) subs.push(`<span class="m-plat">VK ${vk}</span>`);
     const leftBadge = item.is_active === false
-      ? `<span class="m-left-badge" title="Покинул все клановые чаты (по reconcile)">🚪 ушёл</span>`
+      ? `<span class="m-status-out" title="Покинули все клановые чаты (TG и VK). Запись хранится в архиве для истории сообщений.">вне чатов</span>`
       : "";
     const nameBlock = `
-      <div class="m-name"><span class="m-expand-icon">▸</span> ${escapeHtml(dn)} ${leftBadge}</div>
+      <div class="m-name-row">
+        <div class="m-name"><span class="m-expand-icon">▸</span> ${escapeHtml(dn)}</div>
+        ${leftBadge}
+      </div>
       ${subs.length ? `<div class="m-sub">${subs.join(" · ")}</div>` : ""}
     `;
     const total = s.msgs || 0;
