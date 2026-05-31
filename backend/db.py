@@ -294,7 +294,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # сейчас в зеркале clan_members.json, кто уже нет. last_seen_at — когда
     # человек последний раз попадал в синхронизацию.
     for col in ("is_active INTEGER NOT NULL DEFAULT 1",
-                "last_seen_at TEXT NOT NULL DEFAULT ''"):
+                "last_seen_at TEXT NOT NULL DEFAULT ''",
+                # 2026-05-31: аватарки участников в R2 (заливает
+                # clan-reg-bot/refresh_avatars.py). URL стабильный,
+                # _updated — ISO когда последний раз перекачивали.
+                "tg_avatar_url TEXT NOT NULL DEFAULT ''",
+                "vk_avatar_url TEXT NOT NULL DEFAULT ''",
+                "tg_avatar_updated TEXT NOT NULL DEFAULT ''",
+                "vk_avatar_updated TEXT NOT NULL DEFAULT ''"):
         try:
             conn.execute(f"ALTER TABLE clan_members ADD COLUMN {col}")
         except sqlite3.OperationalError:
@@ -1323,6 +1330,11 @@ _MEMBER_FIELDS = (
     "key", "game_nick", "display_name", "vk_id", "vk_display",
     "vk_first", "vk_last", "vk_screen_name", "tg_id", "tg_display",
     "tg_username", "tg_first_name", "tg_last_name",
+    # Аватарки в R2 (URL + timestamp последнего refresh) — заполняет
+    # clan-reg-bot/refresh_avatars.py, если у бота настроены R2-креды.
+    # Если не настроены — поля просто пустые, popover покажет плейсхолдер.
+    "tg_avatar_url", "vk_avatar_url",
+    "tg_avatar_updated", "vk_avatar_updated",
 )
 
 
@@ -1363,13 +1375,20 @@ def bulk_sync_clan_members(members: list[dict]) -> dict:
                 _serialise({k: v for k, v in r.items() if k != "raw_json"}),
                 ensure_ascii=False,
             )
+            # COALESCE для avatar_url: если в payload пусто, а в БД
+            # уже что-то лежит — сохраняем старую ссылку. Это нужно
+            # потому что reconcile может пройти БЕЗ refresh_avatars
+            # (например если R2 не настроен в .env clan-reg-bot) —
+            # не теряем уже скачанные аватарки.
             conn.execute(
                 """INSERT INTO clan_members
                    (key, game_nick, display_name, vk_id, vk_display,
                     vk_first, vk_last, vk_screen_name, tg_id, tg_display,
                     tg_username, tg_first_name, tg_last_name,
+                    tg_avatar_url, vk_avatar_url,
+                    tg_avatar_updated, vk_avatar_updated,
                     raw_json, synced_at, is_active, last_seen_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
                    ON CONFLICT(key) DO UPDATE SET
                      game_nick      = excluded.game_nick,
                      display_name   = excluded.display_name,
@@ -1383,6 +1402,18 @@ def bulk_sync_clan_members(members: list[dict]) -> dict:
                      tg_username    = excluded.tg_username,
                      tg_first_name  = excluded.tg_first_name,
                      tg_last_name   = excluded.tg_last_name,
+                     tg_avatar_url  = CASE WHEN excluded.tg_avatar_url != ''
+                                           THEN excluded.tg_avatar_url
+                                           ELSE clan_members.tg_avatar_url END,
+                     vk_avatar_url  = CASE WHEN excluded.vk_avatar_url != ''
+                                           THEN excluded.vk_avatar_url
+                                           ELSE clan_members.vk_avatar_url END,
+                     tg_avatar_updated = CASE WHEN excluded.tg_avatar_updated != ''
+                                              THEN excluded.tg_avatar_updated
+                                              ELSE clan_members.tg_avatar_updated END,
+                     vk_avatar_updated = CASE WHEN excluded.vk_avatar_updated != ''
+                                              THEN excluded.vk_avatar_updated
+                                              ELSE clan_members.vk_avatar_updated END,
                      raw_json       = excluded.raw_json,
                      synced_at      = excluded.synced_at,
                      is_active      = 1,
@@ -1393,6 +1424,8 @@ def bulk_sync_clan_members(members: list[dict]) -> dict:
                  r["vk_screen_name"],
                  r["tg_id"], r["tg_display"], r["tg_username"],
                  r["tg_first_name"], r["tg_last_name"],
+                 r["tg_avatar_url"], r["vk_avatar_url"],
+                 r["tg_avatar_updated"], r["vk_avatar_updated"],
                  raw, now, now),
             )
         # Статистика после операции
