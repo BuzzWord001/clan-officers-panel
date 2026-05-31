@@ -214,14 +214,23 @@
     const dn = primaryName(p, item.key);
     // Подпись под именем: остальные ники из game_nick (если их несколько
     // через запятую — показываем тех что не вошли в primary) и
-    // display_name если он отличается.
+    // display_name если он отличается И НЕ дублирует @tg_username
+    // или vk_screen_name (часто display_name = "@darkero4ek", а
+    // дальше всё равно идёт TG @darkero4ek — не нужно повторять).
     const subs = [];
     const gnAll = (p.game_nick || "").trim();
     if (gnAll && gnAll.indexOf(",") >= 0) {
-      // Несколько игровых ников — покажем все целиком в саб-строке.
       subs.push(`<span class="m-game">${escapeHtml(gnAll)}</span>`);
     }
-    if (p.display_name && p.display_name !== dn && p.display_name !== gnAll) {
+    const dnStripped = (p.display_name || "").replace(/^@/, "").trim().toLowerCase();
+    const tgU = (p.tg_username || "").replace(/^@/, "").trim().toLowerCase();
+    const vkS = (p.vk_screen_name || "").replace(/^@/, "").trim().toLowerCase();
+    const dnDuplicatesPlatform = dnStripped
+      && (dnStripped === tgU || dnStripped === vkS);
+    if (p.display_name
+        && p.display_name !== dn
+        && p.display_name !== gnAll
+        && !dnDuplicatesPlatform) {
       subs.push(`<span class="m-game">${escapeHtml(p.display_name)}</span>`);
     }
     const tg = platformLink("tg", p);
