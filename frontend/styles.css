@@ -1798,20 +1798,63 @@ video.chat-media-thumb {
   padding: 12px 18px !important;
   border-bottom: 1px solid var(--accent-dim);
 }
+/* Профиль в раскрытой строке — карточки по платформам (TG/VK/прочее);
+   у TG и VK слева миниатюра-аватарка (R2, см. clan-reg-bot/
+   refresh_avatars.py). */
 .m-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 6px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0;
 }
-.m-details dt {
+.m-details-section {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+}
+.m-section-other { border-left-color: var(--accent); }
+.m-section-tg    { border-left-color: #229ED9; }  /* TG cyan */
+.m-section-vk    { border-left-color: #5181B8; }  /* VK blue */
+
+.m-details-section dl {
+  margin: 0; flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 16px;
+}
+.m-details-section dt {
   color: var(--text-dim); font-size: 10px; text-transform: uppercase;
   letter-spacing: 0.5px; margin-bottom: 1px;
 }
-.m-details dd {
-  color: var(--text); font-size: 12px; margin: 0 0 6px 0;
+.m-details-section dd {
+  color: var(--text); font-size: 12px; margin: 0 0 4px 0;
   font-family: "Cascadia Code", "Consolas", monospace;
   word-break: break-word;
+}
+.m-avatar {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.m-avatar-tg { border-color: rgba(34,158,217,0.4); }
+.m-avatar-vk { border-color: rgba(81,129,184,0.4); }
+.m-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-dim);
+  font-family: "Cascadia Code", monospace;
+  user-select: none;
 }
 .m-details-empty {
   color: var(--muted); font-style: italic; font-size: 12px;

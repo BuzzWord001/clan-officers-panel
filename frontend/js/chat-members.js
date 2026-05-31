@@ -98,50 +98,116 @@
     return "";
   }
 
-  // Маппинг технических ключей профиля → читаемые подписи (для expand).
-  const FIELD_LABELS = {
-    display_name:    "Отображаемое имя",
+  // Маппинг технических ключей профиля → читаемые подписи. Сгруппирован
+  // по платформам, чтобы можно было отрисовать «карточки» с аватаркой
+  // справа от данных.
+  const TG_FIELDS = {
+    tg_id:           "ID",
+    tg_username:     "@username",
+    tg_first_name:   "Имя",
+    tg_last_name:    "Фамилия",
+    tg_display:      "Полное имя",
+  };
+  const VK_FIELDS = {
+    vk_id:           "ID",
+    vk_screen_name:  "screen_name",
+    vk_first:        "Имя",
+    vk_last:         "Фамилия",
+    vk_display:      "Полное имя",
+  };
+  const OTHER_FIELDS = {
     game_nick:       "Игровые ники",
-    tg_id:           "TG · ID",
-    tg_username:     "TG · @username",
-    tg_first_name:   "TG · Имя",
-    tg_last_name:    "TG · Фамилия",
-    tg_display:      "TG · Полное имя",
-    vk_id:           "VK · ID",
-    vk_screen_name:  "VK · screen_name",
-    vk_first:        "VK · Имя",
-    vk_last:         "VK · Фамилия",
-    vk_display:      "VK · Полное имя",
+    display_name:    "Отображаемое имя",
     is_active:       "Активен",
   };
 
-  function renderProfileDetails(p) {
-    const rows = [];
-    for (const [k, label] of Object.entries(FIELD_LABELS)) {
+  function _fmtRow(k, v) {
+    let val = String(v);
+    if (k === "tg_username" && val) {
+      const u = val.replace(/^@/, "");
+      val = `<a class="m-plat-link" href="https://t.me/${escapeHtml(u)}" target="_blank" rel="noopener">@${escapeHtml(u)}</a>`;
+    } else if (k === "vk_screen_name" && val) {
+      const u = val.replace(/^@/, "");
+      val = `<a class="m-plat-link" href="https://vk.com/${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`;
+    } else if (k === "vk_id" && val) {
+      val = `<a class="m-plat-link" href="https://vk.com/id${escapeHtml(val)}" target="_blank" rel="noopener">id${escapeHtml(val)}</a>`;
+    } else if (k === "is_active") {
+      val = v ? "<span style='color:var(--accent)'>да</span>"
+              : "<span style='color:#ff8080'>нет</span>";
+    } else {
+      val = escapeHtml(val);
+    }
+    return val;
+  }
+
+  function _rowsHtml(p, labelsMap) {
+    const out = [];
+    for (const [k, label] of Object.entries(labelsMap)) {
       const v = p[k];
       if (v === undefined || v === null || v === "" || v === 0) continue;
-      let val = String(v);
-      // Делаем кликабельным TG @ и VK screen_name
-      if (k === "tg_username" && val) {
-        const u = val.replace(/^@/, "");
-        val = `<a class="m-plat-link" href="https://t.me/${escapeHtml(u)}" target="_blank" rel="noopener">@${escapeHtml(u)}</a>`;
-      } else if (k === "vk_screen_name" && val) {
-        const u = val.replace(/^@/, "");
-        val = `<a class="m-plat-link" href="https://vk.com/${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`;
-      } else if (k === "vk_id" && val) {
-        val = `<a class="m-plat-link" href="https://vk.com/id${escapeHtml(val)}" target="_blank" rel="noopener">id${escapeHtml(val)}</a>`;
-      } else if (k === "is_active") {
-        val = v ? "<span style='color:var(--accent)'>да</span>"
-                : "<span style='color:#ff8080'>нет</span>";
-      } else {
-        val = escapeHtml(val);
-      }
-      rows.push(`<dt>${escapeHtml(label)}</dt><dd>${val}</dd>`);
+      out.push(`<dt>${escapeHtml(label)}</dt><dd>${_fmtRow(k, v)}</dd>`);
     }
-    if (!rows.length) {
+    return out;
+  }
+
+  // Аватарка: src берётся из R2 (см. clan-reg-bot/refresh_avatars.py),
+  // cache-bust через ?v={updated_at}. Если URL пуст — плейсхолдер с
+  // первой буквой ника (платформа в подсказке).
+  function _avatarHtml(url, updated, platform, fallbackChar) {
+    if (url) {
+      const bust = updated
+        ? "?v=" + encodeURIComponent(updated.slice(0, 19))
+        : "";
+      return `<img class="m-avatar m-avatar-${platform}"
+                   src="${escapeHtml(url)}${bust}"
+                   alt="${platform.toUpperCase()} avatar"
+                   loading="lazy"
+                   onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+              <span class="m-avatar m-avatar-${platform} m-avatar-placeholder"
+                    style="display:none">${escapeHtml(fallbackChar)}</span>`;
+    }
+    return `<span class="m-avatar m-avatar-${platform} m-avatar-placeholder"
+                  title="Нет аватарки">${escapeHtml(fallbackChar)}</span>`;
+  }
+
+  function renderProfileDetails(p) {
+    const sections = [];
+
+    const otherRows = _rowsHtml(p, OTHER_FIELDS);
+    if (otherRows.length) {
+      sections.push(
+        `<div class="m-details-section m-section-other">
+           <dl>${otherRows.join("")}</dl>
+         </div>`
+      );
+    }
+
+    const tgRows = _rowsHtml(p, TG_FIELDS);
+    if (tgRows.length || p.tg_avatar_url) {
+      const fb = ((p.tg_first_name || p.tg_username || "T").trim().charAt(0) || "T").toUpperCase();
+      sections.push(
+        `<div class="m-details-section m-section-tg">
+           ${_avatarHtml(p.tg_avatar_url, p.tg_avatar_updated, "tg", fb)}
+           <dl>${tgRows.join("") || "<dt>Telegram</dt><dd>—</dd>"}</dl>
+         </div>`
+      );
+    }
+
+    const vkRows = _rowsHtml(p, VK_FIELDS);
+    if (vkRows.length || p.vk_avatar_url) {
+      const fb = ((p.vk_first || p.vk_screen_name || "V").trim().charAt(0) || "V").toUpperCase();
+      sections.push(
+        `<div class="m-details-section m-section-vk">
+           ${_avatarHtml(p.vk_avatar_url, p.vk_avatar_updated, "vk", fb)}
+           <dl>${vkRows.join("") || "<dt>VK</dt><dd>—</dd>"}</dl>
+         </div>`
+      );
+    }
+
+    if (!sections.length) {
       return `<div class="m-details-empty">Нет дополнительных данных</div>`;
     }
-    return `<dl class="m-details">${rows.join("")}</dl>`;
+    return `<div class="m-details">${sections.join("")}</div>`;
   }
 
   function renderTrend(trend) {
