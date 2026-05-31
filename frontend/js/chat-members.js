@@ -274,7 +274,7 @@
     return fallbackKey || "(без имени)";
   }
 
-  function renderMemberRow(item) {
+  function renderMemberRow(item, idx) {
     const p = item.profile || {};
     const s = item.stats || {};
     const dn = primaryName(p, item.key);
@@ -315,8 +315,10 @@
       ? `<span class="m-period">${fmtDate(s.first_seen)}<br>${fmtDate(s.last_seen)}</span>`
       : `<span class="m-period m-period-empty">—</span>`;
     const detailsHtml = renderProfileDetails(p);
+    const idxNum = (typeof idx === "number" ? idx + 1 : "");
     return `
       <tr class="m-row${total ? "" : " m-row-silent"}${item.is_active === false ? " m-row-left" : ""}" data-key="${escapeHtml(item.key)}">
+        <td class="m-cell-idx">${idxNum}</td>
         <td class="m-cell-name">${nameBlock}</td>
         <td class="m-cell-num m-cell-total">${fmtNum(total)}</td>
         <td class="m-cell-num">${fmtNum(s.msgs_general)}</td>
@@ -328,7 +330,7 @@
         <td class="m-cell-time">${period}</td>
       </tr>
       <tr class="m-row-details" data-for="${escapeHtml(item.key)}" hidden>
-        <td colspan="9">${detailsHtml}</td>
+        <td colspan="10">${detailsHtml}</td>
       </tr>
     `;
   }
@@ -384,7 +386,8 @@
     }
     items = items.slice();
     sortItems(items);
-    $("members-tbody").innerHTML = items.map(renderMemberRow).join("");
+    $("members-tbody").innerHTML = items
+      .map((it, i) => renderMemberRow(it, i)).join("");
     $("members-empty").hidden = items.length > 0;
     // Стрелки сортировки в заголовке
     document.querySelectorAll(".members-table th[data-sort]").forEach(th => {
@@ -484,7 +487,7 @@
     applyFilterAndRender();
   } catch (e) {
     $("members-tbody").innerHTML =
-      `<tr><td colspan="9" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
+      `<tr><td colspan="10" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
   } finally {
     $("members-loading").hidden = true;
   }

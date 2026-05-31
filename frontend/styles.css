@@ -1777,6 +1777,15 @@ video.chat-media-thumb {
 }
 .members-table th.sort-asc::after  { border-bottom: 5px solid var(--accent); }
 .members-table th.sort-desc::after { border-top:    5px solid var(--accent); }
+.members-table .m-col-idx   { text-align: right; width: 36px;
+                              padding-left: 4px !important;
+                              padding-right: 4px !important; }
+.members-table .m-cell-idx  { text-align: right; color: var(--text-dim);
+                              font-family: "Cascadia Code", monospace;
+                              font-size: 11px;
+                              padding-left: 4px !important;
+                              padding-right: 4px !important;
+                              user-select: none; }
 .members-table .m-col-num   { text-align: right;  width: 7%; }
 .members-table .m-col-act   { width: 11%; text-align: center; }
 .members-table .m-col-trend { width: 8%; text-align: center; }
