@@ -2386,3 +2386,25 @@ video.chat-media-thumb {
 .soc-tg { color: #69b7e4; background: rgba(105, 183, 228, 0.08);
           border-color: rgba(105, 183, 228, 0.25); margin-left: 4px; }
 .soc-tg:hover { background: rgba(105, 183, 228, 0.18); }
+
+/* Norm/compliance ячейки — градиентная пилюля от красного к зелёному */
+.norm-cell {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-family: "Cascadia Code", monospace;
+  font-weight: 600;
+  font-size: 11px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.norm-cell.norm-good   { color: #88ff88; background: rgba(80,220,80,0.12);  border-color: rgba(80,220,80,0.35); }
+.norm-cell.norm-p100   { color: #88ff88; background: rgba(80,220,80,0.12);  border-color: rgba(80,220,80,0.35); }
+.norm-cell.norm-p80    { color: #b8e070; background: rgba(184,224,112,0.10);border-color: rgba(184,224,112,0.30); }
+.norm-cell.norm-p60    { color: #e0d070; background: rgba(224,208,112,0.10);border-color: rgba(224,208,112,0.30); }
+.norm-cell.norm-p40    { color: #e0a070; background: rgba(224,160,112,0.10);border-color: rgba(224,160,112,0.30); }
+.norm-cell.norm-p20    { color: #e07070; background: rgba(224,112,112,0.10);border-color: rgba(224,112,112,0.35); }
+.norm-cell.norm-p0     { color: #ff5070; background: rgba(255,80,112,0.14); border-color: rgba(255,80,112,0.45); }
+.norm-cell.norm-afk    { color: #ffd080; background: rgba(255,200,128,0.10);border-color: rgba(255,200,128,0.30); }
+.norm-cell.norm-unknown { color: #888; }
+.comp-cell small { font-size: 9px; }

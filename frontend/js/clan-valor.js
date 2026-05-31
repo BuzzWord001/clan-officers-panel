@@ -77,19 +77,73 @@
       return m[key] == null ? -1 : m[key];
     if (key === "class") return (m.class_ || "").toLowerCase();
     if (key === "norm") {
-      // Сортируем по тяжести: выполнено → АФК → не выполнено (по warnings DESC)
-      if (m.norm_met === true)  return 1e6;
-      if (m.is_afk)             return 5e5;
-      return -(m.warning_count || 0);
+      // Сортируем по % выполнения текущей недели; АФК в середине
+      if (m.is_afk) return 50;
+      return m.norm_pct == null ? -1 : m.norm_pct;
+    }
+    if (key === "compliance") {
+      return m.compliance ? m.compliance.avg_pct : -1;
     }
     if (key === "trend") {
       const t = m.trend;
       if (!t) return -1e9;
       if (t.kind === "new")  return 1e8;
       if (t.kind === "lost") return -1e8;
-      return t.pct == null ? t.delta : t.pct;
+      return t.pct_delta != null ? t.pct_delta : t.delta;
     }
     return (m[key] || "").toString().toLowerCase();
+  }
+
+  function pctClass(pct) {
+    // pct: 0..100 → класс цвета
+    if (pct >= 100) return "p100";
+    if (pct >=  80) return "p80";
+    if (pct >=  60) return "p60";
+    if (pct >=  40) return "p40";
+    if (pct >=  20) return "p20";
+    return "p0";
+  }
+
+  function renderNorm(m, norm) {
+    if (m.is_afk) {
+      return `<span class="norm-cell norm-afk"
+        title="АФК — норматив не оценивается">АФК</span>`;
+    }
+    const wc = m.warning_count || 0;
+    const pct = m.norm_pct;
+    const valor = m.valor != null ? m.valor : 0;
+    // Текст: 11/14 • 78%
+    const main = `${valor}/${norm}`;
+    if (m.norm_met === true) {
+      return `<span class="norm-cell norm-good"
+        title="норматив выполнен полностью">✓ ${main}</span>`;
+    }
+    if (pct == null) {
+      return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
+    }
+    // Не выполнен — пилюля градиента + ⚠ N если streak > 0
+    const cls = pctClass(pct);
+    const warnTxt = wc > 1
+      ? ` ⚠ ×${wc}`
+      : wc === 1 ? ` ⚠` : "";
+    const tip = wc > 1
+      ? `${wc} подряд недель без норматива (текущая ${pct}%)`
+      : `${pct}% от норматива`;
+    return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
+      >${main} · ${pct}%${warnTxt}</span>`;
+  }
+
+  function renderCompliance(c) {
+    if (!c) {
+      return `<span class="norm-cell" style="color:#888"
+        title="нет данных">—</span>`;
+    }
+    const cls = pctClass(c.avg_pct);
+    const tip = `${c.weeks_met} / ${c.weeks_count} недель с полным выполнением`;
+    return `<span class="norm-cell comp-cell norm-${cls}" title="${esc(tip)}"
+      >${c.avg_pct}%
+      <small style="opacity:0.7">${c.weeks_met}/${c.weeks_count}</small>
+    </span>`;
   }
 
   function renderSocials(s) {
@@ -131,11 +185,17 @@
     }
     const arrow = t.kind === "up" ? "▲" : t.kind === "down" ? "▼" : "▬";
     const sign = t.delta > 0 ? "+" : "";
-    const pctLabel = t.pct == null ? "" : ` ${sign}${t.pct}%`;
-    const tipPct = t.pct == null ? "" : ` (${sign}${t.pct}%)`;
-    const tip = `${sign}${t.delta} доблести${tipPct} к прошлой неделе`;
+    const pdSign = (t.pct_delta != null && t.pct_delta > 0) ? "+" : "";
+    // Главное — изменение % выполнения норматива (если есть), плюс
+    // абсолютный delta доблести в скобках.
+    const pctLabel = t.pct_delta != null
+      ? ` ${pdSign}${t.pct_delta}pp`
+      : "";
+    const tip = t.pct_delta != null
+      ? `Δ % выполнения: ${pdSign}${t.pct_delta} п.п.; Δ доблести: ${sign}${t.delta}`
+      : `Δ доблести ${sign}${t.delta} (норматив одинаковый)`;
     return `<span class="trend trend-${t.kind}" title="${esc(tip)}"
-      >${arrow} ${sign}${t.delta}${pctLabel}</span>`;
+      >${arrow}${pctLabel}<small style="opacity:0.7"> ${sign}${t.delta}</small></span>`;
   }
 
   function applyFilterSort() {
@@ -171,20 +231,10 @@
       const valorCell = m.valor == null
         ? `<span class="hist-cell" data-field="valor" style="color:#888">—</span>`
         : `<span class="hist-cell" data-field="valor">${esc(m.valor)}</span>`;
-      let normLabel;
-      const wc = m.warning_count || 0;
-      if (m.is_afk) normLabel = `<span style="color:#ffd080" title="на этой неделе АФК — норматив не оценивается">АФК</span>`;
-      else if (m.norm_met === true) {
-        normLabel = wc === 0
-          ? `<span style="color:#88ff88" title="норматив выполнен">✓</span>`
-          : `<span style="color:#88ff88" title="выполнен в эту неделю — стрик предупреждений сброшен">✓</span>`;
-      } else if (m.norm_met === false) {
-        normLabel = `<span class="warn-badge" title="${wc} подряд недель без норматива">⚠ ${wc}</span>`;
-      } else {
-        normLabel = `<span style="color:#888" title="нет данных доблести">?</span>`;
-      }
-      const trendCell = renderTrend(m.trend);
-      const socialCell = renderSocials(m.socials);
+      const normLabel    = renderNorm(m, norm);
+      const compLabel    = renderCompliance(m.compliance);
+      const trendCell    = renderTrend(m.trend);
+      const socialCell   = renderSocials(m.socials);
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
@@ -196,8 +246,9 @@
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>
-          <td class="m-cell-num">${trendCell}</td>
           <td class="m-cell-num">${normLabel}</td>
+          <td class="m-cell-num">${compLabel}</td>
+          <td class="m-cell-num">${trendCell}</td>
         </tr>`;
     }).join("");
     $("valor-tbody").innerHTML = rows;
@@ -306,8 +357,11 @@
         `).join("");
       }
     } catch (e) {
-      popover.querySelector(".body").textContent = "Ошибка: " +
-        (e.detail || e.message);
+      const dt = e.detail;
+      const msg = (typeof dt === "string" ? dt
+                   : typeof dt === "object" ? JSON.stringify(dt)
+                   : e.message);
+      popover.querySelector(".body").textContent = "Ошибка: " + msg;
     }
   });
 

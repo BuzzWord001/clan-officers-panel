@@ -95,7 +95,7 @@ def valor_departed(_: dict = Depends(require_officer)) -> list[dict]:
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,
-                                             pattern="^(rank|title|level|class)$"),
+                                             pattern="^(rank|title|level|class|valor)$"),
                   _: dict = Depends(require_officer)) -> dict:
     """История изменений полей для одного ника. Если field=None — все
     отслеживаемые поля."""

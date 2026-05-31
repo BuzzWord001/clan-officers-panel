@@ -2917,15 +2917,42 @@ def valor_get_current() -> dict[str, Any]:
             return {"snapshot": None, "previous_week": None, "members": []}
         cur = snaps[0]
         prev = snaps[1] if len(snaps) >= 2 else None
-        # Предыдущая доблесть по canon — для расчёта тренда (delta + %).
+        # Предыдущая доблесть и % выполнения предыдущей недели по canon
         prev_valor: dict[str, int | None] = {}
+        prev_pct: dict[str, float | None] = {}
         if prev is not None:
+            prev_norm = prev["valor_norm"] or 1
             for r in conn.execute(
-                "SELECT nick_canon, valor FROM valor_members WHERE snapshot_id = ?",
+                "SELECT nick_canon, valor, is_afk FROM valor_members WHERE snapshot_id = ?",
                 (prev["id"],)
             ):
-                prev_valor[r["nick_canon"]] = (
-                    r["valor"] if r["valor"] is not None else None)
+                cn = r["nick_canon"]
+                v = r["valor"]
+                prev_valor[cn] = v if v is not None else None
+                if r["is_afk"] or v is None:
+                    prev_pct[cn] = None
+                else:
+                    prev_pct[cn] = round(min(v / prev_norm, 1.0) * 100, 1)
+
+        # Compliance по всем неделям для каждого ника (среднее % выполнения).
+        compliance: dict[str, dict] = {}
+        for r in conn.execute(
+            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vs.valor_norm
+               FROM valor_members vm
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
+        ):
+            cn = r["nick_canon"]
+            if r["is_afk"]:
+                continue
+            if r["valor"] is None:
+                continue
+            norm = r["valor_norm"] or 1
+            pct = min(r["valor"] / norm, 1.0) * 100
+            d = compliance.setdefault(cn, {"sum": 0.0, "n": 0, "met": 0})
+            d["sum"] += pct
+            d["n"] += 1
+            if r["valor"] >= norm:
+                d["met"] += 1
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -2965,29 +2992,57 @@ def valor_get_current() -> dict[str, Any]:
                 m["norm_met"] = bool(m["norm_met"])
             # Соцсети (по canon ника)
             m["socials"] = socials.get(m["nick_canon"]) or None
-            # Тренд: разница с прошлой неделей.
-            #   pct = (cur - prev) / max(prev, 1) * 100
+
+            # Текущий % выполнения норматива.
+            cur_norm = cur["valor_norm"] or 1
+            cv = m["valor"]
+            if m["is_afk"]:
+                m["norm_pct"] = None  # АФК — не оцениваем
+            elif cv is None:
+                m["norm_pct"] = 0.0
+            else:
+                m["norm_pct"] = round(min(cv / cur_norm, 1.0) * 100, 1)
+
+            # Compliance — среднее % выполнения по всем неделям.
+            d = compliance.get(m["nick_canon"])
+            if d and d["n"]:
+                m["compliance"] = {
+                    "avg_pct":     round(d["sum"] / d["n"], 1),
+                    "weeks_count": d["n"],
+                    "weeks_met":   d["met"],
+                }
+            else:
+                m["compliance"] = None
+
+            # Тренд: сравниваем % выполнения этой недели vs прошлой.
+            #   pct_delta = cur_pct - prev_pct  (в процентных пунктах)
+            #   delta = cur_valor - prev_valor
             # Если человека не было на прошлой неделе → "new".
             pv = prev_valor.get(m["nick_canon"])
-            cv = m["valor"]
+            pp = prev_pct.get(m["nick_canon"])
             if prev is None:
                 m["trend"] = None
             elif pv is None and cv is None:
                 m["trend"] = None
             elif pv is None:
-                m["trend"] = {"kind": "new", "delta": cv, "pct": None}
+                m["trend"] = {"kind": "new", "delta": cv,
+                              "pct_delta": None}
             elif cv is None:
-                m["trend"] = {"kind": "lost", "delta": -pv, "pct": -100}
+                m["trend"] = {"kind": "lost", "delta": -pv,
+                              "pct_delta": -100.0}
             else:
                 delta = cv - pv
-                if pv == 0 and cv == 0:
-                    pct = 0
-                elif pv == 0:
-                    pct = None  # делить на 0 — нет нормированного % роста
+                # pct_delta — разность процентов выполнения, если оба
+                # участвовали в нормативе (не АФК на прошлой и этой)
+                if pp is None or m["norm_pct"] is None:
+                    pct_delta = None
                 else:
-                    pct = round(delta / pv * 100, 1)
-                kind = "up" if delta > 0 else "down" if delta < 0 else "flat"
-                m["trend"] = {"kind": kind, "delta": delta, "pct": pct}
+                    pct_delta = round(m["norm_pct"] - pp, 1)
+                # Kind определяем по pct_delta если есть, иначе по delta
+                ref = pct_delta if pct_delta is not None else delta
+                kind = "up" if ref > 0 else "down" if ref < 0 else "flat"
+                m["trend"] = {"kind": kind, "delta": delta,
+                              "pct_delta": pct_delta}
             members.append(m)
         return {
             "snapshot": dict(cur),
