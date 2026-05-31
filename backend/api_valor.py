@@ -17,8 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 import db
-from api_chat import require_bot_token
-from api_auth import require_officer
+from api_chat import require_bot_token, require_officer
 
 log = logging.getLogger("api.valor")
 router = APIRouter(prefix="/valor", tags=["valor"])
