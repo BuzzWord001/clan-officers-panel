@@ -2578,6 +2578,113 @@ def valor_top_rank_per_canon() -> dict[str, str]:
     return out
 
 
+# ── Иммунитет новичков (7 дней от accepted_date) ──────────────────────
+# Когда офицер принимает человека в клан (создаёт acceptance), ему даётся
+# 7-дневный иммунитет: он не обязан набирать недельный норматив доблести.
+# Логика учёта в недельной оценке:
+#   • immune_until > конец оцениваемой недели → status="active",
+#     вся неделя иммунная, оценку пропускаем
+#   • immune_until < начало оцениваемой недели → иммун уже истёк,
+#     обычная оценка
+#   • immune_until попадает в оцениваемую неделю → status="grace":
+#     норматив снижается пропорционально дням иммуна в неделе.
+#     dow окончания (Пн=0..Вс=6) задаёт credit_pct
+#     - dow=0 (Пн): 0% скидки — целая неделя без иммуна
+#     - dow=3 (Чт): ~43% скидки — почти половина недели иммунная
+#     - dow=5..6 (Сб/Вс): фактически вся неделя пропущена → продлеваем
+#       (status="extended"), оценку этой недели пропускаем
+def _iso_week_range(week: str) -> tuple[date, date]:
+    """«2026-W22» → (date понедельника, date воскресенья) ISO-недели."""
+    year_str, w_str = week.split("-W")
+    year, week_num = int(year_str), int(w_str)
+    # ISO: четверг недели — в году. Берём понедельник через fromisocalendar.
+    monday = date.fromisocalendar(year, week_num, 1)
+    return monday, monday + timedelta(days=6)
+
+
+def _compute_immunity(accepted_date: date,
+                       week: str) -> dict[str, Any] | None:
+    """Возвращает immunity-инфо или None если иммун уже истёк до начала
+    недели. Поля:
+      status:      "active"|"extended"|"grace"
+      accepted_date: ISO
+      immune_until:  ISO (день когда иммун заканчивается, exclusive)
+      ended_dow:   0..6 (Пн..Вс) день недели окончания (только grace/ended)
+      credit_pct:  0..100 — насколько норматив должен быть снижен
+      effective_norm_factor: 0..1 — что осталось от норматива
+    """
+    immune_until = accepted_date + timedelta(days=IMMUNITY_DAYS)
+    try:
+        week_start, week_end = _iso_week_range(week)
+    except Exception:
+        return None
+    # Случай: иммун полностью покрывает неделю и далее
+    if immune_until > week_end:
+        return {
+            "status":        "active",
+            "accepted_date": accepted_date.isoformat(),
+            "immune_until":  immune_until.isoformat(),
+            "ended_dow":     None,
+            "credit_pct":    100,
+            "effective_norm_factor": 0.0,
+        }
+    # Случай: иммун закончился до начала недели → нет специального статуса
+    if immune_until < week_start:
+        return None
+    # Иммун заканчивается в этой неделе → grace или extended
+    dow = immune_until.weekday()  # Пн=0..Вс=6
+    extended = dow >= 5  # Сб (5) или Вс (6)
+    # Дней в неделе БЕЗ иммунитета = 7 - (dow + 1)
+    # т.к. сам день immune_until ещё считаем иммунным до вечера.
+    # Для простоты: credit_pct = (dow + 1) / 7 * 100
+    if extended:
+        credit_pct = 100
+        norm_factor = 0.0
+        status = "extended"
+    else:
+        credit_pct = round((dow + 1) / 7.0 * 100)
+        norm_factor = round((6 - dow) / 7.0, 3)
+        status = "grace"
+    return {
+        "status":        status,
+        "accepted_date": accepted_date.isoformat(),
+        "immune_until":  immune_until.isoformat(),
+        "ended_dow":     dow,
+        "credit_pct":    credit_pct,
+        "effective_norm_factor": norm_factor,
+    }
+
+
+def valor_immunity_per_canon(week: str) -> dict[str, dict]:
+    """Map nick_canon → immunity-инфо для оцениваемой недели. Берёт
+    самую позднюю accepted_date по канону (если вернулся в клан — это
+    его свежий иммунитет). Возвращает только тех, у кого статус активен
+    или в grace; уже истекший иммун не возвращается."""
+    out: dict[str, dict] = {}
+    with connection() as conn:
+        # Группируем по canon, берём максимальный accepted_date.
+        rows = conn.execute(
+            "SELECT game_nick, MAX(accepted_date) AS d FROM acceptances "
+            "GROUP BY game_nick"
+        ).fetchall()
+    for r in rows:
+        try:
+            accepted = date.fromisoformat(r["d"])
+        except Exception:
+            continue
+        canon = _valor_canon(r["game_nick"])
+        if not canon:
+            continue
+        info = _compute_immunity(accepted, week)
+        if info:
+            # Если на тот же canon уже есть запись — оставляем более свежую
+            existing = out.get(canon)
+            if existing and existing["accepted_date"] >= info["accepted_date"]:
+                continue
+            out[canon] = info
+    return out
+
+
 # Какие поля валидно отслеживать в valor_history.
 # valor — пишется каждую неделю даже без изменений (для timeline и
 # popover-биржевого вида). rank/title/level/class пишутся только при
@@ -3261,6 +3368,8 @@ def valor_get_current() -> dict[str, Any]:
         chat_msgs = valor_chat_activity_by_canon()
         # Top-rank когда-либо (для авто-тега «Офицер» + score).
         top_rank_map = valor_top_rank_per_canon()
+        # Иммунитет новичков по canon — только активный/grace в неделе снимка
+        immunity_map = valor_immunity_per_canon(cur["week"])
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -3314,11 +3423,26 @@ def valor_get_current() -> dict[str, Any]:
             m["tags"] = manual_tags + [t for t in auto_tags if t not in manual_tags]
             m["top_rank"] = top_rank or None
 
-            # Текущий % выполнения норматива.
+            # Иммунитет новичка: если активен или попадает в эту неделю —
+            # корректируем оценку (effective_norm меньше base или null).
+            immunity = immunity_map.get(cn)
+            m["immunity"] = immunity
+
+            # Текущий % выполнения норматива (учитывает иммун).
             cur_norm = cur["valor_norm"] or 1
             cv = m["valor"]
             if m["is_afk"]:
                 m["norm_pct"] = None  # АФК — не оцениваем
+            elif immunity and immunity["status"] in ("active", "extended"):
+                m["norm_pct"] = None  # Иммунный — не оцениваем
+            elif immunity and immunity["status"] == "grace":
+                # Снижаем норматив пропорционально дням без иммуна
+                eff_norm = max(1, round(cur_norm * immunity["effective_norm_factor"]))
+                if cv is None:
+                    m["norm_pct"] = 0.0
+                else:
+                    m["norm_pct"] = round(min(cv / eff_norm, 1.0) * 100, 1)
+                m["effective_norm"] = eff_norm
             elif cv is None:
                 m["norm_pct"] = 0.0
             else:

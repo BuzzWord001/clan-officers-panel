@@ -58,9 +58,20 @@
     const s = DATA.snapshot;
     const m = DATA.members;
     const afk = m.filter(x => x.is_afk).length;
+    const immActive = m.filter(x => x.immunity &&
+      (x.immunity.status === "active" || x.immunity.status === "extended")).length;
+    const immGrace  = m.filter(x => x.immunity &&
+      x.immunity.status === "grace").length;
     const metGood = m.filter(x => x.norm_met === true).length;
-    const metBad  = m.filter(x => x.norm_met === false).length;
+    const metBad  = m.filter(x => x.norm_met === false &&
+      !(x.immunity && x.immunity.status !== "grace")).length;
     const totalValor = m.reduce((a, x) => a + (x.valor || 0), 0);
+    const immChip = immActive
+      ? `<span>иммун. новички: <b style="color:#7bc7ff">🛡 ${immActive}</b></span>`
+      : "";
+    const graceChip = immGrace
+      ? `<span>иммун. снят на неделе: <b style="color:#c9a8ff">🛡 ${immGrace}</b></span>`
+      : "";
     $("valor-summary").innerHTML = `
       <span>неделя: <b>${esc(s.week)}</b></span>
       <span>норматив: <b>${esc(s.valor_norm)}</b></span>
@@ -68,6 +79,8 @@
       <span>норматив выполнили: <b style="color:#88ff88">${metGood}</b></span>
       <span>не выполнили: <b style="color:#ff8080">${metBad}</b></span>
       <span>АФК: <b style="color:#ffd080">${afk}</b></span>
+      ${immChip}
+      ${graceChip}
       <span>сумма доблести: <b>${totalValor}</b></span>
     `;
   }
@@ -175,14 +188,67 @@
     return "p0";
   }
 
+  // Дни недели для UI иммунитета. dow: 0=Пн..6=Вс
+  const DOW_LABELS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const DOW_NAMES_FULL = ["понедельник","вторник","среду","четверг","пятницу","субботу","воскресенье"];
+
+  function fmtImmuneDate(iso) {
+    // "2026-06-07" → "7 июн"
+    if (!iso) return "";
+    const m = ["янв","фев","мар","апр","мая","июн",
+                "июл","авг","сен","окт","ноя","дек"];
+    const d = new Date(iso + "T00:00:00");
+    if (isNaN(d.getTime())) return iso;
+    return `${d.getDate()} ${m[d.getMonth()]}`;
+  }
+
   function renderNorm(m, norm) {
     if (m.is_afk) {
       return `<span class="norm-cell norm-afk"
         title="АФК — норматив не оценивается">АФК</span>`;
     }
+    // ── Иммунитет имеет приоритет над обычной оценкой ──
+    const imm = m.immunity;
+    if (imm && imm.status === "active") {
+      const until = fmtImmuneDate(imm.immune_until);
+      const tip = `Иммунитет новичка активен.\n` +
+        `Принят: ${imm.accepted_date}\nЗакончится: ${imm.immune_until}\n` +
+        `На время иммунитета норматив не оценивается.`;
+      return `<span class="norm-cell norm-immune norm-immune-active"
+        title="${esc(tip)}"
+        ><span class="shield">🛡</span> Иммун до ${until}</span>`;
+    }
+    if (imm && imm.status === "extended") {
+      const dowName = DOW_NAMES_FULL[imm.ended_dow] || "?";
+      const tip = `Иммунитет заканчивается в ${dowName} — слишком поздно ` +
+        `чтобы успеть набрать норматив. Эта неделя оценивается как ` +
+        `иммунная, отсчёт пойдёт со следующей.`;
+      const dowL = DOW_LABELS[imm.ended_dow] || "?";
+      return `<span class="norm-cell norm-immune norm-immune-extended norm-immune-d${imm.ended_dow}"
+        title="${esc(tip)}"
+        ><span class="shield">🛡</span> Продлён · окон. ${dowL}</span>`;
+    }
     const wc = m.warning_count || 0;
     const pct = m.norm_pct;
     const valor = m.valor != null ? m.valor : 0;
+
+    if (imm && imm.status === "grace") {
+      const dowL  = DOW_LABELS[imm.ended_dow] || "?";
+      const dowN  = DOW_NAMES_FULL[imm.ended_dow] || "?";
+      const effN  = m.effective_norm || norm;
+      const main  = `${valor}/${effN}`;
+      const cls   = pctClass(pct == null ? 0 : pct);
+      const ok    = (m.valor || 0) >= effN;
+      const baseTip = `Иммунитет закончился в ${dowN} (скидка ${imm.credit_pct}%). ` +
+        `Эффективный норматив этой недели: ${effN} вместо ${norm}. ` +
+        `Набрано: ${valor}.`;
+      const headTxt = ok ? `✓ ${main}` : `${main} · ${pct ?? 0}%`;
+      return `<span class="norm-cell norm-immune norm-immune-grace norm-immune-d${imm.ended_dow} norm-${cls}"
+        title="${esc(baseTip)}"
+        ><span class="shield">🛡</span> ${headTxt}
+        <small class="dow-tag">кон. ${dowL}</small></span>`;
+    }
+
     // Текст: 11/14 • 78%
     const main = `${valor}/${norm}`;
     if (m.norm_met === true) {
@@ -303,7 +369,12 @@
       const cls = m.class_ || "";
       // подсветка строки
       let rowCls = "m-row";
+      const im = m.immunity;
       if (m.is_afk) rowCls += " row-afk";
+      else if (im && (im.status === "active" || im.status === "extended"))
+        rowCls += " row-immune";
+      else if (im && im.status === "grace")
+        rowCls += " row-immune-grace";
       else if (m.norm_met === false) rowCls += " row-bad";
       else if (m.norm_met === true)  rowCls += " row-good";
       const valorCell = m.valor == null

@@ -2627,6 +2627,84 @@ body.show-valor .valor-col { display: table-cell; }
   border-color: var(--accent);
 }
 
+/* ── Иммунитет новичков (7 дней с приёма в клан) ──
+   Состояния:
+   active   — иммун ещё идёт (синий, спокойный)
+   extended — иммун закончился в Сб/Вс → продлён на след неделю (фиолетовый)
+   grace    — иммун снят в середине недели → пропорциональная скидка
+              Цвета по дню окончания (Пн зелёный → Сб/Вс красно-розовый),
+              чем позже в неделе спал — тем краснее.
+*/
+.norm-cell.norm-immune {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-weight: 600; letter-spacing: 0.3px;
+  border-style: solid;
+}
+.norm-cell.norm-immune .shield { font-size: 12px; line-height: 1; }
+.norm-cell.norm-immune .dow-tag {
+  font-size: 9px; opacity: 0.75;
+  margin-left: 4px; padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.norm-immune-active {
+  color: #7bc7ff;
+  background: linear-gradient(135deg, rgba(120,180,255,0.14), rgba(60,120,200,0.18));
+  border-color: rgba(120,180,255,0.45);
+  text-shadow: 0 0 6px rgba(120,180,255,0.30);
+}
+.norm-immune-extended {
+  color: #d4a8ff;
+  background: linear-gradient(135deg, rgba(170,120,230,0.18), rgba(100,60,180,0.22));
+  border-color: rgba(170,120,230,0.55);
+  text-shadow: 0 0 7px rgba(170,120,230,0.35);
+}
+/* Grace — палитра по дню окончания иммуна (Пн=0..Вс=6).
+   Чем позже — тем выраженнее «жёлто-красный» оттенок. */
+.norm-immune-grace.norm-immune-d0 { /* Пн — никакой скидки нужно */
+  color: #9be099;
+  background: linear-gradient(135deg, rgba(120,220,120,0.10), rgba(60,160,60,0.14));
+  border-color: rgba(120,220,120,0.40);
+}
+.norm-immune-grace.norm-immune-d1 { /* Вт — почти полная неделя */
+  color: #c5e088;
+  background: linear-gradient(135deg, rgba(170,220,100,0.10), rgba(120,180,60,0.14));
+  border-color: rgba(170,220,100,0.40);
+}
+.norm-immune-grace.norm-immune-d2 { /* Ср */
+  color: #e0d070;
+  background: linear-gradient(135deg, rgba(220,200,100,0.12), rgba(170,150,60,0.16));
+  border-color: rgba(220,200,100,0.45);
+}
+.norm-immune-grace.norm-immune-d3 { /* Чт */
+  color: #ffc466;
+  background: linear-gradient(135deg, rgba(255,180,80,0.13), rgba(200,130,40,0.18));
+  border-color: rgba(255,180,80,0.50);
+}
+.norm-immune-grace.norm-immune-d4 { /* Пт */
+  color: #ff9e6e;
+  background: linear-gradient(135deg, rgba(255,150,90,0.15), rgba(210,90,40,0.20));
+  border-color: rgba(255,150,90,0.55);
+}
+/* d5/d6 (Сб/Вс) обычно идут как extended, но если код сюда долетел —
+   ставим розово-красный сигнал */
+.norm-immune-grace.norm-immune-d5,
+.norm-immune-grace.norm-immune-d6 {
+  color: #ff8ba8;
+  background: linear-gradient(135deg, rgba(255,130,160,0.16), rgba(200,80,110,0.22));
+  border-color: rgba(255,130,160,0.55);
+}
+
+/* Подсветка строки для иммунных. Очень мягкая — чтобы не «кричала» */
+.members-table tr.row-immune       { background: rgba(120, 180, 255, 0.04); }
+.members-table tr.row-immune-grace { background: rgba(200, 160, 100, 0.04); }
+/* Sticky-ячейки на странице Доблесть для immune-строк */
+#valor-table tr.row-immune td:nth-child(1),
+#valor-table tr.row-immune td:nth-child(2) { background: #050a14; }
+#valor-table tr.row-immune-grace td:nth-child(1),
+#valor-table tr.row-immune-grace td:nth-child(2) { background: #100c05; }
+
 /* ── Новые авто-теги ── */
 .tag-socials {
   color: #9ccffd;
