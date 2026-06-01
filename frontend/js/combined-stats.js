@@ -141,6 +141,7 @@
       <span style="color:#b070dc">▌ соцсети</span>
       <span style="color:#ffe070">▌ ветеран</span>
       <span style="color:#ff9a44">▌ офицер</span>
+      <span style="color:#f078aa">▌ дисциплина (бонус сверх 100)</span>
     `;
 
     // Чем больше людей — тем выше холст. ~24px на строку — комфортно
@@ -148,6 +149,13 @@
     const rowH = items.length > 60 ? 22 : items.length > 30 ? 26 : 30;
     const wrap = document.querySelector(".combined-modal .canvas-wrap");
     wrap.style.height = Math.max(380, items.length * rowH + 80) + "px";
+
+    // Ось X: Ценность может превышать 100 за счёт дисциплинарного бонуса
+    // (напр. 106/100). Берём максимум по всем видимым и округляем вверх до 10,
+    // но не ниже 100 — иначе самый дисциплинированный бар упирался бы в край.
+    const maxTotal = items.reduce((mx, m) =>
+      m._is_sep ? mx : Math.max(mx, m.score.total || 0), 0);
+    const xMax = Math.max(100, Math.ceil(maxTotal / 10) * 10);
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
@@ -196,6 +204,15 @@
             data: items.map(m => m.score.officer ?? 0),
             backgroundColor: "rgba(255,154,68,0.78)",
             borderColor: "rgba(255,154,68,0.98)",
+            borderWidth: 1,
+          },
+          {
+            // Дисциплинарный бонус (перевыполнение + серии). Идёт сверх
+            // базовых 100 — поэтому именно он «вытягивает» Ценность выше 100.
+            label: "Дисциплина",
+            data: items.map(m => m.score.discipline ?? 0),
+            backgroundColor: "rgba(240,120,170,0.80)",
+            borderColor: "rgba(240,120,170,1)",
             borderWidth: 1,
           },
         ],
@@ -253,7 +270,7 @@
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
                 const MAX = {"Доблесть":60,"Чаты":5,"Соцсети":5,
-                              "Ветеран":16,"Офицер":14};
+                              "Ветеран":16,"Офицер":14,"Дисциплина":13};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
                 const max = MAX[lbl] || 0;
@@ -267,6 +284,11 @@
                   suffix = "  · " + sc.top_rank;
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
+                } else if (lbl === "Дисциплина") {
+                  const parts = [];
+                  if (sc.over_avg) parts.push("перевып. ×" + sc.over_avg);
+                  if (sc.max_streak) parts.push("серия " + sc.max_streak + " нед.");
+                  if (parts.length) suffix = "  · " + parts.join(", ");
                 }
                 return `  ${lbl}: ${val} / ${max}${suffix}`;
               },
@@ -288,7 +310,7 @@
           },
         },
         scales: {
-          x: { stacked: true, max: 100,
+          x: { stacked: true, max: xMax,
                 ticks: { color: "#a0a0a0", stepSize: 10 },
                 grid: { color: "rgba(255,255,255,0.04)" }, },
           y: { stacked: true,
