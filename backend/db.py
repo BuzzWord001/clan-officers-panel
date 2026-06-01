@@ -2977,6 +2977,10 @@ def valor_save_snapshot(
         snap_id = cur.lastrowid
 
         # ── 3. Вставляем участников с расчётом warning_count ──
+        # Иммунитет на эту неделю — учитываем при оценке norm_met и streak.
+        # Десктоп-бот не знает про иммунитет, шлёт norm_met по факту;
+        # переписываем здесь.
+        immunity_map = valor_immunity_per_canon(week)
         current_canons: set[str] = set()
         for m in members:
             nick = (m.get("nick") or "").strip()
@@ -2988,11 +2992,29 @@ def valor_save_snapshot(
 
             is_afk = bool(m.get("is_afk"))
             norm_met_raw = m.get("norm_met")
-            # Streak warning_count:
-            #   выполнил норматив или АФК → 0 (сброс)
-            #   не выполнил → prev_warnings[canon] + 1
-            #   нет prev → если не выполнил → 1, иначе 0
-            if is_afk or norm_met_raw is True:
+            valor_val = m.get("valor") if isinstance(m.get("valor"), int) else None
+            imm = immunity_map.get(canon)
+
+            # Иммунные новички:
+            #  active/extended → norm_met = None (не оцениваем),
+            #                    warning_count = 0
+            #  grace          → пересчитываем по effective_norm:
+            #                    valor >= eff_norm → True (warn=0)
+            #                    valor <  eff_norm → False (warn+=1)
+            if imm and imm["status"] in ("active", "extended"):
+                norm_met_raw = None
+                warning_count = 0
+            elif imm and imm["status"] == "grace":
+                eff_norm = max(1, round(valor_norm * imm["effective_norm_factor"]))
+                if valor_val is None:
+                    norm_met_raw = False
+                else:
+                    norm_met_raw = valor_val >= eff_norm
+                if norm_met_raw:
+                    warning_count = 0
+                else:
+                    warning_count = prev_warnings.get(canon, 0) + 1
+            elif is_afk or norm_met_raw is True:
                 warning_count = 0
             else:
                 warning_count = prev_warnings.get(canon, 0) + 1
@@ -3263,17 +3285,20 @@ def valor_by_canon_map(weeks: int = 0) -> dict[str, dict[str, Any]]:
                     "is_afk":    bool(r["is_afk"]),
                     "norm_pct":  norm_pct,
                 }
-        # Compliance — среднее по всем (или последним N) неделям
+        # Compliance — среднее по всем (или последним N) неделям.
+        # Иммунные (norm_met IS NULL) пропускаем как АФК — они не оцениваются.
         comp: dict[str, dict] = {}
         for r in conn.execute(
-            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vs.valor_norm,
-                      vs.week
+            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vm.norm_met,
+                      vs.valor_norm, vs.week
                FROM valor_members vm
                JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
         ):
             if allowed_weeks is not None and r["week"] not in allowed_weeks:
                 continue
             if r["is_afk"] or r["valor"] is None:
+                continue
+            if r["norm_met"] is None:
                 continue
             norm = r["valor_norm"] or 1
             pct = min(r["valor"] / norm, 1.0) * 100
@@ -3343,14 +3368,19 @@ def valor_get_current() -> dict[str, Any]:
                     prev_pct[cn] = round(min(v / prev_norm, 1.0) * 100, 1)
 
         # Compliance по всем неделям для каждого ника (среднее % выполнения).
+        # АФК и иммунные (norm_met IS NULL) пропускаем — они не оцениваются.
         compliance: dict[str, dict] = {}
         for r in conn.execute(
-            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vs.valor_norm
+            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vm.norm_met,
+                      vs.valor_norm
                FROM valor_members vm
                JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
         ):
             cn = r["nick_canon"]
             if r["is_afk"]:
+                continue
+            # norm_met IS NULL — иммунный или не оцениваемый, пропускаем
+            if r["norm_met"] is None:
                 continue
             if r["valor"] is None:
                 continue
