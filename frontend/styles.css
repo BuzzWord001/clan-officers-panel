@@ -2854,6 +2854,10 @@ body.show-valor .valor-col { display: table-cell; }
   animation: helpPopIn .12s ease-out;
 }
 .wtip-pop b { color: var(--accent); display: inline-block; margin-bottom: 2px; }
+/* цвет первой строки тултипа = по суровости/типу предупреждения */
+.wtip-light  b { color: #7cff9e; }   /* лёгкое — зелёный */
+.wtip-mid    b { color: #ffe070; }   /* среднее — жёлтый */
+.wtip-severe b { color: #ff6a6a; }   /* суровое и титул — красный */
 /* Кнопка «+» — добавить предупреждение вручную */
 .warn-add-btn {
   width: 16px; height: 16px;

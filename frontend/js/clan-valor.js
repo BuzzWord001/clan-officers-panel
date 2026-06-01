@@ -296,7 +296,7 @@
     const cls = pctClass(pct);
     const warnBadge = wc >= 1
       ? " " + warnChip("wsev-" + sev3(pct), wc,
-          `Норматив не выполнен\nнабрано ${pct}% нормы`)
+          `Норматив не выполнен\nнабрал ${valor} из ${norm} доблести = ${pct}%`)
       : "";
     const tip = `${pct}% от норматива`;
     return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
@@ -346,11 +346,12 @@
     const tw = m.title_warn;
     const manual = m.manual_warnings || [];
     const chips = [];
-    // Норматив — суровость по худшему % из активных недель
+    // Норматив — суровость по худшей неделе из активных
     if (ws.length) {
-      const worst = Math.min.apply(null, ws.map((w) => w.pct));
-      chips.push(warnChip("wsev-" + sev3(worst), ws.length,
-        `Норматив не выполнен\n${ws.length} нед. ниже нормы · худшее ${Math.round(worst)}%`));
+      const worstW = ws.reduce((a, b) => (b.pct < a.pct ? b : a));
+      const wk = ws.length > 1 ? ` (${ws.length} нед.)` : "";
+      chips.push(warnChip("wsev-" + sev3(worstW.pct), ws.length,
+        `Норматив не выполнен${wk}\nнабрал ${worstW.valor} из ${worstW.norm} доблести = ${worstW.pct}%`));
     }
     // Титул — строгий цвет
     if (tw) {
@@ -699,8 +700,14 @@
     const txt = el.getAttribute("data-wtip");
     if (!txt) return;
     hideWtip();
+    // Цвет первой строки = по типу/суровости чипа.
+    let tier = "";
+    if (el.classList.contains("wsev-light")) tier = " wtip-light";
+    else if (el.classList.contains("wsev-mid")) tier = " wtip-mid";
+    else if (el.classList.contains("wsev-severe") ||
+             el.classList.contains("wtype-title")) tier = " wtip-severe";
     const p = document.createElement("div");
-    p.className = "wtip-pop";
+    p.className = "wtip-pop" + tier;
     p.innerHTML = txt.split("\n")
       .map((l, i) => i === 0 ? `<b>${esc(l)}</b>` : esc(l)).join("<br>");
     document.body.appendChild(p);
