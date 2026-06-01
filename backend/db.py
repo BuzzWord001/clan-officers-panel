@@ -2762,6 +2762,57 @@ def valor_immunity_per_canon(week: str) -> dict[str, dict]:
     return out
 
 
+def valor_active_warnings() -> dict[str, list[dict]]:
+    """Активные предупреждения за невыполнение норматива по каждому канону.
+
+    Воспроизводим историю по неделям:
+      • НЕ выполнил норматив → добавляем предупреждение (с % набранного
+        норматива — это его «строгость»: чем меньше %, тем строже);
+      • ВЫПОЛНИЛ норматив → снимаем САМОЕ СТРОГОЕ (наименьший %), и только
+        потом более мягкие (правило: строгое уходит первым);
+      • неделя АФК / под иммунитетом — не оценивается (пропускаем).
+    Возвращает canon → список активных предупреждений
+    [{week, valor, norm, pct}] (в порядке появления).
+    """
+    accepted = valor_accepted_date_per_canon()
+    grouped: dict[str, list] = {}
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT vm.nick_canon AS cn, vs.week AS week, vm.valor AS valor,
+                      vm.is_afk AS is_afk, vm.norm_met AS norm_met,
+                      vs.valor_norm AS norm
+               FROM valor_members vm
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
+               ORDER BY vm.nick_canon, vs.week"""
+        ).fetchall()
+    for r in rows:
+        grouped.setdefault(r["cn"], []).append(r)
+    out: dict[str, list[dict]] = {}
+    for cn, weeks in grouped.items():
+        acc = accepted.get(cn)
+        active: list[dict] = []
+        for r in weeks:
+            if acc:
+                imm = _compute_immunity(acc, r["week"])
+                if imm and imm["status"] in ("active", "extended"):
+                    continue  # иммунная неделя — не оцениваем
+            if r["is_afk"] or r["valor"] is None or r["norm_met"] is None:
+                continue
+            norm = r["norm"] or 1
+            if r["norm_met"]:
+                if active:
+                    idx = min(range(len(active)),
+                              key=lambda i: active[i]["pct"])
+                    active.pop(idx)  # снять самое строгое
+            else:
+                pct = round(min(r["valor"] / norm, 1.0) * 100, 1)
+                active.append({"week": r["week"], "valor": r["valor"],
+                               "norm": norm, "pct": pct})
+        if active:
+            out[cn] = active
+    return out
+
+
 # Какие поля валидно отслеживать в valor_history.
 # valor — пишется каждую неделю даже без изменений (для timeline и
 # popover-биржевого вида). rank/title/level/class пишутся только при
@@ -3519,6 +3570,9 @@ def valor_get_current() -> dict[str, Any]:
         ):
             title_hist_week[r["nick_canon"]] = r["week"]
 
+        # Активные предупреждения за невыполнение норматива (replay истории).
+        warn_map = valor_active_warnings()
+
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
         for r in conn.execute(
@@ -3707,6 +3761,10 @@ def valor_get_current() -> dict[str, Any]:
             tw = _title_warn(m.get("title"))
             m["title_warn"] = tw
             m["title_warn_since"] = title_hist_week.get(cn) if tw else None
+            # Активные норматив-предупреждения (строгие — первыми для показа).
+            w = warn_map.get(cn, [])
+            m["warnings"] = sorted(w, key=lambda x: x["pct"])
+            m["warning_count"] = len(w)  # для бейджа в колонке «Норматив»
             members.append(m)
         return {
             "snapshot": dict(cur),

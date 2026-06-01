@@ -120,6 +120,10 @@
     if (key === "compliance") {
       return m.compliance ? m.compliance.avg_pct : -1;
     }
+    if (key === "warnings") {
+      // Сортируем по числу активных предупреждений (норматив + титул).
+      return (m.warnings ? m.warnings.length : 0) + (m.title_warn ? 1 : 0);
+    }
     if (key === "trend") {
       const t = m.trend;
       if (!t) return -1e9;
@@ -302,8 +306,7 @@
       + ` — набрано ${pct}% от нормы`;
     const warnBadge = wc >= 1
       ? ` <span class="warn-badge warn-${sev}${wc > 1 ? " warn-badge-multi" : ""}" ` +
-        `title="${esc(warnTip)}">` +
-        `⚠${wc > 1 ? " " + wc : ""}</span>`
+        `title="${esc(warnTip)}">⚠ ${wc}</span>`
       : "";
     const tip = wc > 1
       ? `${wc} подряд недель без норматива (текущая ${pct}%)`
@@ -323,6 +326,35 @@
       >${c.avg_pct}%
       <small style="opacity:0.7">${c.weeks_met}/${c.weeks_count}</small>
     </span>`;
+  }
+
+  function sevOfPct(pct) {
+    return pct >= 80 ? "ok" : pct >= 60 ? "mid"
+         : pct >= 40 ? "low" : pct >= 20 ? "bad" : "crit";
+  }
+
+  // Колонка «Предупреждения» — все активные предупреждения человека:
+  // норматив-предупреждения (с % набранного, цвет = строгость) + отметка
+  // офицера из титула. Строгие — первыми (бэкенд уже отсортировал по %).
+  function renderWarnings(m) {
+    const list = m.warnings || [];
+    const tw = m.title_warn;
+    if (!list.length && !tw)
+      return `<span class="no-warn" title="нет активных предупреждений">✓</span>`;
+    const chips = list.map((w) => {
+      const sev = sevOfPct(w.pct);
+      const tip = `Норматив не выполнен (${w.week}): набрано ` +
+        `${w.valor} из ${w.norm} = ${w.pct}%`;
+      return `<span class="warn-badge warn-${sev}" title="${esc(tip)}"` +
+        `>${w.valor}/${w.norm}·${Math.round(w.pct)}%</span>`;
+    });
+    if (tw) {
+      const multi = tw >= 2 ? " title-warn-multi" : "";
+      chips.push(`<span class="title-warn${multi}" ` +
+        `title="Предупреждение от офицера (отметка в титуле): ${tw}"` +
+        `>титул ⚠${tw}</span>`);
+    }
+    return `<div class="warn-list">${chips.join("")}</div>`;
   }
 
   function renderSocials(s) {
@@ -468,6 +500,7 @@
         : `<span class="hist-cell" data-field="valor">${esc(m.valor)}</span>`;
       const normLabel    = renderNorm(m, norm);
       const compLabel    = renderCompliance(m.compliance);
+      const warnCell     = renderWarnings(m);
       const trendCell    = renderTrend(m.trend);
       const socialCell   = renderSocials(m.socials);
       return `
@@ -483,6 +516,7 @@
           <td class="m-cell-num m-cell-total">${valorCell}</td>
           <td class="m-cell-num">${normLabel}</td>
           <td class="m-cell-num">${compLabel}</td>
+          <td class="m-cell-warn">${warnCell}</td>
           <td class="m-cell-num">${trendCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
           <td class="m-cell-num">${renderScore(m.score)}</td>

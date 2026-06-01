@@ -2794,6 +2794,23 @@ body.show-valor .valor-col { display: table-cell; }
   box-shadow: 0 0 7px rgba(255, 59, 59, 0.5);
 }
 
+/* Колонка «Предупреждения» — список активных предупреждений человека */
+.m-cell-warn { text-align: center; }
+.warn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  align-items: center;
+}
+.warn-list .warn-badge,
+.warn-list .title-warn { margin-left: 0; }
+.no-warn {
+  color: var(--accent);
+  opacity: 0.45;
+  font-weight: 700;
+}
+
 /* Кликабельный значок «?» рядом с заголовком столбца */
 .col-help {
   display: inline-flex;
