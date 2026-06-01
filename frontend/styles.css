@@ -2541,6 +2541,16 @@ body.show-valor .valor-col { display: table-cell; }
 #valor-table th:nth-child(3),
 #valor-table td:nth-child(3) { padding-left: 14px; }
 
+/* Анти-обрезка начала ника при горизонтальном скролле/фильтрации:
+   колонку «#» уводим ПОД «Ник» по z-index (тогда непрозрачный фон «#»
+   не перекрывает первую букву ника), фиксируем ширину «#» и добавляем
+   запас слева у ячейки ника. */
+#valor-table tbody td:nth-child(1) { z-index: 1; }
+#valor-table tbody td:nth-child(2) { z-index: 2; }
+#valor-table th:nth-child(1),
+#valor-table td:nth-child(1) { width: 38px; min-width: 38px; max-width: 38px; }
+#valor-table td:nth-child(2) { padding-left: 14px; }
+
 #valor-table tr.row-good td:nth-child(1),
 #valor-table tr.row-good td:nth-child(2)  { background: #031203; }
 #valor-table tr.row-bad td:nth-child(1),
