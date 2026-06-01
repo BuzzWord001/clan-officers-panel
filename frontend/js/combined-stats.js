@@ -160,16 +160,50 @@
           legend: { display: false },
           tooltip: {
             mode: "index", intersect: false,
+            // Скрываем категории с 0 баллов чтобы не зашумлять
+            filter: (tt) => (tt.parsed.x || 0) > 0,
             callbacks: {
-              afterLabel: (ctx) => {
-                if (ctx.dataset.label !== "Офицер") return "";
-                const m = items[ctx.dataIndex];
-                return m.score && m.score.top_rank
-                  ? "  (" + m.score.top_rank + ")" : "";
+              // Заголовок: ник + истинное имя на отдельных строках для
+              // длинных имён, плюс «иммунитет» если он есть
+              title: (tts) => {
+                if (!tts.length) return "";
+                const m = items[tts[0].dataIndex];
+                const lines = [m.nick];
+                if (m.true_name) lines.push("· " + m.true_name);
+                if (m.immunity && m.immunity.status === "active") {
+                  lines.push("🛡 иммунитет активен (до " +
+                    m.immunity.immune_until + ")");
+                } else if (m.immunity && m.immunity.status === "extended") {
+                  lines.push("🛡 иммун продлён на след. неделю");
+                } else if (m.immunity && m.immunity.status === "grace") {
+                  lines.push("🛡 иммун снят (скидка " +
+                    m.immunity.credit_pct + "%)");
+                }
+                return lines;
               },
-              footer: (items) => {
-                const total = items.reduce((a, t) => a + (t.parsed.x || 0), 0);
-                return "Итого: " + Math.round(total * 10) / 10 + " / 100";
+              // Лейбл одной категории: «Доблесть: 22.5 / 25»
+              // Для «Офицер» дописываем top_rank, для «Чаты» — кол-во сообщ.
+              label: (ctx) => {
+                const MAX = {"Доблесть":25,"Чаты":20,"Соцсети":15,
+                              "Ветеран":10,"Офицер":30};
+                const lbl = ctx.dataset.label;
+                const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
+                const max = MAX[lbl] || 0;
+                let suffix = "";
+                const m = items[ctx.dataIndex];
+                if (lbl === "Офицер" && m.score && m.score.top_rank) {
+                  suffix = "  · " + m.score.top_rank;
+                } else if (lbl === "Чаты" && m.score) {
+                  suffix = "  · " + (m.score.chat_msgs || 0) + " сообщ.";
+                }
+                return `  ${lbl}: ${val} / ${max}${suffix}`;
+              },
+              // Footer: итог + процент от максимума
+              footer: (tts) => {
+                const total = tts.reduce((a, t) => a + (t.parsed.x || 0), 0);
+                const rounded = Math.round(total * 10) / 10;
+                const pct = Math.round(total);
+                return `Итого: ${rounded} / 100 (${pct}%)`;
               },
             },
           },
