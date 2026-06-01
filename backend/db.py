@@ -2598,7 +2598,7 @@ def _achievement(comp: dict | None) -> str | None:
     тем выше метка (legend > ace > etalon). Без безупречной истории —
     метки за силу/серии перевыполнения (record > double > over).
     """
-    if not comp or not comp.get("n"):
+    if not comp or not comp.get("weeks_count"):
         return None
     wc = comp["weeks_count"]
     flawless = comp["weeks_met"] == wc and wc >= 3
