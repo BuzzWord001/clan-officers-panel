@@ -2854,10 +2854,16 @@ body.show-valor .valor-col { display: table-cell; }
   animation: helpPopIn .12s ease-out;
 }
 .wtip-pop b { color: var(--accent); display: inline-block; margin-bottom: 2px; }
-/* цвет первой строки тултипа = по суровости/типу предупреждения */
+/* цвет первой строки + РАМКА тултипа = по суровости/типу предупреждения */
 .wtip-light  b { color: #7cff9e; }   /* лёгкое — зелёный */
 .wtip-mid    b { color: #ffe070; }   /* среднее — жёлтый */
 .wtip-severe b { color: #ff6a6a; }   /* суровое и титул — красный */
+.wtip-light  { border-color: rgba(124,255,158,0.55);
+               box-shadow: 0 4px 22px rgba(70,210,110,0.22), 0 0 50px rgba(0,0,0,0.7); }
+.wtip-mid    { border-color: rgba(255,224,112,0.60);
+               box-shadow: 0 4px 22px rgba(235,200,70,0.22), 0 0 50px rgba(0,0,0,0.7); }
+.wtip-severe { border-color: rgba(255,106,106,0.66);
+               box-shadow: 0 4px 22px rgba(255,70,70,0.24), 0 0 50px rgba(0,0,0,0.7); }
 /* Кнопка «+» — добавить предупреждение вручную */
 .warn-add-btn {
   width: 16px; height: 16px;
