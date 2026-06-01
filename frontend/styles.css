@@ -2505,64 +2505,43 @@ body.show-valor .valor-col { display: table-cell; }
 /* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
 .members-table-wrap { overflow-x: auto; }
 
-/* ── Sticky первые столбцы (# и Ник) в таблицах с горизонтальным скроллом ──
-   Дизайн-цель: при гор-скролле первые две колонки остаются на месте и
-   визуально сливаются с остальными ячейками (чёрный фон страницы), а
-   тонкая граница и мягкая тень отделяют sticky-блок от скроллящегося. */
-.members-table th:nth-child(1),
-.members-table td:nth-child(1),
-.members-table th:nth-child(2),
-.members-table td:nth-child(2) {
+/* ── Sticky первые столбцы (# и Ник) ТОЛЬКО на странице «Доблесть» ──
+   На странице «Участники» (chat-members) таблица помещается без
+   горизонтального скролла, поэтому sticky не нужен. На departed-
+   таблице ниже на странице «Доблесть» тоже не применяем (без id). */
+#valor-table th:nth-child(1),
+#valor-table td:nth-child(1),
+#valor-table th:nth-child(2),
+#valor-table td:nth-child(2) {
   position: sticky;
   z-index: 2;
 }
-.members-table th:nth-child(1),
-.members-table td:nth-child(1) { left: 0; }
-.members-table th:nth-child(2),
-.members-table td:nth-child(2) { left: 38px; }
-.members-table thead th:nth-child(1),
-.members-table thead th:nth-child(2) { z-index: 3; }
+#valor-table th:nth-child(1),
+#valor-table td:nth-child(1) { left: 0; }
+#valor-table th:nth-child(2),
+#valor-table td:nth-child(2) { left: 38px; }
+#valor-table thead th:nth-child(1),
+#valor-table thead th:nth-child(2) { z-index: 3; }
 
-/* Дефолтный фон sticky-ячеек = чёрный фон страницы → не отличаются
-   от прочих ячеек в обычной строке. */
-.members-table td:nth-child(1),
-.members-table td:nth-child(2) { background: #000; }
+#valor-table td:nth-child(1),
+#valor-table td:nth-child(2) { background: #000; }
+#valor-table thead th:nth-child(1),
+#valor-table thead th:nth-child(2) { background: #000; }
 
-/* thead — чёрный с лёгким полупрозрачным наложением чтобы совпасть с
-   обычными thead-ячейками (rgba(0,0,0,0.55) на #000 ≈ чёрный). */
-.members-table thead th:nth-child(1),
-.members-table thead th:nth-child(2) {
-  background: #000;
-}
-
-/* Граница между sticky-блоком и скроллящимся контентом — справа у Ник.
-   Между # и Ник — НЕ границы, это один островной блок. */
-.members-table th:nth-child(2),
-.members-table td:nth-child(2) {
+#valor-table th:nth-child(2),
+#valor-table td:nth-child(2) {
   box-shadow: 4px 0 8px -2px rgba(0,0,0,0.6);
   border-right: 1px solid rgba(0, 255, 65, 0.10);
 }
+#valor-table th:nth-child(3),
+#valor-table td:nth-child(3) { padding-left: 14px; }
 
-/* Воздух слева у 3-го столбца чтобы Ник его не прижимал. */
-.members-table th:nth-child(3),
-.members-table td:nth-child(3) {
-  padding-left: 14px;
-}
-
-/* Подсветки строк под sticky — те же rgba что для остальных ячеек
-   накатанные поверх #000. Не выделяем sticky-блок отдельным тоном. */
-.members-table tr.row-good td:nth-child(1),
-.members-table tr.row-good td:nth-child(2)  { background: #031203; }
-.members-table tr.row-bad td:nth-child(1),
-.members-table tr.row-bad td:nth-child(2)   { background: #120608; }
-.members-table tr.row-afk td:nth-child(1),
-.members-table tr.row-afk td:nth-child(2)   { background: #0d0a05; }
-.members-table tr.m-row-left td:nth-child(1),
-.members-table tr.m-row-left td:nth-child(2)   { background: #070606; }
-.members-table tr.m-row-silent td:nth-child(1),
-.members-table tr.m-row-silent td:nth-child(2) { background: #000; }
-.members-table tr.m-row-unreg td:nth-child(1),
-.members-table tr.m-row-unreg td:nth-child(2)  { background: #060503; }
+#valor-table tr.row-good td:nth-child(1),
+#valor-table tr.row-good td:nth-child(2)  { background: #031203; }
+#valor-table tr.row-bad td:nth-child(1),
+#valor-table tr.row-bad td:nth-child(2)   { background: #120608; }
+#valor-table tr.row-afk td:nth-child(1),
+#valor-table tr.row-afk td:nth-child(2)   { background: #0d0a05; }
 
 /* ── Modal совмещённой статистики (Доблесть + Чаты + Соцсети + Ветеран) ── */
 .combined-overlay {
@@ -2613,6 +2592,21 @@ body.show-valor .valor-col { display: table-cell; }
   font-family: "Cascadia Code", monospace;
   font-size: 11px;
   color: var(--text-dim);
+}
+/* «показано / средняя ценность / легенда» — sticky сверху body,
+   чтобы при скролле длинного списка строка оставалась видна.
+   Лёгкий фон + blur — без сильного контраста. Компенсируем padding
+   родителя через margin/padding чтобы не было пустой полоски сверху. */
+.combined-modal #cs-stats {
+  position: sticky;
+  top: -16px;
+  z-index: 5;
+  background: rgba(10, 12, 10, 0.80);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  margin: -16px -18px 8px;
+  padding: 12px 18px 10px;
+  border-bottom: 1px solid rgba(0, 255, 65, 0.10);
 }
 .combined-modal .canvas-wrap {
   position: relative; height: 60vh; min-height: 380px;
