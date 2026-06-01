@@ -76,6 +76,16 @@
     if (key === "level" || key === "valor")
       return m[key] == null ? -1 : m[key];
     if (key === "class") return (m.class_ || "").toLowerCase();
+    if (key === "rank") {
+      // ВНИМАНИЕ: чем меньше число — тем выше должность. Чтобы при
+      // сортировке asc высшие были сверху, возвращаем -order
+      // (sort работает в обоих направлениях, но дефолт по rank — asc
+      // даёт правильный порядок Мастер→Рядовой).
+      return rankOrder(m.rank);
+    }
+    if (key === "score") {
+      return m.score ? m.score.total : -1;
+    }
     if (key === "norm") {
       // Сортируем по % выполнения текущей недели; АФК в середине
       if (m.is_afk) return 50;
@@ -92,6 +102,49 @@
       return t.pct_delta != null ? t.pct_delta : t.delta;
     }
     return (m[key] || "").toString().toLowerCase();
+  }
+
+  // Иерархия должностей в PW — для сортировки.
+  const RANK_ORDER = {
+    "мастер": 0, "мастер гильдии": 0, "мастер клана": 0,
+    "маршал": 1, "майор": 2, "капитан": 3,
+    "лейтенант": 4, "ефрейтор": 5, "рядовой": 6, "": 7,
+  };
+  function rankOrder(s) {
+    return RANK_ORDER[(s || "").trim().toLowerCase()] ?? 99;
+  }
+
+  const TAG_META = {
+    veteran: { label: "Ветеран", icon: "★",
+               cls: "tag-veteran",
+               tip: "Был в первоначальном списке клана (clan-checklist)" },
+  };
+
+  function renderTags(m) {
+    const tags = m.tags || [];
+    const btn = `<button class="tag-add-btn" data-nick="${esc(m.nick)}"
+      title="Добавить метку">+</button>`;
+    if (!tags.length) return `<div class="tag-row">${btn}</div>`;
+    const chips = tags.map(t => {
+      const meta = TAG_META[t] || { label: t, icon: "·",
+                                      cls: "tag-default", tip: t };
+      return `<span class="tag-chip ${meta.cls}" title="${esc(meta.tip)}"
+        data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
+        ><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
+    }).join("");
+    return `<div class="tag-row">${chips}${btn}</div>`;
+  }
+
+  function renderScore(s) {
+    if (!s) return `<span style="color:#888">—</span>`;
+    const cls = pctClass(s.total);
+    const tip = `Итог: ${s.total} / 100\n`
+      + `• доблесть: ${s.compliance} / 40\n`
+      + `• чаты: ${s.chat} / 30 (${s.chat_msgs} сообщ.)\n`
+      + `• соцсети: ${s.socials} / 20\n`
+      + `• ветеран: ${s.veteran} / 10`;
+    return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
+      ><b>${s.total}</b><small style="opacity:0.7">/100</small></span>`;
   }
 
   function pctClass(pct) {
@@ -256,6 +309,8 @@
           <td class="m-cell-num">${normLabel}</td>
           <td class="m-cell-num">${compLabel}</td>
           <td class="m-cell-num">${trendCell}</td>
+          <td class="tags-cell">${renderTags(m)}</td>
+          <td class="m-cell-num">${renderScore(m.score)}</td>
         </tr>`;
     }).join("");
     $("valor-tbody").innerHTML = rows;
@@ -284,6 +339,46 @@
   });
 
   // Popover-история для полей rank/title/level/class
+  // Tag-add / Tag-remove handlers
+  $("valor-tbody").addEventListener("click", async (ev) => {
+    const addBtn = ev.target.closest(".tag-add-btn");
+    if (addBtn) {
+      ev.stopPropagation();
+      const nick = addBtn.dataset.nick;
+      const tag = (prompt(
+        `Добавить метку для «${nick}»?\nНапример: veteran, core, leader`,
+        "veteran") || "").trim();
+      if (!tag) return;
+      try {
+        await fetch((window.OFFICERS_CONFIG?.API_URL || "")
+                     + "/valor/tags",
+          { method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json",
+              "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") },
+            body: JSON.stringify({ nick, tag }) });
+        await load();
+      } catch (e) { alert("Ошибка: " + (e.message || e)); }
+      return;
+    }
+    const tagChip = ev.target.closest(".tag-chip");
+    if (tagChip && ev.shiftKey) {
+      ev.stopPropagation();
+      const nick = tagChip.dataset.nick;
+      const tag = tagChip.dataset.tag;
+      if (!confirm(`Удалить метку «${tag}» с «${nick}»?`)) return;
+      try {
+        const u = (window.OFFICERS_CONFIG?.API_URL || "")
+          + "/valor/tags?nick=" + encodeURIComponent(nick)
+          + "&tag=" + encodeURIComponent(tag);
+        await fetch(u, { method: "DELETE", credentials: "include",
+          headers: { "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") } });
+        await load();
+      } catch (e) { alert("Ошибка: " + (e.message || e)); }
+      return;
+    }
+  });
+
+  // History popover (по клику на ячейки с историей)
   $("valor-tbody").addEventListener("click", async (ev) => {
     const cell = ev.target.closest(".hist-cell");
     if (!cell) return;

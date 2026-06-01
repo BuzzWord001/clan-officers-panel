@@ -320,6 +320,18 @@ CREATE TABLE IF NOT EXISTS valor_history (
 CREATE INDEX IF NOT EXISTS idx_valor_history_member
     ON valor_history(nick_canon, field, week);
 
+-- Метки сокланов: ветеран, ядро клана и пр. Тег → один на пару
+-- (nick_canon, tag). Persistent — не зависит от снимков, не
+-- удаляется при ушёл/вернулся.
+CREATE TABLE IF NOT EXISTS valor_tags (
+    nick_canon TEXT NOT NULL,
+    tag        TEXT NOT NULL,
+    source     TEXT NOT NULL DEFAULT 'manual',
+    added_at   TEXT NOT NULL,
+    PRIMARY KEY (nick_canon, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_valor_tags_tag ON valor_tags(tag);
+
 -- Архив ушедших из клана. При save_snapshot, если ник был в prev,
 -- но в current его нет — INSERT/UPDATE сюда (последние известные
 -- данные). Если ник снова появился в новом снапшоте — DELETE.
@@ -2496,6 +2508,27 @@ def _valor_canon(nick: str) -> str:
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
 
 
+# Иерархия должностей в PW (для умной сортировки в UI).
+# Чем меньше число — тем выше должность.
+_RANK_ORDER = {
+    "мастер":      0,
+    "мастер гильдии": 0,
+    "мастер клана":   0,
+    "маршал":      1,
+    "майор":       2,
+    "капитан":     3,
+    "лейтенант":   4,
+    "ефрейтор":    5,
+    "рядовой":     6,
+    "":            7,
+}
+
+
+def rank_order(s: str) -> int:
+    """Числовой ранг должности — для сортировки. Неизвестные → 99."""
+    return _RANK_ORDER.get((s or "").strip().lower(), 99)
+
+
 # Какие поля валидно отслеживать в valor_history.
 # valor — пишется каждую неделю даже без изменений (для timeline и
 # popover-биржевого вида). rank/title/level/class пишутся только при
@@ -2947,6 +2980,92 @@ def valor_save_snapshot(
     }
 
 
+def valor_add_tags(tag: str, nicks: list[str],
+                    source: str = "manual") -> dict[str, int]:
+    """Bulk-добавление тегов. tag нормализуется в lowercase."""
+    tag = (tag or "").strip().lower()
+    if not tag:
+        return {"added": 0, "skipped": 0}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    added = 0
+    skipped = 0
+    with connection() as conn:
+        for nick in nicks:
+            canon = _valor_canon(nick)
+            if not canon:
+                skipped += 1
+                continue
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO valor_tags "
+                "(nick_canon, tag, source, added_at) VALUES (?,?,?,?)",
+                (canon, tag, source, now),
+            )
+            if cur.rowcount:
+                added += 1
+            else:
+                skipped += 1
+    return {"added": added, "skipped": skipped}
+
+
+def valor_remove_tag(nick: str, tag: str) -> bool:
+    """Удалить один тег. True если удалено."""
+    tag = (tag or "").strip().lower()
+    canon = _valor_canon(nick)
+    if not canon or not tag:
+        return False
+    with connection() as conn:
+        cur = conn.execute(
+            "DELETE FROM valor_tags WHERE nick_canon = ? AND tag = ?",
+            (canon, tag),
+        )
+        return cur.rowcount > 0
+
+
+def valor_list_tags() -> dict[str, list[str]]:
+    """Возвращает map canon → [tags...]."""
+    out: dict[str, list[str]] = {}
+    with connection() as conn:
+        for r in conn.execute(
+            "SELECT nick_canon, tag FROM valor_tags ORDER BY tag"
+        ):
+            out.setdefault(r["nick_canon"], []).append(r["tag"])
+    return out
+
+
+def valor_chat_activity_by_canon() -> dict[str, int]:
+    """Возвращает canon → суммарное количество сообщений в архиве чатов.
+    Матчинг через clan_members.tg_id / vk_id (узнаём кто это)."""
+    out: dict[str, int] = {}
+    with connection() as conn:
+        # Сначала собираем canon → (tg_id, vk_id) из clan_members
+        for r in conn.execute(
+            "SELECT game_nick, tg_id, vk_id FROM clan_members "
+            "WHERE is_active = 1"
+        ):
+            canons = [_valor_canon(n) for n in (r["game_nick"] or "").split(",")]
+            canons = [c for c in canons if c]
+            if not canons:
+                continue
+            total = 0
+            if r["tg_id"]:
+                tg_total = conn.execute(
+                    "SELECT count(*) FROM chat_messages "
+                    "WHERE platform = 'tg' AND user_id = ?",
+                    (str(r["tg_id"]),),
+                ).fetchone()[0]
+                total += tg_total or 0
+            if r["vk_id"]:
+                vk_total = conn.execute(
+                    "SELECT count(*) FROM chat_messages "
+                    "WHERE platform = 'vk' AND user_id = ?",
+                    (str(r["vk_id"]),),
+                ).fetchone()[0]
+                total += vk_total or 0
+            for c in canons:
+                out[c] = max(out.get(c, 0), total)
+    return out
+
+
 def valor_by_canon_map(weeks: int = 0) -> dict[str, dict[str, Any]]:
     """Map canon_nick → {nick, true_name, valor, norm_pct, compliance_avg,
     weeks_count, weeks_met} для последнего N-недельного периода.
@@ -3087,6 +3206,11 @@ def valor_get_current() -> dict[str, Any]:
             if r["valor"] >= norm:
                 d["met"] += 1
 
+        # Теги по canon (ветеран и т.п.) — для UI меток.
+        tags_map = valor_list_tags()
+        # Активность в чатах по canon — для финального score.
+        chat_msgs = valor_chat_activity_by_canon()
+
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
         for r in conn.execute(
@@ -3124,7 +3248,9 @@ def valor_get_current() -> dict[str, Any]:
             if m["norm_met"] is not None:
                 m["norm_met"] = bool(m["norm_met"])
             # Соцсети (по canon ника)
-            m["socials"] = socials.get(m["nick_canon"]) or None
+            cn = m["nick_canon"]
+            m["socials"] = socials.get(cn) or None
+            m["tags"]    = tags_map.get(cn, [])
 
             # Текущий % выполнения норматива.
             cur_norm = cur["valor_norm"] or 1
@@ -3176,6 +3302,35 @@ def valor_get_current() -> dict[str, Any]:
                 kind = "up" if ref > 0 else "down" if ref < 0 else "flat"
                 m["trend"] = {"kind": kind, "delta": delta,
                               "pct_delta": pct_delta}
+
+            # ── Финальный score: «ценность для клана» ──
+            # Раскладка (max 100):
+            #   compliance: 0..40  (compliance.avg_pct * 0.4)
+            #   chat:       0..30  (min(msgs/50, 1) * 30)
+            #   socials:    0..20  (10 за VK + 10 за TG)
+            #   veteran:    0..10
+            comp_pts = 0.0
+            comp_obj = m.get("compliance")
+            if comp_obj:
+                comp_pts = round(comp_obj["avg_pct"] * 0.4, 1)
+            msgs = chat_msgs.get(cn, 0)
+            chat_pts = round(min(msgs / 50.0, 1.0) * 30, 1)
+            soc_pts = 0
+            soc = m.get("socials") or {}
+            if soc.get("vk_id") or soc.get("vk_screen_name"):
+                soc_pts += 10
+            if soc.get("tg_id") or soc.get("tg_username"):
+                soc_pts += 10
+            veteran_pts = 10 if "veteran" in m["tags"] else 0
+            total = round(comp_pts + chat_pts + soc_pts + veteran_pts, 1)
+            m["score"] = {
+                "total":      total,
+                "compliance": comp_pts,
+                "chat":       chat_pts,
+                "chat_msgs":  msgs,
+                "socials":    soc_pts,
+                "veteran":    veteran_pts,
+            }
             members.append(m)
         return {
             "snapshot": dict(cur),

@@ -100,6 +100,41 @@ def valor_by_canon(weeks: int = Query(default=0, ge=0, le=52),
     return db.valor_by_canon_map(weeks=weeks)
 
 
+class TagsBulkIn(BaseModel):
+    tag:    str = Field(..., min_length=1, max_length=32)
+    nicks:  list[str]
+    source: str = "manual"
+
+
+class TagOne(BaseModel):
+    nick: str
+    tag:  str
+
+
+@router.post("/tags/bulk")
+def valor_tags_bulk(payload: TagsBulkIn,
+                    _: dict = Depends(require_officer)) -> dict:
+    """Помечает множество ников одним тегом. Используется для разового
+    заливки «ветеранов» из clan-checklist."""
+    return db.valor_add_tags(payload.tag, payload.nicks, payload.source)
+
+
+@router.post("/tags")
+def valor_tag_one(payload: TagOne,
+                  _: dict = Depends(require_officer)) -> dict:
+    """Добавить один тег одному нику."""
+    return db.valor_add_tags(payload.tag, [payload.nick], source="manual")
+
+
+@router.delete("/tags")
+def valor_tag_delete(nick: str = Query(..., min_length=1),
+                     tag: str = Query(..., min_length=1),
+                     _: dict = Depends(require_officer)) -> dict:
+    """Удалить тег с ника."""
+    ok = db.valor_remove_tag(nick, tag)
+    return {"ok": ok}
+
+
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,

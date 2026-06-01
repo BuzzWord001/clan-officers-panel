@@ -2459,3 +2459,48 @@ video.chat-media-thumb {
    делает их видимыми. */
 .valor-col { display: none; }
 body.show-valor .valor-col { display: table-cell; }
+
+/* Метки сокланов */
+.tags-cell { padding: 4px; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: 11px;
+  font-family: "Cascadia Code", monospace;
+  font-size: 11px; font-weight: 700;
+  border: 1px solid; white-space: nowrap;
+  cursor: default; user-select: none;
+}
+.tag-chip .ic { font-size: 12px; line-height: 1; }
+.tag-chip:hover { filter: brightness(1.2); }
+/* Veteran — золото-янтарный с лёгким блеском */
+.tag-veteran {
+  color: #ffe070;
+  background: linear-gradient(135deg, rgba(255, 200, 80, 0.18), rgba(160, 100, 40, 0.20));
+  border-color: rgba(255, 200, 100, 0.55);
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.45);
+}
+.tag-default {
+  color: #b0b0b0; background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.2);
+}
+.tag-add-btn {
+  width: 18px; height: 18px; padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px dashed rgba(255,255,255,0.2);
+  font-size: 11px; cursor: pointer; line-height: 1;
+}
+.tag-add-btn:hover {
+  color: var(--accent); border-color: var(--accent);
+  background: rgba(255, 107, 128, 0.08);
+}
+
+/* Финальный score-cell */
+.score-cell { font-size: 13px; padding: 2px 9px; }
+.score-cell b { font-size: 15px; }
+.score-cell small { font-size: 10px; margin-left: 2px; }
+
+/* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
+.members-table-wrap { overflow-x: auto; }
