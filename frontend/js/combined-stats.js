@@ -141,7 +141,7 @@
       <span style="color:#b070dc">▌ соцсети</span>
       <span style="color:#ffe070">▌ ветеран</span>
       <span style="color:#ff9a44">▌ офицер</span>
-      <span style="color:#f078aa">▌ дисциплина (бонус сверх 100)</span>
+      <span style="color:#f078aa">▌ перевыполнение (бонус сверх 100, #2)</span>
     `;
 
     // Чем больше людей — тем выше холст. ~24px на строку — комфортно
@@ -207,9 +207,10 @@
             borderWidth: 1,
           },
           {
-            // Дисциплинарный бонус (перевыполнение + серии). Идёт сверх
+            // Перевыполнение доблести (overshoot + серии + безупречность).
+            // Второй по значимости фактор (потолок 20 > ветеран). Идёт сверх
             // базовых 100 — поэтому именно он «вытягивает» Ценность выше 100.
-            label: "Дисциплина",
+            label: "Перевыполнение",
             data: items.map(m => m.score.discipline ?? 0),
             backgroundColor: "rgba(240,120,170,0.80)",
             borderColor: "rgba(240,120,170,1)",
@@ -270,7 +271,7 @@
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
                 const MAX = {"Доблесть":60,"Чаты":5,"Соцсети":5,
-                              "Ветеран":16,"Офицер":14,"Дисциплина":13};
+                              "Ветеран":16,"Офицер":14,"Перевыполнение":20};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
                 const max = MAX[lbl] || 0;
@@ -284,9 +285,9 @@
                   suffix = "  · " + sc.top_rank;
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
-                } else if (lbl === "Дисциплина") {
+                } else if (lbl === "Перевыполнение") {
                   const parts = [];
-                  if (sc.over_avg) parts.push("перевып. ×" + sc.over_avg);
+                  if (sc.over_avg) parts.push("сверх нормы " + sc.over_avg + "%");
                   if (sc.max_streak) parts.push("серия " + sc.max_streak + " нед.");
                   if (parts.length) suffix = "  · " + parts.join(", ");
                 }

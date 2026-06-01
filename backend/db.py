@@ -2666,14 +2666,20 @@ def _rank_frac(rank: str) -> float:
     return _rank_score(rank) / _RANK_SCORE_MAX
 
 
-# ── Веса финального score «Ценность для клана» (сумма = 100) ──
-# Доминирует доблесть (сколько набрал человек). Остальное — «гораздо
-# менее ценно», но с градацией: ветеран > офицер > соцсети ≈ чаты.
-VALOR_W_DOBLEST = 60   # compliance.avg_pct, главный фактор
-VALOR_W_VETERAN = 16   # был в первоначальном списке клана
-VALOR_W_OFFICER = 14   # макс; смесь высшего поста (70%) и текущего (30%)
-VALOR_W_SOCIALS = 5    # присутствие в соцсетях (2.5 VK + 2.5 TG)
-VALOR_W_CHAT    = 5    # активность в чатах
+# ── Веса финального score «Ценность для клана» ──
+# Базовая раскладка (сумма = 100) + бонус перевыполнения сверху.
+# Значимость по убыванию:
+#   1) доблесть (сколько набрал) — главный фактор;
+#   2) ПЕРЕВЫПОЛНЕНИЕ доблести — второй по значимости (бонус сверх 100),
+#      ВАЖНЕЕ ветерана; складывается из самого перевыполнения (overshoot),
+#      серии выполнений подряд и безупречной истории;
+#   3) ветеран, 4) офицер, 5) соцсети ≈ чаты.
+VALOR_W_DOBLEST     = 60   # compliance.avg_pct, главный фактор
+VALOR_W_OVERFULFILL = 20   # перевыполнение (бонус сверх 100) — #2, > ветерана
+VALOR_W_VETERAN     = 16   # был в первоначальном списке клана
+VALOR_W_OFFICER     = 14   # макс; смесь высшего поста (70%) и текущего (30%)
+VALOR_W_SOCIALS     = 5    # присутствие в соцсетях (2.5 VK + 2.5 TG)
+VALOR_W_CHAT        = 5    # активность в чатах
 
 
 def valor_top_rank_per_canon() -> dict[str, str]:
@@ -3897,13 +3903,14 @@ def valor_get_current() -> dict[str, Any]:
                               "pct_delta": pct_delta}
 
             # ── Финальный score: «ценность для клана» ──
-            # Раскладка (max 100, веса см. VALOR_W_*):
-            #   compliance: 0..60  (доблесть — главный фактор)
-            #   veteran:    0..16  (был в первоначальном списке клана)
-            #   officer:    0..14  смесь высшего поста ever (70%) +
-            #               текущего поста (30%) — важно и где был, и где сейчас
-            #   socials:    0..5   (2.5 за VK + 2.5 за TG)
-            #   chat:       0..5   (min(msgs/50, 1) * 5)
+            # База (max 100) + перевыполнение сверху (до +20). По значимости:
+            #   compliance:  0..60  (доблесть — главный фактор)
+            #   ПЕРЕВЫПОЛН.: 0..20  (бонус сверх 100 — #2, важнее ветерана)
+            #   veteran:     0..16  (был в первоначальном списке клана)
+            #   officer:     0..14  смесь высшего поста ever (70%) +
+            #                текущего поста (30%) — важно и где был, и где сейчас
+            #   socials:     0..5   (2.5 за VK + 2.5 за TG)
+            #   chat:        0..5   (min(msgs/50, 1) * 5)
             # Если человек ПРЯМО СЕЙЧАС под иммунитетом (active/extended),
             # доблесть-компонент не оценивается: comp_pts=None,
             # max=100-VALOR_W_DOBLEST. total нормализуется к /100.
@@ -3929,13 +3936,17 @@ def valor_get_current() -> dict[str, Any]:
             officer_pts = round(
                 VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
                                    + 0.3 * _rank_frac(m.get("rank", ""))), 1)
-            # ── Бонус дисциплины (сверх базовых 100) ──
-            #   перевыполнение: до +5 (по среднему % сверх нормы),
+            # ── Бонус ПЕРЕВЫПОЛНЕНИЯ доблести (сверх базовых 100) ──
+            # Второй по значимости фактор ценности (потолок 20 > ветеран 16).
+            # Доминирует само перевыполнение (overshoot), плюс надбавки за
+            # стабильность:
+            #   перевыполнение: до +12 (по среднему % сверх нормы, overshoot
+            #                   капится на 100% = ×2, поэтому over_avg∈[0,100]),
             #   серия выполнений подряд: до +5 (max_streak),
             #   безупречная история: +3 (все недели выполнены, при ≥3 нед.).
             discipline = 0.0
             if comp_obj and not is_immune_now:
-                over_bonus = round(comp_obj.get("over_avg", 0.0) / 100 * 5, 1)
+                over_bonus = round(comp_obj.get("over_avg", 0.0) / 100 * 12, 1)
                 streak_bonus = min(comp_obj.get("max_streak", 0), 5)
                 perfect_bonus = (3 if comp_obj["weeks_met"] == comp_obj["weeks_count"]
                                  and comp_obj["weeks_count"] >= 3 else 0)
@@ -3956,6 +3967,7 @@ def valor_get_current() -> dict[str, Any]:
                 "raw_total":       raw_total,
                 "max":             max_pts,
                 "discipline":      discipline,
+                "overfulfill_max": VALOR_W_OVERFULFILL,
                 "over_avg":        (comp_obj or {}).get("over_avg", 0) if comp_obj else 0,
                 "max_streak":      (comp_obj or {}).get("max_streak", 0) if comp_obj else 0,
                 "immunity_adjusted": is_immune_now,

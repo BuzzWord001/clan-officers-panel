@@ -285,29 +285,31 @@
       ? `• доблесть: не оценивается (иммунитет)`
       : `• доблесть: ${s.compliance} / 60`;
     const disc = s.discipline || 0;
+    const ofMax = s.overfulfill_max || 20;
     const headLine = s.immunity_adjusted
       ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
          `Иммунитет: доблесть исключена из оценки.\n`
       : disc > 0
-        ? `Итог: ${s.total} / 100  (база ${s.raw_total} + дисциплина ${disc})\n`
+        ? `Итог: ${s.total} / 100  (база ${s.raw_total} + перевыполнение ${disc})\n`
         : `Итог: ${s.total} / 100\n`;
-    // Порядок — по ценности: доблесть ≫ ветеран > офицер > соцсети ≈ чаты
+    // Порядок — по ценности: доблесть ≫ ПЕРЕВЫПОЛНЕНИЕ > ветеран > офицер >
+    // соцсети ≈ чаты. Перевыполнение — второй по значимости (бонус сверх 100).
     const discLine = disc > 0
-      ? `\n• дисциплина: +${disc} (перевып. ${Math.round(s.over_avg || 0)}% · ` +
-        `серия ${s.max_streak || 0} нед.)`
+      ? `• перевыполнение: +${disc} / ${ofMax} (сверх нормы ` +
+        `${Math.round(s.over_avg || 0)}% · серия ${s.max_streak || 0} нед.)\n`
       : "";
     const tip = headLine
       + compLine + "\n"
+      + discLine
       + `• ветеран: ${s.veteran} / 16\n`
       + officerLine + "\n"
       + `• соцсети: ${s.socials} / 5\n`
-      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`
-      + discLine;
-    // Иммунные — «*»; выдающиеся (>100 за счёт дисциплины) — «★».
+      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`;
+    // Иммунные — «*»; выдающиеся (>100 за счёт перевыполнения) — «★».
     const star = s.immunity_adjusted
       ? `<small class="imm-mark" title="скор нормализован — без компонента доблести">*</small>`
       : (!s.immunity_adjusted && s.total > 100)
-        ? `<small class="disc-mark" title="перевыполнение и дисциплина сверх нормы">★</small>`
+        ? `<small class="disc-mark" title="перевыполнение доблести сверх нормы">★</small>`
         : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
       ><b>${s.total}</b>${star}<small style="opacity:0.7">/100</small></span>`;
