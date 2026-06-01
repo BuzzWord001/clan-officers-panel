@@ -2529,6 +2529,55 @@ def rank_order(s: str) -> int:
     return _RANK_ORDER.get((s or "").strip().lower(), 99)
 
 
+# Баллы за «офицерство» в финальном score «Ценность для клана».
+# Чем выше пост — тем больше очков. Учитывается максимальный пост,
+# который человек когда-либо занимал (по valor_members + valor_history).
+_RANK_SCORE = {
+    "мастер":         30,
+    "мастер гильдии": 30,
+    "мастер клана":   30,
+    "маршал":         24,
+    "майор":          18,
+    "капитан":        12,
+    "лейтенант":      6,
+    "ефрейтор":       2,
+    "рядовой":        0,
+}
+
+
+def _rank_score(rank: str) -> int:
+    return _RANK_SCORE.get((rank or "").strip().lower(), 0)
+
+
+def valor_top_rank_per_canon() -> dict[str, str]:
+    """Map canon → top rank (по баллам), который этот человек когда-либо
+    занимал — текущий + вся история valor_history. Нужно для авто-тега
+    «Офицер» и баллов в финальном score.
+    """
+    out: dict[str, str] = {}
+    with connection() as conn:
+        # Текущие ранги из valor_members
+        for r in conn.execute(
+            "SELECT nick_canon, rank FROM valor_members WHERE rank != ''"
+        ):
+            cn, rk = r["nick_canon"], r["rank"]
+            if not cn:
+                continue
+            if _rank_score(rk) > _rank_score(out.get(cn, "")):
+                out[cn] = rk
+        # Исторические ранги из valor_history
+        for r in conn.execute(
+            "SELECT nick_canon, value FROM valor_history "
+            "WHERE field = 'rank' AND value != ''"
+        ):
+            cn, rk = r["nick_canon"], r["value"]
+            if not cn:
+                continue
+            if _rank_score(rk) > _rank_score(out.get(cn, "")):
+                out[cn] = rk
+    return out
+
+
 # Какие поля валидно отслеживать в valor_history.
 # valor — пишется каждую неделю даже без изменений (для timeline и
 # popover-биржевого вида). rank/title/level/class пишутся только при
@@ -3210,6 +3259,8 @@ def valor_get_current() -> dict[str, Any]:
         tags_map = valor_list_tags()
         # Активность в чатах по canon — для финального score.
         chat_msgs = valor_chat_activity_by_canon()
+        # Top-rank когда-либо (для авто-тега «Офицер» + score).
+        top_rank_map = valor_top_rank_per_canon()
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -3250,7 +3301,18 @@ def valor_get_current() -> dict[str, Any]:
             # Соцсети (по canon ника)
             cn = m["nick_canon"]
             m["socials"] = socials.get(cn) or None
-            m["tags"]    = tags_map.get(cn, [])
+            # Теги: ручные + авто. Авто-теги НЕ пишутся в БД —
+            # подмешиваются на лету при выдаче.
+            auto_tags = []
+            if m["socials"]:
+                auto_tags.append("in_socials")
+            top_rank = top_rank_map.get(cn, "")
+            if _rank_score(top_rank) > 0:
+                auto_tags.append("officer")
+            manual_tags = tags_map.get(cn, [])
+            # Сохраняем порядок: сначала ручные (veteran и т.п.) — затем авто
+            m["tags"] = manual_tags + [t for t in auto_tags if t not in manual_tags]
+            m["top_rank"] = top_rank or None
 
             # Текущий % выполнения норматива.
             cur_norm = cur["valor_norm"] or 1
@@ -3305,24 +3367,27 @@ def valor_get_current() -> dict[str, Any]:
 
             # ── Финальный score: «ценность для клана» ──
             # Раскладка (max 100):
-            #   compliance: 0..40  (compliance.avg_pct * 0.4)
-            #   chat:       0..30  (min(msgs/50, 1) * 30)
-            #   socials:    0..20  (10 за VK + 10 за TG)
+            #   compliance: 0..25  (compliance.avg_pct * 0.25)
+            #   chat:       0..20  (min(msgs/50, 1) * 20)
+            #   socials:    0..15  (7.5 за VK + 7.5 за TG)
             #   veteran:    0..10
+            #   officer:    0..30  по top_rank (см. _RANK_SCORE)
             comp_pts = 0.0
             comp_obj = m.get("compliance")
             if comp_obj:
-                comp_pts = round(comp_obj["avg_pct"] * 0.4, 1)
+                comp_pts = round(comp_obj["avg_pct"] * 0.25, 1)
             msgs = chat_msgs.get(cn, 0)
-            chat_pts = round(min(msgs / 50.0, 1.0) * 30, 1)
-            soc_pts = 0
+            chat_pts = round(min(msgs / 50.0, 1.0) * 20, 1)
+            soc_pts = 0.0
             soc = m.get("socials") or {}
             if soc.get("vk_id") or soc.get("vk_screen_name"):
-                soc_pts += 10
+                soc_pts += 7.5
             if soc.get("tg_id") or soc.get("tg_username"):
-                soc_pts += 10
+                soc_pts += 7.5
             veteran_pts = 10 if "veteran" in m["tags"] else 0
-            total = round(comp_pts + chat_pts + soc_pts + veteran_pts, 1)
+            officer_pts = _rank_score(top_rank)
+            total = round(
+                comp_pts + chat_pts + soc_pts + veteran_pts + officer_pts, 1)
             m["score"] = {
                 "total":      total,
                 "compliance": comp_pts,
@@ -3330,6 +3395,8 @@ def valor_get_current() -> dict[str, Any]:
                 "chat_msgs":  msgs,
                 "socials":    soc_pts,
                 "veteran":    veteran_pts,
+                "officer":    officer_pts,
+                "top_rank":   top_rank or None,
             }
             members.append(m)
         return {

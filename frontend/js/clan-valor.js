@@ -115,10 +115,18 @@
   }
 
   const TAG_META = {
-    veteran: { label: "Ветеран", icon: "★",
-               cls: "tag-veteran",
-               tip: "Был в первоначальном списке клана (clan-checklist)" },
+    veteran:    { label: "Ветеран", icon: "★",
+                  cls: "tag-veteran",
+                  tip: "Был в первоначальном списке клана (clan-checklist)" },
+    in_socials: { label: "В соцсетях", icon: "◉",
+                  cls: "tag-socials",
+                  tip: "Зарегистрирован в VK или Telegram-чатах клана" },
+    officer:    { label: "Офицер", icon: "✦",
+                  cls: "tag-officer",
+                  tip: "Занимал офицерский пост (Лейтенант и выше)" },
   };
+  // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
+  const AUTO_TAGS = new Set(["in_socials", "officer"]);
 
   function renderTags(m) {
     const tags = m.tags || [];
@@ -128,7 +136,13 @@
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
                                       cls: "tag-default", tip: t };
-      return `<span class="tag-chip ${meta.cls}" title="${esc(meta.tip)}"
+      // У офицера в title уточняем какой именно пост — top_rank
+      let tip = meta.tip;
+      if (t === "officer" && m.top_rank) {
+        tip = `${meta.tip}\nМаксимальный пост: ${m.top_rank}`;
+      }
+      const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
+      return `<span class="tag-chip ${meta.cls}${auto}" title="${esc(tip)}"
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
     }).join("");
@@ -138,11 +152,15 @@
   function renderScore(s) {
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
+    const officerLine = s.top_rank
+      ? `• офицер: ${s.officer} / 30 (${s.top_rank})`
+      : `• офицер: 0 / 30`;
     const tip = `Итог: ${s.total} / 100\n`
-      + `• доблесть: ${s.compliance} / 40\n`
-      + `• чаты: ${s.chat} / 30 (${s.chat_msgs} сообщ.)\n`
-      + `• соцсети: ${s.socials} / 20\n`
-      + `• ветеран: ${s.veteran} / 10`;
+      + `• доблесть: ${s.compliance} / 25\n`
+      + `• чаты: ${s.chat} / 20 (${s.chat_msgs} сообщ.)\n`
+      + `• соцсети: ${s.socials} / 15\n`
+      + `• ветеран: ${s.veteran} / 10\n`
+      + officerLine;
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
       ><b>${s.total}</b><small style="opacity:0.7">/100</small></span>`;
   }
@@ -365,6 +383,11 @@
       ev.stopPropagation();
       const nick = tagChip.dataset.nick;
       const tag = tagChip.dataset.tag;
+      if (AUTO_TAGS.has(tag)) {
+        alert(`«${tag}» — авто-метка, она вычисляется бэкендом ` +
+              `(социалки / офицерство). Удалить нельзя.`);
+        return;
+      }
       if (!confirm(`Удалить метку «${tag}» с «${nick}»?`)) return;
       try {
         const u = (window.OFFICERS_CONFIG?.API_URL || "")

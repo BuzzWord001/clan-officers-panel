@@ -21,17 +21,15 @@
             <option value="comp">по доблести</option>
             <option value="chat">по активности в чатах</option>
             <option value="soc">по соцсетям</option>
+            <option value="off">по офицерству</option>
           </select>
           <select id="cs-top">
-            <option value="20" selected>топ 20</option>
+            <option value="20">топ 20</option>
             <option value="40">топ 40</option>
             <option value="80">топ 80</option>
-            <option value="0">все</option>
+            <option value="0" selected>все</option>
           </select>
-          <input type="text" id="cs-filter" placeholder="фильтр имён"
-                 style="background:#100608;border:1px solid var(--accent-dim);
-                        color:var(--accent);padding:4px 8px;border-radius:3px;
-                        font-family:'Cascadia Code',monospace;font-size:11px;">
+          <input type="text" id="cs-filter" placeholder="фильтр имён">
           <button class="x" id="cs-close" title="Закрыть">×</button>
         </div>
         <div class="body">
@@ -100,7 +98,14 @@
       <span style="color:#69b7e4">▌ чаты</span>
       <span style="color:#b070dc">▌ соцсети</span>
       <span style="color:#ffe070">▌ ветеран</span>
+      <span style="color:#ff9a44">▌ офицер</span>
     `;
+
+    // Чем больше людей — тем выше холст. ~24px на строку — комфортно
+    // даже когда все 196 видны.
+    const rowH = items.length > 60 ? 22 : items.length > 30 ? 26 : 30;
+    const wrap = document.querySelector(".combined-modal .canvas-wrap");
+    wrap.style.height = Math.max(380, items.length * rowH + 80) + "px";
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
@@ -113,29 +118,36 @@
           {
             label: "Доблесть",
             data: items.map(m => m.score.compliance),
-            backgroundColor: "rgba(80,220,80,0.7)",
-            borderColor: "rgba(80,220,80,0.9)",
+            backgroundColor: "rgba(80,220,80,0.75)",
+            borderColor: "rgba(80,220,80,0.95)",
             borderWidth: 1,
           },
           {
             label: "Чаты",
             data: items.map(m => m.score.chat),
-            backgroundColor: "rgba(105,183,228,0.7)",
-            borderColor: "rgba(105,183,228,0.9)",
+            backgroundColor: "rgba(105,183,228,0.75)",
+            borderColor: "rgba(105,183,228,0.95)",
             borderWidth: 1,
           },
           {
             label: "Соцсети",
             data: items.map(m => m.score.socials),
-            backgroundColor: "rgba(176,112,220,0.7)",
-            borderColor: "rgba(176,112,220,0.9)",
+            backgroundColor: "rgba(176,112,220,0.75)",
+            borderColor: "rgba(176,112,220,0.95)",
             borderWidth: 1,
           },
           {
             label: "Ветеран",
             data: items.map(m => m.score.veteran),
-            backgroundColor: "rgba(255,224,112,0.7)",
-            borderColor: "rgba(255,224,112,0.9)",
+            backgroundColor: "rgba(255,224,112,0.75)",
+            borderColor: "rgba(255,224,112,0.95)",
+            borderWidth: 1,
+          },
+          {
+            label: "Офицер",
+            data: items.map(m => m.score.officer || 0),
+            backgroundColor: "rgba(255,154,68,0.78)",
+            borderColor: "rgba(255,154,68,0.98)",
             borderWidth: 1,
           },
         ],
@@ -143,11 +155,18 @@
       options: {
         responsive: true, maintainAspectRatio: false,
         indexAxis: "y",
+        animation: items.length > 80 ? false : { duration: 250 },
         plugins: {
           legend: { display: false },
           tooltip: {
             mode: "index", intersect: false,
             callbacks: {
+              afterLabel: (ctx) => {
+                if (ctx.dataset.label !== "Офицер") return "";
+                const m = items[ctx.dataIndex];
+                return m.score && m.score.top_rank
+                  ? "  (" + m.score.top_rank + ")" : "";
+              },
               footer: (items) => {
                 const total = items.reduce((a, t) => a + (t.parsed.x || 0), 0);
                 return "Итого: " + Math.round(total * 10) / 10 + " / 100";
@@ -157,10 +176,12 @@
         },
         scales: {
           x: { stacked: true, max: 100,
-                ticks: { color: "#a0a0a0" },
+                ticks: { color: "#a0a0a0", stepSize: 10 },
                 grid: { color: "rgba(255,255,255,0.04)" }, },
           y: { stacked: true,
-                ticks: { color: "#a0a0a0", font: { size: 11 } },
+                ticks: { color: "#c8c8c8",
+                          font: { size: rowH >= 26 ? 12 : 11 },
+                          autoSkip: false },
                 grid: { color: "rgba(255,255,255,0.02)" }, },
         },
       },
@@ -172,6 +193,7 @@
     if (key === "comp") return s.compliance;
     if (key === "chat") return s.chat;
     if (key === "soc")  return s.socials;
+    if (key === "off")  return s.officer || 0;
     return s.total;
   }
 
