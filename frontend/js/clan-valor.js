@@ -242,22 +242,20 @@
         ? ` <span class="tag-mult">×${mult.toFixed(1)}</span>` : "";
       let tip = `${meta.label}${showMult ? " ×" + mult.toFixed(1) : ""}\n${meta.tip}`;
       if (t === "officer" && m.top_rank) tip += ` Макс. пост: ${m.top_rank}.`;
-      // Когда роль получена (уголок): пик-роль — неделя пика; комбо — span
-      // серии; безупречная — span истории; ручная — дата добавления.
-      let corner = "";
+      // Когда роль получена — только в тултипе, с расшифровкой недели в дату.
+      let whenTip = "";
       if (isAch && c) {
-        if (PEAK_TAGS.has(t)) corner = weekShort(c.peak_week);
-        else if (COMBO_TAGS.has(t))
-          corner = c.combo_start
-            ? `${weekShort(c.combo_start)}…${weekShort(c.combo_end)}` : "";
-        else if (FLAW_TAGS.has(t))
-          corner = c.first_week
-            ? `${weekShort(c.first_week)}…${weekShort(c.last_week)}` : "";
+        if (PEAK_TAGS.has(t) && c.peak_week)
+          whenTip = weekFull(c.peak_week);
+        else if (COMBO_TAGS.has(t) && c.combo_start)
+          whenTip = `${weekFull(c.combo_start)}  …  ${weekFull(c.combo_end)}`;
+        else if (FLAW_TAGS.has(t) && c.first_week)
+          whenTip = `${weekFull(c.first_week)}  …  ${weekFull(c.last_week)}`;
       } else if (!AUTO_TAGS.has(t) && m.tag_dates && m.tag_dates[t]) {
-        corner = dateShort(m.tag_dates[t]);
+        const a = String(m.tag_dates[t]);
+        whenTip = `${a.slice(0, 10)} ${a.slice(11, 16)} UTC`;
       }
-      // Неделя/дата — НЕ на чипе, только в тултипе.
-      if (corner) tip += `\nПолучена: ${corner}`;
+      if (whenTip) tip += `\nПолучена: ${whenTip}`;
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
       // Достижения — инлайн-цвет по роли (+ свечение у топовых).
       let style = "";
@@ -440,6 +438,42 @@
     const p = String(iso || "").slice(0, 10).split("-");
     return p.length === 3 ? p[2] + "." + p[1] : String(iso || "");
   }
+  const _MON = ["янв", "фев", "мар", "апр", "мая", "июн",
+                "июл", "авг", "сен", "окт", "ноя", "дек"];
+  // Понедельник ISO-недели (ISO 8601).
+  function isoWeekMonday(year, week) {
+    const s = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+    const dow = s.getUTCDay();
+    if (dow <= 4) s.setUTCDate(s.getUTCDate() - dow + 1);
+    else s.setUTCDate(s.getUTCDate() + 8 - dow);
+    return s;
+  }
+  // «2026-W22» → «25–31 мая 2026»
+  function weekRange(wk) {
+    const m = /^(\d{4})-W(\d{1,2})$/.exec(String(wk || ""));
+    if (!m) return "";
+    const mon = isoWeekMonday(+m[1], +m[2]);
+    const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6);
+    const d1 = mon.getUTCDate(), m1 = mon.getUTCMonth();
+    const d2 = sun.getUTCDate(), m2 = sun.getUTCMonth();
+    return m1 === m2
+      ? `${d1}–${d2} ${_MON[m2]} ${+m[1]}`
+      : `${d1} ${_MON[m1]} – ${d2} ${_MON[m2]} ${+m[1]}`;
+  }
+  // «W22 · 25–31 мая 2026 (собрано 31 мая 23:14)»
+  function weekFull(wk) {
+    if (!wk) return "";
+    let out = `${weekShort(wk)} · ${weekRange(wk)}`;
+    const meta = DATA.weeks_meta && DATA.weeks_meta[wk];
+    if (meta && meta.captured_at) {
+      const c = String(meta.captured_at);
+      const p = c.slice(0, 10).split("-");   // YYYY-MM-DD
+      const t = c.slice(11, 16);             // HH:MM
+      if (p.length === 3)
+        out += ` (собрано ${+p[2]} ${_MON[+p[1] - 1]} ${t} UTC)`;
+    }
+    return out;
+  }
   function warnChip(colorCls, n, wtip, opts) {
     opts = opts || {};
     const mark = opts.manual
@@ -456,25 +490,21 @@
     const tw = m.title_warn;
     const manual = m.manual_warnings || [];
     const chips = [];
-    // Норматив — суровость по худшей неделе; уголок = неделя(и) выдачи
+    // Норматив — суровость по худшей неделе; в тултипе — недели с датами
     if (ws.length) {
       const worstW = ws.reduce((a, b) => (b.pct < a.pct ? b : a));
       const sorted = ws.slice().sort((a, b) => (a.week < b.week ? -1 : 1));
-      const corner = ws.length === 1
-        ? weekShort(sorted[0].week)
-        : `${weekShort(sorted[0].week)}…${weekShort(sorted[sorted.length - 1].week)}`;
       const detail = sorted.map((w) =>
-        `${weekShort(w.week)}: ${w.valor}/${w.norm} = ${w.pct}%`).join("\n");
+        `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%`).join("\n");
       chips.push(warnChip("wsev-" + sev3(worstW.pct), ws.length,
-        `Норматив не выполнен\n${detail}`, { corner }));
+        `Норматив не выполнен\n${detail}`));
     }
-    // Титул — строгий цвет; уголок = неделя проставления титула
+    // Титул — строгий цвет; в тултипе — неделя проставления с датой
     if (tw) {
       const since = m.title_warn_since;
       chips.push(warnChip("wtype-title", tw,
         `Выставлено в титуле руководством гильдии` +
-        (since ? `\nОтмечено на неделе: ${since}` : ``),
-        { corner: since ? weekShort(since) : "" }));
+        (since ? `\nОтмечено: ${weekFull(since)}` : ``)));
     }
     // Ручные — цвет по худшей суровости + значок ✎; уголок = дата добавления
     if (manual.length) {
@@ -483,15 +513,18 @@
         const s = MSEV[w.severity] || "mid";
         if (SEVRANK[s] > SEVRANK[worstSev]) worstSev = s;
       });
-      const detail = manual.map((w) =>
-        `${dateShort(w.created_at)}: ${w.reason || "(без причины)"}` +
-        (w.created_by ? ` — ${w.created_by}` : ``)).join("\n");
+      const detail = manual.map((w) => {
+        const a = String(w.created_at || "");
+        const dt = a.slice(0, 10) + " " + a.slice(11, 16) + " UTC";
+        return `${dt}: ${w.reason || "(без причины)"}` +
+          (w.created_by ? ` — ${w.created_by}` : ``);
+      }).join("\n");
       const latest = manual[manual.length - 1];
       const del = ` <button class="warn-del-btn" data-id="${latest.id}" ` +
         `title="Снять последнее ручное">✕</button>`;
       chips.push(warnChip("wsev-" + worstSev, manual.length,
         `Ручное предупреждение офицера\n${detail}`,
-        { manual: true, corner: dateShort(latest.created_at), extra: del }));
+        { manual: true, extra: del }));
     }
     const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
       `title="Добавить ручное предупреждение">+</button>`;

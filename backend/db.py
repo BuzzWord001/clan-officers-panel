@@ -3981,10 +3981,18 @@ def valor_get_current() -> dict[str, Any]:
             m["warning_count"] = len(w)  # для бейджа в колонке «Норматив»
             m["manual_warnings"] = manual_warn_map.get(cn, [])
             members.append(m)
+        # Карта недель → дата/время сбора (для расшифровки «W22» в UI).
+        weeks_meta = {}
+        for r in conn.execute(
+            "SELECT week, captured_at, valor_norm FROM valor_snapshots"
+        ):
+            weeks_meta[r["week"]] = {
+                "captured_at": r["captured_at"], "norm": r["valor_norm"]}
         return {
             "snapshot": dict(cur),
             "previous_week": prev["week"] if prev else None,
             "members": members,
+            "weeks_meta": weeks_meta,
         }
 
 
