@@ -153,6 +153,13 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   animation: pulse 2.2s infinite;
 }
 
+/* Гостевой режим — зелёный бейдж вместо красного «Только для офицеров» */
+.classified-badge.guest {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-shadow: 0 0 6px var(--accent);
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.45; }

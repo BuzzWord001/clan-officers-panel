@@ -18,6 +18,9 @@
         IS_GUEST = true;
         document.body.classList.add("guest-mode");
         $("who").textContent = "Гость · только просмотр";
+        // Красный «Только для офицеров» → зелёный «Гостевой просмотр».
+        const badge = document.querySelector(".classified-badge");
+        if (badge) { badge.textContent = "Гостевой просмотр"; badge.classList.add("guest"); }
         // Гостю недоступны другие разделы — прячем навигацию целиком.
         document.querySelectorAll(".tabs, .admin-only").forEach(el =>
           el.style.display = "none");
