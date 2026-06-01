@@ -552,7 +552,13 @@
     });
   }
 
-  $("valor-filter").addEventListener("input", apply);
+  $("valor-filter").addEventListener("input", () => {
+    // Сбрасываем горизонтальную прокрутку влево, чтобы при поиске колонка
+    // «Имя» не оставалась спрятанной под sticky-колонкой «Ник».
+    const wrap = document.querySelector(".members-table-wrap");
+    if (wrap) wrap.scrollLeft = 0;
+    apply();
+  });
 
   // Сортировка по клику заголовка
   document.querySelectorAll("th[data-sort]").forEach(th => {
