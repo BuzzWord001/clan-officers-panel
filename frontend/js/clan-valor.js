@@ -358,6 +358,21 @@
       : `<span class="soc-empty">—</span>`;
   }
 
+  function renderTitle(m) {
+    // Однозначный числовой титул 1–9 = предупреждения, выставленные
+    // офицером в игре. Показываем отдельным значком (не путать со
+    // счётчиком по нормативу в колонке «Норматив»).
+    const n = m.title_warn;
+    if (!n) return esc(m.title);
+    const since = m.title_warn_since
+      ? `\nОтмечено на неделе: ${m.title_warn_since}` : "";
+    const tip = `Предупреждение, выставленное офицером в игре (число в титуле).\n` +
+      `Сейчас: ${n} предупреждение(й). Кик обычно после 2-го.${since}\n` +
+      `Считается один раз — пока цифра не изменится, повторно не добавляется.`;
+    const multi = n >= 2 ? " title-warn-multi" : "";
+    return `<span class="title-warn${multi}" title="${esc(tip)}">⚠ ${n}</span>`;
+  }
+
   function renderTrend(t) {
     if (!t) {
       return `<span class="trend trend-none" title="нет данных предыдущей недели">—</span>`;
@@ -462,7 +477,7 @@
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
-          <td class="hist-cell" data-field="title">${esc(m.title)}</td>
+          <td class="hist-cell" data-field="title">${renderTitle(m)}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>

@@ -2549,6 +2549,20 @@ def _rank_score(rank: str) -> int:
     return _RANK_SCORE.get((rank or "").strip().lower(), 0)
 
 
+def _title_warn(title: str):
+    """Предупреждения, отмеченные офицером В ИГРЕ через числовой титул.
+
+    Однозначная цифра 1–9 в титуле = столько предупреждений у человека
+    (кикаем обычно после 2-го). Многозначные числа (даты вроде «0305»,
+    «1205», «100526») — это НЕ предупреждения, игнорируем.
+    Возвращает int 1..9 или None.
+    """
+    t = (title or "").strip()
+    if len(t) == 1 and t.isdigit() and t != "0":
+        return int(t)
+    return None
+
+
 _RANK_SCORE_MAX = max(_RANK_SCORE.values())  # 30 (мастер)
 
 
@@ -3473,6 +3487,17 @@ def valor_get_current() -> dict[str, Any]:
         # Иммунитет новичков по canon — только активный/grace в неделе снимка
         immunity_map = valor_immunity_per_canon(cur["week"])
 
+        # Неделя последнего изменения титула по canon — чтобы знать, КОГДА
+        # офицер проставил числовой титул-предупреждение (для UI). История
+        # пишется только при смене значения, поэтому последняя запись по
+        # нику = неделя, на которой титул стал текущим.
+        title_hist_week: dict[str, str] = {}
+        for r in conn.execute(
+            "SELECT nick_canon, week FROM valor_history "
+            "WHERE field='title' ORDER BY week"
+        ):
+            title_hist_week[r["nick_canon"]] = r["week"]
+
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
         for r in conn.execute(
@@ -3654,6 +3679,13 @@ def valor_get_current() -> dict[str, Any]:
                 "top_rank":        top_rank or None,
                 "cur_rank":        m.get("rank") or None,
             }
+            # Предупреждения, отмеченные офицером в игре (числовой титул 1–9).
+            # Показываем ОТДЕЛЬНО от авто-счётчика по нормативу. Так как это
+            # абсолютное число из титула, повторно (пока цифра та же) оно не
+            # «накручивается» — новым предупреждением считается только смена.
+            tw = _title_warn(m.get("title"))
+            m["title_warn"] = tw
+            m["title_warn_since"] = title_hist_week.get(cn) if tw else None
             members.append(m)
         return {
             "snapshot": dict(cur),
