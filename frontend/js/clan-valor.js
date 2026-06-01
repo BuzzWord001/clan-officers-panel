@@ -147,7 +147,7 @@
   }
 
   const TAG_META = {
-    // ── Роли-достижения за доблесть (авто) ──  color — для рамки тултипа
+    // ── Роли за безупречную историю (консистентность) ──
     legend:     { label: "Легенда доблести", icon: "♛", color: "#ffd54a",
                   cls: "tag-ach tag-ach-legend",
                   tip: "Высшая роль: безупречная история и серия удвоений нормы." },
@@ -157,15 +157,25 @@
     etalon:     { label: "Эталон", icon: "✪", color: "#8fd6ff",
                   cls: "tag-ach tag-ach-etalon",
                   tip: "Безупречная история — ни одного провала норматива." },
+    // ── Роли по СТЕПЕНИ перевыполнения (пик ×N от нормы) ──
+    titan:      { label: "Титан доблести", icon: "✺", color: "#ff5a5a",
+                  cls: "tag-ach tag-ach-titan",
+                  tip: "Запредельное перевыполнение — пик ≥7× нормы." },
+    phenom:     { label: "Феномен доблести", icon: "✸", color: "#ff8a44",
+                  cls: "tag-ach tag-ach-phenom",
+                  tip: "Огромное перевыполнение — пик ≥5× нормы." },
     record:     { label: "Рекордсмен", icon: "⚡", color: "#ffe070",
                   cls: "tag-ach tag-ach-record",
-                  tip: "Мощное перевыполнение: серия ≥2× или пик ≥2.5×." },
+                  tip: "Мощное перевыполнение — пик ≥4× нормы." },
+    triple:     { label: "Утроил норму", icon: "✶", color: "#6fe0d0",
+                  cls: "tag-ach tag-ach-triple",
+                  tip: "Утроил норму — пик ≥3×." },
     double:     { label: "Удвоил норму", icon: "◆", color: "#9ab8ff",
                   cls: "tag-ach tag-ach-double",
-                  tip: "Набирал ≥2× нормы доблести за неделю." },
+                  tip: "Удвоил норму — пик ≥2×." },
     over:       { label: "Перевыполнил", icon: "▲", color: "#8dffaa",
                   cls: "tag-ach tag-ach-over",
-                  tip: "Перевыполнял норму доблести (≥1.5×)." },
+                  tip: "Перевыполнил норму — пик ≥1.5×." },
     veteran:    { label: "Ветеран", icon: "★", color: "#ffd24a",
                   cls: "tag-veteran",
                   tip: "Был в первоначальном составе клана." },
@@ -178,26 +188,34 @@
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
   const AUTO_TAGS = new Set(["in_socials", "officer",
-    "legend", "ace", "etalon", "record", "double", "over"]);
+    "legend", "ace", "etalon",
+    "titan", "phenom", "record", "triple", "double", "over"]);
+  // Роли по степени перевыполнения — к ним приписываем точный множитель ×N.
+  const DEGREE_TAGS = new Set(["titan", "phenom", "record", "triple", "double", "over"]);
 
   function renderTags(m) {
     const tags = m.tags || [];
     const btn = `<button class="tag-add-btn" data-nick="${esc(m.nick)}"
       title="Добавить роль">+</button>`;
     if (!tags.length) return `<div class="tag-row">${btn}</div>`;
+    const peak = (m.compliance && m.compliance.peak_ratio) || 0;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
                                       cls: "tag-default", tip: t };
-      // Заголовок тултипа = название роли, затем короткое описание.
-      let tip = `${meta.label}\n${meta.tip}`;
-      if (t === "officer" && m.top_rank) {
-        tip += ` Макс. пост: ${m.top_rank}.`;
-      }
+      // Для ролей по степени — точный множитель ×N (пик от нормы).
+      const isDeg = DEGREE_TAGS.has(t) && peak >= 1.5;
+      const multTxt = isDeg ? `×${peak.toFixed(1)}` : "";
+      const multHtml = isDeg
+        ? ` <span class="tag-mult">${multTxt}</span>` : "";
+      // Заголовок тултипа = название роли (+×N), затем короткое описание.
+      let tip = `${meta.label}${isDeg ? " " + multTxt : ""}\n${meta.tip}`;
+      if (isDeg) tip += `\nПик: ×${peak.toFixed(1)} от нормы.`;
+      if (t === "officer" && m.top_rank) tip += ` Макс. пост: ${m.top_rank}.`;
       const color = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
       return `<span class="tag-chip ${meta.cls}${auto}" data-wtip="${esc(tip)}"${color}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
-        ><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
+        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
     }).join("");
     return `<div class="tag-row">${chips}${btn}</div>`;
   }

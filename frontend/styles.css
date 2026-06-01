@@ -2518,6 +2518,30 @@ body.show-valor .valor-col { display: table-cell; }
   background: rgba(90,220,120,0.13);
   border-color: rgba(90,220,120,0.55);
 }
+.tag-ach-triple {     /* ✶ бирюзовый */
+  color: #9af0e4;
+  background: rgba(110,224,208,0.14);
+  border-color: rgba(110,224,208,0.55);
+}
+.tag-ach-phenom {     /* ✸ оранжевый */
+  color: #ffc79a;
+  background: linear-gradient(135deg, rgba(255,138,68,0.22), rgba(200,80,30,0.18));
+  border-color: rgba(255,138,68,0.7);
+  text-shadow: 0 0 8px rgba(255,130,50,0.55);
+}
+.tag-ach-titan {      /* ✺ багрово-красный со свечением — высшая степень */
+  color: #ffc2c2;
+  background: linear-gradient(135deg, rgba(255,80,80,0.26), rgba(150,20,40,0.22));
+  border-color: rgba(255,80,80,0.85);
+  text-shadow: 0 0 9px rgba(255,70,70,0.7);
+  box-shadow: 0 0 10px rgba(255,60,60,0.45);
+}
+/* точный множитель перевыполнения на роли (×N) */
+.tag-mult {
+  font-weight: 800; font-size: 10px;
+  opacity: 0.95; margin-left: 1px;
+  padding-left: 3px; border-left: 1px solid currentColor;
+}
 .tag-default {
   color: #b0b0b0; background: rgba(255,255,255,0.04);
   border-color: rgba(255,255,255,0.2);
