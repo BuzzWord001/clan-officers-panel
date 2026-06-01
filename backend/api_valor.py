@@ -113,9 +113,10 @@ class TagOne(BaseModel):
 
 @router.post("/tags/bulk")
 def valor_tags_bulk(payload: TagsBulkIn,
-                    _: dict = Depends(require_officer)) -> dict:
+                    _=Depends(require_bot_token)) -> dict:
     """Помечает множество ников одним тегом. Используется для разового
-    заливки «ветеранов» из clan-checklist."""
+    заливки «ветеранов» из clan-checklist. Auth — bot-token (тот же
+    что у других ботов клана)."""
     return db.valor_add_tags(payload.tag, payload.nicks, payload.source)
 
 
