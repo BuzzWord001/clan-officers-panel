@@ -5,6 +5,7 @@
 
 import sqlite3
 import json
+import math
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -2603,27 +2604,43 @@ def _achievement(comp: dict | None) -> str | None:
         return None
     wc = comp["weeks_count"]
     flawless = comp["weeks_met"] == wc and wc >= 3
-    peak = comp.get("peak_ratio", 0.0)
-    s2 = comp.get("streak2", 0)   # серия ≥1.5×
-    s3 = comp.get("streak3", 0)   # серия ≥2×
-    if flawless and s3 >= 3:
-        return "legend"
-    if flawless and s2 >= 3:
-        return "ace"
+    g = comp.get("geomean_all", 0.0)      # геом.среднее кратностей за всё время
+    clen = comp.get("combo_len", 0)        # длина серии перевыполнений (≥1.5×)
+    cgeo = comp.get("combo_geo", 0.0)      # геом.среднее кратностей этой серии
+    peak = comp.get("peak_ratio", 0.0)     # лучший единичный пик
+    # 1) Безупречная история (≥3 нед без провала) — градация по геом.среднему
     if flawless:
-        return "etalon"
+        if g >= 3.0:
+            return "immortal"   # Бессмертная легенда
+        if g >= 2.0:
+            return "legend"     # Легенда доблести
+        if g >= 1.4:
+            return "ace"        # Ас доблести
+        return "etalon"         # Эталон
+    # 2) Комбо перевыполнений (серия ≥3 нед ≥1.5×) — градация по геом.среднему
+    if clen >= 3:
+        if cgeo >= 3.0:
+            return "combo_legend"   # Комбо-легенда
+        if cgeo >= 2.0:
+            return "combo_record"   # Серийный рекордсмен
+        return "combo_over"         # Серия перевыполнений
+    # 3) Пик единичного перевыполнения (до ×13.5 = абсолютный максимум 189)
+    if peak >= 13.0:
+        return "absolute"   # Абсолют доблести (≈189)
+    if peak >= 9.5:
+        return "overlord"   # Властелин доблести
     if peak >= 7.0:
-        return "titan"
-    if peak >= 5.0:
-        return "phenom"
+        return "titan"      # Титан доблести
+    if peak >= 5.5:
+        return "phenom"     # Феномен доблести
     if peak >= 4.0:
-        return "record"
+        return "record"     # Рекордсмен
     if peak >= 3.0:
-        return "triple"
+        return "triple"     # Утроил норму
     if peak >= 2.0:
-        return "double"
+        return "double"     # Удвоил норму
     if peak >= 1.5:
-        return "over"
+        return "over"       # Перевыполнил
     return None
 
 
@@ -3656,10 +3673,13 @@ def valor_get_current() -> dict[str, Any]:
             d = compliance.setdefault(cn, {
                 "sum": 0.0, "n": 0, "met": 0, "over_sum": 0.0,
                 "streak": 0, "max_streak": 0, "peak": 0.0,
-                "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0})
+                "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0,
+                "ln_sum": 0.0, "cs2_ln": 0.0, "ms2_geo": 1.0})
             d["sum"] += pct
             d["over_sum"] += overshoot
             d["n"] += 1
+            # геом.среднее кратностей по ВСЕМ неделям: exp(mean(ln(ratio)))
+            d["ln_sum"] += math.log(max(ratio, 0.01))
             if ratio > d["peak"]:
                 d["peak"] = ratio
             if r["valor"] >= norm:
@@ -3669,13 +3689,16 @@ def valor_get_current() -> dict[str, Any]:
                     d["max_streak"] = d["streak"]
             else:
                 d["streak"] = 0
-            # серии перевыполнения по степеням: ≥1.5× (cs2) и ≥2× (cs3)
+            # серии перевыполнения: ≥1.5× (cs2, + геом.среднее серии) и ≥2× (cs3)
             if ratio >= 1.5:
                 d["cs2"] += 1
+                d["cs2_ln"] += math.log(ratio)
                 if d["cs2"] > d["ms2"]:
                     d["ms2"] = d["cs2"]
+                    d["ms2_geo"] = math.exp(d["cs2_ln"] / d["cs2"])
             else:
                 d["cs2"] = 0
+                d["cs2_ln"] = 0.0
             if ratio >= 2.0:
                 d["cs3"] += 1
                 if d["cs3"] > d["ms3"]:
@@ -3802,6 +3825,9 @@ def valor_get_current() -> dict[str, Any]:
                     "peak_ratio":  round(d["peak"], 2),
                     "streak2":     d["ms2"],
                     "streak3":     d["ms3"],
+                    "geomean_all": round(math.exp(d["ln_sum"] / d["n"]), 2),
+                    "combo_len":   d["ms2"],
+                    "combo_geo":   round(d["ms2_geo"], 2),
                 }
             else:
                 m["compliance"] = None

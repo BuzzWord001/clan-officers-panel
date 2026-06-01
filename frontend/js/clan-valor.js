@@ -147,34 +147,55 @@
   }
 
   const TAG_META = {
-    // ── Роли за безупречную историю (консистентность) ──
+    // ── Роли за БЕЗУПРЕЧНУЮ ИСТОРИЮ (≥3 нед без провала), градация по
+    //    геом.среднему кратностей за всё время ──
+    immortal:   { label: "Бессмертная легенда", icon: "✵", color: "#fff0b0",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Безупречная история + средняя кратность ≥3× (геом.)." },
     legend:     { label: "Легенда доблести", icon: "♛", color: "#ffd54a",
-                  cls: "tag-ach tag-ach-legend",
-                  tip: "Высшая роль: безупречная история и серия удвоений нормы." },
+                  cls: "tag-ach", glow: 1,
+                  tip: "Безупречная история + средняя кратность ≥2× (геом.)." },
     ace:        { label: "Ас доблести", icon: "⚜", color: "#ff9a55",
-                  cls: "tag-ach tag-ach-ace",
-                  tip: "Безупречная история и серия сильных перевыполнений." },
+                  cls: "tag-ach",
+                  tip: "Безупречная история + средняя кратность ≥1.4× (геом.)." },
     etalon:     { label: "Эталон", icon: "✪", color: "#8fd6ff",
-                  cls: "tag-ach tag-ach-etalon",
+                  cls: "tag-ach",
                   tip: "Безупречная история — ни одного провала норматива." },
-    // ── Роли по СТЕПЕНИ перевыполнения (пик ×N от нормы) ──
-    titan:      { label: "Титан доблести", icon: "✺", color: "#ff5a5a",
-                  cls: "tag-ach tag-ach-titan",
+    // ── Роли за КОМБО перевыполнений (серия ≥3 нед ≥1.5×), градация по
+    //    геом.среднему кратностей серии ──
+    combo_legend: { label: "Комбо-легенда", icon: "❈", color: "#e6a8ff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Серия ≥3 нед, средняя кратность серии ≥3× (геом.)." },
+    combo_record: { label: "Серийный рекордсмен", icon: "❉", color: "#cb9cff",
+                  cls: "tag-ach",
+                  tip: "Серия ≥3 нед, средняя кратность серии ≥2× (геом.)." },
+    combo_over: { label: "Серия перевыполнений", icon: "❖", color: "#b7b0ff",
+                  cls: "tag-ach",
+                  tip: "Серия ≥3 нед перевыполнения подряд (≥1.5×)." },
+    // ── Роли по СТЕПЕНИ единичного перевыполнения (пик ×N от нормы) ──
+    absolute:   { label: "Абсолют доблести", icon: "☀", color: "#ffe07a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Почти абсолютный максимум — пик ≥13× нормы (≈189)." },
+    overlord:   { label: "Властелин доблести", icon: "☄", color: "#ff86e0",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Колоссальное перевыполнение — пик ≥9.5× нормы." },
+    titan:      { label: "Титан доблести", icon: "✺", color: "#ff6a6a",
+                  cls: "tag-ach", glow: 1,
                   tip: "Запредельное перевыполнение — пик ≥7× нормы." },
     phenom:     { label: "Феномен доблести", icon: "✸", color: "#ff8a44",
-                  cls: "tag-ach tag-ach-phenom",
-                  tip: "Огромное перевыполнение — пик ≥5× нормы." },
+                  cls: "tag-ach",
+                  tip: "Огромное перевыполнение — пик ≥5.5× нормы." },
     record:     { label: "Рекордсмен", icon: "⚡", color: "#ffe070",
-                  cls: "tag-ach tag-ach-record",
+                  cls: "tag-ach",
                   tip: "Мощное перевыполнение — пик ≥4× нормы." },
-    triple:     { label: "Утроил норму", icon: "✶", color: "#6fe0d0",
-                  cls: "tag-ach tag-ach-triple",
+    triple:     { label: "Утроил норму", icon: "✶", color: "#7fe6d8",
+                  cls: "tag-ach",
                   tip: "Утроил норму — пик ≥3×." },
     double:     { label: "Удвоил норму", icon: "◆", color: "#9ab8ff",
-                  cls: "tag-ach tag-ach-double",
+                  cls: "tag-ach",
                   tip: "Удвоил норму — пик ≥2×." },
     over:       { label: "Перевыполнил", icon: "▲", color: "#8dffaa",
-                  cls: "tag-ach tag-ach-over",
+                  cls: "tag-ach",
                   tip: "Перевыполнил норму — пик ≥1.5×." },
     veteran:    { label: "Ветеран", icon: "★", color: "#ffd24a",
                   cls: "tag-veteran",
@@ -187,33 +208,50 @@
                   tip: "Занимал офицерский пост (Лейтенант и выше)." },
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
-  const AUTO_TAGS = new Set(["in_socials", "officer",
-    "legend", "ace", "etalon",
-    "titan", "phenom", "record", "triple", "double", "over"]);
-  // Роли по степени перевыполнения — к ним приписываем точный множитель ×N.
-  const DEGREE_TAGS = new Set(["titan", "phenom", "record", "triple", "double", "over"]);
+  // Семейства ролей-достижений за доблесть.
+  const FLAW_TAGS  = new Set(["immortal", "legend", "ace", "etalon"]);
+  const COMBO_TAGS = new Set(["combo_legend", "combo_record", "combo_over"]);
+  const PEAK_TAGS  = new Set(["absolute", "overlord", "titan", "phenom",
+                               "record", "triple", "double", "over"]);
+  const AUTO_TAGS = new Set([
+    "in_socials", "officer",
+    ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS]);
+  // Источник множителя ×N для каждого семейства (из m.compliance).
+  function tagMult(t, c) {
+    if (!c) return 0;
+    if (PEAK_TAGS.has(t))  return c.peak_ratio || 0;
+    if (COMBO_TAGS.has(t)) return c.combo_geo || 0;
+    if (FLAW_TAGS.has(t))  return c.geomean_all || 0;
+    return 0;
+  }
 
   function renderTags(m) {
     const tags = m.tags || [];
     const btn = `<button class="tag-add-btn" data-nick="${esc(m.nick)}"
       title="Добавить роль">+</button>`;
     if (!tags.length) return `<div class="tag-row">${btn}</div>`;
-    const peak = (m.compliance && m.compliance.peak_ratio) || 0;
+    const c = m.compliance || null;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
                                       cls: "tag-default", tip: t };
-      // Для ролей по степени — точный множитель ×N (пик от нормы).
-      const isDeg = DEGREE_TAGS.has(t) && peak >= 1.5;
-      const multTxt = isDeg ? `×${peak.toFixed(1)}` : "";
-      const multHtml = isDeg
-        ? ` <span class="tag-mult">${multTxt}</span>` : "";
-      // Заголовок тултипа = название роли (+×N), затем короткое описание.
-      let tip = `${meta.label}${isDeg ? " " + multTxt : ""}\n${meta.tip}`;
-      if (isDeg) tip += `\nПик: ×${peak.toFixed(1)} от нормы.`;
+      const isAch = meta.cls && meta.cls.indexOf("tag-ach") >= 0;
+      // Множитель ×N по семейству роли (пик / комбо-геом. / история-геом.).
+      const mult = isAch ? tagMult(t, c) : 0;
+      const showMult = mult >= 1.5;
+      const multHtml = showMult
+        ? ` <span class="tag-mult">×${mult.toFixed(1)}</span>` : "";
+      let tip = `${meta.label}${showMult ? " ×" + mult.toFixed(1) : ""}\n${meta.tip}`;
       if (t === "officer" && m.top_rank) tip += ` Макс. пост: ${m.top_rank}.`;
-      const color = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
-      return `<span class="tag-chip ${meta.cls}${auto}" data-wtip="${esc(tip)}"${color}
+      // Достижения — инлайн-цвет по роли (+ свечение у топовых).
+      let style = "";
+      if (isAch && meta.color) {
+        const col = meta.color;
+        style = ` style="color:${col};border-color:${col};background:${col}1f;` +
+                (meta.glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
+      }
+      const wcol = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
+      return `<span class="tag-chip ${meta.cls}${auto}"${style} data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
     }).join("");
