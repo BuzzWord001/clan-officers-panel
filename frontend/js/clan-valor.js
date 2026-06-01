@@ -286,11 +286,23 @@
     if (pct == null) {
       return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
     }
-    // Не выполнен — пилюля градиента + бейдж предупреждений (если streak > 0)
+    // Не выполнен — пилюля градиента + бейдж предупреждений (если streak > 0).
+    // Цвет бейджа зависит от того, СКОЛЬКО норматива выполнено:
+    //   ≥80% — почти выполнил (зеленоватый, мягкий)
+    //   60-79 — жёлтый · 40-59 — оранжевый · 20-39 — тёмно-оранжевый
+    //   <20%  — красный (совсем не выполнил)
     const cls = pctClass(pct);
+    const sev = pct >= 80 ? "ok"
+              : pct >= 60 ? "mid"
+              : pct >= 40 ? "low"
+              : pct >= 20 ? "bad" : "crit";
+    const warnTip = (wc > 1
+        ? wc + " недель подряд без норматива"
+        : "норматив не выполнен")
+      + ` — набрано ${pct}% от нормы`;
     const warnBadge = wc >= 1
-      ? ` <span class="warn-badge${wc > 1 ? " warn-badge-multi" : ""}" ` +
-        `title="${esc(wc + " неделя(ь) подряд без норматива")}">` +
+      ? ` <span class="warn-badge warn-${sev}${wc > 1 ? " warn-badge-multi" : ""}" ` +
+        `title="${esc(warnTip)}">` +
         `⚠${wc > 1 ? " " + wc : ""}</span>`
       : "";
     const tip = wc > 1

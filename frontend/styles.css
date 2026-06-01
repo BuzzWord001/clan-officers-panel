@@ -2744,7 +2744,8 @@ body.show-valor .valor-col { display: table-cell; }
    чтобы значок всегда был справа от надписи и не уезжал под неё. */
 .ch-label { white-space: nowrap; }
 
-/* Бейдж предупреждений в колонке «Норматив» (недели без выполнения) */
+/* Бейдж предупреждений в колонке «Норматив» (недели без выполнения).
+   Раскладка — здесь; цвет — в .warn-{sev} по % выполнения норматива. */
 .warn-badge {
   display: inline-block;
   margin-left: 5px;
@@ -2753,17 +2754,23 @@ body.show-valor .valor-col { display: table-cell; }
   font-size: 10px;
   font-weight: 700;
   line-height: 15px;
-  color: #ffcaca;
-  background: rgba(255, 59, 59, 0.16);
-  border: 1px solid rgba(255, 59, 59, 0.55);
   vertical-align: middle;
   white-space: nowrap;
+  border: 1px solid;
 }
+/* Градация по выполнению: ближе к 100% — мягкий зеленоватый,
+   ниже — жёлтый → оранжевый → красный (совсем не выполнил). */
+.warn-ok   { color: #bfffd4; background: rgba(120, 220, 130, 0.12); border-color: rgba(120, 220, 130, 0.50); }
+.warn-mid  { color: #ecff9c; background: rgba(205, 230, 90, 0.13);  border-color: rgba(205, 230, 90, 0.52); }
+.warn-low  { color: #ffd98a; background: rgba(255, 190, 90, 0.14);  border-color: rgba(255, 190, 90, 0.55); }
+.warn-bad  { color: #ffb070; background: rgba(255, 150, 70, 0.16);  border-color: rgba(255, 150, 70, 0.60); }
+.warn-crit { color: #ffcaca; background: rgba(255, 59, 59, 0.18);   border-color: rgba(255, 59, 59, 0.60); }
+/* Несколько недель подряд без норматива — усиливаем: ярче и со свечением
+   в тон серьёзности (по currentColor текущей градации). */
 .warn-badge-multi {
-  color: #fff;
-  background: rgba(255, 59, 59, 0.34);
-  border-color: var(--danger);
-  box-shadow: 0 0 7px rgba(255, 59, 59, 0.5);
+  font-weight: 800;
+  filter: brightness(1.08);
+  box-shadow: 0 0 7px currentColor;
 }
 
 /* Кликабельный значок «?» рядом с заголовком столбца */
