@@ -2655,6 +2655,30 @@ def _compute_immunity(accepted_date: date,
     }
 
 
+def valor_accepted_date_per_canon() -> dict[str, date]:
+    """Map nick_canon → MAX(accepted_date). Используется для per-week
+    проверки иммунитета в исторических данных (compliance)."""
+    out: dict[str, date] = {}
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT game_nick, MAX(accepted_date) AS d FROM acceptances "
+            "GROUP BY game_nick"
+        ).fetchall()
+    for r in rows:
+        try:
+            d = date.fromisoformat(r["d"])
+        except Exception:
+            continue
+        canon = _valor_canon(r["game_nick"])
+        if not canon:
+            continue
+        # Если на тот же canon уже есть — берём более позднюю
+        existing = out.get(canon)
+        if existing is None or d > existing:
+            out[canon] = d
+    return out
+
+
 def valor_immunity_per_canon(week: str) -> dict[str, dict]:
     """Map nick_canon → immunity-инфо для оцениваемой недели. Берёт
     самую позднюю accepted_date по канону (если вернулся в клан — это
@@ -3368,22 +3392,33 @@ def valor_get_current() -> dict[str, Any]:
                     prev_pct[cn] = round(min(v / prev_norm, 1.0) * 100, 1)
 
         # Compliance по всем неделям для каждого ника (среднее % выполнения).
-        # АФК и иммунные (norm_met IS NULL) пропускаем — они не оцениваются.
+        # Пропускаем:
+        #   • АФК (is_afk)
+        #   • norm_met IS NULL (иммунные/не оцениваемые — после фиксов)
+        #   • per-week иммунитет (для старых снапшотов где norm_met
+        #     записывалась до фикса) — определяем по accepted_date
+        accepted_by_canon = valor_accepted_date_per_canon()
         compliance: dict[str, dict] = {}
         for r in conn.execute(
             """SELECT vm.nick_canon, vm.valor, vm.is_afk, vm.norm_met,
-                      vs.valor_norm
+                      vs.valor_norm, vs.week
                FROM valor_members vm
                JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
         ):
             cn = r["nick_canon"]
             if r["is_afk"]:
                 continue
-            # norm_met IS NULL — иммунный или не оцениваемый, пропускаем
             if r["norm_met"] is None:
                 continue
             if r["valor"] is None:
                 continue
+            # Фикс: на старых снапшотах norm_met=False у иммунных — это
+            # ошибка. Пересчитываем _compute_immunity для week,canon.
+            acc = accepted_by_canon.get(cn)
+            if acc:
+                imm = _compute_immunity(acc, r["week"])
+                if imm and imm["status"] in ("active", "extended"):
+                    continue  # эта неделя была иммунная — пропускаем
             norm = r["valor_norm"] or 1
             pct = min(r["valor"] / norm, 1.0) * 100
             d = compliance.setdefault(cn, {"sum": 0.0, "n": 0, "met": 0})
@@ -3526,10 +3561,18 @@ def valor_get_current() -> dict[str, Any]:
             #   socials:    0..15  (7.5 за VK + 7.5 за TG)
             #   veteran:    0..10
             #   officer:    0..30  по top_rank (см. _RANK_SCORE)
-            comp_pts = 0.0
+            # Если человек ПРЯМО СЕЙЧАС под иммунитетом (active/extended),
+            # доблесть-компонент не оценивается: comp_pts=None, max=75.
+            # total нормализуется к /100 для справедливого сравнения.
             comp_obj = m.get("compliance")
-            if comp_obj:
+            is_immune_now = (immunity and
+                             immunity["status"] in ("active", "extended"))
+            if is_immune_now:
+                comp_pts = None  # «не оценивается»
+            elif comp_obj:
                 comp_pts = round(comp_obj["avg_pct"] * 0.25, 1)
+            else:
+                comp_pts = 0.0
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * 20, 1)
             soc_pts = 0.0
@@ -3540,17 +3583,29 @@ def valor_get_current() -> dict[str, Any]:
                 soc_pts += 7.5
             veteran_pts = 10 if "veteran" in m["tags"] else 0
             officer_pts = _rank_score(top_rank)
-            total = round(
-                comp_pts + chat_pts + soc_pts + veteran_pts + officer_pts, 1)
+            # Сумма доступных компонентов
+            other_pts = chat_pts + soc_pts + veteran_pts + officer_pts
+            if is_immune_now:
+                max_pts = 75  # без 25 за доблесть
+                raw_total = round(other_pts, 1)
+                # Нормализуем к 100 чтобы было сопоставимо с обычными
+                total = round(raw_total / max_pts * 100, 1)
+            else:
+                max_pts = 100
+                raw_total = round((comp_pts or 0) + other_pts, 1)
+                total = raw_total
             m["score"] = {
-                "total":      total,
-                "compliance": comp_pts,
-                "chat":       chat_pts,
-                "chat_msgs":  msgs,
-                "socials":    soc_pts,
-                "veteran":    veteran_pts,
-                "officer":    officer_pts,
-                "top_rank":   top_rank or None,
+                "total":           total,
+                "raw_total":       raw_total,
+                "max":             max_pts,
+                "immunity_adjusted": is_immune_now,
+                "compliance":      comp_pts,  # None если иммун
+                "chat":            chat_pts,
+                "chat_msgs":       msgs,
+                "socials":         soc_pts,
+                "veteran":         veteran_pts,
+                "officer":         officer_pts,
+                "top_rank":        top_rank or None,
             }
             members.append(m)
         return {

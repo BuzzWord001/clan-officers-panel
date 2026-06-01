@@ -168,14 +168,26 @@
     const officerLine = s.top_rank
       ? `• офицер: ${s.officer} / 30 (${s.top_rank})`
       : `• офицер: 0 / 30`;
-    const tip = `Итог: ${s.total} / 100\n`
-      + `• доблесть: ${s.compliance} / 25\n`
+    // Иммунные — доблесть не оценивается, score нормализован к /100
+    const compLine = s.compliance == null
+      ? `• доблесть: не оценивается (иммунитет)`
+      : `• доблесть: ${s.compliance} / 25`;
+    const headLine = s.immunity_adjusted
+      ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
+         `Иммунитет: доблесть исключена из оценки.\n`
+      : `Итог: ${s.total} / 100\n`;
+    const tip = headLine
+      + compLine + "\n"
       + `• чаты: ${s.chat} / 20 (${s.chat_msgs} сообщ.)\n`
       + `• соцсети: ${s.socials} / 15\n`
       + `• ветеран: ${s.veteran} / 10\n`
       + officerLine;
+    // Для иммунных — звёздочка-намёк и колорится мягче
+    const star = s.immunity_adjusted
+      ? `<small class="imm-mark" title="скор нормализован — без компонента доблести">*</small>`
+      : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
-      ><b>${s.total}</b><small style="opacity:0.7">/100</small></span>`;
+      ><b>${s.total}</b>${star}<small style="opacity:0.7">/100</small></span>`;
   }
 
   function pctClass(pct) {

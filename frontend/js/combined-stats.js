@@ -117,7 +117,7 @@
         datasets: [
           {
             label: "Доблесть",
-            data: items.map(m => m.score.compliance),
+            data: items.map(m => m.score.compliance ?? 0),
             backgroundColor: "rgba(80,220,80,0.75)",
             borderColor: "rgba(80,220,80,0.95)",
             borderWidth: 1,
@@ -160,8 +160,15 @@
           legend: { display: false },
           tooltip: {
             mode: "index", intersect: false,
-            // Скрываем категории с 0 баллов чтобы не зашумлять
-            filter: (tt) => (tt.parsed.x || 0) > 0,
+            // Скрываем категории с 0 баллов чтобы не зашумлять.
+            // Для иммунных «Доблесть» показываем со спец-лейблом.
+            filter: (tt) => {
+              const m = items[tt.dataIndex];
+              const sc = m && m.score;
+              if (tt.dataset.label === "Доблесть" &&
+                  sc && sc.immunity_adjusted) return true;
+              return (tt.parsed.x || 0) > 0;
+            },
             callbacks: {
               // Заголовок: ник + истинное имя на отдельных строках для
               // длинных имён, плюс «иммунитет» если он есть
@@ -183,23 +190,35 @@
               },
               // Лейбл одной категории: «Доблесть: 22.5 / 25»
               // Для «Офицер» дописываем top_rank, для «Чаты» — кол-во сообщ.
+              // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
                 const MAX = {"Доблесть":25,"Чаты":20,"Соцсети":15,
                               "Ветеран":10,"Офицер":30};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
                 const max = MAX[lbl] || 0;
-                let suffix = "";
                 const m = items[ctx.dataIndex];
-                if (lbl === "Офицер" && m.score && m.score.top_rank) {
-                  suffix = "  · " + m.score.top_rank;
-                } else if (lbl === "Чаты" && m.score) {
-                  suffix = "  · " + (m.score.chat_msgs || 0) + " сообщ.";
+                const sc = m.score || {};
+                if (lbl === "Доблесть" && sc.immunity_adjusted) {
+                  return `  Доблесть: — не оценивается (иммунитет)`;
+                }
+                let suffix = "";
+                if (lbl === "Офицер" && sc.top_rank) {
+                  suffix = "  · " + sc.top_rank;
+                } else if (lbl === "Чаты") {
+                  suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
                 }
                 return `  ${lbl}: ${val} / ${max}${suffix}`;
               },
-              // Footer: итог + процент от максимума
+              // Footer: итог + процент. Для иммунных — нормализованный.
               footer: (tts) => {
+                if (!tts.length) return "";
+                const m = items[tts[0].dataIndex];
+                const sc = m.score || {};
+                if (sc.immunity_adjusted) {
+                  return `Итог: ~${sc.total} / 100 (норм. из ` +
+                    `${sc.raw_total} / ${sc.max})`;
+                }
                 const total = tts.reduce((a, t) => a + (t.parsed.x || 0), 0);
                 const rounded = Math.round(total * 10) / 10;
                 const pct = Math.round(total);
