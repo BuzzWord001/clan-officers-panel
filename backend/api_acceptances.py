@@ -4,14 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 import db
 from schemas import AcceptanceIn, AcceptanceUpdate, AcceptanceOut
-from session import current_actor
+from session import current_actor, current_session
 
 
 router = APIRouter(prefix="/acceptances", tags=["acceptances"])
 
 
 @router.get("", response_model=list[AcceptanceOut])
-def list_all() -> list[dict]:
+def list_all(s: dict = Depends(current_session)) -> list[dict]:
+    # Реестр — только для офицеров/админа. Гостю (просмотр Доблести) нельзя.
+    if s["role"] == "guest":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
     return db.list_acceptances()
 
 

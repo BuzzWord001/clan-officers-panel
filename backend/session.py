@@ -114,6 +114,9 @@ def current_actor(request: Request) -> dict[str, str]:
     инкогнито при правках в реестре. Но IP+UA для аудита сохраняются.
     """
     s = current_session(request)
+    if s["role"] == "guest":
+        # Гость — только просмотр; любые CRUD-действия запрещены.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
     ip = client_ip(request)
     ua = client_user_agent(request)
     if s["role"] == "admin":

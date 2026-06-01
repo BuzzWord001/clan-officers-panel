@@ -13,8 +13,10 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 @router.get("", response_model=list[AuditOut])
 def history(
     limit: int = Query(default=200, ge=1, le=1000),
-    _: dict = Depends(current_session),
+    s: dict = Depends(current_session),
 ) -> list[dict]:
+    if s["role"] == "guest":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
     return db.list_audit(limit)
 
 
