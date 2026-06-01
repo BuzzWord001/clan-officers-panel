@@ -2737,3 +2737,146 @@ body.show-valor .valor-col { display: table-cell; }
   padding: 4px 8px; border-radius: 3px;
   font-family: "Cascadia Code", monospace; font-size: 11px;
 }
+
+/* ═══════════════ Подсказки по колонкам (help-tips.js) ═══════════════ */
+
+/* Кликабельный значок «?» рядом с заголовком столбца */
+.col-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px; height: 15px;
+  margin-left: 5px;
+  padding: 0;
+  vertical-align: middle;
+  border: 1px solid var(--accent-dim);
+  border-radius: 50%;
+  background: rgba(0, 255, 65, 0.06);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  opacity: 0.65;
+  transition: opacity .15s, box-shadow .15s, background .15s;
+}
+.col-help:hover,
+.col-help-on {
+  opacity: 1;
+  background: rgba(0, 255, 65, 0.16);
+  box-shadow: 0 0 7px rgba(0, 255, 65, 0.45);
+}
+.col-help-on { border-color: var(--accent); }
+
+/* Всплывающий поповер с пояснением */
+.help-popover {
+  position: fixed;
+  z-index: 1000;
+  min-width: 240px;
+  max-width: 340px;
+  background: #0a1a0a;
+  border: 1px solid var(--accent-dim);
+  box-shadow: 0 4px 28px rgba(0, 255, 65, 0.20), 0 0 60px rgba(0, 0, 0, 0.75);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  animation: helpPopIn .12s ease-out;
+}
+@keyframes helpPopIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.help-pop-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-bottom: 6px; margin-bottom: 7px;
+  border-bottom: 1px dashed var(--accent-dim);
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: .5px;
+  font-size: 13px;
+}
+.help-pop-row { display: flex; gap: 8px; margin-top: 5px; }
+.help-pop-row .hpr-w {
+  flex: 0 0 78px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding-top: 1px;
+}
+.help-pop-row .hpr-v { flex: 1; color: var(--text); }
+
+/* Бейдж источника данных */
+.hf-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.hf-auto   { color: #00ff41; border-color: rgba(0,255,65,0.5);   background: rgba(0,255,65,0.10); }
+.hf-manual { color: #ffd080; border-color: rgba(255,208,128,0.5); background: rgba(255,208,128,0.10); }
+.hf-calc   { color: #69b7e4; border-color: rgba(105,183,228,0.5); background: rgba(105,183,228,0.10); }
+.hf-mixed  { color: #b070dc; border-color: rgba(176,112,220,0.5); background: rgba(176,112,220,0.10); }
+
+/* Сноска под таблицей — «Как заполняется таблица» */
+.help-legend {
+  margin: 10px 2px 4px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  background: rgba(2, 12, 4, 0.45);
+  font-size: 12px;
+}
+.help-legend > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: .3px;
+  user-select: none;
+  transition: color .15s;
+}
+.help-legend > summary:hover { color: var(--accent); }
+.help-legend > summary::-webkit-details-marker { display: none; }
+.help-legend > summary .hl-ic {
+  display: inline-block;
+  width: 16px; height: 16px;
+  margin-right: 6px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 50%;
+  text-align: center;
+  line-height: 15px;
+  font-size: 11px;
+  color: var(--accent);
+}
+.help-legend[open] > summary {
+  color: var(--accent);
+  border-bottom: 1px dashed var(--accent-dim);
+}
+.hl-body { padding: 10px 12px; }
+.hl-legendkey {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  padding-bottom: 9px; margin-bottom: 9px;
+  border-bottom: 1px dashed var(--accent-dim);
+}
+.hl-legendkey small { color: var(--text-dim); margin-left: -8px; }
+.hl-row {
+  display: grid;
+  grid-template-columns: 160px 110px 1fr;
+  gap: 10px; align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(0, 255, 65, 0.06);
+}
+.hl-row:last-child { border-bottom: 0; }
+.hl-col { color: var(--accent); font-weight: 600; }
+.hl-desc { color: var(--text-dim); line-height: 1.4; }
+@media (max-width: 720px) {
+  .hl-row { grid-template-columns: 1fr; gap: 2px; }
+}
