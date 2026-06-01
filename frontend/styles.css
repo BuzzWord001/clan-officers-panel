@@ -2814,8 +2814,9 @@ body.show-valor .valor-col { display: table-cell; }
   align-items: center;
 }
 /* ── Единый чип предупреждения (все 3 столбца) ──
-   Формат: «Предупреждение ⚠ N». ЦВЕТ = ТИП предупреждения.
-   Детали и суровость — в тултипе при наведении. */
+   Формат: «Предупреждение ⚠ N». ЦВЕТ = СУРОВОСТЬ (зелёный/жёлтый/красный
+   по % нормы). Титул — отдельный строгий цвет (фиолетовый). Ручное — цвет
+   суровости + значок ✎. Пояснение — в красивом окошке при наведении. */
 .wchip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 9px;
@@ -2824,17 +2825,35 @@ body.show-valor .valor-col { display: table-cell; }
   white-space: nowrap; vertical-align: middle;
   cursor: help;
 }
-.wchip .tri { font-size: 10px; line-height: 1; }
-/* логичные цвета по типу */
-.wtype-norm   { color:#ffcf8a; border-color:rgba(255,176,74,0.55); background:rgba(255,176,74,0.12); }
-.wtype-title  { color:#ff9a9a; border-color:rgba(255,80,80,0.62);  background:rgba(255,80,80,0.14);
-                box-shadow:0 0 6px rgba(255,60,60,0.25); }
-.wtype-manual { color:#a9d4ff; border-color:rgba(90,170,255,0.55); background:rgba(90,170,255,0.13); }
+.wchip .tri  { font-size: 10px; line-height: 1; }
+.wchip .wmark { font-size: 9px; opacity: 0.9; margin-right: 1px; }
+/* СУРОВОСТЬ — для норматива и ручных */
+.wsev-light  { color:#9dffba; border-color:rgba(70,210,110,0.60); background:rgba(70,210,110,0.13); }
+.wsev-mid    { color:#ffe487; border-color:rgba(235,200,70,0.62); background:rgba(235,200,70,0.15); }
+.wsev-severe { color:#ff9b9b; border-color:rgba(255,70,70,0.66);  background:rgba(255,70,70,0.16);
+               box-shadow: 0 0 6px rgba(255,55,55,0.32); }
+/* ТИТУЛ — строгий отдельный цвет (фиолетовый, с акцентом) */
+.wtype-title { color:#e2b4ff; border-color:rgba(176,92,255,0.72); background:rgba(150,70,240,0.20);
+               box-shadow: 0 0 7px rgba(165,85,255,0.40); font-weight: 700; }
 .no-warn {
   color: var(--accent);
   opacity: 0.45;
   font-weight: 700;
 }
+/* Красивый тултип предупреждения — в стиле сайта */
+.wtip-pop {
+  position: fixed; z-index: 1200;
+  max-width: 250px;
+  background: #0a1a0a;
+  border: 1px solid var(--accent-dim);
+  border-radius: 5px;
+  box-shadow: 0 4px 22px rgba(0,255,65,0.18), 0 0 50px rgba(0,0,0,0.7);
+  padding: 7px 11px;
+  font-size: 11px; line-height: 1.45; color: var(--text);
+  pointer-events: none;
+  animation: helpPopIn .12s ease-out;
+}
+.wtip-pop b { color: var(--accent); display: inline-block; margin-bottom: 2px; }
 /* Кнопка «+» — добавить предупреждение вручную */
 .warn-add-btn {
   width: 16px; height: 16px;

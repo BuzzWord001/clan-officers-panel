@@ -292,9 +292,12 @@
     if (pct == null) {
       return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
     }
-    // Не выполнен — пилюля % выполнения + единый чип предупреждения (norm).
+    // Не выполнен — пилюля % выполнения + единый чип предупреждения (норматив).
     const cls = pctClass(pct);
-    const warnBadge = wc >= 1 ? " " + warnChip("norm", wc, normWarnDetail(m)) : "";
+    const warnBadge = wc >= 1
+      ? " " + warnChip("wsev-" + sev3(pct), wc,
+          `Норматив не выполнен\nнабрано ${pct}% нормы`)
+      : "";
     const tip = `${pct}% от норматива`;
     return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
       >${main} · ${pct}%</span>${warnBadge}`;
@@ -314,65 +317,67 @@
   }
 
   // ── Единый чип предупреждения для ВСЕХ столбцов ──
-  // Формат: «Предупреждение ⚠ N» (N — количество предупреждений этого типа).
-  // ЦВЕТ = ТИП: норматив — янтарный, титул — красный, ручное — синий.
-  // Суровость и детали — в тултипе при наведении.
+  // Формат: «Предупреждение ⚠ N». ЦВЕТ = СУРОВОСТЬ: лёгкое — зелёный,
+  // среднее — жёлтый, суровое — красный (по % набранной нормы). ТИТУЛ —
+  // отдельный строгий цвет (фиолетовый). РУЧНОЕ — цвет суровости + значок ✎.
+  // Короткое пояснение — в красивом окошке (кастомный тултип) при наведении.
   function sev3(pct) {
     return pct >= 67 ? "light" : pct >= 34 ? "mid" : "severe";
   }
-  const SEVWORD = { light: "лёгкое", mid: "среднее", severe: "суровое" };
+  // нормализация уровней ручных предупреждений (старые + новые значения)
+  const MSEV = { light: "light", mid: "mid", severe: "severe",
+                  ok: "light", low: "mid", bad: "mid", crit: "severe" };
   const _MWARN_SEV = new Set(["light", "mid", "severe"]);
-  const WARN_TYPE_TIP = {
-    norm:  "Тип «НОРМАТИВ». Выдаётся автоматически за неделю, когда доблести " +
-           "набрано меньше нормы. Снимается, когда снова выполняет норматив — " +
-           "первым уходит самое суровое.",
-    title: "Тип «ТИТУЛ». Офицер проставил число в игровом титуле прямо в игре. " +
-           "Кик обычно после 2-го. Снимается офицером в игре.",
-    manual:"Тип «РУЧНОЕ». Добавлено офицером вручную на сайте кнопкой «+». " +
-           "Снимается крестиком «✕».",
-  };
-  function warnChip(type, n, detail, extra) {
-    const tip = WARN_TYPE_TIP[type] + (detail ? "\n\n" + detail : "");
-    return `<span class="wchip wtype-${type}" title="${esc(tip)}">` +
-      `Предупреждение <span class="tri">⚠</span> ${n}${extra || ""}</span>`;
-  }
-  function normWarnDetail(m) {
-    const ws = m.warnings || [];
-    if (!ws.length) return "";
-    return "Активно сейчас: " + ws.length + "\n" + ws.map(w =>
-      `• ${w.week}: ${w.valor}/${w.norm} = ${w.pct}% (${SEVWORD[sev3(w.pct)]})`
-    ).join("\n");
-  }
-  function titleWarnDetail(m) {
-    return "В игровом титуле сейчас: " + m.title_warn +
-      (m.title_warn_since ? `\nОтмечено на неделе ${m.title_warn_since}` : "");
-  }
-  function manualWarnDetail(mw) {
-    return "Причины:\n" + mw.map(w =>
-      `• ${w.reason || "(без причины)"}${w.created_by ? " — " + w.created_by : ""}`
-    ).join("\n");
+  const SEVRANK = { light: 0, mid: 1, severe: 2 };
+
+  // colorCls — класс цвета (wsev-* или wtype-title); wtip — короткий текст.
+  function warnChip(colorCls, n, wtip, opts) {
+    opts = opts || {};
+    const mark = opts.manual
+      ? `<span class="wmark" aria-hidden="true">✎</span>` : "";
+    return `<span class="wchip ${colorCls}" data-wtip="${esc(wtip)}">` +
+      `${mark}Предупреждение <span class="tri">⚠</span> ${n}` +
+      `${opts.extra || ""}</span>`;
   }
 
-  // Колонка «Предупреждения» — по одному чипу на тип (норматив/титул/ручное)
-  // в едином стиле + кнопка «+» (добавить) и «✕» (снять последнее ручное).
+  // Колонка «Предупреждения» — по одному чипу на тип + кнопки «+» / «✕».
   function renderWarnings(m) {
-    const norm = (m.warnings || []).length;
+    const ws = m.warnings || [];
     const tw = m.title_warn;
     const manual = m.manual_warnings || [];
     const chips = [];
-    if (norm) chips.push(warnChip("norm", norm, normWarnDetail(m)));
-    if (tw)   chips.push(warnChip("title", tw, titleWarnDetail(m)));
+    // Норматив — суровость по худшему % из активных недель
+    if (ws.length) {
+      const worst = Math.min.apply(null, ws.map((w) => w.pct));
+      chips.push(warnChip("wsev-" + sev3(worst), ws.length,
+        `Норматив не выполнен\n${ws.length} нед. ниже нормы · худшее ${Math.round(worst)}%`));
+    }
+    // Титул — строгий цвет
+    if (tw) {
+      chips.push(warnChip("wtype-title", tw,
+        `Титул: отметка офицера в игре\nкик обычно после 2-го`));
+    }
+    // Ручные — цвет по худшей суровости + значок ✎
     if (manual.length) {
+      let worstSev = "light";
+      manual.forEach((w) => {
+        const s = MSEV[w.severity] || "mid";
+        if (SEVRANK[s] > SEVRANK[worstSev]) worstSev = s;
+      });
+      const lastReason = (manual.filter((w) => w.reason).pop() || {}).reason;
+      const tip = `Ручное предупреждение офицера` +
+        (lastReason ? `\n«${lastReason}»` : ``);
       const latestId = manual[manual.length - 1].id;
       const del = ` <button class="warn-del-btn" data-id="${latestId}" ` +
-        `title="Снять последнее ручное предупреждение">✕</button>`;
-      chips.push(warnChip("manual", manual.length, manualWarnDetail(manual), del));
+        `title="Снять последнее ручное">✕</button>`;
+      chips.push(warnChip("wsev-" + worstSev, manual.length, tip,
+        { manual: true, extra: del }));
     }
     const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
       `title="Добавить ручное предупреждение">+</button>`;
     const body = chips.length
       ? chips.join("")
-      : `<span class="no-warn" title="активных предупреждений нет">✓</span>`;
+      : `<span class="no-warn" data-wtip="Активных предупреждений нет">✓</span>`;
     return `<div class="warn-list">${body}${addBtn}</div>`;
   }
 
@@ -415,7 +420,8 @@
     // Обычный (нечисловой) титул — просто текстом.
     const n = m.title_warn;
     if (!n) return esc(m.title);
-    return warnChip("title", n, titleWarnDetail(m));
+    return warnChip("wtype-title", n,
+      `Титул: отметка офицера в игре\nкик обычно после 2-го`);
   }
 
   function renderTrend(t) {
@@ -620,6 +626,11 @@
     pop.className = "warn-add-pop";
     pop.innerHTML =
       `<div class="wap-title">Ручное предупреждение: <b>${esc(nick)}</b></div>` +
+      `<div class="wap-sev">` +
+        `<button type="button" data-sev="light"  class="wchip wsev-light">лёгкое</button>` +
+        `<button type="button" data-sev="mid"     class="wchip wsev-mid">среднее</button>` +
+        `<button type="button" data-sev="severe"  class="wchip wsev-severe">суровое</button>` +
+      `</div>` +
       `<input class="wap-reason" type="text" maxlength="200" ` +
         `placeholder="За что? (причина, необязательно)">` +
       `<div class="wap-actions">` +
@@ -633,6 +644,12 @@
       left = window.innerWidth - pop.offsetWidth - 8;
     pop.style.left = Math.max(8, left) + "px";
     pop.style.top = top + "px";
+    let sev = "mid";
+    const sevBtns = pop.querySelectorAll(".wap-sev button");
+    const selSev = (s) => { sev = s; sevBtns.forEach(b =>
+      b.classList.toggle("wap-on", b.dataset.sev === s)); };
+    selSev("mid");
+    sevBtns.forEach(b => b.addEventListener("click", () => selSev(b.dataset.sev)));
     pop.querySelector(".wap-cancel").addEventListener("click", closeWarnAdd);
     pop.querySelector(".wap-add").addEventListener("click", async () => {
       const reason = pop.querySelector(".wap-reason").value.trim();
@@ -641,7 +658,7 @@
           { method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json",
               "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") },
-            body: JSON.stringify({ nick, reason }) });
+            body: JSON.stringify({ nick, severity: sev, reason }) });
         closeWarnAdd(); await load();
       } catch (e) { alert("Ошибка: " + (e.message || e)); }
     });
@@ -674,6 +691,41 @@
       return;
     }
   });
+
+  // ── Красивый тултип предупреждений (в стиле сайта) ──
+  let WTIP = null, WTIP_EL = null;
+  function hideWtip() { if (WTIP) { WTIP.remove(); WTIP = null; } WTIP_EL = null; }
+  function showWtip(el) {
+    const txt = el.getAttribute("data-wtip");
+    if (!txt) return;
+    hideWtip();
+    const p = document.createElement("div");
+    p.className = "wtip-pop";
+    p.innerHTML = txt.split("\n")
+      .map((l, i) => i === 0 ? `<b>${esc(l)}</b>` : esc(l)).join("<br>");
+    document.body.appendChild(p);
+    const r = el.getBoundingClientRect();
+    const m = 8;
+    let left = r.left + r.width / 2 - p.offsetWidth / 2;
+    let top = r.bottom + 7;
+    if (left < m) left = m;
+    if (left + p.offsetWidth > window.innerWidth - m)
+      left = window.innerWidth - p.offsetWidth - m;
+    if (top + p.offsetHeight > window.innerHeight - m && r.top - p.offsetHeight - 7 > m)
+      top = r.top - p.offsetHeight - 7;
+    p.style.left = Math.round(left) + "px";
+    p.style.top = Math.round(top) + "px";
+    WTIP = p; WTIP_EL = el;
+  }
+  $("valor-tbody").addEventListener("mouseover", (e) => {
+    const c = e.target.closest("[data-wtip]");
+    if (c && c !== WTIP_EL) showWtip(c);
+  });
+  $("valor-tbody").addEventListener("mouseout", (e) => {
+    const c = e.target.closest("[data-wtip]");
+    if (c && !c.contains(e.relatedTarget)) hideWtip();
+  });
+  window.addEventListener("scroll", hideWtip, true);
 
   // History popover (по клику на ячейки с историей)
   $("valor-tbody").addEventListener("click", async (ev) => {
