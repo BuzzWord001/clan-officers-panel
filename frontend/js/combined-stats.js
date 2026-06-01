@@ -72,8 +72,12 @@
   // Маркер pseudo-разделителя «Иммунные новички». Используется как
   // невыделяемая строка в Chart.js (data=0 во всех datasets, спец-label).
   const SEP_NICK = "__SEP_IMMUNE__";
+  const SEP_AFK  = "__SEP_AFK__";
   function isImmuneAdjusted(m) {
     return m && m.score && m.score.immunity_adjusted;
+  }
+  function isAfk(m) {
+    return !!(m && m.is_afk);
   }
 
   function render() {
@@ -88,21 +92,30 @@
         ((m.nick || "") + " " + (m.true_name || ""))
           .toLowerCase().includes(q));
     }
-    // Разделяем на регулярных и иммунных, сортируем каждую группу.
+    // Разделяем на 3 группы: обычные → АФК → иммунные. Сортируем каждую.
+    // АФК классифицируем первыми (даже если у человека есть иммунитет) —
+    // у них норматив тоже «не оценивается», и они должны быть НАД иммунными.
     const cmp = (a, b) => sortVal(b, sortKey) - sortVal(a, sortKey);
-    const regular = pool.filter(m => !isImmuneAdjusted(m)).sort(cmp);
-    const immune  = pool.filter(m =>  isImmuneAdjusted(m)).sort(cmp);
-    let regCut = regular, immCut = immune;
+    const regular = pool.filter(m => !isAfk(m) && !isImmuneAdjusted(m)).sort(cmp);
+    const afk     = pool.filter(m =>  isAfk(m)).sort(cmp);
+    const immune  = pool.filter(m => !isAfk(m) &&  isImmuneAdjusted(m)).sort(cmp);
+    let regCut = regular, afkCut = afk, immCut = immune;
     if (top > 0) {
       regCut = regular.slice(0, top);
+      afkCut = afk.slice(0, top);
       immCut = immune.slice(0, top);
     }
     // Собираем единый список. Между группами вставляем pseudo-разделитель.
     // items[] — порядковый список, syncронный с labels/data.
     const items = regCut.slice();
+    // АФК — над иммунными (у них тоже «вроде иммуна» — норматив не оценивается)
+    if (afkCut.length) {
+      items.push({ nick: SEP_AFK, _is_sep: true, _sep_kind: "afk", score: {} });
+      items.push(...afkCut);
+    }
     if (immCut.length) {
       // Pseudo-объект для строки-разделителя
-      items.push({ nick: SEP_NICK, _is_sep: true, score: {} });
+      items.push({ nick: SEP_NICK, _is_sep: true, _sep_kind: "immune", score: {} });
       items.push(...immCut);
     }
 
@@ -111,13 +124,17 @@
     const avgReg = regCut.length ? Math.round(totReg / regCut.length * 10) / 10 : 0;
     const totImm = immCut.reduce((a, m) => a + (m.score.total || 0), 0);
     const avgImm = immCut.length ? Math.round(totImm / immCut.length * 10) / 10 : 0;
+    const afkChip = afkCut.length
+      ? `<span style="color:#ffd080">💤 АФК: <b>${afkCut.length}</b></span>`
+      : "";
     const immChip = immCut.length
       ? `<span style="color:#7bc7ff">🛡 иммунных: <b>${immCut.length}</b> (ср. ${avgImm}/100)</span>`
       : "";
     document.getElementById("cs-stats").innerHTML = `
-      <span>показано: <b>${regCut.length + immCut.length}</b>
+      <span>показано: <b>${regCut.length + afkCut.length + immCut.length}</b>
         <small style="opacity:0.7">(${regCut.length} обычных)</small></span>
       <span>средняя ценность: <b style="color:var(--accent)">${avgReg}/100</b></span>
+      ${afkChip}
       ${immChip}
       <span style="color:#88ff88">▌ доблесть</span>
       <span style="color:#69b7e4">▌ чаты</span>
@@ -134,13 +151,16 @@
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
-    // Label для разделителя — заметная декоративная строка
-    const SEP_LABEL = "──── 🛡 ИММУННЫЕ НОВИЧКИ ────";
+    // Label для разделителей — заметные декоративные строки
+    const SEP_LABELS = {
+      afk:    "──── 💤 АФК ────",
+      immune: "──── 🛡 ИММУННЫЕ НОВИЧКИ ────",
+    };
     CHART = new Chart(ctx, {
       type: "bar",
       data: {
         labels: items.map(m => m._is_sep
-          ? SEP_LABEL
+          ? (SEP_LABELS[m._sep_kind] || SEP_LABELS.immune)
           : (m.nick + (m.true_name ? " · " + m.true_name : ""))),
         datasets: [
           {
@@ -211,7 +231,9 @@
                 if (m._is_sep) return "";
                 const lines = [m.nick];
                 if (m.true_name) lines.push("· " + m.true_name);
-                if (m.immunity && m.immunity.status === "active") {
+                if (m.is_afk) {
+                  lines.push("💤 статус АФК — норматив не оценивается");
+                } else if (m.immunity && m.immunity.status === "active") {
                   lines.push("🛡 иммунитет активен (до " +
                     m.immunity.immune_until + ")");
                 } else if (m.immunity && m.immunity.status === "extended") {
@@ -269,7 +291,9 @@
                 ticks: {
                   color: (ctx) => {
                     const m = items[ctx.index];
-                    if (m && m._is_sep) return "#7bc7ff";
+                    if (m && m._is_sep)
+                      return m._sep_kind === "afk" ? "#ffd080" : "#7bc7ff";
+                    if (isAfk(m)) return "#ffd9a0";
                     if (isImmuneAdjusted(m)) return "#a8d4ff";
                     return "#c8c8c8";
                   },

@@ -367,6 +367,33 @@
       >${arrow}${pctLabel}<small style="opacity:0.7"> ${sign}${t.delta}</small></span>`;
   }
 
+  // Вторичная сортировка при РАВНОЙ «ценности для клана» (особенно для
+  // нулей внизу списка): АФК держатся выше всех → затем иммунные
+  // (по убыванию оставшихся дней иммуна) → затем все остальные «нулевые».
+  // Не зависит от направления сортировки — группа АФК/иммунных всегда
+  // прижата к верху своего блока равных значений.
+  function statusTier(m) {
+    if (m.is_afk) return 2;
+    const im = m.immunity;
+    if (im && (im.status === "active" || im.status === "extended")) return 1;
+    return 0;
+  }
+  function immuneDaysLeft(m) {
+    const im = m.immunity;
+    if (!im || !im.immune_until) return 0;
+    const d = new Date(im.immune_until + "T00:00:00");
+    if (isNaN(d.getTime())) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((d - today) / 86400000);
+  }
+  function statusTieBreak(a, b) {
+    const ta = statusTier(a), tb = statusTier(b);
+    if (ta !== tb) return tb - ta;                 // выше tier → выше в списке
+    if (ta === 1) return immuneDaysLeft(b) - immuneDaysLeft(a); // больше дней → выше
+    return 0;
+  }
+
   function applyFilterSort() {
     const q = $("valor-filter").value.trim().toLowerCase();
     let items = DATA.members.slice();
@@ -382,6 +409,8 @@
       const vb = getSortVal(b, SORT.key);
       if (va < vb) return SORT.dir === "asc" ? -1 : 1;
       if (va > vb) return SORT.dir === "asc" ?  1 : -1;
+      // При равной ценности — АФК выше, затем иммунные (по дням), затем 0.
+      if (SORT.key === "score") return statusTieBreak(a, b);
       return 0;
     });
     return items;
