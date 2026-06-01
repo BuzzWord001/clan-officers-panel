@@ -2582,6 +2582,44 @@ def _rank_score(rank: str) -> int:
     return _RANK_SCORE.get((rank or "").strip().lower(), 0)
 
 
+def _achievement(comp: dict | None) -> str | None:
+    """Высшая метка-достижение за доблесть (по степени перевыполнения,
+    сериям перевыполнений и безупречной истории). Иерархия (сверху вниз —
+    от высшей к простой), берётся первая подходящая:
+
+      legend  👑 безупречная история (≥3 нед без провала) + серия ≥3 нед ≥2× нормы
+      ace     🔥 безупречная история + серия ≥3 нед ≥1.5× нормы
+      etalon  ⭐ безупречная история (≥3 нед без единого провала)
+      record  ⚡ серия ≥2 нед ≥2× нормы ИЛИ пик ≥2.5× (история не безупречна)
+      double  💎 хотя бы раз удвоил норму (пик ≥2×)
+      over    ➕ хотя бы раз перевыполнил (пик ≥1.5×)
+
+    Логика: при безупречной истории чем выше степень перевыполнения серией —
+    тем выше метка (legend > ace > etalon). Без безупречной истории —
+    метки за силу/серии перевыполнения (record > double > over).
+    """
+    if not comp or not comp.get("n"):
+        return None
+    wc = comp["weeks_count"]
+    flawless = comp["weeks_met"] == wc and wc >= 3
+    peak = comp.get("peak_ratio", 0.0)
+    s2 = comp.get("streak2", 0)   # серия ≥1.5×
+    s3 = comp.get("streak3", 0)   # серия ≥2×
+    if flawless and s3 >= 3:
+        return "legend"
+    if flawless and s2 >= 3:
+        return "ace"
+    if flawless:
+        return "etalon"
+    if s3 >= 2 or peak >= 2.5:
+        return "record"
+    if peak >= 2.0:
+        return "double"
+    if peak >= 1.5:
+        return "over"
+    return None
+
+
 def _title_warn(title: str):
     """Предупреждения, отмеченные офицером В ИГРЕ через числовой титул.
 
@@ -3603,16 +3641,20 @@ def valor_get_current() -> dict[str, Any]:
                 if imm and imm["status"] in ("active", "extended"):
                     continue  # эта неделя была иммунная — пропускаем
             norm = r["valor_norm"] or 1
-            pct = min(r["valor"] / norm, 1.0) * 100
+            ratio = r["valor"] / norm
+            pct = min(ratio, 1.0) * 100
             # Перевыполнение этой недели (0..100): на сколько % сверх нормы,
             # с потолком +100% (2× норма) — чтобы нельзя было «нафармить».
-            overshoot = max(0.0, min((r["valor"] / norm - 1.0) * 100, 100.0))
-            d = compliance.setdefault(cn, {"sum": 0.0, "n": 0, "met": 0,
-                                            "over_sum": 0.0, "streak": 0,
-                                            "max_streak": 0})
+            overshoot = max(0.0, min((ratio - 1.0) * 100, 100.0))
+            d = compliance.setdefault(cn, {
+                "sum": 0.0, "n": 0, "met": 0, "over_sum": 0.0,
+                "streak": 0, "max_streak": 0, "peak": 0.0,
+                "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0})
             d["sum"] += pct
             d["over_sum"] += overshoot
             d["n"] += 1
+            if ratio > d["peak"]:
+                d["peak"] = ratio
             if r["valor"] >= norm:
                 d["met"] += 1
                 d["streak"] += 1
@@ -3620,6 +3662,19 @@ def valor_get_current() -> dict[str, Any]:
                     d["max_streak"] = d["streak"]
             else:
                 d["streak"] = 0
+            # серии перевыполнения по степеням: ≥1.5× (cs2) и ≥2× (cs3)
+            if ratio >= 1.5:
+                d["cs2"] += 1
+                if d["cs2"] > d["ms2"]:
+                    d["ms2"] = d["cs2"]
+            else:
+                d["cs2"] = 0
+            if ratio >= 2.0:
+                d["cs3"] += 1
+                if d["cs3"] > d["ms3"]:
+                    d["ms3"] = d["cs3"]
+            else:
+                d["cs3"] = 0
 
         # Теги по canon (ветеран и т.п.) — для UI меток.
         tags_map = valor_list_tags()
@@ -3737,9 +3792,17 @@ def valor_get_current() -> dict[str, Any]:
                     "weeks_met":   d["met"],
                     "over_avg":    round(d["over_sum"] / d["n"], 1),
                     "max_streak":  d["max_streak"],
+                    "peak_ratio":  round(d["peak"], 2),
+                    "streak2":     d["ms2"],
+                    "streak3":     d["ms3"],
                 }
             else:
                 m["compliance"] = None
+            # Метка-достижение за доблесть (в начало списка меток).
+            ach = _achievement(m["compliance"])
+            m["achievement"] = ach
+            if ach:
+                m["tags"] = [ach] + [t for t in m["tags"] if t != ach]
 
             # Тренд: сравниваем % выполнения этой недели vs прошлой.
             #   pct_delta = cur_pct - prev_pct  (в процентных пунктах)

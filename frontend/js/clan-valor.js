@@ -147,6 +147,25 @@
   }
 
   const TAG_META = {
+    // ── Достижения за доблесть (авто, по степени перевыполнения и истории) ──
+    legend:     { label: "Легенда доблести", icon: "♛",
+                  cls: "tag-ach tag-ach-legend",
+                  tip: "Высшее достижение: безупречная история (≥3 нед без провала) + серия ≥3 нед с удвоением нормы (≥2×)." },
+    ace:        { label: "Ас доблести", icon: "⚜",
+                  cls: "tag-ach tag-ach-ace",
+                  tip: "Безупречная история + серия ≥3 нед перевыполнения (≥1.5× нормы)." },
+    etalon:     { label: "Эталон", icon: "✪",
+                  cls: "tag-ach tag-ach-etalon",
+                  tip: "Безупречная история — ни одного провала норматива (≥3 недель)." },
+    record:     { label: "Рекордсмен", icon: "⚡",
+                  cls: "tag-ach tag-ach-record",
+                  tip: "Мощное перевыполнение: серия ≥2 нед с удвоением нормы или пик ≥2.5×." },
+    double:     { label: "Удвоил норму", icon: "◆",
+                  cls: "tag-ach tag-ach-double",
+                  tip: "Хотя бы раз набрал ≥2× норматива за неделю." },
+    over:       { label: "Перевыполнил", icon: "▲",
+                  cls: "tag-ach tag-ach-over",
+                  tip: "Хотя бы раз перевыполнил норму (≥1.5×)." },
     veteran:    { label: "Ветеран", icon: "★",
                   cls: "tag-veteran",
                   tip: "Был в первоначальном списке клана (clan-checklist)" },
@@ -158,7 +177,8 @@
                   tip: "Занимал офицерский пост (Лейтенант и выше)" },
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
-  const AUTO_TAGS = new Set(["in_socials", "officer"]);
+  const AUTO_TAGS = new Set(["in_socials", "officer",
+    "legend", "ace", "etalon", "record", "double", "over"]);
 
   function renderTags(m) {
     const tags = m.tags || [];

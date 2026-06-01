@@ -2480,6 +2480,44 @@ body.show-valor .valor-col { display: table-cell; }
   border-color: rgba(255, 200, 100, 0.55);
   text-shadow: 0 0 8px rgba(255, 200, 80, 0.45);
 }
+/* ── Метки-достижения за доблесть (иерархия по престижу) ── */
+.tag-ach { font-weight: 800; }
+.tag-ach.tag-auto { border-style: solid; }   /* достижения — сплошная рамка */
+.tag-ach-legend {     /* 👑 высшая — насыщенное золото со свечением */
+  color: #fff3b0;
+  background: linear-gradient(135deg, rgba(255,215,80,0.32), rgba(255,140,0,0.22));
+  border-color: rgba(255,215,90,0.9);
+  text-shadow: 0 0 10px rgba(255,210,80,0.85);
+  box-shadow: 0 0 11px rgba(255,200,60,0.5), inset 0 0 6px rgba(255,220,120,0.25);
+}
+.tag-ach-ace {        /* 🔥 огненно-оранжевый */
+  color: #ffd0a0;
+  background: linear-gradient(135deg, rgba(255,140,60,0.24), rgba(200,60,30,0.20));
+  border-color: rgba(255,140,70,0.72);
+  text-shadow: 0 0 8px rgba(255,130,50,0.6);
+}
+.tag-ach-etalon {     /* ⭐ голубой «эталон» */
+  color: #aee9ff;
+  background: linear-gradient(135deg, rgba(120,200,255,0.20), rgba(60,120,200,0.18));
+  border-color: rgba(120,200,255,0.66);
+  text-shadow: 0 0 7px rgba(120,200,255,0.5);
+}
+.tag-ach-record {     /* ⚡ электрик-жёлтый */
+  color: #fff0a0;
+  background: rgba(255,224,90,0.15);
+  border-color: rgba(255,224,90,0.6);
+  text-shadow: 0 0 7px rgba(255,220,80,0.5);
+}
+.tag-ach-double {     /* ◆ синий */
+  color: #b8d4ff;
+  background: rgba(120,170,255,0.14);
+  border-color: rgba(120,170,255,0.55);
+}
+.tag-ach-over {       /* ▲ зелёный */
+  color: #b6ffc8;
+  background: rgba(90,220,120,0.13);
+  border-color: rgba(90,220,120,0.55);
+}
 .tag-default {
   color: #b0b0b0; background: rgba(255,255,255,0.04);
   border-color: rgba(255,255,255,0.2);
