@@ -8,7 +8,7 @@
   }[c]));
 
   let DATA = { snapshot: null, members: [] };
-  let SORT = { key: "valor", dir: "desc" };
+  let SORT = { key: "score", dir: "desc" };
 
   async function loadMe() {
     try {
