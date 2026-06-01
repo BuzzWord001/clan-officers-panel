@@ -427,6 +427,9 @@
                   ok: "light", low: "mid", bad: "mid", crit: "severe" };
   const _MWARN_SEV = new Set(["light", "mid", "severe"]);
   const SEVRANK = { light: 0, mid: 1, severe: 2 };
+  // Человеческие названия суровости — первая строка тултипа предупреждения.
+  const SEV_NAME = { light: "Лёгкое", mid: "Среднее", severe: "Суровое" };
+  const sevTitle = (sev) => `${SEV_NAME[sev] || "Среднее"} предупреждение`;
 
   // colorCls — класс цвета (wsev-* или wtype-title); wtip — короткий текст.
   // «2026-W22» → «W22»;  «2026-06-02T..» → «02.06»
@@ -496,14 +499,15 @@
       const sorted = ws.slice().sort((a, b) => (a.week < b.week ? -1 : 1));
       const detail = sorted.map((w) =>
         `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%`).join("\n");
-      chips.push(warnChip("wsev-" + sev3(worstW.pct), ws.length,
-        `Норматив не выполнен\n${detail}`));
+      const sev = sev3(worstW.pct);
+      chips.push(warnChip("wsev-" + sev, ws.length,
+        `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`));
     }
     // Титул — строгий цвет; в тултипе — неделя проставления с датой
     if (tw) {
       const since = m.title_warn_since;
       chips.push(warnChip("wtype-title", tw,
-        `Выставлено в титуле руководством гильдии` +
+        `Предупреждение в титуле\nВыставлено руководством гильдии` +
         (since ? `\nОтмечено: ${weekFull(since)}` : ``)));
     }
     // Ручные — цвет по худшей суровости + значок ✎; уголок = дата добавления
@@ -523,7 +527,7 @@
       const del = ` <button class="warn-del-btn" data-id="${latest.id}" ` +
         `title="Снять последнее ручное">✕</button>`;
       chips.push(warnChip("wsev-" + worstSev, manual.length,
-        `Ручное предупреждение офицера\n${detail}`,
+        `${sevTitle(worstSev)}\nРучное (от офицера)\n${detail}`,
         { manual: true, extra: del }));
     }
     const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
