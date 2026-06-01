@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Участники чатов</title>
-  <link rel="stylesheet" href="styles.css?v=1779761700">
+  <link rel="stylesheet" href="styles.css?v=1779800600">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779743290" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779800600" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -77,6 +77,19 @@
             </label>
             <input type="text" id="members-filter"
                    placeholder="Фильтр: ник / имя / TG / VK">
+            <label class="members-hide-left" id="vc-toggle-wrap"
+                   title="Показать столбцы доблести рядом с активностью">
+              <input type="checkbox" id="vc-toggle">
+              <span>+ доблесть</span>
+            </label>
+            <label id="vc-weeks-wrap" style="display:none">
+              <select id="vc-weeks">
+                <option value="0" selected>все недели</option>
+                <option value="4">последние 4</option>
+                <option value="12">последние 12</option>
+                <option value="24">последние 24</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -96,6 +109,9 @@
                 <th class="m-col-act"       data-sort="last_seen">Активность<br><small>12 недель</small></th>
                 <th class="m-col-trend"     data-sort="trend">Тренд<br><small>посл/пред 6 нед</small></th>
                 <th class="m-col-time">Период</th>
+                <th class="m-col-num valor-col" data-sort="vc_norm">Норматив<br><small>тек. неделя</small></th>
+                <th class="m-col-num valor-col" data-sort="vc_compliance">Оценка<br><small>доблесть</small></th>
+                <th class="m-col-num valor-col" data-sort="vc_valor">Доблесть<br><small>тек. неделя</small></th>
               </tr>
             </thead>
             <tbody id="members-tbody"></tbody>
@@ -162,10 +178,10 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779761700"></script>
-  <script src="js/matrix.js?v=1779761700"></script>
-  <script src="js/api.js?v=1779761700"></script>
+  <script src="config.js?v=1779800600"></script>
+  <script src="js/matrix.js?v=1779800600"></script>
+  <script src="js/api.js?v=1779800600"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="js/chat-members.js?v=1779761700"></script>
+  <script src="js/chat-members.js?v=1779800600"></script>
 </body>
 </html>

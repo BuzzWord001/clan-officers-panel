@@ -147,29 +147,36 @@
   }
 
   function renderSocials(s) {
-    if (!s) return `<span style="color:#555">—</span>`;
+    if (!s) return `<span class="soc-empty">—</span>`;
+    const VK_ICON = `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M2 5h3c.6 6.4 3.4 9.7 5.4 9.7.6 0 .8-.3.8-1.3v-3c0-.8-.2-1-.6-1.2L9.8 9c-.3-.2-.4-.4-.3-.7l.2-.3h3.5c.6 0 .8.3.8 1.1v3.4c0 .6.3.8.6.8.4 0 .8-.2 1.5-.9 1.8-2 3-4.6 3-4.6.1-.4.4-.5.7-.5h3c.5 0 .6.2.5.7-.2 1-2.3 4-2.3 4-.2.3-.3.5 0 .8l1 1c1.7 1.9 2 2.8 2 3.4 0 .5-.4.7-.9.7h-3c-.7 0-.9-.3-1.6-1l-1.3-1.3c-.6-.5-.8-.7-1.2-.7-.4 0-.6.2-.6 1v2.4c0 .5-.2.8-1 .8-2.7 0-5.7-1.6-7.8-4.6C3.2 12 2 8 2 5z"/></svg>`;
+    const TG_ICON = `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M9.4 16.5l-.4 4.5c.5 0 .7-.2 1-.5l2.5-2.4 5 3.7c1 .5 1.6.3 1.8-.9L22.9 4c.3-1.3-.5-1.9-1.5-1.5L2 9.8c-1.3.5-1.3 1.2-.2 1.5l4.9 1.5L18 5.6c.5-.3 1-.2.6.2"/></svg>`;
     const out = [];
     // VK
     if (s.vk_screen_name) {
-      out.push(`<a class="soc soc-vk" target="_blank" rel="noopener"
+      out.push(`<a class="soc-chip soc-vk" target="_blank" rel="noopener"
         href="https://vk.com/${esc(s.vk_screen_name)}"
-        title="VK: ${esc(s.vk_display || '')}">VK · ${esc(s.vk_screen_name)}</a>`);
+        title="VK · ${esc(s.vk_display || s.vk_screen_name)}"
+        >${VK_ICON}<span>${esc(s.vk_screen_name)}</span></a>`);
     } else if (s.vk_id) {
-      out.push(`<a class="soc soc-vk" target="_blank" rel="noopener"
+      out.push(`<a class="soc-chip soc-vk" target="_blank" rel="noopener"
         href="https://vk.com/id${esc(s.vk_id)}"
-        title="VK: ${esc(s.vk_display || '')}">VK · id${esc(s.vk_id)}</a>`);
+        title="VK · ${esc(s.vk_display || '')}"
+        >${VK_ICON}<span>id${esc(s.vk_id)}</span></a>`);
     }
     // TG
     if (s.tg_username) {
-      out.push(`<a class="soc soc-tg" target="_blank" rel="noopener"
+      out.push(`<a class="soc-chip soc-tg" target="_blank" rel="noopener"
         href="https://t.me/${esc(s.tg_username)}"
-        title="Telegram: ${esc(s.tg_display || '')}">TG · @${esc(s.tg_username)}</a>`);
+        title="Telegram · ${esc(s.tg_display || ('@' + s.tg_username))}"
+        >${TG_ICON}<span>@${esc(s.tg_username)}</span></a>`);
     } else if (s.tg_id) {
-      // tg_id без username не даёт прямую ссылку, но показываем
-      out.push(`<span class="soc soc-tg" title="Telegram: ${esc(s.tg_display || '')}"
-        >TG · id ${esc(s.tg_id)}</span>`);
+      out.push(`<span class="soc-chip soc-tg soc-noid"
+        title="Telegram · ${esc(s.tg_display || '')} (нет публичного @username)"
+        >${TG_ICON}<span>id ${esc(s.tg_id)}</span></span>`);
     }
-    return out.join(" ") || `<span style="color:#555">—</span>`;
+    return out.length
+      ? `<div class="soc-row">${out.join("")}</div>`
+      : `<span class="soc-empty">—</span>`;
   }
 
   function renderTrend(t) {

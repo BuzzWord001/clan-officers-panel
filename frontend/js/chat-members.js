@@ -274,6 +274,95 @@
     return fallbackKey || "(без имени)";
   }
 
+  // ── Valor combined cells ──────────────────────────────────────────
+  let VALOR_MAP = {};  // canon → {valor, norm_pct, compliance, ...}
+
+  function pctClass(pct) {
+    if (pct >= 100) return "norm-good";
+    if (pct >=  80) return "norm-p80";
+    if (pct >=  60) return "norm-p60";
+    if (pct >=  40) return "norm-p40";
+    if (pct >=  20) return "norm-p20";
+    return "norm-p0";
+  }
+
+  function nickCanon(s) {
+    return (s || "").toString().toLowerCase()
+      .replace(/[\s\W_]+/gu, "");
+  }
+
+  function lookupValor(item) {
+    const p = item.profile || {};
+    // Пробуем разные ники в порядке: основной display, game_nick parts,
+    // username и др. Первый что найдём в VALOR_MAP — берём.
+    const candidates = [];
+    const dn = (p.game_nick || "").split(",").map(s => s.trim());
+    for (const x of dn) if (x) candidates.push(x);
+    if (p.display_name) candidates.push(p.display_name);
+    for (const c of candidates) {
+      const cn = nickCanon(c);
+      if (cn && VALOR_MAP[cn]) return VALOR_MAP[cn];
+    }
+    return null;
+  }
+
+  function renderValorCells(item) {
+    const v = lookupValor(item);
+    if (!v) {
+      return `<td class="m-cell-num valor-col"><span style="color:#555">—</span></td>
+              <td class="m-cell-num valor-col"><span style="color:#555">—</span></td>
+              <td class="m-cell-num valor-col"><span style="color:#555">—</span></td>`;
+    }
+    // Норматив тек. недели
+    let normCell;
+    if (v.is_afk) {
+      normCell = `<span class="norm-cell norm-afk">АФК</span>`;
+    } else if (v.norm_pct == null) {
+      normCell = `<span style="color:#888">?</span>`;
+    } else {
+      normCell = `<span class="norm-cell ${pctClass(v.norm_pct)}"
+        title="доблесть текущей недели">${v.norm_pct}%</span>`;
+    }
+    // Compliance
+    const c = v.compliance;
+    const compCell = c
+      ? `<span class="norm-cell ${pctClass(c.avg_pct)}"
+          title="${c.weeks_met}/${c.weeks_count} недель с полным выполнением"
+          >${c.avg_pct}% <small style="opacity:0.7">${c.weeks_met}/${c.weeks_count}</small></span>`
+      : `<span style="color:#555">—</span>`;
+    // Valor
+    const valorCell = v.valor != null
+      ? `<b>${v.valor}</b>`
+      : `<span style="color:#888">—</span>`;
+    return `<td class="m-cell-num valor-col">${normCell}</td>
+            <td class="m-cell-num valor-col">${compCell}</td>
+            <td class="m-cell-num valor-col">${valorCell}</td>`;
+  }
+
+  async function loadValorMap() {
+    try {
+      const weeks = +$("vc-weeks").value || 0;
+      VALOR_MAP = await API.valorByCanon(weeks);
+    } catch (e) {
+      VALOR_MAP = {};
+    }
+    applyFilterAndRender();
+  }
+
+  $("vc-toggle").addEventListener("change", async (e) => {
+    if (e.target.checked) {
+      document.body.classList.add("show-valor");
+      $("vc-weeks-wrap").style.display = "";
+      await loadValorMap();
+    } else {
+      document.body.classList.remove("show-valor");
+      $("vc-weeks-wrap").style.display = "none";
+    }
+  });
+  $("vc-weeks").addEventListener("change", () => {
+    if ($("vc-toggle").checked) loadValorMap();
+  });
+
   function renderMemberRow(item, idx) {
     const p = item.profile || {};
     const s = item.stats || {};
@@ -348,9 +437,10 @@
         <td class="m-cell-act">${renderSparkline(s.weeks)}</td>
         <td class="m-cell-trend">${renderTrend(s.trend)}</td>
         <td class="m-cell-time">${period}</td>
+        ${renderValorCells(item)}
       </tr>
       <tr class="m-row-details" data-for="${escapeHtml(item.key)}" hidden>
-        <td colspan="10">${detailsHtml}</td>
+        <td colspan="13">${detailsHtml}</td>
       </tr>
     `;
   }
@@ -368,6 +458,19 @@
       const t = x.stats.trend;
       if (!t || t.pct === null || t.pct === undefined) return -1e9;
       return t.pct;
+    },
+    vc_norm:       x => {
+      const v = lookupValor(x);
+      if (!v) return -1;
+      return v.norm_pct == null ? -1 : v.norm_pct;
+    },
+    vc_compliance: x => {
+      const v = lookupValor(x);
+      return v && v.compliance ? v.compliance.avg_pct : -1;
+    },
+    vc_valor:      x => {
+      const v = lookupValor(x);
+      return v && v.valor != null ? v.valor : -1;
     },
   };
   let currentSort = { key: "msgs_total", dir: "desc" };
@@ -513,7 +616,7 @@
     applyFilterAndRender();
   } catch (e) {
     $("members-tbody").innerHTML =
-      `<tr><td colspan="10" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
+      `<tr><td colspan="13" class="m-error">Ошибка загрузки: ${escapeHtml(e.detail || e.message)}</td></tr>`;
   } finally {
     $("members-loading").hidden = true;
   }

@@ -2623,6 +2623,53 @@ def _normalize_name(raw: str) -> str:
     return s[0].upper() + s[1:]
 
 
+def _title_looks_like_name(title: str) -> bool:
+    """Эвристика: title в PW может содержать что угодно. Считаем именем
+    если это короткое слово (или 2 слова) из букв с заглавной первой,
+    без цифр/«АФК»/спецсимволов.
+    Примеры:
+      «Костя»     → True
+      «АФК до пт» → False (АФК)
+      «12345»     → False (цифры)
+      «КрутойБой» → False (CamelCase ник)
+      «Аня»       → True
+      «лёша»     → False (строчная первая)
+    """
+    import re as _re
+    t = (title or "").strip()
+    if not t:
+        return False
+    low = t.lower()
+    if "афк" in low or "afk" in low:
+        return False
+    if _re.search(r"\d", t):
+        return False
+    if not (2 <= len(t) <= 25):
+        return False
+    # Допускаем 1-2 слова из букв-кириллица/латиница, начинается с верхней
+    if not _re.match(r"^[A-ZА-ЯЁ][a-zA-Zа-яё]+(?:[ \-][A-ZА-ЯЁ][a-zA-Zа-яё]+)?$", t):
+        return False
+    return True
+
+
+def _enrich_true_names_from_title(members: list[dict]) -> int:
+    """Для тех у кого true_name пуст — пытаемся взять из title через
+    _normalize_name, если titлe похож на имя (а не «АФК»/цифры)."""
+    filled = 0
+    for m in members:
+        if (m.get("true_name") or "").strip():
+            continue
+        title = (m.get("title") or "").strip()
+        if not _title_looks_like_name(title):
+            continue
+        # Прогоняем через _normalize_name — Татьяна → Таня, и т.п.
+        name = _normalize_name(title)
+        if name:
+            m["true_name"] = name
+            filled += 1
+    return filled
+
+
 def _enrich_true_names_from_clan_members(members: list[dict]) -> int:
     """Если у member пустое true_name — ищем имя в clan_members JOIN
     по canon одного из game_nick'ов человека.
@@ -2693,8 +2740,11 @@ def valor_save_snapshot(
 
     Возвращает {snapshot_id, members, history_added}.
     """
-    # ── 0. Обогащение пустых true_name из clan_members (рег-бот) ──
+    # ── 0. Обогащение пустых true_name:
+    #   а) из clan_members (рег-бот) — приоритет
+    #   б) из title текущего сбора если title похож на имя
     enriched = _enrich_true_names_from_clan_members(members)
+    enriched += _enrich_true_names_from_title(members)
     now = datetime.utcnow().isoformat(timespec="seconds")
     with connection() as conn:
         # ── 1. Prev-snapshot для streak'а warning_count + departed ──
@@ -2895,6 +2945,89 @@ def valor_save_snapshot(
         "returned": returned,
         "true_name_enriched": enriched,
     }
+
+
+def valor_by_canon_map(weeks: int = 0) -> dict[str, dict[str, Any]]:
+    """Map canon_nick → {nick, true_name, valor, norm_pct, compliance_avg,
+    weeks_count, weeks_met} для последнего N-недельного периода.
+
+    weeks=0 → по всем неделям.
+    Используется в chat-members.html для совмещённой статистики
+    «общительность + доблесть».
+    """
+    with connection() as conn:
+        if weeks > 0:
+            week_rows = conn.execute(
+                "SELECT week FROM valor_snapshots ORDER BY week DESC LIMIT ?",
+                (weeks,),
+            ).fetchall()
+            allowed_weeks = {r["week"] for r in week_rows}
+        else:
+            allowed_weeks = None
+        # Compliance + текущий valor (из последнего снапшота)
+        cur_snap = conn.execute(
+            "SELECT id, valor_norm FROM valor_snapshots ORDER BY week DESC LIMIT 1"
+        ).fetchone()
+        cur_data: dict[str, dict] = {}
+        if cur_snap:
+            for r in conn.execute(
+                """SELECT nick_canon, nick, true_name, valor, is_afk
+                   FROM valor_members WHERE snapshot_id = ?""",
+                (cur_snap["id"],),
+            ):
+                cn = r["nick_canon"]
+                norm = cur_snap["valor_norm"] or 1
+                if r["is_afk"] or r["valor"] is None:
+                    norm_pct = None
+                else:
+                    norm_pct = round(min(r["valor"] / norm, 1.0) * 100, 1)
+                cur_data[cn] = {
+                    "nick":      r["nick"],
+                    "true_name": r["true_name"] or "",
+                    "valor":     r["valor"],
+                    "is_afk":    bool(r["is_afk"]),
+                    "norm_pct":  norm_pct,
+                }
+        # Compliance — среднее по всем (или последним N) неделям
+        comp: dict[str, dict] = {}
+        for r in conn.execute(
+            """SELECT vm.nick_canon, vm.valor, vm.is_afk, vs.valor_norm,
+                      vs.week
+               FROM valor_members vm
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
+        ):
+            if allowed_weeks is not None and r["week"] not in allowed_weeks:
+                continue
+            if r["is_afk"] or r["valor"] is None:
+                continue
+            norm = r["valor_norm"] or 1
+            pct = min(r["valor"] / norm, 1.0) * 100
+            d = comp.setdefault(r["nick_canon"],
+                                 {"sum": 0.0, "n": 0, "met": 0})
+            d["sum"] += pct
+            d["n"]   += 1
+            if r["valor"] >= norm:
+                d["met"] += 1
+        # Объединяем
+        out: dict[str, dict] = {}
+        # Берём все ники где есть current_data или compliance
+        all_canons = set(cur_data) | set(comp)
+        for cn in all_canons:
+            base = cur_data.get(cn, {})
+            c = comp.get(cn)
+            out[cn] = {
+                "nick":         base.get("nick", ""),
+                "true_name":    base.get("true_name", ""),
+                "valor":        base.get("valor"),
+                "is_afk":       base.get("is_afk", False),
+                "norm_pct":     base.get("norm_pct"),
+                "compliance":   ({
+                    "avg_pct":     round(c["sum"] / c["n"], 1),
+                    "weeks_count": c["n"],
+                    "weeks_met":   c["met"],
+                } if c else None),
+            }
+        return out
 
 
 def valor_get_departed() -> list[dict[str, Any]]:

@@ -2408,3 +2408,54 @@ video.chat-media-thumb {
 .norm-cell.norm-afk    { color: #ffd080; background: rgba(255,200,128,0.10);border-color: rgba(255,200,128,0.30); }
 .norm-cell.norm-unknown { color: #888; }
 .comp-cell small { font-size: 9px; }
+
+/* Социалки — чипы с иконками */
+.soc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+.soc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 11px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid;
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+.soc-chip svg { flex-shrink: 0; opacity: 0.85; }
+.soc-chip span { line-height: 1; }
+.soc-vk {
+  color: #6691c8;
+  background: rgba(102, 145, 200, 0.08);
+  border-color: rgba(102, 145, 200, 0.25);
+}
+.soc-vk:hover {
+  color: #93b3dc;
+  background: rgba(102, 145, 200, 0.18);
+  border-color: rgba(102, 145, 200, 0.55);
+}
+.soc-tg {
+  color: #69b7e4;
+  background: rgba(105, 183, 228, 0.08);
+  border-color: rgba(105, 183, 228, 0.25);
+}
+.soc-tg:hover {
+  color: #9bd0ef;
+  background: rgba(105, 183, 228, 0.18);
+  border-color: rgba(105, 183, 228, 0.55);
+}
+.soc-noid { cursor: default; opacity: 0.65; }
+.soc-empty { color: #555; font-size: 11px; }
+
+/* По умолчанию столбцы доблести скрыты в chat-members; класс на body
+   делает их видимыми. */
+.valor-col { display: none; }
+body.show-valor .valor-col { display: table-cell; }

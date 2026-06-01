@@ -168,6 +168,7 @@
     valorCurrent:   () => request("GET", "/valor/current"),
     valorSessions:  () => request("GET", "/valor/sessions"),
     valorDeparted:  () => request("GET", "/valor/departed"),
+    valorByCanon:   (weeks = 0) => request("GET", "/valor/by-canon?weeks=" + weeks),
     valorTimeline:  (weeks = 12) => request("GET", "/valor/timeline?weeks=" + weeks),
     valorHistory:   (nick, field) => {
       let qs = "nick=" + encodeURIComponent(nick);

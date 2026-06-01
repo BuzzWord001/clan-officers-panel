@@ -92,6 +92,14 @@ def valor_departed(_: dict = Depends(require_officer)) -> list[dict]:
     return db.valor_get_departed()
 
 
+@router.get("/by-canon")
+def valor_by_canon(weeks: int = Query(default=0, ge=0, le=52),
+                   _: dict = Depends(require_officer)) -> dict:
+    """Map canon_nick → доблесть для совмещения с chat-активностью.
+    weeks=0 — по всем неделям. >0 — последние N недель."""
+    return db.valor_by_canon_map(weeks=weeks)
+
+
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,
