@@ -242,6 +242,22 @@
         ? ` <span class="tag-mult">×${mult.toFixed(1)}</span>` : "";
       let tip = `${meta.label}${showMult ? " ×" + mult.toFixed(1) : ""}\n${meta.tip}`;
       if (t === "officer" && m.top_rank) tip += ` Макс. пост: ${m.top_rank}.`;
+      // Когда роль получена (уголок): пик-роль — неделя пика; комбо — span
+      // серии; безупречная — span истории; ручная — дата добавления.
+      let corner = "";
+      if (isAch && c) {
+        if (PEAK_TAGS.has(t)) corner = weekShort(c.peak_week);
+        else if (COMBO_TAGS.has(t))
+          corner = c.combo_start
+            ? `${weekShort(c.combo_start)}…${weekShort(c.combo_end)}` : "";
+        else if (FLAW_TAGS.has(t))
+          corner = c.first_week
+            ? `${weekShort(c.first_week)}…${weekShort(c.last_week)}` : "";
+      } else if (!AUTO_TAGS.has(t) && m.tag_dates && m.tag_dates[t]) {
+        corner = dateShort(m.tag_dates[t]);
+      }
+      const cornerHtml = corner ? ` <span class="wk-tag">${esc(corner)}</span>` : "";
+      if (corner) tip += `\nПолучена: ${corner}`;
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
       // Достижения — инлайн-цвет по роли (+ свечение у топовых).
       let style = "";
@@ -253,7 +269,7 @@
       const wcol = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
       return `<span class="tag-chip ${meta.cls}${auto}"${style} data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
-        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
+        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}${cornerHtml}</span>`;
     }).join("");
     return `<div class="tag-row">${chips}${btn}</div>`;
   }

@@ -3477,6 +3477,17 @@ def valor_list_tags() -> dict[str, list[str]]:
     return out
 
 
+def valor_tag_dates() -> dict[str, dict]:
+    """canon → {tag: added_at} — когда роль добавлена (для ручных меток)."""
+    out: dict[str, dict] = {}
+    with connection() as conn:
+        for r in conn.execute(
+            "SELECT nick_canon, tag, added_at FROM valor_tags"
+        ):
+            out.setdefault(r["nick_canon"], {})[r["tag"]] = r["added_at"]
+    return out
+
+
 def valor_chat_activity_by_canon() -> dict[str, int]:
     """Возвращает canon → суммарное количество сообщений в архиве чатов.
     Матчинг через clan_members.tg_id / vk_id (узнаём кто это)."""
@@ -3670,18 +3681,25 @@ def valor_get_current() -> dict[str, Any]:
             # Перевыполнение этой недели (0..100): на сколько % сверх нормы,
             # с потолком +100% (2× норма) — чтобы нельзя было «нафармить».
             overshoot = max(0.0, min((ratio - 1.0) * 100, 100.0))
+            wk = r["week"]
             d = compliance.setdefault(cn, {
                 "sum": 0.0, "n": 0, "met": 0, "over_sum": 0.0,
                 "streak": 0, "max_streak": 0, "peak": 0.0,
                 "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0,
-                "ln_sum": 0.0, "cs2_ln": 0.0, "ms2_geo": 1.0})
+                "ln_sum": 0.0, "cs2_ln": 0.0, "ms2_geo": 1.0,
+                "peak_week": "", "first_week": "", "last_week": "",
+                "cs2_start": "", "combo_start": "", "combo_end": ""})
             d["sum"] += pct
             d["over_sum"] += overshoot
             d["n"] += 1
+            if not d["first_week"]:
+                d["first_week"] = wk
+            d["last_week"] = wk
             # геом.среднее кратностей по ВСЕМ неделям: exp(mean(ln(ratio)))
             d["ln_sum"] += math.log(max(ratio, 0.01))
             if ratio > d["peak"]:
                 d["peak"] = ratio
+                d["peak_week"] = wk
             if r["valor"] >= norm:
                 d["met"] += 1
                 d["streak"] += 1
@@ -3691,11 +3709,15 @@ def valor_get_current() -> dict[str, Any]:
                 d["streak"] = 0
             # серии перевыполнения: ≥1.5× (cs2, + геом.среднее серии) и ≥2× (cs3)
             if ratio >= 1.5:
+                if d["cs2"] == 0:
+                    d["cs2_start"] = wk      # начало текущей серии ≥1.5×
                 d["cs2"] += 1
                 d["cs2_ln"] += math.log(ratio)
                 if d["cs2"] > d["ms2"]:
                     d["ms2"] = d["cs2"]
                     d["ms2_geo"] = math.exp(d["cs2_ln"] / d["cs2"])
+                    d["combo_start"] = d["cs2_start"]   # span самой длинной серии
+                    d["combo_end"] = wk
             else:
                 d["cs2"] = 0
                 d["cs2_ln"] = 0.0
@@ -3708,6 +3730,7 @@ def valor_get_current() -> dict[str, Any]:
 
         # Теги по canon (ветеран и т.п.) — для UI меток.
         tags_map = valor_list_tags()
+        tag_dates_map = valor_tag_dates()
         # Активность в чатах по canon — для финального score.
         chat_msgs = valor_chat_activity_by_canon()
         # Top-rank когда-либо (для авто-тега «Офицер» + score).
@@ -3781,6 +3804,7 @@ def valor_get_current() -> dict[str, Any]:
             manual_tags = tags_map.get(cn, [])
             # Сохраняем порядок: сначала ручные (veteran и т.п.) — затем авто
             m["tags"] = manual_tags + [t for t in auto_tags if t not in manual_tags]
+            m["tag_dates"] = tag_dates_map.get(cn, {})
             m["top_rank"] = top_rank or None
 
             # Иммунитет новичка: если активен или попадает в эту неделю —
@@ -3828,6 +3852,11 @@ def valor_get_current() -> dict[str, Any]:
                     "geomean_all": round(math.exp(d["ln_sum"] / d["n"]), 2),
                     "combo_len":   d["ms2"],
                     "combo_geo":   round(d["ms2_geo"], 2),
+                    "peak_week":   d["peak_week"],
+                    "first_week":  d["first_week"],
+                    "last_week":   d["last_week"],
+                    "combo_start": d["combo_start"],
+                    "combo_end":   d["combo_end"],
                 }
             else:
                 m["compliance"] = None
