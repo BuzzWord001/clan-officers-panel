@@ -9,13 +9,23 @@
 
   let DATA = { snapshot: null, members: [] };
   let SORT = { key: "score", dir: "desc" };
+  let IS_GUEST = false;   // гость — только просмотр, без правок
 
   async function loadMe() {
     try {
       const me = await API.me();
+      if (me?.role === "guest") {
+        IS_GUEST = true;
+        document.body.classList.add("guest-mode");
+        $("who").textContent = "Гость · только просмотр";
+        // Гостю недоступны другие разделы — прячем навигацию целиком.
+        document.querySelectorAll(".tabs, .admin-only").forEach(el =>
+          el.style.display = "none");
+        return;
+      }
       const who = me?.role === "admin"
-        ? `${esc(me.username)} · админ`
-        : `${esc(me.username)} · офицер`;
+        ? `${esc(me.username || me.name || "")} · админ`
+        : `${esc(me.username || me.name || "")} · офицер`;
       $("who").textContent = who;
       if (me.role !== "admin") {
         document.querySelectorAll(".admin-only").forEach(el =>
@@ -733,6 +743,7 @@
   // Popover-история для полей rank/title/level/class
   // Tag-add / Tag-remove handlers
   $("valor-tbody").addEventListener("click", async (ev) => {
+    if (IS_GUEST) return;   // гость не редактирует роли
     const addBtn = ev.target.closest(".tag-add-btn");
     if (addBtn) {
       ev.stopPropagation();
@@ -829,6 +840,7 @@
   });
 
   $("valor-tbody").addEventListener("click", async (ev) => {
+    if (IS_GUEST) return;   // гость не редактирует предупреждения
     const addB = ev.target.closest(".warn-add-btn");
     if (addB) {
       ev.stopPropagation();

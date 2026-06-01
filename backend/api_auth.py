@@ -70,6 +70,17 @@ def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> 
     return {"role": "admin", "name": payload.username, "login_at": "now", "token": token}
 
 
+@router.post("/guest")
+def guest_login(request: Request, response: Response) -> dict:
+    """Гостевой вход без пароля. Роль «guest» — только просмотр таблицы
+    Доблести и графиков, без права на правки (write-роуты require_officer)."""
+    ip = client_ip(request)
+    ua = client_user_agent(request)
+    db.write_login(role="guest", name="Гость", success=True, ip=ip, user_agent=ua)
+    token = set_session(response, role="guest", name="Гость")
+    return {"role": "guest", "name": "Гость", "login_at": "now", "token": token}
+
+
 @router.get("/me", response_model=MeOut)
 def me(s: dict = Depends(current_session)) -> dict:
     return s

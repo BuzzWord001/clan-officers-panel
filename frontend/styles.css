@@ -720,6 +720,71 @@ input:-webkit-autofill:active {
   text-align: center;
 }
 
+/* Разделитель «или» между офицерским и гостевым входом */
+.auth-or {
+  position: relative;
+  margin: 20px 0 16px;
+  text-align: center;
+}
+.auth-or::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,255,65,0.25), transparent);
+}
+.auth-or span {
+  position: relative;
+  padding: 0 12px;
+  background: var(--bg, #050805);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* Большая заметная кнопка гостевого входа */
+.auth-guest {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 15px 14px;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0,255,65,0.10), rgba(0,255,65,0.03));
+  color: var(--accent);
+  letter-spacing: 2px;
+  transition: box-shadow .18s, background .18s, transform .08s;
+}
+.auth-guest svg { margin-bottom: 2px; filter: drop-shadow(0 0 6px rgba(0,255,65,0.5)); }
+.auth-guest span {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(0,255,65,0.45);
+}
+.auth-guest small {
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  text-transform: none;
+}
+.auth-guest:hover {
+  background: linear-gradient(180deg, rgba(0,255,65,0.18), rgba(0,255,65,0.06));
+  box-shadow: 0 0 18px rgba(0,255,65,0.4), inset 0 0 12px rgba(0,255,65,0.08);
+}
+.auth-guest:active { transform: translateY(1px); }
+.auth-guest:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Гостевой режим — прячем все элементы редактирования */
+body.guest-mode .tag-add-btn,
+body.guest-mode .warn-add-btn,
+body.guest-mode .warn-del-btn { display: none !important; }
+
 .auth-secondary {
   margin-top: 18px;
   text-align: center;

@@ -108,6 +108,7 @@
     me:            () => request("GET",  "/auth/me"),
     logout:        async () => { try { return await request("POST", "/auth/logout"); } finally { setToken(""); } },
     loginOfficer:  (game_nick, password) => loginAndStore("/auth/login", { game_nick, password }),
+    loginGuest:    () => loginAndStore("/auth/guest", {}),
     loginAdmin:    (username, password)  => loginAndStore("/auth/admin/login", { username, password }),
     setOfficerPwd: (new_password)        => request("POST", "/auth/admin/officer-password", { new_password }),
     updateAdmin:   (payload)             => request("POST", "/auth/admin/credentials", payload),

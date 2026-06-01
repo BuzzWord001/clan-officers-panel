@@ -108,6 +108,14 @@ def require_officer(session: dict = Depends(current_session)) -> dict:
     return session
 
 
+def require_viewer(session: dict = Depends(current_session)) -> dict:
+    """Чтение доблести — офицерам, админу И гостям (только просмотр).
+    Запись (теги/предупреждения) остаётся на require_officer."""
+    if session["role"] not in ("officer", "admin", "guest"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "viewer_only")
+    return session
+
+
 # ===================== ENDPOINTS =====================
 
 @router.post("/ingest", status_code=status.HTTP_201_CREATED)

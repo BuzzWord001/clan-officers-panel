@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 import db
-from api_chat import require_bot_token, require_officer
+from api_chat import require_bot_token, require_officer, require_viewer
 
 log = logging.getLogger("api.valor")
 router = APIRouter(prefix="/valor", tags=["valor"])
@@ -75,7 +75,7 @@ def valor_snapshot(payload: ValorSnapshotIn,
 
 
 @router.get("/current")
-def valor_current(_: dict = Depends(require_officer)) -> dict:
+def valor_current(_: dict = Depends(require_viewer)) -> dict:
     """Самый свежий снимок + все участники."""
     return db.valor_get_current()
 
@@ -87,7 +87,7 @@ def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
 
 
 @router.get("/departed")
-def valor_departed(_: dict = Depends(require_officer)) -> list[dict]:
+def valor_departed(_: dict = Depends(require_viewer)) -> list[dict]:
     """Ушедшие из клана с последними известными данными."""
     return db.valor_get_departed()
 
@@ -162,7 +162,7 @@ def valor_warning_delete(id: int = Query(..., ge=1),
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,
                                              pattern="^(rank|title|level|class|valor)$"),
-                  _: dict = Depends(require_officer)) -> dict:
+                  _: dict = Depends(require_viewer)) -> dict:
     """История изменений полей для одного ника. Если field=None — все
     отслеживаемые поля."""
     return db.valor_get_history(nick, field)
@@ -170,6 +170,6 @@ def valor_history(nick: str = Query(..., min_length=1),
 
 @router.get("/timeline")
 def valor_timeline(weeks: int = Query(default=12, ge=1, le=52),
-                   _: dict = Depends(require_officer)) -> dict:
+                   _: dict = Depends(require_viewer)) -> dict:
     """Timeline доблести за последние N недель."""
     return db.valor_timeline(weeks=weeks)
