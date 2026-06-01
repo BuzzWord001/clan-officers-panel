@@ -954,6 +954,8 @@
     // и подтянет любые новые сообщения с последнего загруза.
     loadTimeline();
   });
+  const csBtn = document.getElementById("combined-stats-btn");
+  if (csBtn) csBtn.addEventListener("click", () => window.CombinedStats.open());
   $("tl-hide-left").addEventListener("change", () => {
     TL.soloKey = null;
     loadTimeline();

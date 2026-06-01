@@ -2504,3 +2504,108 @@ body.show-valor .valor-col { display: table-cell; }
 
 /* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
 .members-table-wrap { overflow-x: auto; }
+
+/* ── Sticky первые столбцы (# и Ник) в таблицах с горизонтальным скроллом ── */
+.members-table th:nth-child(1),
+.members-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #1a0e10;
+  border-right: 1px solid rgba(255,107,128,0.10);
+}
+.members-table th:nth-child(2),
+.members-table td:nth-child(2) {
+  position: sticky;
+  left: 38px;
+  z-index: 2;
+  background: #1a0e10;
+  border-right: 1px solid rgba(255,107,128,0.25);
+  box-shadow: 3px 0 8px rgba(0,0,0,0.5);
+}
+.members-table thead th:nth-child(1),
+.members-table thead th:nth-child(2) {
+  z-index: 3;  /* поверх sticky-cells при горизонтально-вертикальном скролле */
+}
+/* Сохранить подсветку строк под прозрачные sticky-ячейки */
+.members-table tr.row-good td:nth-child(1),
+.members-table tr.row-good td:nth-child(2) { background: #102015; }
+.members-table tr.row-bad td:nth-child(1),
+.members-table tr.row-bad td:nth-child(2)  { background: #25101a; }
+.members-table tr.row-afk td:nth-child(1),
+.members-table tr.row-afk td:nth-child(2)  { background: #221a12; }
+.members-table tr.m-row-left td:nth-child(1),
+.members-table tr.m-row-left td:nth-child(2)  { background: #1e1818; }
+.members-table tr.m-row-silent td:nth-child(1),
+.members-table tr.m-row-silent td:nth-child(2) { background: #1a1212; }
+.members-table tr.m-row-unreg td:nth-child(1),
+.members-table tr.m-row-unreg td:nth-child(2)  { background: #1b1612; }
+
+/* ── Modal совмещённой статистики (Доблесть + Чаты + Соцсети + Ветеран) ── */
+.combined-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.combined-modal {
+  background: #1a0e10;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  width: 95%;
+  max-width: 1300px;
+  max-height: 92vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+}
+.combined-modal .head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--accent-dim);
+  display: flex; align-items: center; gap: 12px;
+}
+.combined-modal .head h2 {
+  margin: 0; color: var(--accent);
+  font-family: "Cascadia Code", monospace;
+  font-size: 16px; font-weight: 700;
+  letter-spacing: 1px;
+}
+.combined-modal .head .x {
+  margin-left: auto;
+  background: none; border: 1px solid var(--accent-dim);
+  color: var(--text); font-size: 16px;
+  width: 30px; height: 30px; border-radius: 3px;
+  cursor: pointer;
+}
+.combined-modal .head .x:hover {
+  background: var(--accent-dim); color: #fff;
+}
+.combined-modal .body {
+  flex: 1; overflow: auto;
+  padding: 16px 18px;
+}
+.combined-modal .ctrls {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-family: "Cascadia Code", monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.combined-modal .canvas-wrap {
+  position: relative; height: 60vh; min-height: 380px;
+}
+.combined-btn {
+  padding: 6px 12px;
+  background: rgba(255,107,128,0.10);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-family: "Cascadia Code", monospace;
+  font-size: 11px; font-weight: 600;
+  cursor: pointer; border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.combined-btn:hover {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+}

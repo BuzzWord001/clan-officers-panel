@@ -574,6 +574,8 @@
   $("tl-weeks").addEventListener("change", loadTimeline);
   $("tl-topn").addEventListener("change", renderTimeline);
   $("tl-filter").addEventListener("input", renderTimeline);
+  const csBtn = document.getElementById("combined-stats-btn");
+  if (csBtn) csBtn.addEventListener("click", () => window.CombinedStats.open());
 
   // ── Departed ────────────────────────────────────────────────────
   let DEPARTED = [];

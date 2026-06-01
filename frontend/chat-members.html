@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Участники чатов</title>
-  <link rel="stylesheet" href="styles.css?v=1779800700">
+  <link rel="stylesheet" href="styles.css?v=1779800800">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779800700" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1779800800" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -160,6 +160,8 @@
               <span>скрыть ушедших <small id="tl-left-count"></small></span>
             </label>
             <button id="tl-refresh" type="button" title="Перезапросить с сервера">⟳ обновить</button>
+            <button id="combined-stats-btn" class="combined-btn" type="button"
+              title="Доблесть + Чаты + Соцсети + Ветеран — общий разбор">📊 Совмещённая статистика</button>
           </div>
         </div>
         <div class="timeline-stats" id="timeline-stats"></div>
@@ -178,10 +180,11 @@
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
-  <script src="config.js?v=1779800700"></script>
-  <script src="js/matrix.js?v=1779800700"></script>
-  <script src="js/api.js?v=1779800700"></script>
+  <script src="config.js?v=1779800800"></script>
+  <script src="js/matrix.js?v=1779800800"></script>
+  <script src="js/api.js?v=1779800800"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="js/chat-members.js?v=1779800700"></script>
+  <script src="js/combined-stats.js?v=1779800800"></script>
+  <script src="js/chat-members.js?v=1779800800"></script>
 </body>
 </html>
