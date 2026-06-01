@@ -379,15 +379,12 @@
     if (pct == null) {
       return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
     }
-    // Не выполнен — пилюля % выполнения + единый чип предупреждения (норматив).
+    // Не выполнен — только пилюля % выполнения. Предупреждения отображаются
+    // отдельно, в колонке «Предупреждения».
     const cls = pctClass(pct);
-    const warnBadge = wc >= 1
-      ? " " + warnChip("wsev-" + sev3(pct), wc,
-          `Норматив не выполнен\nнабрал ${valor} из ${norm} доблести = ${pct}%`)
-      : "";
     const tip = `${pct}% от норматива`;
     return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
-      >${main} · ${pct}%</span>${warnBadge}`;
+      >${main} · ${pct}%</span>`;
   }
 
   function renderCompliance(c) {
@@ -506,10 +503,9 @@
     // Числовой титул 1–9 = предупреждения, выставленные офицером в игре.
     // Показываем единым чипом «Предупреждение ⚠ N» (тип «титул»).
     // Обычный (нечисловой) титул — просто текстом.
-    const n = m.title_warn;
-    if (!n) return esc(m.title);
-    return warnChip("wtype-title", n,
-      `Выставлено в титуле руководством гильдии`);
+    // Титул показываем как есть (обычным текстом). Предупреждения по титулу
+    // отображаются только в колонке «Предупреждения».
+    return esc(m.title);
   }
 
   function renderTrend(t) {
