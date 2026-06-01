@@ -147,34 +147,34 @@
   }
 
   const TAG_META = {
-    // ── Достижения за доблесть (авто, по степени перевыполнения и истории) ──
-    legend:     { label: "Легенда доблести", icon: "♛",
+    // ── Роли-достижения за доблесть (авто) ──  color — для рамки тултипа
+    legend:     { label: "Легенда доблести", icon: "♛", color: "#ffd54a",
                   cls: "tag-ach tag-ach-legend",
-                  tip: "Высшее достижение: безупречная история (≥3 нед без провала) + серия ≥3 нед с удвоением нормы (≥2×)." },
-    ace:        { label: "Ас доблести", icon: "⚜",
+                  tip: "Высшая роль: безупречная история и серия удвоений нормы." },
+    ace:        { label: "Ас доблести", icon: "⚜", color: "#ff9a55",
                   cls: "tag-ach tag-ach-ace",
-                  tip: "Безупречная история + серия ≥3 нед перевыполнения (≥1.5× нормы)." },
-    etalon:     { label: "Эталон", icon: "✪",
+                  tip: "Безупречная история и серия сильных перевыполнений." },
+    etalon:     { label: "Эталон", icon: "✪", color: "#8fd6ff",
                   cls: "tag-ach tag-ach-etalon",
-                  tip: "Безупречная история — ни одного провала норматива (≥3 недель)." },
-    record:     { label: "Рекордсмен", icon: "⚡",
+                  tip: "Безупречная история — ни одного провала норматива." },
+    record:     { label: "Рекордсмен", icon: "⚡", color: "#ffe070",
                   cls: "tag-ach tag-ach-record",
-                  tip: "Мощное перевыполнение: серия ≥2 нед с удвоением нормы или пик ≥2.5×." },
-    double:     { label: "Удвоил норму", icon: "◆",
+                  tip: "Мощное перевыполнение: серия ≥2× или пик ≥2.5×." },
+    double:     { label: "Удвоил норму", icon: "◆", color: "#9ab8ff",
                   cls: "tag-ach tag-ach-double",
-                  tip: "Хотя бы раз набрал ≥2× норматива за неделю." },
-    over:       { label: "Перевыполнил", icon: "▲",
+                  tip: "Набирал ≥2× нормы доблести за неделю." },
+    over:       { label: "Перевыполнил", icon: "▲", color: "#8dffaa",
                   cls: "tag-ach tag-ach-over",
-                  tip: "Хотя бы раз перевыполнил норму (≥1.5×)." },
-    veteran:    { label: "Ветеран", icon: "★",
+                  tip: "Перевыполнял норму доблести (≥1.5×)." },
+    veteran:    { label: "Ветеран", icon: "★", color: "#ffd24a",
                   cls: "tag-veteran",
-                  tip: "Был в первоначальном списке клана (clan-checklist)" },
-    in_socials: { label: "В соцсетях", icon: "◉",
+                  tip: "Был в первоначальном составе клана." },
+    in_socials: { label: "В соцсетях", icon: "◉", color: "#b88dff",
                   cls: "tag-socials",
-                  tip: "Зарегистрирован в VK или Telegram-чатах клана" },
-    officer:    { label: "Офицер", icon: "✦",
+                  tip: "Состоит в VK или Telegram клана." },
+    officer:    { label: "Офицер", icon: "✦", color: "#ff9a44",
                   cls: "tag-officer",
-                  tip: "Занимал офицерский пост (Лейтенант и выше)" },
+                  tip: "Занимал офицерский пост (Лейтенант и выше)." },
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
   const AUTO_TAGS = new Set(["in_socials", "officer",
@@ -183,18 +183,19 @@
   function renderTags(m) {
     const tags = m.tags || [];
     const btn = `<button class="tag-add-btn" data-nick="${esc(m.nick)}"
-      title="Добавить метку">+</button>`;
+      title="Добавить роль">+</button>`;
     if (!tags.length) return `<div class="tag-row">${btn}</div>`;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
                                       cls: "tag-default", tip: t };
-      // У офицера в title уточняем какой именно пост — top_rank
-      let tip = meta.tip;
+      // Заголовок тултипа = название роли, затем короткое описание.
+      let tip = `${meta.label}\n${meta.tip}`;
       if (t === "officer" && m.top_rank) {
-        tip = `${meta.tip}\nМаксимальный пост: ${m.top_rank}`;
+        tip += ` Макс. пост: ${m.top_rank}.`;
       }
+      const color = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
-      return `<span class="tag-chip ${meta.cls}${auto}" title="${esc(tip)}"
+      return `<span class="tag-chip ${meta.cls}${auto}" data-wtip="${esc(tip)}"${color}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
     }).join("");
@@ -611,7 +612,7 @@
       ev.stopPropagation();
       const nick = addBtn.dataset.nick;
       const tag = (prompt(
-        `Добавить метку для «${nick}»?\nНапример: veteran, core, leader`,
+        `Добавить роль для «${nick}»?\nНапример: veteran, core, leader`,
         "veteran") || "").trim();
       if (!tag) return;
       try {
@@ -631,11 +632,11 @@
       const nick = tagChip.dataset.nick;
       const tag = tagChip.dataset.tag;
       if (AUTO_TAGS.has(tag)) {
-        alert(`«${tag}» — авто-метка, она вычисляется бэкендом ` +
+        alert(`«${tag}» — авто-роль, она вычисляется бэкендом ` +
               `(социалки / офицерство). Удалить нельзя.`);
         return;
       }
-      if (!confirm(`Удалить метку «${tag}» с «${nick}»?`)) return;
+      if (!confirm(`Снять роль «${tag}» с «${nick}»?`)) return;
       try {
         const u = (window.OFFICERS_CONFIG?.API_URL || "")
           + "/valor/tags?nick=" + encodeURIComponent(nick)
@@ -740,6 +741,14 @@
     p.className = "wtip-pop" + tier;
     p.innerHTML = txt.split("\n")
       .map((l, i) => i === 0 ? `<b>${esc(l)}</b>` : esc(l)).join("<br>");
+    // Индивидуальный цвет (роли): рамка + заголовок + тень в тон роли.
+    const col = el.getAttribute("data-wtipcolor");
+    if (col) {
+      p.style.borderColor = col;
+      p.style.boxShadow = `0 4px 22px ${col}3a, 0 0 50px rgba(0,0,0,0.7)`;
+      const bEl = p.querySelector("b");
+      if (bEl) bEl.style.color = col;
+    }
     document.body.appendChild(p);
     const r = el.getBoundingClientRect();
     const m = 8;
