@@ -2813,30 +2813,23 @@ body.show-valor .valor-col { display: table-cell; }
   justify-content: center;
   align-items: center;
 }
-/* ── Единый чип предупреждения ──
-   Цвет чипа = СУРОВОСТЬ (лёгкое/среднее/суровое по % нормы),
-   кружок-бейдж = ТИП: % норматив · Т титул · Р ручное. */
+/* ── Единый чип предупреждения (все 3 столбца) ──
+   Формат: «Предупреждение ⚠ N». ЦВЕТ = ТИП предупреждения.
+   Детали и суровость — в тултипе при наведении. */
 .wchip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 1px 8px 1px 2px;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 9px;
   border: 1px solid; border-radius: 11px;
-  font-size: 10.5px; font-weight: 600; line-height: 16px;
+  font-size: 10px; font-weight: 600; line-height: 16px;
   white-space: nowrap; vertical-align: middle;
+  cursor: help;
 }
-.wchip .wt {                       /* тип-бейдж: кружок с буквой */
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto;
-  font-size: 9px; font-weight: 800;
-}
-.wt-norm   { background: rgba(255,255,255,0.18); color: #ffffff; }
-.wt-title  { background: rgba(165,130,240,0.50); color: #efe6ff; }
-.wt-manual { background: rgba(110,200,255,0.45); color: #e6f4ff; }
-.wchip .wtx { letter-spacing: .2px; }
-/* суровость — цвет всего чипа */
-.wsev-light  { color:#c2f7d2; border-color:rgba(120,220,140,0.50); background:rgba(120,220,140,0.10); }
-.wsev-mid    { color:#ffe2a0; border-color:rgba(240,200,90,0.55);  background:rgba(240,200,90,0.12); }
-.wsev-severe { color:#ffb0b0; border-color:rgba(255,80,80,0.62);   background:rgba(255,80,80,0.14);
-               box-shadow: 0 0 6px rgba(255,60,60,0.30); }
+.wchip .tri { font-size: 10px; line-height: 1; }
+/* логичные цвета по типу */
+.wtype-norm   { color:#ffcf8a; border-color:rgba(255,176,74,0.55); background:rgba(255,176,74,0.12); }
+.wtype-title  { color:#ff9a9a; border-color:rgba(255,80,80,0.62);  background:rgba(255,80,80,0.14);
+                box-shadow:0 0 6px rgba(255,60,60,0.25); }
+.wtype-manual { color:#a9d4ff; border-color:rgba(90,170,255,0.55); background:rgba(90,170,255,0.13); }
 .no-warn {
   color: var(--accent);
   opacity: 0.45;
