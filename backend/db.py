@@ -3580,11 +3580,13 @@ def valor_get_current() -> dict[str, Any]:
         #     записывалась до фикса) — определяем по accepted_date
         accepted_by_canon = valor_accepted_date_per_canon()
         compliance: dict[str, dict] = {}
+        # ORDER BY ... week — чтобы корректно считать серии подряд (streak).
         for r in conn.execute(
             """SELECT vm.nick_canon, vm.valor, vm.is_afk, vm.norm_met,
                       vs.valor_norm, vs.week
                FROM valor_members vm
-               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id"""
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
+               ORDER BY vm.nick_canon, vs.week"""
         ):
             cn = r["nick_canon"]
             if r["is_afk"]:
@@ -3602,11 +3604,22 @@ def valor_get_current() -> dict[str, Any]:
                     continue  # эта неделя была иммунная — пропускаем
             norm = r["valor_norm"] or 1
             pct = min(r["valor"] / norm, 1.0) * 100
-            d = compliance.setdefault(cn, {"sum": 0.0, "n": 0, "met": 0})
+            # Перевыполнение этой недели (0..100): на сколько % сверх нормы,
+            # с потолком +100% (2× норма) — чтобы нельзя было «нафармить».
+            overshoot = max(0.0, min((r["valor"] / norm - 1.0) * 100, 100.0))
+            d = compliance.setdefault(cn, {"sum": 0.0, "n": 0, "met": 0,
+                                            "over_sum": 0.0, "streak": 0,
+                                            "max_streak": 0})
             d["sum"] += pct
+            d["over_sum"] += overshoot
             d["n"] += 1
             if r["valor"] >= norm:
                 d["met"] += 1
+                d["streak"] += 1
+                if d["streak"] > d["max_streak"]:
+                    d["max_streak"] = d["streak"]
+            else:
+                d["streak"] = 0
 
         # Теги по canon (ветеран и т.п.) — для UI меток.
         tags_map = valor_list_tags()
@@ -3722,6 +3735,8 @@ def valor_get_current() -> dict[str, Any]:
                     "avg_pct":     round(d["sum"] / d["n"], 1),
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
+                    "over_avg":    round(d["over_sum"] / d["n"], 1),
+                    "max_streak":  d["max_streak"],
                 }
             else:
                 m["compliance"] = None
@@ -3789,6 +3804,17 @@ def valor_get_current() -> dict[str, Any]:
             officer_pts = round(
                 VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
                                    + 0.3 * _rank_frac(m.get("rank", ""))), 1)
+            # ── Бонус дисциплины (сверх базовых 100) ──
+            #   перевыполнение: до +5 (по среднему % сверх нормы),
+            #   серия выполнений подряд: до +5 (max_streak),
+            #   безупречная история: +3 (все недели выполнены, при ≥3 нед.).
+            discipline = 0.0
+            if comp_obj and not is_immune_now:
+                over_bonus = round(comp_obj.get("over_avg", 0.0) / 100 * 5, 1)
+                streak_bonus = min(comp_obj.get("max_streak", 0), 5)
+                perfect_bonus = (3 if comp_obj["weeks_met"] == comp_obj["weeks_count"]
+                                 and comp_obj["weeks_count"] >= 3 else 0)
+                discipline = round(over_bonus + streak_bonus + perfect_bonus, 1)
             # Сумма доступных компонентов
             other_pts = chat_pts + soc_pts + veteran_pts + officer_pts
             if is_immune_now:
@@ -3799,11 +3825,14 @@ def valor_get_current() -> dict[str, Any]:
             else:
                 max_pts = 100
                 raw_total = round((comp_pts or 0) + other_pts, 1)
-                total = raw_total
+                total = round(raw_total + discipline, 1)  # дисциплина сверх 100
             m["score"] = {
                 "total":           total,
                 "raw_total":       raw_total,
                 "max":             max_pts,
+                "discipline":      discipline,
+                "over_avg":        (comp_obj or {}).get("over_avg", 0) if comp_obj else 0,
+                "max_streak":      (comp_obj or {}).get("max_streak", 0) if comp_obj else 0,
                 "immunity_adjusted": is_immune_now,
                 "compliance":      comp_pts,  # None если иммун
                 "chat":            chat_pts,

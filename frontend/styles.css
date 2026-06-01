@@ -2506,6 +2506,11 @@ body.show-valor .valor-col { display: table-cell; }
   text-shadow: 0 0 4px rgba(120,180,255,0.4);
   cursor: help;
 }
+.score-cell .disc-mark {
+  color: #ffd54a; font-size: 11px; margin-left: 1px;
+  text-shadow: 0 0 5px rgba(255,200,60,0.6);
+  cursor: help;
+}
 
 /* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
 .members-table-wrap { overflow-x: auto; }

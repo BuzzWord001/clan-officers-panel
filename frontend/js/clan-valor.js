@@ -193,21 +193,31 @@
     const compLine = s.compliance == null
       ? `• доблесть: не оценивается (иммунитет)`
       : `• доблесть: ${s.compliance} / 60`;
+    const disc = s.discipline || 0;
     const headLine = s.immunity_adjusted
       ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
          `Иммунитет: доблесть исключена из оценки.\n`
-      : `Итог: ${s.total} / 100\n`;
+      : disc > 0
+        ? `Итог: ${s.total} / 100  (база ${s.raw_total} + дисциплина ${disc})\n`
+        : `Итог: ${s.total} / 100\n`;
     // Порядок — по ценности: доблесть ≫ ветеран > офицер > соцсети ≈ чаты
+    const discLine = disc > 0
+      ? `\n• дисциплина: +${disc} (перевып. ${Math.round(s.over_avg || 0)}% · ` +
+        `серия ${s.max_streak || 0} нед.)`
+      : "";
     const tip = headLine
       + compLine + "\n"
       + `• ветеран: ${s.veteran} / 16\n`
       + officerLine + "\n"
       + `• соцсети: ${s.socials} / 5\n`
-      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`;
-    // Для иммунных — звёздочка-намёк и колорится мягче
+      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`
+      + discLine;
+    // Иммунные — «*»; выдающиеся (>100 за счёт дисциплины) — «★».
     const star = s.immunity_adjusted
       ? `<small class="imm-mark" title="скор нормализован — без компонента доблести">*</small>`
-      : "";
+      : (!s.immunity_adjusted && s.total > 100)
+        ? `<small class="disc-mark" title="перевыполнение и дисциплина сверх нормы">★</small>`
+        : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
       ><b>${s.total}</b>${star}<small style="opacity:0.7">/100</small></span>`;
   }
