@@ -203,11 +203,15 @@
       options: {
         responsive: true, maintainAspectRatio: false,
         indexAxis: "y",
+        // ВАЖНО: для горизонтальных баров индекс на оси Y. Без axis:"y"
+        // режим "index" по умолчанию берёт ось X → тултип цеплял НЕ ту
+        // строку (показывал статистику чужого человека).
+        interaction: { mode: "index", intersect: false, axis: "y" },
         animation: items.length > 80 ? false : { duration: 250 },
         plugins: {
           legend: { display: false },
           tooltip: {
-            mode: "index", intersect: false,
+            mode: "index", intersect: false, axis: "y",
             // Скрываем категории с 0 баллов чтобы не зашумлять.
             // Для иммунных «Доблесть» показываем со спец-лейблом.
             // Для строки-разделителя — скрыть всё (через filter не
