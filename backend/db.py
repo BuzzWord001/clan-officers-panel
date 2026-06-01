@@ -3493,20 +3493,25 @@ def valor_get_current() -> dict[str, Any]:
             immunity = immunity_map.get(cn)
             m["immunity"] = immunity
 
-            # Текущий % выполнения норматива (учитывает иммун).
+            # Текущий % выполнения норматива (учитывает иммун) + ПЕРЕпишем
+            # norm_met для иммунных. Это нужно потому что старые снапшоты
+            # были загружены до фиксов и имеют norm_met=False/True по факту,
+            # игнорируя иммунитет. Здесь приводим в консистентное состояние.
             cur_norm = cur["valor_norm"] or 1
             cv = m["valor"]
             if m["is_afk"]:
-                m["norm_pct"] = None  # АФК — не оцениваем
+                m["norm_pct"] = None
             elif immunity and immunity["status"] in ("active", "extended"):
-                m["norm_pct"] = None  # Иммунный — не оцениваем
+                m["norm_pct"] = None
+                m["norm_met"] = None  # иммунный — не оцениваем
             elif immunity and immunity["status"] == "grace":
-                # Снижаем норматив пропорционально дням без иммуна
                 eff_norm = max(1, round(cur_norm * immunity["effective_norm_factor"]))
                 if cv is None:
                     m["norm_pct"] = 0.0
+                    m["norm_met"] = False
                 else:
                     m["norm_pct"] = round(min(cv / eff_norm, 1.0) * 100, 1)
+                    m["norm_met"] = cv >= eff_norm
                 m["effective_norm"] = eff_norm
             elif cv is None:
                 m["norm_pct"] = 0.0

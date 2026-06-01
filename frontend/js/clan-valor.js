@@ -57,14 +57,26 @@
   function renderSummary() {
     const s = DATA.snapshot;
     const m = DATA.members;
-    const afk = m.filter(x => x.is_afk).length;
-    const immActive = m.filter(x => x.immunity &&
-      (x.immunity.status === "active" || x.immunity.status === "extended")).length;
-    const immGrace  = m.filter(x => x.immunity &&
-      x.immunity.status === "grace").length;
-    const metGood = m.filter(x => x.norm_met === true).length;
-    const metBad  = m.filter(x => x.norm_met === false &&
-      !(x.immunity && x.immunity.status !== "grace")).length;
+    // Категории — взаимно исключающие. Приоритет:
+    //   АФК > Иммун > выполнен > частично (>=50%) > не выполнен (<50%)
+    let afk = 0, immActive = 0, immGrace = 0;
+    let metGood = 0, metPartial = 0, metBad = 0;
+    const PARTIAL_THRESHOLD = 50;  // pct ниже — "не выполнили"
+    for (const x of m) {
+      if (x.is_afk) { afk++; continue; }
+      const im = x.immunity;
+      if (im && (im.status === "active" || im.status === "extended")) {
+        immActive++; continue;
+      }
+      if (im && im.status === "grace") immGrace++;
+      // Для grace УЧИТЫВАЕМ выполнен/частично — там тоже идёт оценка
+      if (x.norm_met === true) { metGood++; continue; }
+      if (x.norm_met === false) {
+        const p = x.norm_pct == null ? 0 : x.norm_pct;
+        if (p >= PARTIAL_THRESHOLD) metPartial++;
+        else                         metBad++;
+      }
+    }
     const totalValor = m.reduce((a, x) => a + (x.valor || 0), 0);
     const immChip = immActive
       ? `<span>иммун. новички: <b style="color:#7bc7ff">🛡 ${immActive}</b></span>`
@@ -76,7 +88,8 @@
       <span>неделя: <b>${esc(s.week)}</b></span>
       <span>норматив: <b>${esc(s.valor_norm)}</b></span>
       <span>всего: <b>${m.length}</b></span>
-      <span>норматив выполнили: <b style="color:#88ff88">${metGood}</b></span>
+      <span>выполнили: <b style="color:#88ff88">${metGood}</b></span>
+      <span>частично (≥${PARTIAL_THRESHOLD}%): <b style="color:#ffcc66">${metPartial}</b></span>
       <span>не выполнили: <b style="color:#ff8080">${metBad}</b></span>
       <span>АФК: <b style="color:#ffd080">${afk}</b></span>
       ${immChip}

@@ -69,31 +69,56 @@
     render();
   }
 
+  // Маркер pseudo-разделителя «Иммунные новички». Используется как
+  // невыделяемая строка в Chart.js (data=0 во всех datasets, спец-label).
+  const SEP_NICK = "__SEP_IMMUNE__";
+  function isImmuneAdjusted(m) {
+    return m && m.score && m.score.immunity_adjusted;
+  }
+
   function render() {
     if (!DATA) return;
     const mem = (DATA.members || []).filter(m => m.score);
     const sortKey = document.getElementById("cs-sort").value;
     const top = +document.getElementById("cs-top").value;
     const q = (document.getElementById("cs-filter").value || "").trim().toLowerCase();
-    let items = mem.slice();
+    let pool = mem.slice();
     if (q) {
-      items = items.filter(m =>
+      pool = pool.filter(m =>
         ((m.nick || "") + " " + (m.true_name || ""))
           .toLowerCase().includes(q));
     }
-    items.sort((a, b) => {
-      const va = sortVal(a, sortKey);
-      const vb = sortVal(b, sortKey);
-      return vb - va;  // desc
-    });
-    if (top > 0) items = items.slice(0, top);
+    // Разделяем на регулярных и иммунных, сортируем каждую группу.
+    const cmp = (a, b) => sortVal(b, sortKey) - sortVal(a, sortKey);
+    const regular = pool.filter(m => !isImmuneAdjusted(m)).sort(cmp);
+    const immune  = pool.filter(m =>  isImmuneAdjusted(m)).sort(cmp);
+    let regCut = regular, immCut = immune;
+    if (top > 0) {
+      regCut = regular.slice(0, top);
+      immCut = immune.slice(0, top);
+    }
+    // Собираем единый список. Между группами вставляем pseudo-разделитель.
+    // items[] — порядковый список, syncронный с labels/data.
+    const items = regCut.slice();
+    if (immCut.length) {
+      // Pseudo-объект для строки-разделителя
+      items.push({ nick: SEP_NICK, _is_sep: true, score: {} });
+      items.push(...immCut);
+    }
 
     // Сводка сверху
-    const tot = items.reduce((a, m) => a + (m.score.total || 0), 0);
-    const avg = items.length ? Math.round(tot / items.length * 10) / 10 : 0;
+    const totReg = regCut.reduce((a, m) => a + (m.score.total || 0), 0);
+    const avgReg = regCut.length ? Math.round(totReg / regCut.length * 10) / 10 : 0;
+    const totImm = immCut.reduce((a, m) => a + (m.score.total || 0), 0);
+    const avgImm = immCut.length ? Math.round(totImm / immCut.length * 10) / 10 : 0;
+    const immChip = immCut.length
+      ? `<span style="color:#7bc7ff">🛡 иммунных: <b>${immCut.length}</b> (ср. ${avgImm}/100)</span>`
+      : "";
     document.getElementById("cs-stats").innerHTML = `
-      <span>показано: <b>${items.length}</b></span>
-      <span>средняя ценность: <b style="color:var(--accent)">${avg}/100</b></span>
+      <span>показано: <b>${regCut.length + immCut.length}</b>
+        <small style="opacity:0.7">(${regCut.length} обычных)</small></span>
+      <span>средняя ценность: <b style="color:var(--accent)">${avgReg}/100</b></span>
+      ${immChip}
       <span style="color:#88ff88">▌ доблесть</span>
       <span style="color:#69b7e4">▌ чаты</span>
       <span style="color:#b070dc">▌ соцсети</span>
@@ -109,11 +134,14 @@
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
+    // Label для разделителя — заметная декоративная строка
+    const SEP_LABEL = "──── 🛡 ИММУННЫЕ НОВИЧКИ ────";
     CHART = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: items.map(m => m.nick +
-          (m.true_name ? " · " + m.true_name : "")),
+        labels: items.map(m => m._is_sep
+          ? SEP_LABEL
+          : (m.nick + (m.true_name ? " · " + m.true_name : ""))),
         datasets: [
           {
             label: "Доблесть",
@@ -124,28 +152,28 @@
           },
           {
             label: "Чаты",
-            data: items.map(m => m.score.chat),
+            data: items.map(m => m.score.chat ?? 0),
             backgroundColor: "rgba(105,183,228,0.75)",
             borderColor: "rgba(105,183,228,0.95)",
             borderWidth: 1,
           },
           {
             label: "Соцсети",
-            data: items.map(m => m.score.socials),
+            data: items.map(m => m.score.socials ?? 0),
             backgroundColor: "rgba(176,112,220,0.75)",
             borderColor: "rgba(176,112,220,0.95)",
             borderWidth: 1,
           },
           {
             label: "Ветеран",
-            data: items.map(m => m.score.veteran),
+            data: items.map(m => m.score.veteran ?? 0),
             backgroundColor: "rgba(255,224,112,0.75)",
             borderColor: "rgba(255,224,112,0.95)",
             borderWidth: 1,
           },
           {
             label: "Офицер",
-            data: items.map(m => m.score.officer || 0),
+            data: items.map(m => m.score.officer ?? 0),
             backgroundColor: "rgba(255,154,68,0.78)",
             borderColor: "rgba(255,154,68,0.98)",
             borderWidth: 1,
@@ -162,8 +190,12 @@
             mode: "index", intersect: false,
             // Скрываем категории с 0 баллов чтобы не зашумлять.
             // Для иммунных «Доблесть» показываем со спец-лейблом.
+            // Для строки-разделителя — скрыть всё (через filter не
+            // получится отменить весь tooltip, поэтому в title возвращаем
+            // пустую строку и body будет пуст).
             filter: (tt) => {
               const m = items[tt.dataIndex];
+              if (m && m._is_sep) return false;
               const sc = m && m.score;
               if (tt.dataset.label === "Доблесть" &&
                   sc && sc.immunity_adjusted) return true;
@@ -171,10 +203,12 @@
             },
             callbacks: {
               // Заголовок: ник + истинное имя на отдельных строках для
-              // длинных имён, плюс «иммунитет» если он есть
+              // длинных имён, плюс «иммунитет» если он есть.
+              // Разделитель — без tooltip.
               title: (tts) => {
                 if (!tts.length) return "";
                 const m = items[tts[0].dataIndex];
+                if (m._is_sep) return "";
                 const lines = [m.nick];
                 if (m.true_name) lines.push("· " + m.true_name);
                 if (m.immunity && m.immunity.status === "active") {
@@ -232,9 +266,23 @@
                 ticks: { color: "#a0a0a0", stepSize: 10 },
                 grid: { color: "rgba(255,255,255,0.04)" }, },
           y: { stacked: true,
-                ticks: { color: "#c8c8c8",
-                          font: { size: rowH >= 26 ? 12 : 11 },
-                          autoSkip: false },
+                ticks: {
+                  color: (ctx) => {
+                    const m = items[ctx.index];
+                    if (m && m._is_sep) return "#7bc7ff";
+                    if (isImmuneAdjusted(m)) return "#a8d4ff";
+                    return "#c8c8c8";
+                  },
+                  font: (ctx) => {
+                    const m = items[ctx.index];
+                    if (m && m._is_sep) {
+                      return { size: rowH >= 26 ? 13 : 12,
+                                weight: "bold" };
+                    }
+                    return { size: rowH >= 26 ? 12 : 11 };
+                  },
+                  autoSkip: false,
+                },
                 grid: { color: "rgba(255,255,255,0.02)" }, },
         },
       },
