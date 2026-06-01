@@ -256,7 +256,7 @@
       } else if (!AUTO_TAGS.has(t) && m.tag_dates && m.tag_dates[t]) {
         corner = dateShort(m.tag_dates[t]);
       }
-      const cornerHtml = corner ? ` <span class="wk-tag">${esc(corner)}</span>` : "";
+      // Неделя/дата — НЕ на чипе, только в тултипе.
       if (corner) tip += `\nПолучена: ${corner}`;
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
       // Достижения — инлайн-цвет по роли (+ свечение у топовых).
@@ -269,7 +269,7 @@
       const wcol = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
       return `<span class="tag-chip ${meta.cls}${auto}"${style} data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
-        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}${cornerHtml}</span>`;
+        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
     }).join("");
     return `<div class="tag-row">${chips}${btn}</div>`;
   }
@@ -444,11 +444,10 @@
     opts = opts || {};
     const mark = opts.manual
       ? `<span class="wmark" aria-hidden="true">✎</span>` : "";
-    const corner = opts.corner
-      ? `<span class="wk-tag">${esc(opts.corner)}</span>` : "";
+    // Неделя/дата выдачи — НЕ на чипе, только в тултипе (opts.corner → wtip).
     return `<span class="wchip ${colorCls}" data-wtip="${esc(wtip)}">` +
       `${mark}Предупреждение <span class="tri">⚠</span> ${n}` +
-      `${corner}${opts.extra || ""}</span>`;
+      `${opts.extra || ""}</span>`;
   }
 
   // Колонка «Предупреждения» — по одному чипу на тип + кнопки «+» / «✕».
