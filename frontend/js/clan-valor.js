@@ -285,6 +285,143 @@
     return `<div class="tag-row">${chips}${btn}</div>`;
   }
 
+  // ── Гайд «Все доступные роли» ──────────────────────────────────────
+  // Как получить каждую роль (понятным языком). Пороги совпадают с
+  // расчётом на бэкенде (db.py) и тултипами TAG_META.
+  const ROLE_HOWTO = {
+    etalon:   "Пройди минимум 3 учтённых недели и не провали ни одной нормы доблести. База «безупречной истории».",
+    ace:      "Безупречная история (без провалов) + в среднем за неделю набираешь ≥ 1.4× нормы.",
+    legend:   "Безупречная история + средняя кратность набора ≥ 2× нормы.",
+    immortal: "Безупречная история + средняя кратность ≥ 3× нормы. Вершина дисциплины клана.",
+    combo_over:   "Перевыполни норму (≥ 1.5×) три недели подряд и дольше.",
+    combo_record: "Серия ≥ 3 недель подряд со средней кратностью серии ≥ 2×.",
+    combo_legend: "Серия ≥ 3 недель подряд со средней кратностью серии ≥ 3×.",
+    over:     "Набери за неделю ≥ 1.5× нормы.",
+    double:   "Набери за неделю ≥ 2× нормы.",
+    triple:   "Набери за неделю ≥ 3× нормы.",
+    record:   "Лучшая неделя ≥ 4× нормы.",
+    phenom:   "Лучшая неделя ≥ 5.5× нормы.",
+    titan:    "Лучшая неделя ≥ 7× нормы.",
+    overlord: "Лучшая неделя ≥ 9.5× нормы.",
+    absolute: "Лучшая неделя ≥ 13× нормы (≈ 189 доблести) — почти технический потолок.",
+    veteran:    "Состоял в клане с момента основания. Роль присваивает офицер вручную.",
+    officer:    "Занимал офицерский пост — Лейтенант или выше. Начисляется автоматически по истории должностей.",
+    in_socials: "Вступи в VK- или Telegram-сообщество клана и привяжи аккаунт через бота регистрации — роль появится сама.",
+  };
+
+  // Структура гайда: группы → ветки → роли (по возрастанию престижа).
+  const ROLE_GUIDE = [
+    { group: "Достижения за доблесть", icon: "🏆",
+      gintro: "Начисляются автоматически по истории доблести. Внутри каждой ветки роли идут по возрастанию — выше стоит более редкая и престижная. Цвет и свечение чипа отражают силу достижения.",
+      sub: [
+        { title: "Ветка «Безупречная история»",
+          note: "Считается, когда у тебя нет ни одного провала норматива (с 3-й учтённой недели). Ступень зависит от средней кратности набора за всё время.",
+          tags: ["etalon", "ace", "legend", "immortal"] },
+        { title: "Ветка «Серии перевыполнений»",
+          note: "Считается за перевыполнение нормы (≥ 1.5×) несколько недель подряд. Ступень — по средней кратности самой длинной серии.",
+          tags: ["combo_over", "combo_record", "combo_legend"] },
+        { title: "Ветка «Сила одного пика»",
+          note: "Считается по лучшей отдельной неделе — во сколько раз перекрыта норма. Достаточно один раз достичь порога.",
+          tags: ["over", "double", "triple", "record", "phenom", "titan", "overlord", "absolute"] },
+      ] },
+    { group: "Статусные роли", icon: "🛡",
+      gintro: "Не зависят от доблести — отмечают место человека в клане.",
+      flat: ["veteran", "officer", "in_socials"] },
+  ];
+
+  // Чип роли — РОВНО как в таблице (renderTags): достижениям инлайн-цвет +
+  // свечение, статусным — их CSS-классы; авто-теги получают пунктир.
+  function guideChip(t) {
+    const meta = TAG_META[t] || { label: t, icon: "·", cls: "tag-default", tip: t };
+    const isAch = meta.cls && meta.cls.indexOf("tag-ach") >= 0;
+    let style = "";
+    if (isAch && meta.color) {
+      const col = meta.color;
+      style = ` style="color:${col};border-color:${col};background:${col}1f;` +
+              (meta.glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
+    }
+    const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
+    return `<span class="tag-chip ${meta.cls}${auto}"${style}` +
+      `><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
+  }
+
+  function guideRows(tags) {
+    return tags.map((t) =>
+      `<div class="rg-row">` +
+        `<div class="rg-chip">${guideChip(t)}</div>` +
+        `<div class="rg-how">${esc(ROLE_HOWTO[t] || (TAG_META[t] || {}).tip || "")}</div>` +
+      `</div>`).join("");
+  }
+
+  function buildRoleGuide() {
+    let html =
+      `<div class="rg-head"><span>✦ Все доступные роли клана</span>` +
+      `<button class="rg-close" type="button" aria-label="Закрыть">✕</button></div>` +
+      `<div class="rg-body">` +
+      `<p class="rg-intro">Роли показываются в столбце «Роли» у каждого участника. ` +
+      `Достижения за доблесть начисляются <b>автоматически</b> по истории набора, ` +
+      `статусные — по составу клана и должности. Ниже — все роли по возрастанию ` +
+      `престижа и как получить каждую.</p>`;
+    ROLE_GUIDE.forEach((g) => {
+      html += `<section class="rg-group">` +
+        `<h3 class="rg-gtitle">${esc(g.icon)} ${esc(g.group)}</h3>`;
+      if (g.gintro) html += `<p class="rg-gintro">${esc(g.gintro)}</p>`;
+      const subs = g.sub || [{ tags: g.flat }];
+      subs.forEach((s) => {
+        if (s.title) html += `<h4 class="rg-stitle">${esc(s.title)}</h4>`;
+        if (s.note)  html += `<p class="rg-snote">${esc(s.note)}</p>`;
+        html += `<div class="rg-list">${guideRows(s.tags)}</div>`;
+      });
+      html += `</section>`;
+    });
+    return html + `</div>`;
+  }
+
+  let RG_OVERLAY = null;
+  function rgEsc(e) { if (e.key === "Escape") closeRoleGuide(); }
+  function closeRoleGuide() {
+    if (RG_OVERLAY) { RG_OVERLAY.remove(); RG_OVERLAY = null; }
+    document.removeEventListener("keydown", rgEsc);
+  }
+  function openRoleGuide() {
+    if (RG_OVERLAY) return;
+    RG_OVERLAY = document.createElement("div");
+    RG_OVERLAY.className = "rg-overlay";
+    const modal = document.createElement("div");
+    modal.className = "rg-modal";
+    modal.innerHTML = buildRoleGuide();
+    RG_OVERLAY.appendChild(modal);
+    document.body.appendChild(RG_OVERLAY);
+    RG_OVERLAY.addEventListener("click", (e) => {
+      if (e.target === RG_OVERLAY || e.target.closest(".rg-close")) closeRoleGuide();
+    });
+    document.addEventListener("keydown", rgEsc);
+  }
+
+  // Кнопка «Посмотреть все доступные роли» в шапке столбца «Роли».
+  // Видна всем, включая гостя (это справка, а не правка).
+  function initRolesGuideBtn() {
+    const ths = document.querySelectorAll("#valor-table thead th");
+    for (const th of ths) {
+      const lbl = th.querySelector(".ch-label") || th;
+      const name = lbl.textContent.replace(/\s+/g, " ").replace(/\?\s*$/, "").trim();
+      if (name === "Роли") {
+        if (th.querySelector(".roles-guide-btn")) return;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "roles-guide-btn";
+        b.innerHTML = `<span class="rgb-ic">✦</span>Посмотреть все доступные роли`;
+        b.title = "Открыть полный список ролей клана";
+        b.addEventListener("click", (e) => { e.stopPropagation(); openRoleGuide(); });
+        th.appendChild(b);
+        return;
+      }
+    }
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", initRolesGuideBtn);
+  else initRolesGuideBtn();
+
   function renderScore(s) {
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
