@@ -330,51 +330,63 @@
     </span>`;
   }
 
-  function sevOfPct(pct) {
-    return pct >= 80 ? "ok" : pct >= 60 ? "mid"
-         : pct >= 40 ? "low" : pct >= 20 ? "bad" : "crit";
+  // ── Единая система чипов предупреждений ──
+  // Суровость (цвет чипа): по % выполнения нормы — лёгкое / среднее / суровое.
+  // Тип (кружок-бейдж): % — норматив, Т — титул, Р — ручное.
+  function sev3(pct) {
+    return pct >= 67 ? "light" : pct >= 34 ? "mid" : "severe";
+  }
+  const SEVWORD = { light: "лёгкое", mid: "среднее", severe: "суровое" };
+  // Нормализация уровней ручных предупреждений к 3 ступеням
+  // (поддержка старых значений ok/low/bad/crit + новых light/mid/severe).
+  const MSEV = { light: "light", mid: "mid", severe: "severe",
+                  ok: "light", low: "mid", bad: "mid", crit: "severe" };
+  const _MWARN_SEV = new Set(["light", "mid", "severe"]);
+
+  function wchip(sev, typeChar, typeCls, label, tip, extra) {
+    return `<span class="wchip wsev-${sev}" title="${esc(tip)}">` +
+      `<span class="wt ${typeCls}">${typeChar}</span>` +
+      `<span class="wtx">${label}</span>${extra || ""}</span>`;
   }
 
-  const SEV_LABEL = { ok: "мягкое", mid: "лёгкое", low: "среднее",
-                       bad: "строгое", crit: "очень строгое" };
-  const _MWARN_SEV = new Set(["ok", "mid", "low", "bad", "crit"]);
-
-  // Колонка «Предупреждения» — все активные предупреждения человека:
-  // норматив-предупреждения (с % набранного, цвет = строгость) + ручные
-  // (офицерские, с ✕ для удаления) + отметка из титула. Плюс кнопка «+».
+  // Колонка «Предупреждения» — все активные предупреждения человека в едином
+  // стиле: норматив (%), титул (Т), ручные (Р). Плюс кнопка «+».
   function renderWarnings(m) {
     const list = m.warnings || [];
     const manual = m.manual_warnings || [];
     const tw = m.title_warn;
-    const chips = list.map((w) => {
-      const sev = sevOfPct(w.pct);
-      const tip = `Норматив не выполнен (${w.week}): набрано ` +
-        `${w.valor} из ${w.norm} = ${w.pct}%`;
-      return `<span class="warn-badge warn-${sev}" title="${esc(tip)}"` +
-        `>${w.valor}/${w.norm}·${Math.round(w.pct)}%</span>`;
+    const chips = [];
+    // 1. Норматив-предупреждения (суровость по % набранного)
+    list.forEach((w) => {
+      const sev = sev3(w.pct);
+      const tip = `Норматив (${w.week}): набрано ${w.valor} из ${w.norm}` +
+        ` = ${w.pct}% — предупреждение ${SEVWORD[sev]}`;
+      chips.push(wchip(sev, "%", "wt-norm",
+        `${w.valor}/${w.norm} · ${Math.round(w.pct)}%`, tip));
     });
+    // 2. Титул-предупреждение (отметка офицера в игре)
+    if (tw) {
+      const sev = tw >= 2 ? "severe" : "mid";
+      const tip = `Предупреждение из титула (отметка офицера в игре): ${tw}.` +
+        ` Кик обычно после 2-го.`;
+      chips.push(wchip(sev, "Т", "wt-title", `титул · ${tw}`, tip));
+    }
+    // 3. Ручные предупреждения офицера (с крестиком для удаления)
     manual.forEach((w) => {
-      const sev = _MWARN_SEV.has(w.severity) ? w.severity : "mid";
+      const sev = MSEV[w.severity] || "mid";
       const label = w.reason ? esc(w.reason) : "вручную";
-      const tip = `Ручное предупреждение (${SEV_LABEL[sev] || sev})` +
+      const tip = `Ручное предупреждение (${SEVWORD[sev]})` +
         (w.reason ? `: ${w.reason}` : "") +
         (w.created_by ? `\nДобавил: ${w.created_by}` : "");
-      chips.push(`<span class="warn-badge warn-${sev} manual-warn" ` +
-        `title="${esc(tip)}">${label}` +
-        `<button class="warn-del-btn" data-id="${w.id}" ` +
-        `title="Удалить предупреждение">✕</button></span>`);
+      const del = `<button class="warn-del-btn" data-id="${w.id}" ` +
+        `title="Удалить предупреждение">✕</button>`;
+      chips.push(wchip(sev, "Р", "wt-manual", label, tip, del));
     });
-    if (tw) {
-      const multi = tw >= 2 ? " title-warn-multi" : "";
-      chips.push(`<span class="title-warn${multi}" ` +
-        `title="Предупреждение от офицера (отметка в титуле): ${tw}"` +
-        `>титул ⚠${tw}</span>`);
-    }
     const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
       `title="Добавить предупреждение вручную">+</button>`;
     const body = chips.length
       ? chips.join("")
-      : `<span class="no-warn" title="нет активных предупреждений">✓</span>`;
+      : `<span class="no-warn" title="активных предупреждений нет">✓</span>`;
     return `<div class="warn-list">${body}${addBtn}</div>`;
   }
 
@@ -629,9 +641,9 @@
     pop.innerHTML =
       `<div class="wap-title">Предупреждение: <b>${esc(nick)}</b></div>` +
       `<div class="wap-sev">` +
-        `<button type="button" data-sev="mid"  class="warn-badge warn-mid">лёгкое</button>` +
-        `<button type="button" data-sev="bad"  class="warn-badge warn-bad">среднее</button>` +
-        `<button type="button" data-sev="crit" class="warn-badge warn-crit">строгое</button>` +
+        `<button type="button" data-sev="light"  class="wchip wsev-light"><span class="wt wt-manual">Р</span>лёгкое</button>` +
+        `<button type="button" data-sev="mid"     class="wchip wsev-mid"><span class="wt wt-manual">Р</span>среднее</button>` +
+        `<button type="button" data-sev="severe"  class="wchip wsev-severe"><span class="wt wt-manual">Р</span>суровое</button>` +
       `</div>` +
       `<input class="wap-reason" type="text" maxlength="200" ` +
         `placeholder="Причина (необязательно)">` +
@@ -646,11 +658,11 @@
       left = window.innerWidth - pop.offsetWidth - 8;
     pop.style.left = Math.max(8, left) + "px";
     pop.style.top = top + "px";
-    let sev = "bad";
+    let sev = "mid";
     const sevBtns = pop.querySelectorAll(".wap-sev button");
     const selSev = (s) => { sev = s; sevBtns.forEach(b =>
       b.classList.toggle("wap-on", b.dataset.sev === s)); };
-    selSev("bad");
+    selSev("mid");
     sevBtns.forEach(b => b.addEventListener("click", () => selSev(b.dataset.sev)));
     pop.querySelector(".wap-cancel").addEventListener("click", closeWarnAdd);
     pop.querySelector(".wap-add").addEventListener("click", async () => {

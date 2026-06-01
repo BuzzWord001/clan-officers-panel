@@ -3358,7 +3358,7 @@ def valor_remove_tag(nick: str, tag: str) -> bool:
         return cur.rowcount > 0
 
 
-_MWARN_SEV = ("ok", "mid", "low", "bad", "crit")
+_MWARN_SEV = ("light", "mid", "severe")
 
 
 def valor_add_manual_warning(nick: str, severity: str, reason: str,
