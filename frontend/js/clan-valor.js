@@ -286,16 +286,18 @@
     if (pct == null) {
       return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
     }
-    // Не выполнен — пилюля градиента + ⚠ N если streak > 0
+    // Не выполнен — пилюля градиента + бейдж предупреждений (если streak > 0)
     const cls = pctClass(pct);
-    const warnTxt = wc > 1
-      ? ` ⚠ ×${wc}`
-      : wc === 1 ? ` ⚠` : "";
+    const warnBadge = wc >= 1
+      ? ` <span class="warn-badge${wc > 1 ? " warn-badge-multi" : ""}" ` +
+        `title="${esc(wc + " неделя(ь) подряд без норматива")}">` +
+        `⚠${wc > 1 ? " " + wc : ""}</span>`
+      : "";
     const tip = wc > 1
       ? `${wc} подряд недель без норматива (текущая ${pct}%)`
       : `${pct}% от норматива`;
     return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
-      >${main} · ${pct}%${warnTxt}</span>`;
+      >${main} · ${pct}%${warnBadge}</span>`;
   }
 
   function renderCompliance(c) {

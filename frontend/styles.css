@@ -2740,6 +2740,32 @@ body.show-valor .valor-col { display: table-cell; }
 
 /* ═══════════════ Подсказки по колонкам (help-tips.js) ═══════════════ */
 
+/* Название колонки + значок «?» держим единым неразрывным блоком,
+   чтобы значок всегда был справа от надписи и не уезжал под неё. */
+.ch-label { white-space: nowrap; }
+
+/* Бейдж предупреждений в колонке «Норматив» (недели без выполнения) */
+.warn-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  color: #ffcaca;
+  background: rgba(255, 59, 59, 0.16);
+  border: 1px solid rgba(255, 59, 59, 0.55);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.warn-badge-multi {
+  color: #fff;
+  background: rgba(255, 59, 59, 0.34);
+  border-color: var(--danger);
+  box-shadow: 0 0 7px rgba(255, 59, 59, 0.5);
+}
+
 /* Кликабельный значок «?» рядом с заголовком столбца */
 .col-help {
   display: inline-flex;

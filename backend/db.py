@@ -2999,6 +2999,25 @@ def valor_save_snapshot(
                 prev_warnings[cn] = r["warning_count"] or 0
                 prev_snapshot_data[cn] = dict(r)
 
+        # ── 1.5. Дедуп входных строк по canon ──
+        # Десктоп/OCR иногда отдаёт один ник дважды (например «AtiScaT» с
+        # valor 14 и фантомные 8). Без дедупа обе строки попадают в снимок,
+        # фейково раздувают число «недель» и занижают среднюю compliance —
+        # из-за чего сортировка по «ценности» врёт. Оставляем строку с
+        # бОльшим valor (более полное чтение).
+        def _vint(x):
+            return x if isinstance(x, int) else -1
+        _dedup: dict[str, dict] = {}
+        for _m in members:
+            _nick = (_m.get("nick") or "").strip()
+            if not _nick:
+                continue
+            _cn = _valor_canon(_nick)
+            _ex = _dedup.get(_cn)
+            if _ex is None or _vint(_m.get("valor")) > _vint(_ex.get("valor")):
+                _dedup[_cn] = _m
+        members = list(_dedup.values())
+
         # ── 2. REPLACE snapshot на эту неделю (если уже был) ──
         old = conn.execute(
             "SELECT id FROM valor_snapshots WHERE week = ?", (week,)

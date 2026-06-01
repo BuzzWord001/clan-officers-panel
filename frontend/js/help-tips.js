@@ -247,17 +247,23 @@
     const ths = table.querySelectorAll("thead th");
     const used = [];
     ths.forEach((th) => {
+      if (th.querySelector(".col-help")) return; // уже добавлено
       const label = primaryLabel(th);
       const info = dict[label];
       if (!info) return;
-      if (th.querySelector(".col-help")) return; // уже добавлено
       const icon = makeIcon(label, info);
-      // Значок — на первой строке рядом с названием (перед <br>/<small>).
-      const br = th.querySelector("br");
-      const small = th.querySelector("small");
-      if (br) th.insertBefore(icon, br);
-      else if (small) th.insertBefore(icon, small);
-      else th.appendChild(icon);
+      // Заворачиваем НАЗВАНИЕ (узлы первой строки) + значок в неразрывную
+      // обёртку, чтобы значок всегда стоял справа от надписи и НЕ переносился
+      // под неё в узких колонках — позиция единообразна во всех столбцах.
+      const stop = th.querySelector("br") || th.querySelector("small");
+      const wrap = document.createElement("span");
+      wrap.className = "ch-label";
+      while (th.firstChild && th.firstChild !== stop) {
+        wrap.appendChild(th.firstChild);
+      }
+      wrap.appendChild(icon);
+      if (stop) th.insertBefore(wrap, stop);
+      else th.appendChild(wrap);
       used.push(label);
     });
     if (!used.length) return;
