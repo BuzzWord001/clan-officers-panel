@@ -2549,6 +2549,24 @@ def _rank_score(rank: str) -> int:
     return _RANK_SCORE.get((rank or "").strip().lower(), 0)
 
 
+_RANK_SCORE_MAX = max(_RANK_SCORE.values())  # 30 (мастер)
+
+
+def _rank_frac(rank: str) -> float:
+    """Ранг → доля 0..1 (мастер=1.0, рядовой/нет=0)."""
+    return _rank_score(rank) / _RANK_SCORE_MAX
+
+
+# ── Веса финального score «Ценность для клана» (сумма = 100) ──
+# Доминирует доблесть (сколько набрал человек). Остальное — «гораздо
+# менее ценно», но с градацией: ветеран > офицер > соцсети ≈ чаты.
+VALOR_W_DOBLEST = 60   # compliance.avg_pct, главный фактор
+VALOR_W_VETERAN = 16   # был в первоначальном списке клана
+VALOR_W_OFFICER = 14   # макс; смесь высшего поста (70%) и текущего (30%)
+VALOR_W_SOCIALS = 5    # присутствие в соцсетях (2.5 VK + 2.5 TG)
+VALOR_W_CHAT    = 5    # активность в чатах
+
+
 def valor_top_rank_per_canon() -> dict[str, str]:
     """Map canon → top rank (по баллам), который этот человек когда-либо
     занимал — текущий + вся история valor_history. Нужно для авто-тега
@@ -3560,38 +3578,42 @@ def valor_get_current() -> dict[str, Any]:
                               "pct_delta": pct_delta}
 
             # ── Финальный score: «ценность для клана» ──
-            # Раскладка (max 100):
-            #   compliance: 0..25  (compliance.avg_pct * 0.25)
-            #   chat:       0..20  (min(msgs/50, 1) * 20)
-            #   socials:    0..15  (7.5 за VK + 7.5 за TG)
-            #   veteran:    0..10
-            #   officer:    0..30  по top_rank (см. _RANK_SCORE)
+            # Раскладка (max 100, веса см. VALOR_W_*):
+            #   compliance: 0..60  (доблесть — главный фактор)
+            #   veteran:    0..16  (был в первоначальном списке клана)
+            #   officer:    0..14  смесь высшего поста ever (70%) +
+            #               текущего поста (30%) — важно и где был, и где сейчас
+            #   socials:    0..5   (2.5 за VK + 2.5 за TG)
+            #   chat:       0..5   (min(msgs/50, 1) * 5)
             # Если человек ПРЯМО СЕЙЧАС под иммунитетом (active/extended),
-            # доблесть-компонент не оценивается: comp_pts=None, max=75.
-            # total нормализуется к /100 для справедливого сравнения.
+            # доблесть-компонент не оценивается: comp_pts=None,
+            # max=100-VALOR_W_DOBLEST. total нормализуется к /100.
             comp_obj = m.get("compliance")
             is_immune_now = (immunity and
                              immunity["status"] in ("active", "extended"))
             if is_immune_now:
                 comp_pts = None  # «не оценивается»
             elif comp_obj:
-                comp_pts = round(comp_obj["avg_pct"] * 0.25, 1)
+                comp_pts = round(comp_obj["avg_pct"] * VALOR_W_DOBLEST / 100, 1)
             else:
                 comp_pts = 0.0
             msgs = chat_msgs.get(cn, 0)
-            chat_pts = round(min(msgs / 50.0, 1.0) * 20, 1)
+            chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
             soc_pts = 0.0
             soc = m.get("socials") or {}
             if soc.get("vk_id") or soc.get("vk_screen_name"):
-                soc_pts += 7.5
+                soc_pts += VALOR_W_SOCIALS / 2
             if soc.get("tg_id") or soc.get("tg_username"):
-                soc_pts += 7.5
-            veteran_pts = 10 if "veteran" in m["tags"] else 0
-            officer_pts = _rank_score(top_rank)
+                soc_pts += VALOR_W_SOCIALS / 2
+            veteran_pts = VALOR_W_VETERAN if "veteran" in m["tags"] else 0
+            # Офицер: высший пост за всё время (вес 70%) + текущий пост (30%).
+            officer_pts = round(
+                VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
+                                   + 0.3 * _rank_frac(m.get("rank", ""))), 1)
             # Сумма доступных компонентов
             other_pts = chat_pts + soc_pts + veteran_pts + officer_pts
             if is_immune_now:
-                max_pts = 75  # без 25 за доблесть
+                max_pts = 100 - VALOR_W_DOBLEST  # без доблести
                 raw_total = round(other_pts, 1)
                 # Нормализуем к 100 чтобы было сопоставимо с обычными
                 total = round(raw_total / max_pts * 100, 1)
@@ -3611,6 +3633,7 @@ def valor_get_current() -> dict[str, Any]:
                 "veteran":         veteran_pts,
                 "officer":         officer_pts,
                 "top_rank":        top_rank or None,
+                "cur_rank":        m.get("rank") or None,
             }
             members.append(m)
         return {

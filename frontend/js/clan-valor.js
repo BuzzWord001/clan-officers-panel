@@ -179,22 +179,25 @@
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
     const officerLine = s.top_rank
-      ? `• офицер: ${s.officer} / 30 (${s.top_rank})`
-      : `• офицер: 0 / 30`;
+      ? `• офицер: ${s.officer} / 14 (макс: ${s.top_rank}` +
+        (s.cur_rank && s.cur_rank !== s.top_rank
+          ? `, сейчас: ${s.cur_rank}` : ``) + `)`
+      : `• офицер: 0 / 14`;
     // Иммунные — доблесть не оценивается, score нормализован к /100
     const compLine = s.compliance == null
       ? `• доблесть: не оценивается (иммунитет)`
-      : `• доблесть: ${s.compliance} / 25`;
+      : `• доблесть: ${s.compliance} / 60`;
     const headLine = s.immunity_adjusted
       ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
          `Иммунитет: доблесть исключена из оценки.\n`
       : `Итог: ${s.total} / 100\n`;
+    // Порядок — по ценности: доблесть ≫ ветеран > офицер > соцсети ≈ чаты
     const tip = headLine
       + compLine + "\n"
-      + `• чаты: ${s.chat} / 20 (${s.chat_msgs} сообщ.)\n`
-      + `• соцсети: ${s.socials} / 15\n`
-      + `• ветеран: ${s.veteran} / 10\n`
-      + officerLine;
+      + `• ветеран: ${s.veteran} / 16\n`
+      + officerLine + "\n"
+      + `• соцсети: ${s.socials} / 5\n`
+      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`;
     // Для иммунных — звёздочка-намёк и колорится мягче
     const star = s.immunity_adjusted
       ? `<small class="imm-mark" title="скор нормализован — без компонента доблести">*</small>`
