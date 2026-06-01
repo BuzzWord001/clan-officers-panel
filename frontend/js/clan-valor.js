@@ -415,13 +415,24 @@
   const SEVRANK = { light: 0, mid: 1, severe: 2 };
 
   // colorCls — класс цвета (wsev-* или wtype-title); wtip — короткий текст.
+  // «2026-W22» → «W22»;  «2026-06-02T..» → «02.06»
+  function weekShort(w) {
+    const s = String(w || ""); const i = s.indexOf("-W");
+    return i >= 0 ? "W" + s.slice(i + 2) : s;
+  }
+  function dateShort(iso) {
+    const p = String(iso || "").slice(0, 10).split("-");
+    return p.length === 3 ? p[2] + "." + p[1] : String(iso || "");
+  }
   function warnChip(colorCls, n, wtip, opts) {
     opts = opts || {};
     const mark = opts.manual
       ? `<span class="wmark" aria-hidden="true">✎</span>` : "";
+    const corner = opts.corner
+      ? `<span class="wk-tag">${esc(opts.corner)}</span>` : "";
     return `<span class="wchip ${colorCls}" data-wtip="${esc(wtip)}">` +
       `${mark}Предупреждение <span class="tri">⚠</span> ${n}` +
-      `${opts.extra || ""}</span>`;
+      `${corner}${opts.extra || ""}</span>`;
   }
 
   // Колонка «Предупреждения» — по одному чипу на тип + кнопки «+» / «✕».
@@ -430,33 +441,42 @@
     const tw = m.title_warn;
     const manual = m.manual_warnings || [];
     const chips = [];
-    // Норматив — суровость по худшей неделе из активных
+    // Норматив — суровость по худшей неделе; уголок = неделя(и) выдачи
     if (ws.length) {
       const worstW = ws.reduce((a, b) => (b.pct < a.pct ? b : a));
-      const wk = ws.length > 1 ? ` (${ws.length} нед.)` : "";
+      const sorted = ws.slice().sort((a, b) => (a.week < b.week ? -1 : 1));
+      const corner = ws.length === 1
+        ? weekShort(sorted[0].week)
+        : `${weekShort(sorted[0].week)}…${weekShort(sorted[sorted.length - 1].week)}`;
+      const detail = sorted.map((w) =>
+        `${weekShort(w.week)}: ${w.valor}/${w.norm} = ${w.pct}%`).join("\n");
       chips.push(warnChip("wsev-" + sev3(worstW.pct), ws.length,
-        `Норматив не выполнен${wk}\nнабрал ${worstW.valor} из ${worstW.norm} доблести = ${worstW.pct}%`));
+        `Норматив не выполнен\n${detail}`, { corner }));
     }
-    // Титул — строгий цвет
+    // Титул — строгий цвет; уголок = неделя проставления титула
     if (tw) {
+      const since = m.title_warn_since;
       chips.push(warnChip("wtype-title", tw,
-        `Выставлено в титуле руководством гильдии`));
+        `Выставлено в титуле руководством гильдии` +
+        (since ? `\nОтмечено на неделе: ${since}` : ``),
+        { corner: since ? weekShort(since) : "" }));
     }
-    // Ручные — цвет по худшей суровости + значок ✎
+    // Ручные — цвет по худшей суровости + значок ✎; уголок = дата добавления
     if (manual.length) {
       let worstSev = "light";
       manual.forEach((w) => {
         const s = MSEV[w.severity] || "mid";
         if (SEVRANK[s] > SEVRANK[worstSev]) worstSev = s;
       });
-      const lastReason = (manual.filter((w) => w.reason).pop() || {}).reason;
-      const tip = `Ручное предупреждение офицера` +
-        (lastReason ? `\n«${lastReason}»` : ``);
-      const latestId = manual[manual.length - 1].id;
-      const del = ` <button class="warn-del-btn" data-id="${latestId}" ` +
+      const detail = manual.map((w) =>
+        `${dateShort(w.created_at)}: ${w.reason || "(без причины)"}` +
+        (w.created_by ? ` — ${w.created_by}` : ``)).join("\n");
+      const latest = manual[manual.length - 1];
+      const del = ` <button class="warn-del-btn" data-id="${latest.id}" ` +
         `title="Снять последнее ручное">✕</button>`;
-      chips.push(warnChip("wsev-" + worstSev, manual.length, tip,
-        { manual: true, extra: del }));
+      chips.push(warnChip("wsev-" + worstSev, manual.length,
+        `Ручное предупреждение офицера\n${detail}`,
+        { manual: true, corner: dateShort(latest.created_at), extra: del }));
     }
     const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
       `title="Добавить ручное предупреждение">+</button>`;
