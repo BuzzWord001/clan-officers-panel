@@ -332,6 +332,18 @@ CREATE TABLE IF NOT EXISTS valor_tags (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_tags_tag ON valor_tags(tag);
 
+-- Ручные предупреждения (офицер добавляет вручную через UI). Не зависят
+-- от норматива — снимаются вручную (✕). severity: ok|mid|low|bad|crit.
+CREATE TABLE IF NOT EXISTS valor_manual_warnings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    nick_canon  TEXT    NOT NULL,
+    severity    TEXT    NOT NULL DEFAULT 'mid',
+    reason      TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL,
+    created_by  TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_valor_mwarn ON valor_manual_warnings(nick_canon);
+
 -- Архив ушедших из клана. При save_snapshot, если ник был в prev,
 -- но в current его нет — INSERT/UPDATE сюда (последние известные
 -- данные). Если ник снова появился в новом снапшоте — DELETE.
@@ -3346,6 +3358,52 @@ def valor_remove_tag(nick: str, tag: str) -> bool:
         return cur.rowcount > 0
 
 
+_MWARN_SEV = ("ok", "mid", "low", "bad", "crit")
+
+
+def valor_add_manual_warning(nick: str, severity: str, reason: str,
+                              created_by: str = "") -> dict:
+    """Добавить ручное предупреждение нику. severity ∈ ok|mid|low|bad|crit."""
+    canon = _valor_canon(nick)
+    if not canon:
+        return {"ok": False, "error": "bad nick"}
+    sev = severity if severity in _MWARN_SEV else "mid"
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO valor_manual_warnings "
+            "(nick_canon, severity, reason, created_at, created_by) "
+            "VALUES (?,?,?,?,?)",
+            (canon, sev, (reason or "").strip()[:200], now, created_by or ""),
+        )
+        return {"ok": True, "id": cur.lastrowid}
+
+
+def valor_remove_manual_warning(warning_id: int) -> bool:
+    """Удалить ручное предупреждение по id."""
+    with connection() as conn:
+        cur = conn.execute(
+            "DELETE FROM valor_manual_warnings WHERE id = ?", (warning_id,)
+        )
+        return cur.rowcount > 0
+
+
+def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
+    """Map canon → список ручных предупреждений."""
+    out: dict[str, list[dict]] = {}
+    with connection() as conn:
+        for r in conn.execute(
+            "SELECT id, nick_canon, severity, reason, created_at, created_by "
+            "FROM valor_manual_warnings ORDER BY created_at"
+        ):
+            out.setdefault(r["nick_canon"], []).append({
+                "id": r["id"], "severity": r["severity"],
+                "reason": r["reason"], "created_at": r["created_at"],
+                "created_by": r["created_by"], "manual": True,
+            })
+    return out
+
+
 def valor_list_tags() -> dict[str, list[str]]:
     """Возвращает map canon → [tags...]."""
     out: dict[str, list[str]] = {}
@@ -3572,6 +3630,8 @@ def valor_get_current() -> dict[str, Any]:
 
         # Активные предупреждения за невыполнение норматива (replay истории).
         warn_map = valor_active_warnings()
+        # Ручные предупреждения, добавленные офицером через UI.
+        manual_warn_map = valor_manual_warnings_by_canon()
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -3765,6 +3825,7 @@ def valor_get_current() -> dict[str, Any]:
             w = warn_map.get(cn, [])
             m["warnings"] = sorted(w, key=lambda x: x["pct"])
             m["warning_count"] = len(w)  # для бейджа в колонке «Норматив»
+            m["manual_warnings"] = manual_warn_map.get(cn, [])
             members.append(m)
         return {
             "snapshot": dict(cur),

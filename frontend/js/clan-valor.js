@@ -121,8 +121,10 @@
       return m.compliance ? m.compliance.avg_pct : -1;
     }
     if (key === "warnings") {
-      // Сортируем по числу активных предупреждений (норматив + титул).
-      return (m.warnings ? m.warnings.length : 0) + (m.title_warn ? 1 : 0);
+      // Сортируем по числу всех активных предупреждений.
+      return (m.warnings ? m.warnings.length : 0)
+        + (m.manual_warnings ? m.manual_warnings.length : 0)
+        + (m.title_warn ? 1 : 0);
     }
     if (key === "trend") {
       const t = m.trend;
@@ -333,14 +335,17 @@
          : pct >= 40 ? "low" : pct >= 20 ? "bad" : "crit";
   }
 
+  const SEV_LABEL = { ok: "мягкое", mid: "лёгкое", low: "среднее",
+                       bad: "строгое", crit: "очень строгое" };
+  const _MWARN_SEV = new Set(["ok", "mid", "low", "bad", "crit"]);
+
   // Колонка «Предупреждения» — все активные предупреждения человека:
-  // норматив-предупреждения (с % набранного, цвет = строгость) + отметка
-  // офицера из титула. Строгие — первыми (бэкенд уже отсортировал по %).
+  // норматив-предупреждения (с % набранного, цвет = строгость) + ручные
+  // (офицерские, с ✕ для удаления) + отметка из титула. Плюс кнопка «+».
   function renderWarnings(m) {
     const list = m.warnings || [];
+    const manual = m.manual_warnings || [];
     const tw = m.title_warn;
-    if (!list.length && !tw)
-      return `<span class="no-warn" title="нет активных предупреждений">✓</span>`;
     const chips = list.map((w) => {
       const sev = sevOfPct(w.pct);
       const tip = `Норматив не выполнен (${w.week}): набрано ` +
@@ -348,13 +353,29 @@
       return `<span class="warn-badge warn-${sev}" title="${esc(tip)}"` +
         `>${w.valor}/${w.norm}·${Math.round(w.pct)}%</span>`;
     });
+    manual.forEach((w) => {
+      const sev = _MWARN_SEV.has(w.severity) ? w.severity : "mid";
+      const label = w.reason ? esc(w.reason) : "вручную";
+      const tip = `Ручное предупреждение (${SEV_LABEL[sev] || sev})` +
+        (w.reason ? `: ${w.reason}` : "") +
+        (w.created_by ? `\nДобавил: ${w.created_by}` : "");
+      chips.push(`<span class="warn-badge warn-${sev} manual-warn" ` +
+        `title="${esc(tip)}">${label}` +
+        `<button class="warn-del-btn" data-id="${w.id}" ` +
+        `title="Удалить предупреждение">✕</button></span>`);
+    });
     if (tw) {
       const multi = tw >= 2 ? " title-warn-multi" : "";
       chips.push(`<span class="title-warn${multi}" ` +
         `title="Предупреждение от офицера (отметка в титуле): ${tw}"` +
         `>титул ⚠${tw}</span>`);
     }
-    return `<div class="warn-list">${chips.join("")}</div>`;
+    const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
+      `title="Добавить предупреждение вручную">+</button>`;
+    const body = chips.length
+      ? chips.join("")
+      : `<span class="no-warn" title="нет активных предупреждений">✓</span>`;
+    return `<div class="warn-list">${body}${addBtn}</div>`;
   }
 
   function renderSocials(s) {
@@ -586,6 +607,81 @@
           + "&tag=" + encodeURIComponent(tag);
         await fetch(u, { method: "DELETE", credentials: "include",
           headers: { "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") } });
+        await load();
+      } catch (e) { alert("Ошибка: " + (e.message || e)); }
+      return;
+    }
+  });
+
+  // ── Ручные предупреждения: добавление (+) и удаление (✕) ──
+  let WARN_POP = null;
+  function closeWarnAdd() { if (WARN_POP) { WARN_POP.remove(); WARN_POP = null; } }
+  function openWarnAdd(btn, nick) {
+    closeWarnAdd();
+    const pop = document.createElement("div");
+    pop.className = "warn-add-pop";
+    pop.innerHTML =
+      `<div class="wap-title">Предупреждение: <b>${esc(nick)}</b></div>` +
+      `<div class="wap-sev">` +
+        `<button type="button" data-sev="mid"  class="warn-badge warn-mid">лёгкое</button>` +
+        `<button type="button" data-sev="bad"  class="warn-badge warn-bad">среднее</button>` +
+        `<button type="button" data-sev="crit" class="warn-badge warn-crit">строгое</button>` +
+      `</div>` +
+      `<input class="wap-reason" type="text" maxlength="200" ` +
+        `placeholder="Причина (необязательно)">` +
+      `<div class="wap-actions">` +
+        `<button type="button" class="wap-add">Добавить</button>` +
+        `<button type="button" class="wap-cancel">Отмена</button>` +
+      `</div>`;
+    document.body.appendChild(pop);
+    const r = btn.getBoundingClientRect();
+    let left = r.left, top = r.bottom + 6;
+    if (left + pop.offsetWidth > window.innerWidth - 8)
+      left = window.innerWidth - pop.offsetWidth - 8;
+    pop.style.left = Math.max(8, left) + "px";
+    pop.style.top = top + "px";
+    let sev = "bad";
+    const sevBtns = pop.querySelectorAll(".wap-sev button");
+    const selSev = (s) => { sev = s; sevBtns.forEach(b =>
+      b.classList.toggle("wap-on", b.dataset.sev === s)); };
+    selSev("bad");
+    sevBtns.forEach(b => b.addEventListener("click", () => selSev(b.dataset.sev)));
+    pop.querySelector(".wap-cancel").addEventListener("click", closeWarnAdd);
+    pop.querySelector(".wap-add").addEventListener("click", async () => {
+      const reason = pop.querySelector(".wap-reason").value.trim();
+      try {
+        await fetch((window.OFFICERS_CONFIG?.API_URL || "") + "/valor/warning",
+          { method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json",
+              "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") },
+            body: JSON.stringify({ nick, severity: sev, reason }) });
+        closeWarnAdd(); await load();
+      } catch (e) { alert("Ошибка: " + (e.message || e)); }
+    });
+    pop.querySelector(".wap-reason").focus();
+    WARN_POP = pop;
+  }
+  document.addEventListener("click", (e) => {
+    if (WARN_POP && !e.target.closest(".warn-add-pop")
+        && !e.target.closest(".warn-add-btn")) closeWarnAdd();
+  });
+
+  $("valor-tbody").addEventListener("click", async (ev) => {
+    const addB = ev.target.closest(".warn-add-btn");
+    if (addB) {
+      ev.stopPropagation();
+      openWarnAdd(addB, addB.dataset.nick);
+      return;
+    }
+    const delB = ev.target.closest(".warn-del-btn");
+    if (delB) {
+      ev.stopPropagation();
+      if (!confirm("Удалить это предупреждение?")) return;
+      try {
+        await fetch((window.OFFICERS_CONFIG?.API_URL || "")
+          + "/valor/warning?id=" + encodeURIComponent(delB.dataset.id),
+          { method: "DELETE", credentials: "include",
+            headers: { "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") } });
         await load();
       } catch (e) { alert("Ошибка: " + (e.message || e)); }
       return;

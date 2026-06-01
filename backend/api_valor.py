@@ -136,6 +136,28 @@ def valor_tag_delete(nick: str = Query(..., min_length=1),
     return {"ok": ok}
 
 
+class ManualWarnIn(BaseModel):
+    nick:     str
+    severity: str = "mid"   # ok|mid|low|bad|crit
+    reason:   str = ""
+
+
+@router.post("/warning")
+def valor_warning_add(payload: ManualWarnIn,
+                      who: dict = Depends(require_officer)) -> dict:
+    """Добавить ручное предупреждение нику (любой строгости)."""
+    by = who.get("name") or who.get("nick") or who.get("role") or ""
+    return db.valor_add_manual_warning(
+        payload.nick, payload.severity, payload.reason, by)
+
+
+@router.delete("/warning")
+def valor_warning_delete(id: int = Query(..., ge=1),
+                         _: dict = Depends(require_officer)) -> dict:
+    """Удалить ручное предупреждение по id."""
+    return {"ok": db.valor_remove_manual_warning(id)}
+
+
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,
