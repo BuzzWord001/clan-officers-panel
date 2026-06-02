@@ -11,31 +11,64 @@
   let SORT = { key: "score", dir: "desc" };
   let IS_GUEST = false;   // гость — только просмотр, без правок
 
+  // Сетевой сбой (err.status === 0) — это «запрос не дошёл до сервера»
+  // (РФ-блокировка fly.dev, флапающий мобильный интернет, TLS/CORS), а НЕ
+  // «нет сессии». Разовые «Failed to fetch» лечатся ретраем. Настоящие 401/403
+  // прилетают только когда сервер доступен — их пробрасываем сразу, без ретрая.
+  async function tryWithRetry(fn, tries = 3) {
+    for (let i = 0; ; i++) {
+      try { return await fn(); }
+      catch (e) {
+        if (e && e.status === 0 && i < tries - 1) {
+          await new Promise(r => setTimeout(r, 700 * (i + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+
+  function showNetBanner(show) {
+    const b = $("net-banner");
+    if (b) b.hidden = !show;
+  }
+
   async function loadMe() {
+    let me;
     try {
-      const me = await API.me();
-      if (me?.role === "guest") {
-        IS_GUEST = true;
-        document.body.classList.add("guest-mode");
-        $("who").textContent = "Гость · только просмотр";
-        // Красный «Только для офицеров» → зелёный «Гостевой просмотр».
-        const badge = document.querySelector(".classified-badge");
-        if (badge) { badge.textContent = "Гостевой просмотр"; badge.classList.add("guest"); }
-        // Гостю недоступны другие разделы — прячем навигацию целиком.
-        document.querySelectorAll(".tabs, .admin-only").forEach(el =>
-          el.style.display = "none");
+      me = await tryWithRetry(() => API.me());
+      showNetBanner(false);
+    } catch (e) {
+      if (e && e.status === 0) {
+        // Сервер недоступен (не «не авторизован»). Уводить на login.html
+        // бессмысленно — там тот же недоступный сервер, плюс потеряли бы
+        // гостевую сессию из localStorage. Показываем баннер, даём повторить.
+        showNetBanner(true);
         return;
       }
-      const who = me?.role === "admin"
-        ? `${esc(me.username || me.name || "")} · админ`
-        : `${esc(me.username || me.name || "")} · офицер`;
-      $("who").textContent = who;
-      if (me.role !== "admin") {
-        document.querySelectorAll(".admin-only").forEach(el =>
-          el.style.display = "none");
-      }
-    } catch (e) {
+      // Реальные 401/403 — сессии нет/протухла → на вход.
       location.href = "login.html";
+      return;
+    }
+    if (me?.role === "guest") {
+      IS_GUEST = true;
+      document.body.classList.add("guest-mode");
+      $("who").textContent = "Гость · только просмотр";
+      // Красный «Только для офицеров» → зелёный «Гостевой просмотр».
+      const badge = document.querySelector(".classified-badge");
+      if (badge) { badge.textContent = "Гостевой просмотр"; badge.classList.add("guest"); }
+      // Гостю недоступны другие разделы — прячем навигацию целиком.
+      document.querySelectorAll(".tabs, .admin-only").forEach(el =>
+        el.style.display = "none");
+      return;
+    }
+    const who = me?.role === "admin"
+      ? `${esc(me.username || me.name || "")} · админ`
+      : `${esc(me.username || me.name || "")} · офицер`;
+    $("who").textContent = who;
+    if (me.role !== "admin") {
+      document.querySelectorAll(".admin-only").forEach(el =>
+        el.style.display = "none");
     }
   }
 
@@ -47,8 +80,10 @@
   async function load() {
     $("valor-loading").hidden = false;
     try {
-      DATA = await API.valorCurrent();
+      DATA = await tryWithRetry(() => API.valorCurrent());
+      if (DATA) showNetBanner(false);
     } catch (e) {
+      if (e && e.status === 0) showNetBanner(true);
       $("valor-tbody").innerHTML = `<tr><td colspan="9" class="m-error">
         Ошибка загрузки: ${esc(e.detail || e.message)}</td></tr>`;
       return;
@@ -1285,6 +1320,14 @@
     const open = w.style.display !== "none";
     w.style.display = open ? "none" : "block";
     $("dep-arrow").textContent = open ? "▶" : "▼";
+  });
+
+  // Баннер «сервер недоступен» — повтор без перезагрузки страницы.
+  const netRetry = $("net-retry");
+  if (netRetry) netRetry.addEventListener("click", () => {
+    showNetBanner(false);
+    loadMe();
+    load().then(() => { loadTimeline(); loadDeparted(); });
   });
 
   loadMe();
