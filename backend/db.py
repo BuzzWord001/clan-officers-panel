@@ -2837,8 +2837,8 @@ def _rank_frac(rank: str) -> float:
 #      вместе доблесть+достижения = 75% ценности, явно доминируют;
 #   3) ветеран (12); 4) офицер (8, прошлые + текущий пост);
 #   5) соцсети (3); 6) общительность/чаты (2).
-VALOR_W_ACHIEVE     = 40   # достижения за доблесть — ГЛАВНЫЙ фактор
-VALOR_W_DOBLEST     = 35   # compliance.avg_pct — сколько набрано нормы
+VALOR_W_ACHIEVE     = 45   # достижения за доблесть — ГЛАВНЫЙ (долгосрочный)
+VALOR_W_DOBLEST     = 30   # доблесть «форма» — средн. % за последние 4 недели
 VALOR_W_VETERAN     = 12   # был в первоначальном составе клана
 VALOR_W_OFFICER     = 8    # высший пост за всё время (70%) + текущий (30%)
 VALOR_W_SOCIALS     = 3    # присутствие в соцсетях (1.5 VK + 1.5 TG)
@@ -3952,7 +3952,9 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 #   (valor-norm)/(189-norm), 0..1.
                 "ostreak": 0, "omax": 0, "o_cur_ofs": 0.0, "omax_ofs": 0.0,
                 "o_cur_start": "", "omax_start": "", "omax_end": "",
-                "ofs_best": 0.0})
+                "ofs_best": 0.0,
+                "pcts": []})   # % выполнения по неделям (для «формы» 4 нед)
+            d["pcts"].append(pct)
             d["sum"] += pct
             d["over_sum"] += overshoot
             d["n"] += 1
@@ -4203,8 +4205,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # Compliance — среднее % выполнения по всем неделям.
             d = compliance.get(m["nick_canon"])
             if d and d["n"]:
+                _recent = d["pcts"][-4:]
                 m["compliance"] = {
                     "avg_pct":     round(d["sum"] / d["n"], 1),
+                    "recent_pct":  round(sum(_recent) / len(_recent), 1) if _recent else 0.0,
+                    "recent_weeks": len(_recent),
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
                     "over_avg":    round(d["over_sum"] / d["n"], 1),
@@ -4287,10 +4292,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             comp_obj = m.get("compliance")
             is_immune_now = (immunity and
                              immunity["status"] in ("active", "extended"))
+            # ДОБЛЕСТЬ «форма» — средн. % за последние 4 недели (активность
+            # СЕЙЧАС). Долгосрок несут достижения; этот фактор — текущая форма.
             if is_immune_now:
                 comp_pts = None  # текущая неделя не оценивается
             elif comp_obj:
-                comp_pts = round(comp_obj["avg_pct"] * VALOR_W_DOBLEST / 100, 1)
+                comp_pts = round(comp_obj.get("recent_pct", comp_obj["avg_pct"])
+                                 * VALOR_W_DOBLEST / 100, 1)
             else:
                 comp_pts = 0.0
             # ── ДОСТИЖЕНИЯ — главный фактор. Сумма очков редкости открытых
@@ -4330,9 +4338,12 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "raw_total":       raw_total,
                 "max":             max_pts,
                 "immunity_adjusted": is_immune_now,
-                # доблесть
+                # доблесть («форма» — последние 4 недели)
                 "compliance":      comp_pts,            # None если иммун
                 "compliance_max":  VALOR_W_DOBLEST,
+                "recent_pct":      (comp_obj or {}).get("recent_pct", 0) if comp_obj else 0,
+                "recent_weeks":    (comp_obj or {}).get("recent_weeks", 0) if comp_obj else 0,
+                "avg_pct":         (comp_obj or {}).get("avg_pct", 0) if comp_obj else 0,
                 # достижения — главный фактор
                 "achievement":     ach_pts,
                 "achievement_max": VALOR_W_ACHIEVE,

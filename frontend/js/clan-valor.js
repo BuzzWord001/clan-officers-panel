@@ -549,11 +549,12 @@
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
     // Порядок по ценности: достижения ≥ доблесть ≫ ветеран > офицер > соцсети > чаты.
-    const achLine = `• достижения: ${s.achievement ?? 0} / ${s.achievement_max ?? 40}` +
+    const achLine = `• достижения: ${s.achievement ?? 0} / ${s.achievement_max ?? 45}` +
       (s.achievement_points ? `  (${s.achievement_points} очк. достижений)` : "");
     const compLine = s.compliance == null
-      ? `• доблесть: не оценивается (иммунитет)`
-      : `• доблесть: ${s.compliance} / ${s.compliance_max ?? 35}`;
+      ? `• доблесть (форма): не оценивается (иммунитет)`
+      : `• доблесть (форма ${s.recent_weeks || 0} нед.): ${s.compliance} / ${s.compliance_max ?? 30}` +
+        (s.recent_pct ? `  (${s.recent_pct}% нормы)` : "");
     const officerLine = s.top_rank
       ? `• офицер: ${s.officer} / ${s.officer_max ?? 8} (макс: ${s.top_rank}` +
         (s.cur_rank && s.cur_rank !== s.top_rank

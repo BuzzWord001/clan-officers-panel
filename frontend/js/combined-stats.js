@@ -138,11 +138,11 @@
       ${afkChip}
       ${immChip}
       <span style="color:#ffc83c">▌ достижения (главное)</span>
-      <span style="color:#88ff88">▌ доблесть</span>
-      <span style="color:#d2aa5a">▌ ветеран</span>
-      <span style="color:#ff9a44">▌ офицер</span>
-      <span style="color:#b070dc">▌ соцсети</span>
-      <span style="color:#69b7e4">▌ чаты</span>
+      <span style="color:#57d982">▌ доблесть (форма)</span>
+      <span style="color:#2bb6a4">▌ ветеран</span>
+      <span style="color:#5a91d8">▌ офицер</span>
+      <span style="color:#9b7bd4">▌ соцсети</span>
+      <span style="color:#6e94b0">▌ чаты</span>
     `;
 
     // Чем больше людей — тем выше холст. ~24px на строку — комфортно
@@ -171,51 +171,53 @@
         labels: items.map(m => m._is_sep
           ? (SEP_LABELS[m._sep_kind] || SEP_LABELS.immune)
           : (m.nick + (m.true_name ? " · " + m.true_name : ""))),
-        // Порядок по ценности: доблесть+достижения (вместе, доминируют) →
-        // ветеран → офицер → соцсети → чаты. Достижения — самый ценный фактор.
+        // Порядок по ценности: достижения (главное) → доблесть (форма) →
+        // ветеран → офицер → соцсети → чаты. Палитра: зелёный-якорь (доблесть)
+        // + золото-акцент (достижения) + аналоговая прохладная гамма
+        // (teal→blue→violet) с убыванием насыщенности к менее важному.
         datasets: [
           {
-            label: "Доблесть",
-            data: items.map(m => m.score.compliance ?? 0),
-            backgroundColor: "rgba(80,220,80,0.78)",
-            borderColor: "rgba(80,220,80,0.98)",
+            // ДОСТИЖЕНИЯ — самый ценный, долгосрочный фактор. Золотой акцент.
+            label: "Достижения",
+            data: items.map(m => m.score.achievement ?? 0),
+            backgroundColor: "rgba(255,200,60,0.90)",
+            borderColor: "rgba(255,200,60,1)",
             borderWidth: 1,
           },
           {
-            // ДОСТИЖЕНИЯ — главный фактор ценности. Показаны отдельным
-            // сегментом рядом с доблестью, чтобы видеть их долю.
-            label: "Достижения",
-            data: items.map(m => m.score.achievement ?? 0),
-            backgroundColor: "rgba(255,200,60,0.88)",
-            borderColor: "rgba(255,200,60,1)",
+            // ДОБЛЕСТЬ (форма за 4 нед) — зелёный-якорь.
+            label: "Доблесть",
+            data: items.map(m => m.score.compliance ?? 0),
+            backgroundColor: "rgba(87,217,130,0.82)",
+            borderColor: "rgba(87,217,130,1)",
             borderWidth: 1,
           },
           {
             label: "Ветеран",
             data: items.map(m => m.score.veteran ?? 0),
-            backgroundColor: "rgba(210,170,90,0.78)",
-            borderColor: "rgba(210,170,90,0.98)",
+            backgroundColor: "rgba(43,182,164,0.80)",
+            borderColor: "rgba(43,182,164,1)",
             borderWidth: 1,
           },
           {
             label: "Офицер",
             data: items.map(m => m.score.officer ?? 0),
-            backgroundColor: "rgba(255,154,68,0.80)",
-            borderColor: "rgba(255,154,68,1)",
+            backgroundColor: "rgba(90,145,216,0.80)",
+            borderColor: "rgba(90,145,216,1)",
             borderWidth: 1,
           },
           {
             label: "Соцсети",
             data: items.map(m => m.score.socials ?? 0),
-            backgroundColor: "rgba(176,112,220,0.75)",
-            borderColor: "rgba(176,112,220,0.95)",
+            backgroundColor: "rgba(155,123,212,0.74)",
+            borderColor: "rgba(155,123,212,0.96)",
             borderWidth: 1,
           },
           {
             label: "Чаты",
             data: items.map(m => m.score.chat ?? 0),
-            backgroundColor: "rgba(105,183,228,0.75)",
-            borderColor: "rgba(105,183,228,0.95)",
+            backgroundColor: "rgba(110,148,176,0.70)",
+            borderColor: "rgba(110,148,176,0.92)",
             borderWidth: 1,
           },
         ],
@@ -272,7 +274,7 @@
               // Для «Офицер» дописываем top_rank, для «Чаты» — кол-во сообщ.
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
-                const MAX = {"Достижения":40,"Доблесть":35,"Ветеран":12,
+                const MAX = {"Достижения":45,"Доблесть":30,"Ветеран":12,
                               "Офицер":8,"Соцсети":3,"Чаты":2};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
@@ -283,7 +285,9 @@
                   return `  Доблесть: — не оценивается (иммунитет)`;
                 }
                 let suffix = "";
-                if (lbl === "Офицер" && sc.top_rank) {
+                if (lbl === "Доблесть" && sc.recent_pct) {
+                  suffix = "  · форма " + sc.recent_pct + "% за " + (sc.recent_weeks || 0) + " нед.";
+                } else if (lbl === "Офицер" && sc.top_rank) {
                   suffix = "  · " + sc.top_rank;
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";

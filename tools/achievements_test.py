@@ -68,9 +68,10 @@ check("A: over_ofs_avg ~ OFS(40)", abs(cA["over_ofs_avg"] - ofs_expected) < 0.01
       cA["over_ofs_avg"])
 check("A: достижения (achievement) > 0", sA.get("achievement", 0) > 0, sA.get("achievement"))
 check("A: achievement = discipline (alias)", sA.get("achievement") == sA.get("discipline"))
-check("A: веса — достижения 40, доблесть 35",
-      sA.get("achievement_max") == 40 and sA.get("compliance_max") == 35,
+check("A: веса — достижения 45, доблесть 30",
+      sA.get("achievement_max") == 45 and sA.get("compliance_max") == 30,
       (sA.get("achievement_max"), sA.get("compliance_max")))
+check("A: доблесть = форма (recent_pct) присутствует", "recent_pct" in sA)
 check("A: ветеран12/офицер8/соцсети3/чаты2",
       sA.get("veteran_max") == 12 and sA.get("officer_max") == 8
       and sA.get("socials_max") == 3 and sA.get("chat_max") == 2)
