@@ -10,6 +10,12 @@
     window.location.href = "login.html";
     return;
   }
+  // Гость допущен только к таблице Доблести. На офицерских страницах данные
+  // вернут 403 и страница будет битой — отправляем гостя на его раздел.
+  if (me.role !== "officer" && me.role !== "admin") {
+    window.location.href = "clan-valor.html";
+    return;
+  }
   function fmtRoleLabel(role) {
     if (role === "admin") return "АДМИНИСТРАТОР";
     if (role === "officer") return "ОФИЦЕР";

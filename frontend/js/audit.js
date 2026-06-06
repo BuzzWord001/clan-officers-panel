@@ -7,6 +7,12 @@
     me = await API.me();
   } catch (_) { window.location.href = "login.html"; return; }
 
+  // Гость сюда не допущен (аудит — офицерам/админу) — на его раздел.
+  if (me.role !== "officer" && me.role !== "admin") {
+    window.location.href = "clan-valor.html";
+    return;
+  }
+
   const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР" : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;

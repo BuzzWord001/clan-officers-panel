@@ -23,6 +23,12 @@
     return;
   }
 
+  // Гость не допущен к участникам чата (require_officer) — на его раздел.
+  if (me.role !== "officer" && me.role !== "admin") {
+    window.location.href = "clan-valor.html";
+    return;
+  }
+
   const isAdmin = me.role === "admin";
   document.body.setAttribute("data-role", me.role);
   $("who").textContent =

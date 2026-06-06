@@ -15,6 +15,11 @@
   async function loadMe() {
     try {
       const me = await API.me();
+      // Гость не допущен к архиву доблести (require_officer) — на его раздел.
+      if (me.role !== "officer" && me.role !== "admin") {
+        location.href = "clan-valor.html";
+        return;
+      }
       $("who").textContent = me?.role === "admin"
         ? `${esc(me.username)} · админ`
         : `${esc(me.username)} · офицер`;

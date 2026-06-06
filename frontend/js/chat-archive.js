@@ -13,6 +13,12 @@
     return;
   }
 
+  // Гость не допущен к архиву чатов (require_officer) — на его раздел.
+  if (me.role !== "officer" && me.role !== "admin") {
+    window.location.href = "clan-valor.html";
+    return;
+  }
+
   const isAdmin = me.role === "admin";
   const roleLabel = isAdmin ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР"
