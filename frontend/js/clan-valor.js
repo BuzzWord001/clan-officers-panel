@@ -307,6 +307,35 @@
   const AUTO_TAGS = new Set([
     "in_socials", "officer",
     ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS]);
+
+  // ── Система РЕДКОСТИ (как в MMO: WoW-палитра качества) + очки достижений ──
+  const RARITY = {
+    common:    { name: "Обычное",     color: "#9d9d9d", pts: 5 },
+    uncommon:  { name: "Необычное",   color: "#1eff00", pts: 10 },
+    rare:      { name: "Редкое",      color: "#3aa0ff", pts: 25 },
+    epic:      { name: "Эпическое",   color: "#c77dff", pts: 50 },
+    legendary: { name: "Легендарное", color: "#ff8000", pts: 100 },
+    mythic:    { name: "Мифическое",  color: "#ffd866", pts: 250 },
+  };
+  const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary", "mythic"];
+  // Какая редкость у каждого тира достижения (магнитуда + серии).
+  const TIER_RARITY = {
+    // Магнитуда (лучшая неделя ×N)
+    over: "uncommon", double: "uncommon", triple: "rare", record: "rare",
+    phenom: "epic", titan: "epic", overlord: "legendary", absolute: "mythic",
+    // Серии перевыполнения
+    streak2: "common", streak3: "uncommon", month1: "uncommon",
+    month2: "rare", month3: "rare", half1: "epic",
+    year1: "legendary", year2: "legendary", year3: "mythic",
+    year5: "mythic", year10: "mythic",
+  };
+  function tierRarity(key) { return RARITY[TIER_RARITY[key]] || null; }
+  // Цвет роли: для тиров — по редкости, иначе — собственный из TAG_META.
+  function tagColor(key) {
+    const r = tierRarity(key);
+    if (r) return r.color;
+    return (TAG_META[key] || {}).color || "#9fb";
+  }
   // Источник множителя ×N для каждого семейства (из m.compliance).
   // Серии (STREAK_TAGS) множитель не показывают — у них «N недель».
   function tagMult(t, c) {
@@ -332,7 +361,10 @@
       const showMult = mult >= 1.5;
       const multHtml = showMult
         ? ` <span class="tag-mult">×${mult.toFixed(1)}</span>` : "";
-      let tip = `${meta.label}${showMult ? " ×" + mult.toFixed(1) : ""}\n${meta.tip}`;
+      let tip = `${meta.label}${showMult ? " ×" + mult.toFixed(1) : ""}`;
+      const _r = tierRarity(t);
+      if (_r) tip += `  ·  ${_r.name} (${_r.pts} очк.)`;
+      tip += `\n${meta.tip}`;
       if (t === "officer" && m.top_rank) tip += ` Макс. пост: ${m.top_rank}.`;
       // Когда роль получена — только в тултипе, с расшифровкой недели в дату.
       let whenTip = "";
@@ -353,14 +385,16 @@
       }
       if (whenTip) tip += `\nПолучена: ${whenTip}`;
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
-      // Достижения — инлайн-цвет по роли (+ свечение у топовых).
+      // Достижения — инлайн-цвет по РЕДКОСТИ (+ свечение у эпик и выше).
+      const col = tagColor(t);
+      const rk = TIER_RARITY[t];
+      const glow = rk === "epic" || rk === "legendary" || rk === "mythic" || meta.glow;
       let style = "";
-      if (isAch && meta.color) {
-        const col = meta.color;
+      if (isAch) {
         style = ` style="color:${col};border-color:${col};background:${col}1f;` +
-                (meta.glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
+                (glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
       }
-      const wcol = meta.color ? ` data-wtipcolor="${meta.color}"` : "";
+      const wcol = ` data-wtipcolor="${col}"`;
       return `<span class="tag-chip ${meta.cls}${auto}"${style} data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
@@ -420,14 +454,18 @@
     const meta = TAG_META[t] || { label: t, icon: "·", cls: "tag-default", tip: t };
     const isAch = meta.cls && meta.cls.indexOf("tag-ach") >= 0;
     let style = "";
-    if (isAch && meta.color) {
-      const col = meta.color;
+    if (isAch) {
+      const col = tagColor(t);
+      const rk = TIER_RARITY[t];
+      const glow = rk === "epic" || rk === "legendary" || rk === "mythic" || meta.glow;
       style = ` style="color:${col};border-color:${col};background:${col}1f;` +
-              (meta.glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
+              (glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
     }
     const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
+    const rr = tierRarity(t);
+    const rlbl = rr ? ` <span style="font-size:9px;opacity:.8">[${esc(rr.name)}]</span>` : "";
     return `<span class="tag-chip ${meta.cls}${auto}"${style}` +
-      `><span class="ic">${meta.icon}</span>${esc(meta.label)}</span>`;
+      `><span class="ic">${meta.icon}</span>${esc(meta.label)}${rlbl}</span>`;
   }
 
   function guideRows(tags) {
@@ -1040,24 +1078,37 @@
       .ahelp-txt b{color:#7CFC00;font-size:13px}
       .ahelp-txt div{color:#bcd;font-size:12px;margin-top:2px;line-height:1.45}
       .ahelp-note{color:#8a9;font-size:11px;margin-top:12px;font-style:italic}
-      .vedit-card.wide{width:min(620px,94vw)}
-      .ach-sub{color:#9fb;font-size:12px;margin:-6px 0 12px}
-      .ach-val{display:flex;gap:14px;flex-wrap:wrap;background:#06120a;
-        border:1px solid #1c3a1c;border-radius:8px;padding:9px 11px;margin-bottom:12px}
-      .ach-val b{color:#7CFC00}
-      .ach-sec-h{color:#7CFC00;font-weight:600;font-size:13px;margin:14px 0 7px;
+      .vedit-card.wide{width:min(640px,95vw)}
+      .ach-card h3{font-size:16px}
+      .ach-sub{color:#9fb;font-size:11.5px;margin:8px 0 4px}
+      /* Сводка-шапка как в игровом профиле */
+      .ach-hdr{display:flex;gap:10px;flex-wrap:wrap;background:#06120a;
+        border:1px solid #1c3a1c;border-radius:10px;padding:11px 12px;margin:4px 0 10px}
+      .ach-hstat{flex:1 1 110px;text-align:center}
+      .ach-hstat b{display:block;font-size:19px;color:#dfe;line-height:1.1}
+      .ach-hstat b small{font-size:12px;color:#7aa}
+      .ach-hstat span{font-size:10.5px;color:#8aa;text-transform:uppercase;letter-spacing:.4px}
+      .ach-legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 4px;font-size:10.5px}
+      .ach-leg small{color:#778;font-size:9.5px}
+      .ach-sec-h{color:#7CFC00;font-weight:600;font-size:12.5px;margin:14px 0 7px;
         border-top:1px dashed #1c3a1c;padding-top:11px}
       .ach-sec-h:first-of-type{border-top:none;padding-top:0}
-      .ach-row{display:flex;align-items:center;gap:9px;padding:5px 7px;
-        border-radius:7px;margin:3px 0;border:1px solid transparent}
-      .ach-row.lit{background:#0a1c0e;border-color:#1f5a26}
-      .ach-row.locked{opacity:.4}
+      .ach-row{display:flex;align-items:center;gap:10px;padding:5px 7px;
+        border-radius:8px;margin:3px 0;border:1px solid transparent}
+      .ach-row.lit{background:#0a160c}
+      .ach-row.locked{opacity:.5}
       .ach-row.next{border-color:#3c7;background:#0c2410;box-shadow:0 0 8px rgba(40,255,80,.12)}
-      .ach-ic{flex:0 0 24px;text-align:center;font-size:16px}
-      .ach-nm{flex:1;font-size:13px;color:#dfe}
+      /* Медальон-иконка по редкости */
+      .ach-medal{flex:0 0 34px;width:34px;height:34px;border-radius:50%;
+        display:flex;align-items:center;justify-content:center;font-size:16px;
+        border:2px solid #444}
+      .ach-nm{flex:1;font-size:13px;color:#cfe;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+      .ach-rar{font-size:9.5px;border:1px solid #444;border-radius:4px;
+        padding:0 5px;text-transform:uppercase;letter-spacing:.4px}
       .ach-req{color:#8aa;font-size:11px;white-space:nowrap}
-      .ach-st{flex:0 0 22px;text-align:center}
-      .ach-bar{height:6px;background:#0a1c0e;border:1px solid #1f5a26;border-radius:4px;
+      .ach-pts{font-size:11px;color:#667;min-width:34px;text-align:right}
+      .ach-st{flex:0 0 20px;text-align:center;font-size:13px}
+      .ach-bar{height:8px;background:#0a1c0e;border:1px solid #1f5a26;border-radius:5px;
         overflow:hidden;margin:4px 0 2px}
       .ach-bar i{display:block;height:100%;background:linear-gradient(90deg,#2a6,#7CFC00)}
       .ach-bar-lbl{color:#9fb;font-size:11px;margin-bottom:8px}`;
@@ -1251,15 +1302,28 @@
     { key: "year5", w: 260 }, { key: "year10", w: 520 },
   ];
 
+  function medalStyle(col, lit) {
+    return lit
+      ? `color:${col};border-color:${col};` +
+        `background:radial-gradient(circle, ${col}33, #0a0f0a 72%);box-shadow:0 0 11px ${col}66;`
+      : `color:#777;border-color:#3a3a3a;background:#0c120c;filter:grayscale(1);opacity:.85;`;
+  }
+  // Карточка-достижение с медальоном по редкости (MMO-стиль).
   function achRow(key, reqText, lit, isNext) {
-    const meta = TAG_META[key] || { label: key, icon: "·", color: "#9fb" };
+    const meta = TAG_META[key] || { label: key, icon: "·" };
+    const r = tierRarity(key);
+    const col = r ? r.color : ((TAG_META[key] || {}).color || "#9fb");
     const cls = lit ? "lit" : (isNext ? "next" : "locked");
-    const col = lit ? meta.color : "#9fb";
     const st = lit ? "✓" : (isNext ? "→" : "🔒");
+    const rbadge = r
+      ? `<span class="ach-rar" style="color:${lit ? col : '#888'};border-color:${lit ? col : '#444'}">${r.name}</span>`
+      : "";
+    const pts = r ? `<span class="ach-pts" style="${lit ? 'color:#ffd866' : ''}">${lit ? '+' : ''}${r.pts}</span>` : "";
     return `<div class="ach-row ${cls}">
-      <span class="ach-ic" style="color:${col}">${meta.icon}</span>
-      <span class="ach-nm" style="${lit ? "color:" + meta.color : ""}">${esc(meta.label)}</span>
+      <span class="ach-medal" style="${medalStyle(col, lit)}">${lit ? meta.icon : "🔒"}</span>
+      <span class="ach-nm" style="${lit ? "color:" + col : ""}">${esc(meta.label)}${rbadge}</span>
       <span class="ach-req">${esc(reqText)}</span>
+      ${pts}
       <span class="ach-st">${st}</span></div>`;
   }
 
@@ -1272,26 +1336,33 @@
     const ocur = c.over_streak_cur || 0;
     const score = m.score || {};
 
-    // Магнитуда: подсвечено если peak ≥ порога; «следующий» — первый незакрытый.
-    let magNextDone = false;
-    const magRows = MAG_LADDER.map(t => {
-      const lit = peak >= t.mult;
-      const isNext = !lit && !magNextDone;
-      if (isNext) magNextDone = true;
-      return achRow(t.key, `≥ ×${t.mult} от нормы`, lit, isNext);
+    const magTiers = MAG_LADDER.map(t => ({ key: t.key, lit: peak >= t.mult, req: `≥ ×${t.mult} от нормы`, w: 0, mult: t.mult }));
+    const strTiers = STREAK_LADDER_F.map(t => ({ key: t.key, lit: omax >= t.w, req: `${t.w} нед. подряд`, w: t.w }));
+
+    // Сводка: открыто/всего, очки достижений, высшая редкость.
+    const allTiers = magTiers.concat(strTiers);
+    let unlocked = 0, pts = 0, topRarIdx = -1;
+    allTiers.forEach(t => {
+      if (!t.lit) return;
+      unlocked++;
+      const rk = TIER_RARITY[t.key];
+      if (rk) { pts += RARITY[rk].pts; const i = RARITY_ORDER.indexOf(rk); if (i > topRarIdx) topRarIdx = i; }
+    });
+    const topRar = topRarIdx >= 0 ? RARITY[RARITY_ORDER[topRarIdx]] : null;
+
+    let magNext = false;
+    const magRows = magTiers.map(t => {
+      const isNext = !t.lit && !magNext; if (isNext) magNext = true;
+      return achRow(t.key, t.req, t.lit, isNext);
     }).join("");
 
-    // Серии: подсвечено если макс. серия ≥ порога недель.
     let nextStreak = null;
-    const strRows = STREAK_LADDER_F.map(t => {
-      const lit = omax >= t.w;
-      const isNext = !lit && !nextStreak;
-      if (isNext) nextStreak = t;
-      return achRow(t.key, `${t.w} нед. подряд`, lit, isNext);
+    const strRows = strTiers.map(t => {
+      const isNext = !t.lit && !nextStreak; if (isNext) nextStreak = t;
+      return achRow(t.key, t.req, t.lit, isNext);
     }).join("");
 
-    // Прогресс-бар к следующему тиру серии (по лучшей серии).
-    let progressHtml = "";
+    let progressHtml;
     if (nextStreak) {
       const pct = Math.min(100, Math.round(omax / nextStreak.w * 100));
       const left = nextStreak.w - omax;
@@ -1300,37 +1371,45 @@
         <div class="ach-bar-lbl">До «${esc(nm)}»: ещё ${left} нед. подряд
         (лучшая серия ${omax}, сейчас подряд ${ocur}).</div>`;
     } else {
-      progressHtml = `<div class="ach-bar-lbl">Все тиры серий открыты — легенда клана! 👑</div>`;
+      progressHtml = `<div class="ach-bar-lbl">Все серии открыты — легенда клана! 👑</div>`;
     }
 
-    // Прочие роли.
-    const others = [];
-    for (const k of ["veteran", "officer", "in_socials"]) {
+    const others = ["veteran", "officer", "in_socials"].map(k => {
       const has = (m.tags || []).indexOf(k) >= 0;
-      others.push(achRow(k, has ? "получена" : "не получена", has, false));
-    }
+      const meta = TAG_META[k] || { label: k, icon: "·", color: "#9fb" };
+      return `<div class="ach-row ${has ? "lit" : "locked"}">
+        <span class="ach-medal" style="${medalStyle(meta.color, has)}">${has ? meta.icon : "🔒"}</span>
+        <span class="ach-nm" style="${has ? "color:" + meta.color : ""}">${esc(meta.label)}</span>
+        <span class="ach-req">${has ? "получена" : "не получена"}</span>
+        <span class="ach-st">${has ? "✓" : "🔒"}</span></div>`;
+    }).join("");
 
-    const valLine = `<div class="ach-val">
-      <span>Ценность: <b>${score.total != null ? score.total : "—"}</b></span>
-      <span>Ценность перевыполнения: <b>${score.discipline != null ? "+" + score.discipline : "—"}</b> / ${score.overfulfill_max || 20}</span>
-      <span>Лучший пик: <b>×${peak.toFixed(1)}</b></span>
-      </div>`;
+    const rarLegend = RARITY_ORDER.map(k =>
+      `<span class="ach-leg" style="color:${RARITY[k].color}">● ${RARITY[k].name} <small>${RARITY[k].pts}</small></span>`).join("");
+
+    const header = `<div class="ach-hdr">
+      <div class="ach-hstat"><b>${unlocked}<small>/${allTiers.length}</small></b><span>открыто</span></div>
+      <div class="ach-hstat"><b style="color:#ffd866">${pts}</b><span>очки достижений</span></div>
+      <div class="ach-hstat"><b style="color:${topRar ? topRar.color : '#888'}">${topRar ? topRar.name : '—'}</b><span>высшая редкость</span></div>
+      <div class="ach-hstat"><b>${score.total != null ? score.total : '—'}</b><span>ценность клану</span></div>
+    </div>`;
 
     const ov = document.createElement("div");
     ov.id = "vedit-overlay";
     ov.className = "vedit-overlay";
     ov.innerHTML = `
-      <div class="vedit-card wide" role="dialog" aria-modal="true">
-        <h3>🏆 Достижения · ${esc(m.nick)}</h3>
-        <div class="ach-sub">Дерево ролей за доблесть. ✓ — открыто, → — следующая цель, 🔒 — закрыто. Открытые роли остаются навсегда.</div>
-        ${valLine}
-        <div class="ach-sec-h">📈 Магнитуда — за самую сильную неделю (пик ×N)</div>
+      <div class="vedit-card wide ach-card" role="dialog" aria-modal="true">
+        <h3>🏆 Зал достижений · ${esc(m.nick)}</h3>
+        ${header}
+        <div class="ach-legend">${rarLegend}</div>
+        <div class="ach-sub">✓ открыто (навсегда) · → следующая цель · 🔒 закрыто. Очки достижений растут с редкостью.</div>
+        <div class="ach-sec-h">⚔ Магнитуда · сила лучшей недели (пик ×N от нормы)</div>
         ${magRows}
-        <div class="ach-sec-h">⛓ Серии перевыполнения — недель подряд (открываются навсегда)</div>
+        <div class="ach-sec-h">🔥 Серии перевыполнения · недель подряд (навсегда)</div>
         ${progressHtml}
         ${strRows}
-        <div class="ach-sec-h">🎖 Прочие роли</div>
-        ${others.join("")}
+        <div class="ach-sec-h">🎖 Статусные роли</div>
+        ${others}
         <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;
     document.body.appendChild(ov);

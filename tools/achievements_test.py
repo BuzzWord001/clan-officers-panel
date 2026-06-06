@@ -41,6 +41,20 @@ check("_streak_tier(520) = year10", db._streak_tier(520) == "year10")
 check("_peak_tier(2.0) = double", db._peak_tier(2.0) == "double")
 check("_peak_tier(9.45) = titan", db._peak_tier(9.45) == "titan")
 
+# ── ВСЕ пороги получения ролей (логика обретения) ──
+for mult, key in [(1.5, "over"), (2, "double"), (3, "triple"), (4, "record"),
+                  (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute")]:
+    check(f"магнитуда: пик {mult} → {key}", db._peak_tier(mult) == key)
+    check(f"магнитуда: пик {mult - 0.01:.2f} НЕ {key}", db._peak_tier(mult - 0.01) != key)
+for w, key in [(2, "streak2"), (3, "streak3"), (4, "month1"), (8, "month2"),
+               (12, "month3"), (26, "half1"), (52, "year1"), (104, "year2"),
+               (156, "year3"), (260, "year5"), (520, "year10")]:
+    check(f"серия: {w} нед → {key}", db._streak_tier(w) == key)
+    check(f"серия: {w - 1} нед НЕ {key}", db._streak_tier(w - 1) != key)
+# Монотонность веса тира серии (не убывает с длиной).
+_w = [db._streak_tier_weight(x) for x in (1, 2, 4, 12, 52, 520)]
+check("вес тира серии монотонно растёт", all(_w[i] <= _w[i + 1] for i in range(len(_w) - 1)), _w)
+
 # A: 5 недель подряд 2× нормы (40) → серия 5 → month1, пик double
 for i, wk in enumerate(["2026-W10", "2026-W11", "2026-W12", "2026-W13", "2026-W14"]):
     snap(wk, [("A", 40), ("B", 40 if i != 2 else 15), ("C", 189 if i == 0 else 21)])
