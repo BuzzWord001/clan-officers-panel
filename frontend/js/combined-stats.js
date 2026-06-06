@@ -137,7 +137,7 @@
       <span>средняя ценность: <b style="color:var(--accent)">${avgReg}</b></span>
       ${afkChip}
       ${immChip}
-      <span style="color:#57d982">▌ доблесть (база)</span>
+      <span style="color:#57d982">▌ перевыполнение (база)</span>
       <span style="color:#ffc83c">▌ серии (×множитель)</span>
       <span style="color:#ff8f3f">▌ офицерство</span>
       <span style="color:#3aa0e0">▌ общительность</span>
@@ -175,8 +175,8 @@
         // доблести + золотой бонус серий + тёплые/прохладные различимые цвета.
         datasets: [
           {
-            // Доблесть (база, форма за 4 нед) — зелёный-якорь.
-            label: "Доблесть",
+            // Перевыполнение (база по магнитудной руне ×N) — зелёный-якорь.
+            label: "Перевыполнение",
             data: items.map(m => m.score.doblest_base ?? 0),
             backgroundColor: "rgba(87,217,130,0.84)",
             borderColor: "rgba(87,217,130,1)",
@@ -269,12 +269,9 @@
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
                 const m = items[ctx.dataIndex];
                 const sc = m.score || {};
-                if (lbl === "Доблесть" && sc.immunity_adjusted) {
-                  return `  Доблесть: — не оценивается (иммунитет)`;
-                }
                 let suffix = "";
-                if (lbl === "Доблесть") {
-                  if (sc.recent_pct) suffix = "  · форма " + sc.recent_pct + "% (" + (sc.recent_weeks || 0) + " нед.)";
+                if (lbl === "Перевыполнение") {
+                  if (sc.peak_ratio) suffix = "  · лучшая руна ×" + Number(sc.peak_ratio).toFixed(1);
                 } else if (lbl === "Серии") {
                   // Бонус множителя серии = база × (множитель−1).
                   const parts = ["множитель ×" + Number(sc.streak_mult || 1).toFixed(2)];

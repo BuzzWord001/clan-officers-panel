@@ -61,11 +61,13 @@ cA, tA, sA = comp("A")
 # Множитель: текущий стрик 5 нед × OFS(40,norm20)=0.118 → Σ≈0.59 → ×1.71.
 check("A: текущий стрик = 5", cA["over_streak_cur"] == 5, cA["over_streak_cur"])
 check("A: множитель ~1.7 (1.5..1.9)", 1.5 < sA["streak_mult"] < 1.9, sA["streak_mult"])
-check("A: доблесть-база = 40 (форма 100%)", abs(sA["doblest_base"] - 40) < 0.1, sA["doblest_base"])
+# База = ценность магнитудной руны: A пик ×2 (double) → база 14.
+check("A: доблесть-база = 14 (руна double ×2)", abs(sA["doblest_base"] - 14) < 0.1, sA["doblest_base"])
 check("A: доблесть-итог = база × множитель",
-      abs(sA["doblest_value"] - round(40 * sA["streak_mult"], 1)) < 0.2, sA["doblest_value"])
+      abs(sA["doblest_value"] - round(sA["doblest_base"] * sA["streak_mult"], 1)) < 0.2, sA["doblest_value"])
 check("A: бонус серий = итог − база",
-      abs(sA["streak_bonus"] - round(sA["doblest_value"] - 40, 1)) < 0.2, sA["streak_bonus"])
+      abs(sA["streak_bonus"] - round(sA["doblest_value"] - sA["doblest_base"], 1)) < 0.2, sA["streak_bonus"])
+check("A: руна перевыполнения даёт базу (>0)", sA["doblest_base"] > 0)
 check("A: total = доблесть×множ + офицер + общит + ветеран",
       abs(sA["total"] - round(sA["doblest_value"] + sA["officer"] + sA["social"] + sA["veteran"], 1)) < 0.2,
       (sA["total"], sA["doblest_value"]))

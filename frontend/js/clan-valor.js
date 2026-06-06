@@ -579,34 +579,27 @@
   function renderScore(s) {
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
-    // Порядок по ценности: достижения ≥ доблесть ≫ ветеран > офицер > соцсети > чаты.
-    const achLine = `• достижения: ${s.achievement ?? 0} / ${s.achievement_max ?? 45}` +
-      (s.achievement_points ? `  (${s.achievement_points} очк. достижений)` : "");
-    const compLine = s.compliance == null
-      ? `• доблесть (форма): не оценивается (иммунитет)`
-      : `• доблесть (форма ${s.recent_weeks || 0} нед.): ${s.compliance} / ${s.compliance_max ?? 30}` +
-        (s.recent_pct ? `  (${s.recent_pct}% нормы)` : "");
+    // Ветка доблести: база (перевыполнение) × множитель серии.
+    const valLine = `• доблесть: база ${s.doblest_base ?? 0}` +
+      (s.peak_ratio ? ` (пик ×${Number(s.peak_ratio).toFixed(1)})` : "") +
+      ` × серия ×${Number(s.streak_mult || 1).toFixed(2)}` +
+      (s.over_streak_cur ? ` (${s.over_streak_cur} нед.)` : "") +
+      ` = ${s.doblest_value ?? 0}`;
     const officerLine = s.top_rank
-      ? `• офицер: ${s.officer} / ${s.officer_max ?? 8} (макс: ${s.top_rank}` +
-        (s.cur_rank && s.cur_rank !== s.top_rank
-          ? `, сейчас: ${s.cur_rank}` : ``) + `)`
-      : `• офицер: ${s.officer ?? 0} / ${s.officer_max ?? 8}`;
-    const headLine = s.immunity_adjusted
-      ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
-         `Иммунитет новичка: доблесть текущей недели исключена.\n`
-      : `Итог: ${s.total} / 100\n`;
-    const tip = headLine
-      + achLine + "\n"
-      + compLine + "\n"
-      + `• ветеран: ${s.veteran} / ${s.veteran_max ?? 12}\n`
+      ? `• офицерство: ${s.officer} / ${s.officer_max ?? 14} (макс: ${s.top_rank}` +
+        (s.cur_rank && s.cur_rank !== s.top_rank ? `, сейчас: ${s.cur_rank}` : ``) + `)`
+      : `• офицерство: ${s.officer ?? 0} / ${s.officer_max ?? 14}`;
+    const tip = `Ценность клану: ${s.total}\n`
+      + valLine + "\n"
       + officerLine + "\n"
-      + `• соцсети: ${s.socials} / ${s.socials_max ?? 3}\n`
-      + `• чаты: ${s.chat} / ${s.chat_max ?? 2} (${s.chat_msgs} сообщ.)`;
-    const star = s.immunity_adjusted
-      ? `<small class="imm-mark" title="скор нормализован — без доблести текущей недели">*</small>`
+      + `• общительность: ${s.social ?? 0} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.)\n`
+      + `• ветеран: ${s.veteran} / ${s.veteran_max ?? 12}`
+      + (s.immunity_adjusted ? `\nИммунитет новичка активен.` : ``);
+    const star = (s.streak_mult > 1)
+      ? `<small class="disc-mark" title="доблесть усилена серией ×${Number(s.streak_mult).toFixed(2)}">×</small>`
       : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
-      ><b>${s.total}</b>${star}<small style="opacity:0.7">/100</small></span>`;
+      ><b>${s.total}</b>${star}</span>`;
   }
 
   function pctClass(pct) {
@@ -1188,7 +1181,19 @@
       .ach-subdiv{font-size:9.5px;color:#8a8470;text-transform:uppercase;letter-spacing:.5px;
         margin:7px 0 3px;border-top:1px dashed #2c2a22;padding-top:7px;width:100%;text-align:center}
       .ach-vet{position:absolute;top:12px;right:14px;display:flex;flex-direction:column;align-items:center}
-      .ach-vet.locked{opacity:.5}`;
+      .ach-vet.locked{opacity:.5}
+      /* Ветка «Доблесть и серии» — две параллельные полоски + × посередине */
+      .branch-valor{flex:1 1 360px;max-width:430px}
+      .ach-dual{display:flex;align-items:flex-start;justify-content:center;gap:6px}
+      .ach-dual-side{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center}
+      .ach-side-h{font-size:10px;color:#b9ad8e;text-align:center;margin-bottom:6px;line-height:1.25}
+      .ach-side-h small{color:#8a8470;font-size:9px}
+      .ach-dual-mid{flex:0 0 58px;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;align-self:center;gap:3px}
+      .ach-mult-badge{font-size:18px;font-weight:700;color:#ffd866;
+        text-shadow:0 0 10px rgba(255,216,102,.5)}
+      .ach-mult-eq{font-size:12px;color:#57d982;font-weight:600}
+      .ach-mult-note{font-size:8.5px;color:#8a8470;text-align:center;line-height:1.25;text-transform:uppercase;letter-spacing:.3px}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1416,6 +1421,35 @@
       (hint ? `<div class="ach-branch-hint">${hint}</div>` : "") +
       `<div class="ach-branch-runes">${body}</div></div>`;
   }
+  // Колонка рун с загорающимися линиями (без обёртки ветки).
+  function runeCol(runes) {
+    let body = "";
+    runes.forEach((r, i) => {
+      if (i > 0) body += `<div class="ach-link${r.lit ? " lit" : ""}"${r.lit ? ` style="background:${r.col};box-shadow:0 0 7px ${r.col}"` : ""}></div>`;
+      body += r.html;
+    });
+    return `<div class="ach-branch-runes">${body}</div>`;
+  }
+  // Ветка «Доблесть и серии»: ДВЕ параллельные полоски — перевыполнение (база)
+  // и серии (множитель), между ними знак ×, показывающий что серии умножают.
+  function branchValor(magRunes, strRunes, mult, base, val) {
+    return `<div class="ach-branch branch-valor">
+      <div class="ach-branch-h">⚔ Доблесть и серии</div>
+      <div class="ach-branch-hint">Серии-руны <b>умножают</b> ценность рун перевыполнения</div>
+      <div class="ach-dual">
+        <div class="ach-dual-side">
+          <div class="ach-side-h">Перевыполнение<br><small>база ценности</small></div>
+          ${runeCol(magRunes)}</div>
+        <div class="ach-dual-mid">
+          <div class="ach-mult-badge">×${mult.toFixed(2)}</div>
+          <div class="ach-mult-eq">= ${val == null ? "—" : val}</div>
+          <div class="ach-mult-note">серии<br>умножают<br>↑ базу</div>
+        </div>
+        <div class="ach-dual-side">
+          <div class="ach-side-h">Серии<br><small>×множитель</small></div>
+          ${runeCol(strRunes)}</div>
+      </div></div>`;
+  }
   function tcol(key) { const r = tierRarity(key); return r ? r.color : "#9fb"; }
   function tname(key) { return (TAG_META[key] || {}).label || key; }
   function tico(key) { return (TAG_META[key] || {}).icon || "◆"; }
@@ -1497,7 +1531,7 @@
         <div class="ach-legend">${rarLegend}</div>
         <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
         <div class="ach-tree">
-          ${branchCol("⚔ Доблесть и серии", "Сила недели (пик) · ниже — серии-множители", magRunes.concat([{ html: '<div class="ach-subdiv">серии (множитель)</div>', lit: false, col: "" }]).concat(strRunes))}
+          ${branchValor(magRunes, strRunes, mult, s.doblest_base, s.doblest_value)}
           ${branchCol("✠ Офицерство", "Аддитивно, без множителя", offRunes)}
           ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes)}
         </div>

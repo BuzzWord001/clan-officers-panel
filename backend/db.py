@@ -2867,6 +2867,18 @@ def _streak_rarity(avg_ofs: float) -> str:
     if avg_ofs >= 0.07: return "uncommon"
     return "common"
 
+
+# База ценности по магнитудной руне (пик ×N): чем выше перевыполнение —
+# тем больше базовая ценность. Серии-руны её УМНОЖАЮТ. Будет определена ниже
+# через _peak_tier (объявлен раньше).
+_MAG_BASE = {"over": 8.0, "double": 14.0, "triple": 22.0, "record": 30.0,
+             "phenom": 38.0, "titan": 44.0, "overlord": 48.0, "absolute": 52.0}
+MAG_BASE_MAX = 52.0
+
+
+def _magnitude_base(peak: float) -> float:
+    return _MAG_BASE.get(_peak_tier(peak), 0.0)
+
 # Очки достижений по редкости тира (зеркало фронтовой RARITY) — из них
 # складывается «achievement score» игрока, который и даёт компонент ценности.
 _RARITY_PTS = {"common": 5, "uncommon": 10, "rare": 25, "epic": 50,
@@ -4371,21 +4383,15 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             is_immune_now = (immunity and
                              immunity["status"] in ("active", "extended"))
             _c = comp_obj or {}
-            # ── ВЕТКА 1: ДОБЛЕСТЬ × МНОЖИТЕЛЬ стрика ──
+            # ── ВЕТКА 1: ПЕРЕВЫПОЛНЕНИЕ (база по магнитудной руне) × СЕРИЯ ──
+            # База = ценность лучшей магнитудной руны (пик ×N): чем выше
+            # перевыполнение — тем больше база. Стрик-руны её УМНОЖАЮТ.
             recent = _c.get("recent_pct", _c.get("avg_pct", 0)) if comp_obj else 0
-            if is_immune_now:
-                doblest_base = None            # текущая неделя не оценивается
-            elif comp_obj:
-                doblest_base = round(min(recent, 100) * DOBLEST_BASE / 100, 1)
-            else:
-                doblest_base = 0.0
+            doblest_base = _magnitude_base(_c.get("peak_ratio", 0.0))
             cur_ofs_sum = _c.get("cur_ofs_sum", 0.0)
             mult = _streak_multiplier(cur_ofs_sum)
-            if doblest_base is None:
-                doblest_value, streak_bonus = None, 0.0
-            else:
-                doblest_value = round(doblest_base * mult, 1)
-                streak_bonus = round(doblest_value - doblest_base, 1)
+            doblest_value = round(doblest_base * mult, 1)
+            streak_bonus = round(doblest_value - doblest_base, 1)
             # ── ВЕТКА 3: ОБЩИТЕЛЬНОСТЬ (VK + Telegram + чаты) ──
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
@@ -4406,8 +4412,8 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "total":           total,
                 "immunity_adjusted": is_immune_now,
                 # ветка 1 — доблесть × множитель
-                "doblest_base":    doblest_base,        # None если иммун
-                "doblest_base_max": DOBLEST_BASE,
+                "doblest_base":    doblest_base,        # ценность магнитудной руны
+                "doblest_base_max": MAG_BASE_MAX,
                 "streak_mult":     mult,
                 "streak_bonus":    streak_bonus,        # вклад множителя (доля стриков)
                 "doblest_value":   doblest_value,
