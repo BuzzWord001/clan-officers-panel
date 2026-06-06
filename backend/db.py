@@ -2714,6 +2714,64 @@ def _achievement(comp: dict | None) -> str | None:
     return None
 
 
+# ── Новая система достижений за доблесть (2026-06) ──────────────────────
+# Технический потолок доблести за неделю в PW — относительно него
+# оценивается «ценность» каждого перевыполнения (сколько headroom закрыто).
+VALOR_MAX_WEEKLY = 189
+
+# Магнитудная ветка: роль по ЛУЧШЕЙ единичной неделе (пик ×N от нормы).
+def _peak_tier(peak: float):
+    if peak >= 13.0: return "absolute"   # Абсолют доблести (≈189)
+    if peak >= 9.5:  return "overlord"   # Властелин доблести
+    if peak >= 7.0:  return "titan"      # Титан доблести
+    if peak >= 5.5:  return "phenom"     # Феномен доблести
+    if peak >= 4.0:  return "record"     # Рекордсмен
+    if peak >= 3.0:  return "triple"     # Утроил норму
+    if peak >= 2.0:  return "double"     # Удвоил норму
+    if peak >= 1.5:  return "over"       # Перевыполнил
+    return None
+
+# Лестница СЕРИЙ перевыполнения (подряд недель с valor > norm). Разблокируется
+# по МАКСИМАЛЬНОЙ серии за всё время — один срыв не лишает достигнутого
+# (как ачивки в игре). Сбалансировано на горизонт ~10 лет.
+#   (минимум недель подряд, ключ, макс.вес тира при идеальном качестве)
+_STREAK_LADDER = [
+    (2,   "streak2", 3.0),
+    (3,   "streak3", 5.0),
+    (4,   "month1",  8.0),    # 1 месяц
+    (8,   "month2",  10.0),   # 2 месяца
+    (12,  "month3",  12.0),   # 3 месяца (квартал)
+    (26,  "half1",   13.0),   # полгода
+    (52,  "year1",   14.0),   # год
+    (104, "year2",   14.5),   # 2 года
+    (156, "year3",   14.8),   # 3 года
+    (260, "year5",   15.0),   # 5 лет
+    (520, "year10",  15.0),   # 10 лет
+]
+
+
+def _streak_tier(weeks: int):
+    """Ключ ВЫСШЕГО разблокированного тира серии по числу недель подряд."""
+    key = None
+    for thr, k, _w in _STREAK_LADDER:
+        if weeks >= thr:
+            key = k
+        else:
+            break
+    return key
+
+
+def _streak_tier_weight(weeks: int) -> float:
+    """Макс. вес (ценность) высшего разблокированного тира серии."""
+    w = 0.0
+    for thr, _k, tw in _STREAK_LADDER:
+        if weeks >= thr:
+            w = tw
+        else:
+            break
+    return w
+
+
 def _title_warn(title: str):
     """Предупреждения, отмеченные офицером В ИГРЕ через числовой титул.
 
@@ -3863,7 +3921,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0,
                 "ln_sum": 0.0, "cs2_ln": 0.0, "ms2_geo": 1.0,
                 "peak_week": "", "first_week": "", "last_week": "",
-                "cs2_start": "", "combo_start": "", "combo_end": ""})
+                "cs2_start": "", "combo_start": "", "combo_end": "",
+                # ── Серии ПЕРЕВЫПОЛНЕНИЯ (valor > norm) + сила OFS ──
+                # OFS недели = доля закрытого headroom до потолка 189:
+                #   (valor-norm)/(189-norm), 0..1.
+                "ostreak": 0, "omax": 0, "o_cur_ofs": 0.0, "omax_ofs": 0.0,
+                "o_cur_start": "", "omax_start": "", "omax_end": "",
+                "ofs_best": 0.0})
             d["sum"] += pct
             d["over_sum"] += overshoot
             d["n"] += 1
@@ -3882,6 +3946,25 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     d["max_streak"] = d["streak"]
             else:
                 d["streak"] = 0
+            # ── Серия ПЕРЕВЫПОЛНЕНИЯ (строго valor > norm) + сила OFS ──
+            head = max(VALOR_MAX_WEEKLY - norm, 1)
+            ofs = max(0.0, min((r["valor"] - norm) / head, 1.0))
+            if ofs > d["ofs_best"]:
+                d["ofs_best"] = ofs
+            if r["valor"] > norm:
+                if d["ostreak"] == 0:
+                    d["o_cur_start"] = wk
+                    d["o_cur_ofs"] = 0.0
+                d["ostreak"] += 1
+                d["o_cur_ofs"] += ofs
+                if d["ostreak"] > d["omax"]:
+                    d["omax"] = d["ostreak"]
+                    d["omax_ofs"] = d["o_cur_ofs"]
+                    d["omax_start"] = d["o_cur_start"]
+                    d["omax_end"] = wk
+            else:
+                d["ostreak"] = 0
+                d["o_cur_ofs"] = 0.0
             # серии перевыполнения: ≥1.5× (cs2, + геом.среднее серии) и ≥2× (cs3)
             if ratio >= 1.5:
                 if d["cs2"] == 0:
@@ -4112,14 +4195,27 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     "last_week":   d["last_week"],
                     "combo_start": d["combo_start"],
                     "combo_end":   d["combo_end"],
+                    # ── Серии перевыполнения (новая система достижений) ──
+                    "over_streak_max": d["omax"],
+                    "over_streak_cur": d["ostreak"],
+                    "over_ofs_avg":    round(d["omax_ofs"] / d["omax"], 3) if d["omax"] else 0.0,
+                    "over_ofs_best":   round(d["ofs_best"], 3),
+                    "over_start":      d["omax_start"],
+                    "over_end":        d["omax_end"],
                 }
             else:
                 m["compliance"] = None
-            # Метка-достижение за доблесть (в начало списка меток).
-            ach = _achievement(m["compliance"])
-            m["achievement"] = ach
-            if ach:
-                m["tags"] = [ach] + [t for t in m["tags"] if t != ach]
+            # Достижения за доблесть: магнитуда (пик ×N) + серия перевыполнений
+            # (по макс. серии за всё время). Обе роли — в начало списка меток.
+            _c = m["compliance"] or {}
+            peak_key = _peak_tier(_c.get("peak_ratio", 0.0))
+            streak_key = _streak_tier(_c.get("over_streak_max", 0))
+            ach = peak_key  # совместимость со старым полем
+            m["achievement"] = peak_key
+            m["streak_tag"] = streak_key
+            _ach_tags = [k for k in (peak_key, streak_key) if k]
+            if _ach_tags:
+                m["tags"] = _ach_tags + [t for t in m["tags"] if t not in _ach_tags]
 
             # Тренд: сравниваем % выполнения этой недели vs прошлой.
             #   pct_delta = cur_pct - prev_pct  (в процентных пунктах)
@@ -4193,13 +4289,17 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             #                   капится на 100% = ×2, поэтому over_avg∈[0,100]),
             #   серия выполнений подряд: до +5 (max_streak),
             #   безупречная история: +3 (все недели выполнены, при ≥3 нед.).
+            # ── Ценность перевыполнения (бонус сверх 100, ≤ VALOR_W_OVERFULFILL).
+            # Серия перевыполнений (вес тира по длине × качество OFS) + бонус
+            # за лучший единичный пик (OFS лучшей недели). Всё оценивается
+            # относительно потолка 189, чтобы было честно при любой норме.
             discipline = 0.0
             if comp_obj and not is_immune_now:
-                over_bonus = round(comp_obj.get("over_avg", 0.0) / 100 * 12, 1)
-                streak_bonus = min(comp_obj.get("max_streak", 0), 5)
-                perfect_bonus = (3 if comp_obj["weeks_met"] == comp_obj["weeks_count"]
-                                 and comp_obj["weeks_count"] >= 3 else 0)
-                discipline = round(over_bonus + streak_bonus + perfect_bonus, 1)
+                tw = _streak_tier_weight(comp_obj.get("over_streak_max", 0))
+                streak_component = tw * (0.5 + 0.5 * comp_obj.get("over_ofs_avg", 0.0))
+                peak_component = comp_obj.get("over_ofs_best", 0.0) * 5.0
+                discipline = round(min(streak_component + peak_component,
+                                       VALOR_W_OVERFULFILL), 1)
             # Сумма доступных компонентов
             other_pts = chat_pts + soc_pts + veteran_pts + officer_pts
             if is_immune_now:
@@ -4219,6 +4319,9 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "overfulfill_max": VALOR_W_OVERFULFILL,
                 "over_avg":        (comp_obj or {}).get("over_avg", 0) if comp_obj else 0,
                 "max_streak":      (comp_obj or {}).get("max_streak", 0) if comp_obj else 0,
+                "over_streak_max": (comp_obj or {}).get("over_streak_max", 0) if comp_obj else 0,
+                "over_streak_cur": (comp_obj or {}).get("over_streak_cur", 0) if comp_obj else 0,
+                "over_ofs_avg":    (comp_obj or {}).get("over_ofs_avg", 0) if comp_obj else 0,
                 "immunity_adjusted": is_immune_now,
                 "compliance":      comp_pts,  # None если иммун
                 "chat":            chat_pts,

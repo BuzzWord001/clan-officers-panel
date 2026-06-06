@@ -825,6 +825,10 @@ body.guest-mode .warn-del-btn { display: none !important; }
 /* Колонка «Примечание» из реестра — только офицерам/админу, не гостю. */
 body.guest-mode .col-note { display: none !important; }
 
+/* Кликабельный ник — открывает дерево достижений (все роли). */
+.nick-ach { cursor: pointer; }
+.nick-ach:hover { text-decoration: underline; text-decoration-style: dotted; }
+
 .auth-secondary {
   margin-top: 18px;
   text-align: center;

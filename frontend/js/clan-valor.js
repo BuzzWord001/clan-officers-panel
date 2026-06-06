@@ -250,6 +250,41 @@
     over:       { label: "Перевыполнил", icon: "▲", color: "#8dffaa",
                   cls: "tag-ach",
                   tip: "Перевыполнил норму — пик ≥1.5×." },
+    // ── Роли за СЕРИИ перевыполнения подряд (разблокируются навсегда по
+    //    максимальной серии — один срыв не лишает достигнутого) ──
+    streak2:    { label: "Серия · 2 недели", icon: "⛓", color: "#7fe6d8",
+                  cls: "tag-ach",
+                  tip: "Перевыполнял норму 2 недели подряд." },
+    streak3:    { label: "Серия · 3 недели", icon: "⛓", color: "#5fd6c8",
+                  cls: "tag-ach",
+                  tip: "Перевыполнял норму 3 недели подряд." },
+    month1:     { label: "Месяц напора", icon: "🔥", color: "#ff9a55",
+                  cls: "tag-ach",
+                  tip: "Месяц перевыполнения подряд (4 недели)." },
+    month2:     { label: "Два месяца ярости", icon: "🔥", color: "#ff7a3a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "2 месяца перевыполнения подряд (8 недель)." },
+    month3:     { label: "Квартал доминатора", icon: "🔥", color: "#ff5a2a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "3 месяца перевыполнения подряд (12 недель)." },
+    half1:      { label: "Полгода несокрушим", icon: "⚜", color: "#ffd24a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Полгода перевыполнения подряд (26 недель)." },
+    year1:      { label: "Год легенды", icon: "♛", color: "#ffd54a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Год перевыполнения подряд (52 недели)." },
+    year2:      { label: "Два года в авангарде", icon: "♛", color: "#ffcf3a",
+                  cls: "tag-ach", glow: 1,
+                  tip: "2 года перевыполнения подряд (104 недели)." },
+    year3:      { label: "Три года несгибаем", icon: "✷", color: "#8fd6ff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "3 года перевыполнения подряд (156 недель)." },
+    year5:      { label: "Пятилетка доблести", icon: "✵", color: "#b7b0ff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "5 лет перевыполнения подряд (260 недель)." },
+    year10:     { label: "Десятилетие — Вечный", icon: "✵", color: "#fff0b0",
+                  cls: "tag-ach", glow: 1,
+                  tip: "10 лет перевыполнения подряд (520 недель) — легенда клана." },
     veteran:    { label: "Ветеран", icon: "★", color: "#ffd24a",
                   cls: "tag-veteran",
                   tip: "Был в первоначальном составе клана." },
@@ -262,14 +297,18 @@
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
   // Семейства ролей-достижений за доблесть.
-  const FLAW_TAGS  = new Set(["immortal", "legend", "ace", "etalon"]);
-  const COMBO_TAGS = new Set(["combo_legend", "combo_record", "combo_over"]);
+  const FLAW_TAGS  = new Set(["immortal", "legend", "ace", "etalon"]); // legacy
+  const COMBO_TAGS = new Set(["combo_legend", "combo_record", "combo_over"]); // legacy
   const PEAK_TAGS  = new Set(["absolute", "overlord", "titan", "phenom",
                                "record", "triple", "double", "over"]);
+  // Новая ветка — серии перевыполнения (от 2 недель до 10 лет).
+  const STREAK_TAGS = new Set(["streak2", "streak3", "month1", "month2",
+    "month3", "half1", "year1", "year2", "year3", "year5", "year10"]);
   const AUTO_TAGS = new Set([
     "in_socials", "officer",
-    ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS]);
+    ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS]);
   // Источник множителя ×N для каждого семейства (из m.compliance).
+  // Серии (STREAK_TAGS) множитель не показывают — у них «N недель».
   function tagMult(t, c) {
     if (!c) return 0;
     if (PEAK_TAGS.has(t))  return c.peak_ratio || 0;
@@ -300,6 +339,10 @@
       if (isAch && c) {
         if (PEAK_TAGS.has(t) && c.peak_week)
           whenTip = weekFull(c.peak_week);
+        else if (STREAK_TAGS.has(t)) {
+          tip += `\nМакс. серия: ${c.over_streak_max || 0} нед.; сейчас подряд: ${c.over_streak_cur || 0}.`;
+          if (c.over_start) whenTip = `${weekFull(c.over_start)}  …  ${weekFull(c.over_end)}`;
+        }
         else if (COMBO_TAGS.has(t) && c.combo_start)
           whenTip = `${weekFull(c.combo_start)}  …  ${weekFull(c.combo_end)}`;
         else if (FLAW_TAGS.has(t) && c.first_week)
@@ -329,13 +372,6 @@
   // Как получить каждую роль (понятным языком). Пороги совпадают с
   // расчётом на бэкенде (db.py) и тултипами TAG_META.
   const ROLE_HOWTO = {
-    etalon:   "Пройди минимум 3 учтённых недели и не провали ни одной нормы доблести. База «безупречной истории».",
-    ace:      "Безупречная история (без провалов) + в среднем за неделю набираешь ≥ 1.4× нормы.",
-    legend:   "Безупречная история + средняя кратность набора ≥ 2× нормы.",
-    immortal: "Безупречная история + средняя кратность ≥ 3× нормы. Вершина дисциплины клана.",
-    combo_over:   "Перевыполни норму (≥ 1.5×) три недели подряд и дольше.",
-    combo_record: "Серия ≥ 3 недель подряд со средней кратностью серии ≥ 2×.",
-    combo_legend: "Серия ≥ 3 недель подряд со средней кратностью серии ≥ 3×.",
     over:     "Набери за неделю ≥ 1.5× нормы.",
     double:   "Набери за неделю ≥ 2× нормы.",
     triple:   "Набери за неделю ≥ 3× нормы.",
@@ -344,6 +380,17 @@
     titan:    "Лучшая неделя ≥ 7× нормы.",
     overlord: "Лучшая неделя ≥ 9.5× нормы.",
     absolute: "Лучшая неделя ≥ 13× нормы (≈ 189 доблести) — почти технический потолок.",
+    streak2:  "Перевыполни норму 2 недели подряд.",
+    streak3:  "Перевыполни норму 3 недели подряд.",
+    month1:   "Месяц перевыполнения подряд — 4 недели.",
+    month2:   "2 месяца перевыполнения подряд — 8 недель.",
+    month3:   "Квартал перевыполнения подряд — 12 недель.",
+    half1:    "Полгода перевыполнения подряд — 26 недель.",
+    year1:    "Год перевыполнения подряд — 52 недели.",
+    year2:    "2 года перевыполнения подряд — 104 недели.",
+    year3:    "3 года перевыполнения подряд — 156 недель.",
+    year5:    "5 лет перевыполнения подряд — 260 недель.",
+    year10:   "10 лет перевыполнения подряд — 520 недель. Легенда клана.",
     veteran:    "Состоял в клане с момента основания. Роль присваивает офицер вручную.",
     officer:    "Занимал офицерский пост — Лейтенант или выше. Начисляется автоматически по истории должностей.",
     in_socials: "Вступи в VK- или Telegram-сообщество клана и привяжи аккаунт через бота регистрации — роль появится сама.",
@@ -352,17 +399,15 @@
   // Структура гайда: группы → ветки → роли (по возрастанию престижа).
   const ROLE_GUIDE = [
     { group: "Достижения за доблесть", icon: "🏆",
-      gintro: "Начисляются автоматически по истории доблести. Внутри каждой ветки роли идут по возрастанию — выше стоит более редкая и престижная. Цвет и свечение чипа отражают силу достижения.",
+      gintro: "Начисляются автоматически по истории доблести. Кликни по нику в таблице — увидишь личное ДЕРЕВО достижений: что открыто, что следующее и сколько осталось. Открытые роли остаются навсегда.",
       sub: [
-        { title: "Ветка «Безупречная история»",
-          note: "Считается, когда у тебя нет ни одного провала норматива (с 3-й учтённой недели). Ступень зависит от средней кратности набора за всё время.",
-          tags: ["etalon", "ace", "legend", "immortal"] },
-        { title: "Ветка «Серии перевыполнений»",
-          note: "Считается за перевыполнение нормы (≥ 1.5×) несколько недель подряд. Ступень — по средней кратности самой длинной серии.",
-          tags: ["combo_over", "combo_record", "combo_legend"] },
         { title: "Ветка «Сила одного пика»",
-          note: "Считается по лучшей отдельной неделе — во сколько раз перекрыта норма. Достаточно один раз достичь порога.",
+          note: "За лучшую отдельную неделю — во сколько раз перекрыта норма. Достаточно один раз достичь порога; роль остаётся.",
           tags: ["over", "double", "triple", "record", "phenom", "titan", "overlord", "absolute"] },
+        { title: "Ветка «Серии перевыполнения»",
+          note: "За перевыполнение нормы несколько недель ПОДРЯД (от 2 недель до 10 лет). Открывается по самой длинной серии за всё время — один срыв не лишает уже открытых ступеней. Ценность каждого перевыполнения считается относительно потолка 189 доблести: чем ближе к потолку, тем дороже неделя.",
+          tags: ["streak2", "streak3", "month1", "month2", "month3", "half1",
+                 "year1", "year2", "year3", "year5", "year10"] },
       ] },
     { group: "Статусные роли", icon: "🛡",
       gintro: "Не зависят от доблести — отмечают место человека в клане.",
@@ -918,7 +963,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b>${esc(m.nick)}</b>${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name"><b class="nick-ach" data-nick="${esc(m.nick)}" title="Открыть дерево достижений и ролей">${esc(m.nick)}</b>${aiMark}${sugHtml}${adminBtns}</td>
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
@@ -1004,7 +1049,27 @@
       .ahelp-txt b{color:#7CFC00;font-size:13px}
       .ahelp-txt div{color:#bcd;font-size:12px;margin-top:2px;line-height:1.45}
       .ahelp-note{color:#8a9;font-size:11px;margin-top:12px;font-style:italic}
-      .vedit-card.wide{width:min(560px,94vw)}`;
+      .vedit-card.wide{width:min(620px,94vw)}
+      .ach-sub{color:#9fb;font-size:12px;margin:-6px 0 12px}
+      .ach-val{display:flex;gap:14px;flex-wrap:wrap;background:#06120a;
+        border:1px solid #1c3a1c;border-radius:8px;padding:9px 11px;margin-bottom:12px}
+      .ach-val b{color:#7CFC00}
+      .ach-sec-h{color:#7CFC00;font-weight:600;font-size:13px;margin:14px 0 7px;
+        border-top:1px dashed #1c3a1c;padding-top:11px}
+      .ach-sec-h:first-of-type{border-top:none;padding-top:0}
+      .ach-row{display:flex;align-items:center;gap:9px;padding:5px 7px;
+        border-radius:7px;margin:3px 0;border:1px solid transparent}
+      .ach-row.lit{background:#0a1c0e;border-color:#1f5a26}
+      .ach-row.locked{opacity:.4}
+      .ach-row.next{border-color:#3c7;background:#0c2410;box-shadow:0 0 8px rgba(40,255,80,.12)}
+      .ach-ic{flex:0 0 24px;text-align:center;font-size:16px}
+      .ach-nm{flex:1;font-size:13px;color:#dfe}
+      .ach-req{color:#8aa;font-size:11px;white-space:nowrap}
+      .ach-st{flex:0 0 22px;text-align:center}
+      .ach-bar{height:6px;background:#0a1c0e;border:1px solid #1f5a26;border-radius:4px;
+        overflow:hidden;margin:4px 0 2px}
+      .ach-bar i{display:block;height:100%;background:linear-gradient(90deg,#2a6,#7CFC00)}
+      .ach-bar-lbl{color:#9fb;font-size:11px;margin-bottom:8px}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1179,6 +1244,116 @@
     if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(btn, anchor.nextSibling);
     else document.body.appendChild(btn);
   }
+
+  // ───────────────── Дерево достижений и ролей (клик по нику) ─────────────
+  // Доступно ВСЕМ ролям (данные из m.compliance, которые получает каждый).
+  const MAG_LADDER = [   // магнитуда: лучшая неделя ×N от нормы
+    { key: "over", mult: 1.5 }, { key: "double", mult: 2 },
+    { key: "triple", mult: 3 }, { key: "record", mult: 4 },
+    { key: "phenom", mult: 5.5 }, { key: "titan", mult: 7 },
+    { key: "overlord", mult: 9.5 }, { key: "absolute", mult: 13 },
+  ];
+  const STREAK_LADDER_F = [   // серии перевыполнения подряд (недель)
+    { key: "streak2", w: 2 }, { key: "streak3", w: 3 }, { key: "month1", w: 4 },
+    { key: "month2", w: 8 }, { key: "month3", w: 12 }, { key: "half1", w: 26 },
+    { key: "year1", w: 52 }, { key: "year2", w: 104 }, { key: "year3", w: 156 },
+    { key: "year5", w: 260 }, { key: "year10", w: 520 },
+  ];
+
+  function achRow(key, reqText, lit, isNext) {
+    const meta = TAG_META[key] || { label: key, icon: "·", color: "#9fb" };
+    const cls = lit ? "lit" : (isNext ? "next" : "locked");
+    const col = lit ? meta.color : "#9fb";
+    const st = lit ? "✓" : (isNext ? "→" : "🔒");
+    return `<div class="ach-row ${cls}">
+      <span class="ach-ic" style="color:${col}">${meta.icon}</span>
+      <span class="ach-nm" style="${lit ? "color:" + meta.color : ""}">${esc(meta.label)}</span>
+      <span class="ach-req">${esc(reqText)}</span>
+      <span class="ach-st">${st}</span></div>`;
+  }
+
+  function openAchievements(m) {
+    injectEditStyles();
+    closeEditModal();
+    const c = m.compliance || {};
+    const peak = c.peak_ratio || 0;
+    const omax = c.over_streak_max || 0;
+    const ocur = c.over_streak_cur || 0;
+    const score = m.score || {};
+
+    // Магнитуда: подсвечено если peak ≥ порога; «следующий» — первый незакрытый.
+    let magNextDone = false;
+    const magRows = MAG_LADDER.map(t => {
+      const lit = peak >= t.mult;
+      const isNext = !lit && !magNextDone;
+      if (isNext) magNextDone = true;
+      return achRow(t.key, `≥ ×${t.mult} от нормы`, lit, isNext);
+    }).join("");
+
+    // Серии: подсвечено если макс. серия ≥ порога недель.
+    let nextStreak = null;
+    const strRows = STREAK_LADDER_F.map(t => {
+      const lit = omax >= t.w;
+      const isNext = !lit && !nextStreak;
+      if (isNext) nextStreak = t;
+      return achRow(t.key, `${t.w} нед. подряд`, lit, isNext);
+    }).join("");
+
+    // Прогресс-бар к следующему тиру серии (по лучшей серии).
+    let progressHtml = "";
+    if (nextStreak) {
+      const pct = Math.min(100, Math.round(omax / nextStreak.w * 100));
+      const left = nextStreak.w - omax;
+      const nm = (TAG_META[nextStreak.key] || {}).label || nextStreak.key;
+      progressHtml = `<div class="ach-bar"><i style="width:${pct}%"></i></div>
+        <div class="ach-bar-lbl">До «${esc(nm)}»: ещё ${left} нед. подряд
+        (лучшая серия ${omax}, сейчас подряд ${ocur}).</div>`;
+    } else {
+      progressHtml = `<div class="ach-bar-lbl">Все тиры серий открыты — легенда клана! 👑</div>`;
+    }
+
+    // Прочие роли.
+    const others = [];
+    for (const k of ["veteran", "officer", "in_socials"]) {
+      const has = (m.tags || []).indexOf(k) >= 0;
+      others.push(achRow(k, has ? "получена" : "не получена", has, false));
+    }
+
+    const valLine = `<div class="ach-val">
+      <span>Ценность: <b>${score.total != null ? score.total : "—"}</b></span>
+      <span>Ценность перевыполнения: <b>${score.discipline != null ? "+" + score.discipline : "—"}</b> / ${score.overfulfill_max || 20}</span>
+      <span>Лучший пик: <b>×${peak.toFixed(1)}</b></span>
+      </div>`;
+
+    const ov = document.createElement("div");
+    ov.id = "vedit-overlay";
+    ov.className = "vedit-overlay";
+    ov.innerHTML = `
+      <div class="vedit-card wide" role="dialog" aria-modal="true">
+        <h3>🏆 Достижения · ${esc(m.nick)}</h3>
+        <div class="ach-sub">Дерево ролей за доблесть. ✓ — открыто, → — следующая цель, 🔒 — закрыто. Открытые роли остаются навсегда.</div>
+        ${valLine}
+        <div class="ach-sec-h">📈 Магнитуда — за самую сильную неделю (пик ×N)</div>
+        ${magRows}
+        <div class="ach-sec-h">⛓ Серии перевыполнения — недель подряд (открываются навсегда)</div>
+        ${progressHtml}
+        ${strRows}
+        <div class="ach-sec-h">🎖 Прочие роли</div>
+        ${others.join("")}
+        <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) closeEditModal(); });
+    ov.querySelector("#vedit-cancel").onclick = closeEditModal;
+  }
+
+  $("valor-tbody").addEventListener("click", (ev) => {
+    const nb = ev.target.closest(".nick-ach");
+    if (!nb) return;
+    ev.stopPropagation();
+    const m = (DATA.members || []).find(x => x.nick === nb.dataset.nick);
+    if (m) openAchievements(m);
+  });
 
   $("valor-filter").addEventListener("input", () => {
     // Сбрасываем горизонтальную прокрутку влево, чтобы при поиске колонка
