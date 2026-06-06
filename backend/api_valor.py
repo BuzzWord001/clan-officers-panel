@@ -13,11 +13,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 import db
 from api_chat import require_bot_token, require_officer, require_viewer
+from session import require_admin
 
 log = logging.getLogger("api.valor")
 router = APIRouter(prefix="/valor", tags=["valor"])
@@ -156,6 +157,35 @@ def valor_warning_delete(id: int = Query(..., ge=1),
                          _: dict = Depends(require_officer)) -> dict:
     """Удалить ручное предупреждение по id."""
     return {"ok": db.valor_remove_manual_warning(id)}
+
+
+class ValorMemberEdit(BaseModel):
+    """Админ-правка строки доблести. Любое подмножество полей."""
+    nick:      str | None = None
+    true_name: str | None = None
+    rank:      str | None = None
+    title:     str | None = None
+    level:     int | None = None
+    class_:    str | None = Field(default=None, alias="class")
+    valor:     int | None = None
+    is_afk:    bool | None = None
+
+    class Config:
+        populate_by_name = True
+
+
+@router.patch("/member/{member_id}")
+def valor_member_edit(member_id: int, payload: ValorMemberEdit,
+                      actor: dict = Depends(require_admin)) -> dict:
+    """Редактирование строки доблести (написание ника и любые данные).
+    ТОЛЬКО админ. Коррекция ника держится между неделями (override по canon)."""
+    fields = payload.model_dump(by_alias=True, exclude_unset=True)
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "nothing_to_update")
+    out = db.valor_update_member(member_id, fields, actor)
+    if out is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member_not_found")
+    return out
 
 
 @router.get("/history")

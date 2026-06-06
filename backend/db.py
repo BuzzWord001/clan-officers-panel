@@ -361,6 +361,28 @@ CREATE TABLE IF NOT EXISTS valor_departed (
     warning_count INTEGER NOT NULL DEFAULT 0,
     departed_at   TEXT    NOT NULL
 );
+
+-- Новички: впервые замечены в снимке, при этом НЕ были в прошлом снимке,
+-- НЕ в реестре приёма и не возвращенцы. Дают основание для авто-иммунитета
+-- (first_date + 7д) без записи в реестр. verified=0 → ник распознан ИИ,
+-- ждёт ручной проверки (подсветка в таблице); админ-правка ставит verified=1.
+CREATE TABLE IF NOT EXISTS valor_first_seen (
+    nick_canon TEXT    PRIMARY KEY,
+    first_nick TEXT    NOT NULL,
+    first_week TEXT    NOT NULL,
+    first_date TEXT    NOT NULL,           -- ISO date для иммунитета
+    verified   INTEGER NOT NULL DEFAULT 0  -- 1 = ник проверен админом
+);
+
+-- Ручная коррекция написания ника админом. Ключ — стабильный canon
+-- (он не меняется при правке отображаемого ника), поэтому коррекция
+-- держится из недели в неделю, даже если OCR снова отдаёт кривой ник.
+CREATE TABLE IF NOT EXISTS valor_nick_override (
+    nick_canon TEXT PRIMARY KEY,
+    nick       TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -2838,55 +2860,46 @@ def _compute_immunity(accepted_date: date,
 
 
 def valor_accepted_date_per_canon() -> dict[str, date]:
-    """Map nick_canon → MAX(accepted_date). Используется для per-week
-    проверки иммунитета в исторических данных (compliance)."""
+    """Map nick_canon → MAX(дата иммунитета). Источники: реестр приёма
+    (acceptances.accepted_date) И авто-новички (valor_first_seen.first_date).
+    Используется для per-week проверки иммунитета (compliance + текущая)."""
     out: dict[str, date] = {}
     with connection() as conn:
         rows = conn.execute(
             "SELECT game_nick, MAX(accepted_date) AS d FROM acceptances "
             "GROUP BY game_nick"
         ).fetchall()
-    for r in rows:
-        try:
-            d = date.fromisoformat(r["d"])
-        except Exception:
-            continue
-        canon = _valor_canon(r["game_nick"])
+        fs = conn.execute(
+            "SELECT nick_canon, first_date AS d FROM valor_first_seen"
+        ).fetchall()
+
+    def _add(canon: str, dstr: str) -> None:
         if not canon:
-            continue
-        # Если на тот же canon уже есть — берём более позднюю
+            return
+        try:
+            d = date.fromisoformat(dstr)
+        except Exception:
+            return
         existing = out.get(canon)
         if existing is None or d > existing:
             out[canon] = d
+
+    for r in rows:
+        _add(_valor_canon(r["game_nick"]), r["d"])
+    for r in fs:
+        _add(r["nick_canon"], r["d"])
     return out
 
 
 def valor_immunity_per_canon(week: str) -> dict[str, dict]:
-    """Map nick_canon → immunity-инфо для оцениваемой недели. Берёт
-    самую позднюю accepted_date по канону (если вернулся в клан — это
-    его свежий иммунитет). Возвращает только тех, у кого статус активен
-    или в grace; уже истекший иммун не возвращается."""
+    """Map nick_canon → immunity-инфо для оцениваемой недели. Берёт самую
+    позднюю дату иммунитета по канону из реестра приёма И авто-новичков
+    (valor_first_seen). Возвращает только тех, у кого статус активен или в
+    grace; уже истекший иммун не возвращается."""
     out: dict[str, dict] = {}
-    with connection() as conn:
-        # Группируем по canon, берём максимальный accepted_date.
-        rows = conn.execute(
-            "SELECT game_nick, MAX(accepted_date) AS d FROM acceptances "
-            "GROUP BY game_nick"
-        ).fetchall()
-    for r in rows:
-        try:
-            accepted = date.fromisoformat(r["d"])
-        except Exception:
-            continue
-        canon = _valor_canon(r["game_nick"])
-        if not canon:
-            continue
+    for canon, accepted in valor_accepted_date_per_canon().items():
         info = _compute_immunity(accepted, week)
         if info:
-            # Если на тот же canon уже есть запись — оставляем более свежую
-            existing = out.get(canon)
-            if existing and existing["accepted_date"] >= info["accepted_date"]:
-                continue
             out[canon] = info
     return out
 
@@ -3257,6 +3270,27 @@ def valor_save_snapshot(
         # Десктоп-бот не знает про иммунитет, шлёт norm_met по факту;
         # переписываем здесь.
         immunity_map = valor_immunity_per_canon(week)
+
+        # ── 3.0. Подготовка к детекту новичков ──
+        # Новичок = есть в этом снимке, но НЕ был в прошлом снимке, при этом
+        # его НЕТ в реестре приёма, он НЕ возвращенец (нет в valor_departed)
+        # и ещё не зафиксирован в valor_first_seen. Такому ставим flag_new_nick
+        # (ник распознан ИИ — проверить вручную) и заводим first_seen, что даёт
+        # авто-иммунитет на 7 дней. Только если есть ПРЕДЫДУЩИЙ снимок: первый
+        # сбор — это базовый список клана, там новичков не помечаем.
+        registered_canons: set[str] = set()
+        for rr in conn.execute("SELECT DISTINCT game_nick FROM acceptances"):
+            for piece in (rr["game_nick"] or "").split(","):
+                c = _valor_canon(piece)
+                if c:
+                    registered_canons.add(c)
+        departed_canons = {rr["nick_canon"] for rr in conn.execute(
+            "SELECT nick_canon FROM valor_departed")}
+        first_seen_canons = {rr["nick_canon"] for rr in conn.execute(
+            "SELECT nick_canon FROM valor_first_seen")}
+        today_iso = now[:10]
+        new_first_seen: list[tuple] = []  # (canon, nick)
+
         current_canons: set[str] = set()
         for m in members:
             nick = (m.get("nick") or "").strip()
@@ -3272,13 +3306,27 @@ def valor_save_snapshot(
             valor_val = m.get("valor") if isinstance(m.get("valor"), int) else None
             imm = immunity_map.get(canon)
 
+            # Новичок этой недели?
+            is_new = (prev_snap is not None
+                      and canon not in prev_canons
+                      and canon not in registered_canons
+                      and canon not in departed_canons
+                      and canon not in first_seen_canons)
+            if is_new:
+                new_first_seen.append((canon, nick))
+
             # Иммунные новички:
             #  active/extended → norm_met = None (не оцениваем),
             #                    warning_count = 0
             #  grace          → пересчитываем по effective_norm:
             #                    valor >= eff_norm → True (warn=0)
             #                    valor <  eff_norm → False (warn+=1)
-            if imm and imm["status"] in ("active", "extended"):
+            if is_new:
+                # Только появился — иммун стартует сейчас, эту неделю не
+                # оцениваем (norm_met=None, без предупреждений).
+                norm_met_raw = None
+                warning_count = 0
+            elif imm and imm["status"] in ("active", "extended"):
                 norm_met_raw = None
                 warning_count = 0
             elif imm and imm["status"] == "grace":
@@ -3315,10 +3363,19 @@ def valor_save_snapshot(
                     1 if is_afk else 0,
                     None if norm_met_raw is None
                     else (1 if norm_met_raw else 0),
-                    1 if m.get("flag_new_nick") else 0,
+                    1 if (m.get("flag_new_nick") or is_new) else 0,
                     1 if m.get("flag_ocr_suspect") else 0,
                     warning_count,
                 ),
+            )
+
+        # ── 3.9. Зафиксировать новичков (даёт авто-иммунитет 7д) ──
+        for canon_new, nick_new in new_first_seen:
+            conn.execute(
+                """INSERT OR IGNORE INTO valor_first_seen
+                   (nick_canon, first_nick, first_week, first_date, verified)
+                   VALUES (?, ?, ?, ?, 0)""",
+                (canon_new, nick_new, week, today_iso),
             )
 
         # ── 4. Departed / Returned ──
@@ -3819,6 +3876,17 @@ def valor_get_current() -> dict[str, Any]:
             afk_hist.setdefault(r["nick_canon"], []).append(
                 (r["week"], afk_eff, r["valor"]))
 
+        # Ручная коррекция написания ников (админ) — применяется к отображению.
+        nick_override: dict[str, str] = {
+            r["nick_canon"]: r["nick"]
+            for r in conn.execute("SELECT nick_canon, nick FROM valor_nick_override")
+        }
+        # Новички с непроверенным ником (распознан ИИ) — для подсветки в UI.
+        ai_nick_canons: set[str] = {
+            r["nick_canon"] for r in conn.execute(
+                "SELECT nick_canon FROM valor_first_seen WHERE verified = 0")
+        }
+
         # Активные предупреждения за невыполнение норматива (replay истории).
         warn_map = valor_active_warnings()
         # Ручные предупреждения, добавленные офицером через UI.
@@ -3863,6 +3931,13 @@ def valor_get_current() -> dict[str, Any]:
             # Соцсети (по canon ника)
             cn = m["nick_canon"]
             m["socials"] = socials.get(cn) or None
+            # Ручная коррекция ника админом (canon стабилен — держится из
+            # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
+            m["id"] = r["id"]
+            ov = nick_override.get(cn)
+            if ov:
+                m["nick"] = ov
+            m["ai_nick"] = (cn in ai_nick_canons) and not ov
             # АФК: недели подряд в статусе + доблесть, набранная за это время.
             m["afk_info"] = _afk_streak(afk_hist.get(cn)) if m["is_afk"] else None
             # Теги: ручные + авто. Авто-теги НЕ пишутся в БД —
@@ -4072,6 +4147,78 @@ def valor_get_current() -> dict[str, Any]:
             "members": members,
             "weeks_meta": weeks_meta,
         }
+
+
+_VALOR_EDIT_TEXT = ("true_name", "rank", "title", "class_")
+_VALOR_EDIT_INT = ("level", "valor")
+
+
+def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | None:
+    """Админ-правка строки доблести. Редактируемые поля: nick, true_name,
+    rank, title, class_, level, valor, is_afk.
+
+    Особое поведение для nick: nick_canon (ключ матчинга по неделям и с
+    реестром) НЕ меняем — правим только отображаемый nick И заводим
+    valor_nick_override(canon→nick), чтобы коррекция держалась из недели в
+    неделю, даже если OCR снова отдаёт кривой ник. При правке ника снимаем
+    флаг «распознан ИИ» (flag_new_nick=0) и помечаем first_seen.verified=1.
+    """
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM valor_members WHERE id = ?", (member_id,)
+        ).fetchone()
+        if not row:
+            return None
+        canon = row["nick_canon"]
+
+        # Текстовые/числовые поля строки снимка.
+        sets, vals = [], []
+        for f in _VALOR_EDIT_TEXT:
+            key = "class" if f == "class_" else f
+            if key in fields and fields[key] is not None:
+                sets.append(f"{f} = ?")
+                vals.append(str(fields[key]).strip())
+        for f in _VALOR_EDIT_INT:
+            if f in fields:
+                v = fields[f]
+                sets.append(f"{f} = ?")
+                vals.append(int(v) if isinstance(v, int) else None)
+        if "is_afk" in fields and fields["is_afk"] is not None:
+            sets.append("is_afk = ?")
+            vals.append(1 if fields["is_afk"] else 0)
+
+        # Ник: правим отображение + override по canon + снимаем «ИИ»-флаг.
+        new_nick = fields.get("nick")
+        if new_nick is not None and str(new_nick).strip():
+            nn = str(new_nick).strip()
+            sets.append("nick = ?")
+            vals.append(nn)
+            sets.append("flag_new_nick = ?")
+            vals.append(0)
+            conn.execute(
+                """INSERT INTO valor_nick_override (nick_canon, nick, updated_at, updated_by)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(nick_canon) DO UPDATE SET
+                     nick = excluded.nick, updated_at = excluded.updated_at,
+                     updated_by = excluded.updated_by""",
+                (canon, nn, now, by),
+            )
+            conn.execute(
+                "UPDATE valor_first_seen SET verified = 1 WHERE nick_canon = ?",
+                (canon,),
+            )
+
+        if sets:
+            conn.execute(
+                f"UPDATE valor_members SET {', '.join(sets)} WHERE id = ?",
+                (*vals, member_id),
+            )
+        out = dict(conn.execute(
+            "SELECT * FROM valor_members WHERE id = ?", (member_id,)
+        ).fetchone())
+    return out
 
 
 def valor_list_sessions() -> list[dict[str, Any]]:

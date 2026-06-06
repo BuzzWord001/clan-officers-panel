@@ -10,6 +10,7 @@
   let DATA = { snapshot: null, members: [] };
   let SORT = { key: "score", dir: "desc" };
   let IS_GUEST = false;   // гость — только просмотр, без правок
+  let IS_ADMIN = false;   // админ — правка ников и данных в таблице
 
   // Сетевой сбой (err.status === 0) — это «запрос не дошёл до сервера»
   // (РФ-блокировка fly.dev, флапающий мобильный интернет, TLS/CORS), а НЕ
@@ -62,6 +63,7 @@
         el.style.display = "none");
       return;
     }
+    IS_ADMIN = me?.role === "admin";
     const who = me?.role === "admin"
       ? `${esc(me.username || me.name || "")} · админ`
       : `${esc(me.username || me.name || "")} · офицер`;
@@ -895,10 +897,16 @@
       const warnCell     = renderWarnings(m);
       const trendCell    = renderTrend(m.trend);
       const socialCell   = renderSocials(m.socials);
+      const aiMark = m.ai_nick
+        ? ` <span class="ai-nick" title="Ник распознан ИИ-зрением — проверьте и при необходимости исправьте вручную (только админ)">🤖</span>`
+        : "";
+      const editBtn = IS_ADMIN
+        ? ` <button class="row-edit-btn" data-edit-id="${m.id}" title="Редактировать строку (админ)">✎</button>`
+        : "";
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b>${esc(m.nick)}</b></td>
+          <td class="m-cell-name"><b>${esc(m.nick)}</b>${aiMark}${editBtn}</td>
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
@@ -922,6 +930,131 @@
         th.classList.add(SORT.dir === "asc" ? "sort-asc" : "sort-desc");
     });
   }
+
+  // ───────────────── Админ-редактор строки доблести ─────────────────
+  // Доступен ТОЛЬКО админу. Правит написание ника (держится между неделями
+  // через override по canon) и любые данные строки.
+  function apiBase() { return (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || ""; }
+  function authHeaders() {
+    const h = { "Content-Type": "application/json" };
+    let t = ""; try { t = localStorage.getItem("officer_session_token") || ""; } catch (_) {}
+    if (t) h["Authorization"] = "Bearer " + t;
+    return h;
+  }
+  function injectEditStyles() {
+    if (document.getElementById("vedit-styles")) return;
+    const s = document.createElement("style");
+    s.id = "vedit-styles";
+    s.textContent = `
+      .ai-nick{cursor:help;filter:saturate(1.3)}
+      .row-edit-btn{background:none;border:1px solid #2a6;color:#7CFC00;
+        border-radius:4px;cursor:pointer;font-size:11px;line-height:1;
+        padding:1px 5px;margin-left:6px;opacity:.65}
+      .row-edit-btn:hover{opacity:1;background:#0c2a12}
+      .vedit-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);
+        display:flex;align-items:center;justify-content:center;z-index:9999}
+      .vedit-card{background:#0a0f0a;border:1px solid #2a6;border-radius:10px;
+        padding:18px 20px;width:min(420px,92vw);max-height:90vh;overflow:auto;
+        box-shadow:0 0 30px rgba(40,255,80,.18);color:#cfe}
+      .vedit-card h3{margin:0 0 12px;color:#7CFC00;font-weight:600;font-size:15px}
+      .vedit-row{display:flex;align-items:center;gap:10px;margin:7px 0}
+      .vedit-row span{flex:0 0 92px;color:#9fb;font-size:13px}
+      .vedit-row input[type=text],.vedit-row input[type=number]{flex:1;
+        background:#06120a;border:1px solid #1c4;border-radius:5px;color:#dff;
+        padding:6px 8px;font-size:13px;font-family:inherit}
+      .vedit-row input:focus{outline:none;border-color:#5e8}
+      .vedit-check input{transform:scale(1.2)}
+      .vedit-err{color:#f88;font-size:12px;min-height:16px;margin:6px 0 0}
+      .vedit-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+      .vedit-btn{background:#11210f;border:1px solid #2a6;color:#bfe;
+        border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+      .vedit-btn:hover{background:#16320f}
+      .vedit-save{background:#13420f;border-color:#3c7;color:#dfffd0;font-weight:600}
+      .vedit-save:disabled{opacity:.5;cursor:default}`;
+    document.head.appendChild(s);
+  }
+  function closeEditModal() {
+    const ov = document.getElementById("vedit-overlay");
+    if (ov) ov.remove();
+  }
+  function openEditModal(m) {
+    injectEditStyles();
+    closeEditModal();
+    const F = [
+      ["nick", "Ник", m.nick ?? "", "text"],
+      ["true_name", "Имя", m.true_name ?? "", "text"],
+      ["rank", "Должность", m.rank ?? "", "text"],
+      ["title", "Титул", m.title ?? "", "text"],
+      ["class", "Класс", m.class_ ?? "", "text"],
+      ["level", "Уровень", m.level ?? "", "number"],
+      ["valor", "Доблесть", m.valor ?? "", "number"],
+    ];
+    const rows = F.map(([k, label, val, type]) =>
+      `<label class="vedit-row"><span>${label}</span>
+        <input data-k="${k}" type="${type}" value="${esc(String(val))}"></label>`).join("");
+    const ov = document.createElement("div");
+    ov.id = "vedit-overlay";
+    ov.className = "vedit-overlay";
+    ov.innerHTML = `
+      <div class="vedit-card" role="dialog" aria-modal="true">
+        <h3>Редактирование · ${esc(m.nick || "")}</h3>
+        ${rows}
+        <label class="vedit-row vedit-check"><span>АФК</span>
+          <input data-k="is_afk" type="checkbox" ${m.is_afk ? "checked" : ""}></label>
+        <div class="vedit-err" id="vedit-err"></div>
+        <div class="vedit-actions">
+          <button id="vedit-cancel" class="vedit-btn">Отмена</button>
+          <button id="vedit-save" class="vedit-btn vedit-save">Сохранить</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) closeEditModal(); });
+    ov.querySelector("#vedit-cancel").onclick = closeEditModal;
+    ov.querySelector("#vedit-save").onclick = () => saveEdit(m);
+    const first = ov.querySelector("input"); if (first) first.focus();
+  }
+  async function saveEdit(m) {
+    const ov = document.getElementById("vedit-overlay");
+    if (!ov) return;
+    const body = {};
+    ov.querySelectorAll("input[data-k]").forEach(inp => {
+      const k = inp.dataset.k;
+      if (k === "is_afk") { body[k] = inp.checked; return; }
+      if (inp.type === "number") {
+        body[k] = inp.value === "" ? null : parseInt(inp.value, 10);
+      } else {
+        body[k] = inp.value;
+      }
+    });
+    const errEl = ov.querySelector("#vedit-err");
+    const btn = ov.querySelector("#vedit-save");
+    btn.disabled = true; errEl.textContent = "";
+    try {
+      const res = await fetch(apiBase() + "/valor/member/" + m.id, {
+        method: "PATCH", credentials: "include",
+        headers: authHeaders(), body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(res.status === 403 ? "Только для администратора"
+                        : (t || ("HTTP " + res.status)));
+      }
+      closeEditModal();
+      await load();
+    } catch (e) {
+      errEl.textContent = e.message || "Ошибка сохранения";
+      btn.disabled = false;
+    }
+  }
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeEditModal(); });
+  $("valor-tbody").addEventListener("click", (ev) => {
+    const eb = ev.target.closest(".row-edit-btn");
+    if (!eb || !IS_ADMIN) return;
+    ev.stopPropagation();
+    const id = parseInt(eb.dataset.editId, 10);
+    const m = (DATA.members || []).find(x => x.id === id);
+    if (m) openEditModal(m);
+  });
 
   $("valor-filter").addEventListener("input", () => {
     // Сбрасываем горизонтальную прокрутку влево, чтобы при поиске колонка
