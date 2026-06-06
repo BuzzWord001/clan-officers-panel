@@ -21,12 +21,13 @@ tools/
 # Сырые рендеры, демо-скрины, артефакты — в образе не нужны.
 render/output/
 
-# Документация и frontend — не нужны в backend-образе.
+# Документация — не нужна в backend-образе.
+# frontend/ ТЕПЕРЬ включаем в образ: бэкенд отдаёт его с того же домена
+# (single-origin → first-party cookie → вход работает во всех браузерах).
 README.md
 SETUP.md
 AUTOSTART.md
 DEPLOY_FLY.md
-frontend/
 start_tunnel.bat
 
 # IDE

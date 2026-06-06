@@ -7,11 +7,13 @@
 
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 import db
 import publisher
@@ -131,3 +133,22 @@ app.include_router(api_admin_logs.telemetry_router)
 app.include_router(api_chat.router)
 import api_valor
 app.include_router(api_valor.router)
+
+
+# --- Frontend (single-origin) --------------------------------------------
+# Отдаём статику фронта с того же домена, что и API. Тогда cookie сессии
+# становится first-party (Secure; SameSite=None) и доезжает во ВСЕХ браузерах
+# — включая Safari/iOS и встроенные браузеры Telegram/VK, которые режут
+# cross-site cookie. Без этого «некоторых людей» выкидывало после входа.
+#
+# Монтируем ПОСЛЕДНИМ: явные API-роуты (/auth, /valor, /chat, /health, …)
+# зарегистрированы выше и матчатся раньше, статика ловит всё остальное.
+# В контейнере фронт лежит в /app/frontend; локально — ../frontend от backend/.
+_FRONTEND_DIR = os.environ.get("FRONTEND_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend"
+)
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+    log.info("Frontend static mounted from %s", _FRONTEND_DIR)
+else:
+    log.warning("Frontend dir not found (%s) — статика не смонтирована", _FRONTEND_DIR)

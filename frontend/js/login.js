@@ -18,6 +18,25 @@
   const btn = $("login-btn");
   const errBox = $("login-error");
 
+  // Сообщение, когда браузер режет и cookie, и localStorage (приватный режим
+  // или встроенный браузер Telegram/VK) — вход физически не может удержаться.
+  const BLOCKED_MSG =
+    "Браузер блокирует вход. Откройте ссылку в обычном браузере " +
+    "(меню «⋯» → «Открыть в Chrome/Safari»), а не во встроенном окне Telegram или VK.";
+
+  // Подтверждаем, что сессия реально установилась (cookie ИЛИ Bearer-токен),
+  // ПЕРЕД переходом на защищённую страницу. Иначе там me() вернёт 401 и
+  // человека молча выкинет обратно на вход — это и выглядело как
+  // «кнопка гостевого входа не работает».
+  async function sessionEstablished(expectRoles) {
+    try {
+      const me = await API.me();
+      return !!(me && expectRoles.includes(me.role));
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Гостевой вход — без пароля, сразу на таблицу Доблести (только просмотр).
   const guestBtn = $("guest-btn");
   if (guestBtn) {
@@ -28,12 +47,17 @@
       guestBtn.querySelector("span").textContent = "Вход…";
       try {
         await API.loginGuest();
-        window.location.href = "clan-valor.html";
+        if (!(await sessionEstablished(["guest"]))) {
+          errBox.textContent = BLOCKED_MSG;
+        } else {
+          window.location.href = "clan-valor.html";
+          return;
+        }
       } catch (e) {
         errBox.textContent = e.detail || e.message || "Не удалось войти гостем.";
-        guestBtn.disabled = false;
-        guestBtn.querySelector("span").textContent = lbl;
       }
+      guestBtn.disabled = false;
+      guestBtn.querySelector("span").textContent = lbl;
     });
   }
 
@@ -53,14 +77,19 @@
 
     try {
       await API.loginOfficer(nick, password);
-      localStorage.setItem(NICK_KEY, nick);
-      window.location.href = "index.html";
+      try { localStorage.setItem(NICK_KEY, nick); } catch (_) {}
+      if (!(await sessionEstablished(["officer", "admin"]))) {
+        errBox.textContent = BLOCKED_MSG;
+      } else {
+        window.location.href = "index.html";
+        return;
+      }
     } catch (e) {
       if (e.status === 401) errBox.textContent = "Неверный пароль.";
       else if (e.status === 422) errBox.textContent = "Ник в неправильном формате.";
       else errBox.textContent = e.detail || e.message || "Ошибка входа.";
-      btn.disabled = false;
-      btn.textContent = originalLabel;
     }
+    btn.disabled = false;
+    btn.textContent = originalLabel;
   });
 })();

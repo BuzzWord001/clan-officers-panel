@@ -40,6 +40,8 @@ RUN pip install -r /app/backend/requirements.txt
 
 COPY backend/ /app/backend/
 COPY render/  /app/render/
+# Frontend отдаётся бэкендом с того же домена (single-origin).
+COPY frontend/ /app/frontend/
 
 # /data создаётся mount'ом тома, но папка нужна до маунта тоже
 # (для пути SNAPSHOT_DIR при первом запуске без тома).
