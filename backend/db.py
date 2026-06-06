@@ -2799,10 +2799,9 @@ def _afk_streak(history):
     """history: список кортежей (week, is_afk, valor) по ВОЗРАСТАНИЮ недели.
 
     Если в последней неделе человек НЕ АФК — возвращаем None. Иначе считаем
-    серию АФК-недель подряд с конца и доблесть, набранную за время АФК:
-    от доблести в неделю ПЕРЕД уходом в АФК до текущей (а если предыдущей
-    недели нет — от первой АФК-недели). Это позволяет видеть, кто набирал
-    доблесть даже находясь в статусе АФК.
+    серию АФК-недель подряд с конца. Доблесть НЕДЕЛЬНАЯ (снимок в вс фиксирует
+    набор за неделю пн→вс, потом сброс), поэтому значение каждой недели — это
+    и есть «сколько набрал за ту неделю», а суммарно за АФК = их сумма.
     """
     if not history or not history[-1][1]:
         return None
@@ -2810,28 +2809,15 @@ def _afk_streak(history):
     while i >= 0 and history[i][1]:
         i -= 1
     streak = history[i + 1:]               # последовательные АФК-недели
-    valor_now = streak[-1][2]
-    since_week = streak[0][0]
-    valor_start = history[i][2] if i >= 0 else streak[0][2]
-    gained = (valor_now - valor_start
-              if valor_now is not None and valor_start is not None else None)
-    # Понедельная история: сколько доблести набрано ИМЕННО за каждую неделю
-    # АФК (дельта к предыдущей неделе). Для первой недели база — доблесть в
-    # неделю ПЕРЕД уходом в АФК; если такой недели нет (человек появился уже
-    # в АФК) — gained=None (не от чего считать).
-    weekly = []
-    prev = history[i][2] if i >= 0 else None
-    for (w, _a, v) in streak:
-        gw = (v - prev) if (v is not None and prev is not None) else None
-        weekly.append({"week": w, "valor": v, "gained": gw})
-        prev = v
+    # Понедельно: valor каждой недели = набрано за эту неделю в статусе АФК.
+    weekly = [{"week": w, "valor": v} for (w, _a, v) in streak]
+    total = sum(v for (_w, _a, v) in streak if isinstance(v, int))
     return {
-        "weeks":        len(streak),
-        "since_week":   since_week,
-        "valor_start":  valor_start,
-        "valor_now":    valor_now,
-        "valor_gained": gained,
-        "weekly":       weekly,
+        "weeks":       len(streak),
+        "since_week":  streak[0][0],
+        "valor_total": total,              # суммарно набрано за все недели АФК
+        "valor_last":  streak[-1][2],      # за последнюю неделю АФК
+        "weekly":      weekly,
     }
 
 

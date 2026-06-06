@@ -578,29 +578,20 @@
     if (m.is_afk) {
       const a = m.afk_info;
       if (a && a.weeks) {
-        const g = a.valor_gained;
-        // Доблесть, набранная за время АФК: + (рос даже в АФК), 0, или —.
-        let gainHtml = "", gainTip;
-        if (g == null) {
-          gainTip = "Доблесть за время АФК: нет данных.";
-        } else if (g > 0) {
-          gainHtml = ` · <b style="color:#7CFC00">+${g}</b>`;
-          gainTip = `Набрал(а) доблесть даже в АФК: +${g} ` +
-            `(с ${a.valor_start} до ${a.valor_now}).`;
-        } else {
-          gainHtml = ` · <b style="color:#888">0</b>`;
-          gainTip = `Доблесть за время АФК не росла (${a.valor_now}).`;
-        }
-        let tip = `АФК ${a.weeks} нед. (с ${a.since_week}). Норматив не ` +
-          `оценивается.\n${gainTip}`;
+        // Доблесть недельная (сброс по понедельникам), поэтому за время АФК
+        // суммируем недельные значения — кто фармил даже в АФК.
+        const total = a.valor_total || 0;
+        const gainHtml = total > 0
+          ? ` · <b style="color:#7CFC00">+${total}</b>`
+          : ` · <b style="color:#888">0</b>`;
+        let tip = `АФК ${a.weeks} нед. (с ${a.since_week}). Норматив не оценивается.\n`;
+        tip += total > 0
+          ? `Набрал(а) доблести за время АФК суммарно: ${total}.`
+          : `Доблесть за время АФК не набиралась.`;
         if (a.weekly && a.weekly.length) {
-          // Понедельно: сколько набрал ЗА эту неделю АФК (дельта) + накоплено.
-          tip += "\nНабор по неделям АФК:";
+          tip += "\nПо неделям (набрано за неделю):";
           for (const w of a.weekly) {
-            const dl = w.gained == null
-              ? "—"
-              : (w.gained > 0 ? `+${w.gained}` : `${w.gained}`);
-            tip += `\n  ${w.week}: ${dl}  (всего ${w.valor == null ? "—" : w.valor})`;
+            tip += `\n  ${w.week}: ${w.valor == null ? "—" : w.valor}`;
           }
         }
         return `<span class="norm-cell norm-afk" title="${esc(tip)}"
