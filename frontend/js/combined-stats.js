@@ -286,9 +286,12 @@
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
                 } else if (lbl === "Перевыполнение") {
+                  // Новая логика баланса: серия ПЕРЕВЫПОЛНЕНИЯ подряд (омакс)
+                  // × качество OFS (относительно потолка 189).
                   const parts = [];
-                  if (sc.over_avg) parts.push("сверх нормы " + sc.over_avg + "%");
-                  if (sc.max_streak) parts.push("серия " + sc.max_streak + " нед.");
+                  if (sc.over_streak_max) parts.push("макс. серия " + sc.over_streak_max + " нед. подряд");
+                  if (sc.over_streak_cur) parts.push("сейчас " + sc.over_streak_cur);
+                  if (sc.over_ofs_avg) parts.push("качество " + Math.round(sc.over_ofs_avg * 100) + "%");
                   if (parts.length) suffix = "  · " + parts.join(", ");
                 }
                 return `  ${lbl}: ${val} / ${max}${suffix}`;
