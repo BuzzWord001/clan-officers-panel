@@ -2857,21 +2857,67 @@ _TIER_RARITY = {
     "year1": "legendary", "year2": "legendary", "year3": "mythic",
     "year5": "mythic", "year10": "mythic",
 }
-# Пороги тиров (для подсчёта ВСЕХ открытых ачивок, не только высшей).
+# Пороги магнитуды (роль по лучшей единичной неделе, пик ×N).
 _MAG_THRESH = [(1.5, "over"), (2, "double"), (3, "triple"), (4, "record"),
                (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute")]
-_ACH_POINTS_K = 100   # мягкая кривая: ранние ачивки дают заметный прирост
+
+# ── Путь доблести: накопительный XP (НЕ сбрасывается, всегда можно докачать) ──
+# XP за неделю = набранная доблесть × бонус за серию перевыполнения, поэтому
+# НАСКОЛЬКО перевыполнил — напрямую влияет на прогресс (×7 даёт втрое больше
+# чем ×2). Роли открываются по порогам накопленного XP — как ноды в Diablo.
+#   (порог XP, ключ, редкость)
+_XP_LADDER = [
+    (50,     "xp1",  "common"),
+    (150,    "xp2",  "uncommon"),
+    (400,    "xp3",  "uncommon"),
+    (900,    "xp4",  "rare"),
+    (2000,   "xp5",  "rare"),
+    (4500,   "xp6",  "epic"),
+    (10000,  "xp7",  "epic"),
+    (22000,  "xp8",  "legendary"),
+    (48000,  "xp9",  "legendary"),
+    (100000, "xp10", "mythic"),
+    (220000, "xp11", "mythic"),
+]
+for _thr, _k, _r in _XP_LADDER:
+    _TIER_RARITY[_k] = _r   # XP-тиры тоже в карту редкости
+
+_ACH_POINTS_K = 120   # мягкая кривая: ранние ачивки дают заметный прирост
 
 
-def _achievement_points(peak: float, omax: int) -> int:
-    """Сумма очков редкости ВСЕХ открытых достижений (магнитуда + серии).
+def _xp_tier(total_xp: float):
+    """Ключ высшего открытого XP-тира по накопленному доблесть-XP."""
+    key = None
+    for thr, k, _r in _XP_LADDER:
+        if total_xp >= thr:
+            key = k
+        else:
+            break
+    return key
+
+
+def _xp_progress(total_xp: float) -> dict:
+    """Прогресс к следующему XP-тиру (для шкалы прокачки)."""
+    prev, cur, nxt = 0, None, None
+    for thr, k, _r in _XP_LADDER:
+        if total_xp >= thr:
+            cur, prev = k, thr
+        elif nxt is None:
+            nxt = thr
+    pct = 100.0 if nxt is None else (
+        round((total_xp - prev) / (nxt - prev) * 100, 1) if nxt > prev else 0.0)
+    return {"cur": cur, "next": nxt, "prev": prev, "pct": pct}
+
+
+def _achievement_points(peak: float, total_xp: float) -> int:
+    """Сумма очков редкости ВСЕХ открытых достижений (магнитуда + путь XP).
     Совпадает с «очки достижений» в Зале достижений."""
     pts = 0
     for mult, key in _MAG_THRESH:
         if peak >= mult:
             pts += _RARITY_PTS[_TIER_RARITY[key]]
-    for thr, key, _w in _STREAK_LADDER:
-        if omax >= thr:
+    for thr, key, _r in _XP_LADDER:
+        if total_xp >= thr:
             pts += _RARITY_PTS[_TIER_RARITY[key]]
     return pts
 
@@ -3952,7 +3998,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 #   (valor-norm)/(189-norm), 0..1.
                 "ostreak": 0, "omax": 0, "o_cur_ofs": 0.0, "omax_ofs": 0.0,
                 "o_cur_start": "", "omax_start": "", "omax_end": "",
-                "ofs_best": 0.0,
+                "ofs_best": 0.0, "xp": 0.0,
                 "pcts": []})   # % выполнения по неделям (для «формы» 4 нед)
             d["pcts"].append(pct)
             d["sum"] += pct
@@ -3992,6 +4038,10 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             else:
                 d["ostreak"] = 0
                 d["o_cur_ofs"] = 0.0
+            # ── Доблесть-XP (накопительно): набранная доблесть × бонус за
+            # серию перевыполнения. НАСКОЛЬКО перевыполнил — прямо влияет.
+            xp_mult = min(1 + 0.1 * (d["ostreak"] - 1), 2.0) if d["ostreak"] > 0 else 1.0
+            d["xp"] += max(r["valor"], 0) * xp_mult
             # серии перевыполнения: ≥1.5× (cs2, + геом.среднее серии) и ≥2× (cs3)
             if ratio >= 1.5:
                 if d["cs2"] == 0:
@@ -4206,10 +4256,16 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             d = compliance.get(m["nick_canon"])
             if d and d["n"]:
                 _recent = d["pcts"][-4:]
+                _xp = round(d["xp"])
+                _xpp = _xp_progress(_xp)
                 m["compliance"] = {
                     "avg_pct":     round(d["sum"] / d["n"], 1),
                     "recent_pct":  round(sum(_recent) / len(_recent), 1) if _recent else 0.0,
                     "recent_weeks": len(_recent),
+                    "total_xp":    _xp,
+                    "xp_next":     _xpp["next"],
+                    "xp_prev":     _xpp["prev"],
+                    "xp_pct":      _xpp["pct"],
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
                     "over_avg":    round(d["over_sum"] / d["n"], 1),
@@ -4235,15 +4291,14 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 }
             else:
                 m["compliance"] = None
-            # Достижения за доблесть: магнитуда (пик ×N) + серия перевыполнений
-            # (по макс. серии за всё время). Обе роли — в начало списка меток.
+            # Достижения за доблесть: магнитуда (пик ×N) + путь доблести
+            # (высший открытый XP-тир). Обе роли — в начало списка меток.
             _c = m["compliance"] or {}
             peak_key = _peak_tier(_c.get("peak_ratio", 0.0))
-            streak_key = _streak_tier(_c.get("over_streak_max", 0))
-            ach = peak_key  # совместимость со старым полем
+            xp_key = _xp_tier(_c.get("total_xp", 0))
             m["achievement"] = peak_key
-            m["streak_tag"] = streak_key
-            _ach_tags = [k for k in (peak_key, streak_key) if k]
+            m["xp_tag"] = xp_key
+            _ach_tags = [k for k in (peak_key, xp_key) if k]
             if _ach_tags:
                 m["tags"] = _ach_tags + [t for t in m["tags"] if t not in _ach_tags]
 
@@ -4306,7 +4361,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # считается и у иммунных.
             ach_points = _achievement_points(
                 (comp_obj or {}).get("peak_ratio", 0.0),
-                (comp_obj or {}).get("over_streak_max", 0))
+                (comp_obj or {}).get("total_xp", 0))
             ach_pts = _achievement_value(ach_points)
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
@@ -4352,8 +4407,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "overfulfill_max": VALOR_W_ACHIEVE,     # legacy
                 "over_streak_max": (comp_obj or {}).get("over_streak_max", 0) if comp_obj else 0,
                 "over_streak_cur": (comp_obj or {}).get("over_streak_cur", 0) if comp_obj else 0,
-                "over_ofs_avg":    (comp_obj or {}).get("over_ofs_avg", 0) if comp_obj else 0,
                 "peak_ratio":      (comp_obj or {}).get("peak_ratio", 0) if comp_obj else 0,
+                "total_xp":        (comp_obj or {}).get("total_xp", 0) if comp_obj else 0,
+                "xp_next":         (comp_obj or {}).get("xp_next") if comp_obj else None,
+                "xp_prev":         (comp_obj or {}).get("xp_prev", 0) if comp_obj else 0,
+                "xp_pct":          (comp_obj or {}).get("xp_pct", 0) if comp_obj else 0,
                 # прочее
                 "chat":            chat_pts,
                 "chat_max":        VALOR_W_CHAT,

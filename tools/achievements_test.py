@@ -46,26 +46,21 @@ for mult, key in [(1.5, "over"), (2, "double"), (3, "triple"), (4, "record"),
                   (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute")]:
     check(f"магнитуда: пик {mult} → {key}", db._peak_tier(mult) == key)
     check(f"магнитуда: пик {mult - 0.01:.2f} НЕ {key}", db._peak_tier(mult - 0.01) != key)
-for w, key in [(2, "streak2"), (3, "streak3"), (4, "month1"), (8, "month2"),
-               (12, "month3"), (26, "half1"), (52, "year1"), (104, "year2"),
-               (156, "year3"), (260, "year5"), (520, "year10")]:
-    check(f"серия: {w} нед → {key}", db._streak_tier(w) == key)
-    check(f"серия: {w - 1} нед НЕ {key}", db._streak_tier(w - 1) != key)
-# Монотонность веса тира серии (не убывает с длиной).
-_w = [db._streak_tier_weight(x) for x in (1, 2, 4, 12, 52, 520)]
-check("вес тира серии монотонно растёт", all(_w[i] <= _w[i + 1] for i in range(len(_w) - 1)), _w)
+# Пороги XP-пути (новая логика — НАСКОЛЬКО перевыполнил влияет на прогресс).
+for x, key in [(50, "xp1"), (150, "xp2"), (400, "xp3"), (900, "xp4"),
+               (2000, "xp5"), (4500, "xp6"), (10000, "xp7"), (22000, "xp8"),
+               (48000, "xp9"), (100000, "xp10"), (220000, "xp11")]:
+    check(f"XP: {x} → {key}", db._xp_tier(x) == key)
+    check(f"XP: {x - 1} НЕ {key}", db._xp_tier(x - 1) != key)
+check("XP: 0 → None", db._xp_tier(0) is None)
 
-# A: 5 недель подряд 2× нормы (40) → серия 5 → month1, пик double
+# A: 5 недель подряд 2× нормы (40, norm 20). XP = 40×(1+1.1+1.2+1.3+1.4)=240.
 for i, wk in enumerate(["2026-W10", "2026-W11", "2026-W12", "2026-W13", "2026-W14"]):
     snap(wk, [("A", 40), ("B", 40 if i != 2 else 15), ("C", 189 if i == 0 else 21)])
 cA, tA, sA = comp("A")
-check("A: over_streak_max=5", cA["over_streak_max"] == 5, cA["over_streak_max"])
-check("A: over_streak_cur=5", cA["over_streak_cur"] == 5, cA["over_streak_cur"])
-check("A: тир серии = month1", "month1" in tA, tA)
+check("A: total_xp ~ 240 (доблесть×серия)", abs(cA["total_xp"] - 240) <= 2, cA["total_xp"])
+check("A: XP-тир = xp2 (240 ≥ 150)", "xp2" in tA, tA)
 check("A: пик-тир = double", "double" in tA, tA)
-ofs_expected = round((40 - NORM) / (189 - NORM), 3)
-check("A: over_ofs_avg ~ OFS(40)", abs(cA["over_ofs_avg"] - ofs_expected) < 0.01,
-      cA["over_ofs_avg"])
 check("A: достижения (achievement) > 0", sA.get("achievement", 0) > 0, sA.get("achievement"))
 check("A: achievement = discipline (alias)", sA.get("achievement") == sA.get("discipline"))
 check("A: веса — достижения 45, доблесть 30",
@@ -85,19 +80,25 @@ check("A: total = сумма компонентов (в пределах 100)",
 cB, tB, sB = comp("B")
 check("B: over_streak_max=2 (прервалась на miss)", cB["over_streak_max"] == 2,
       cB["over_streak_max"])
-check("B: тир серии = streak2", "streak2" in tB, tB)
+check("B: XP-тир есть (xp1+)", any(t in tB for t in ("xp1", "xp2", "xp3")), tB)
 
-# C: одна неделя 189 (пик ~9.45) → overlord; OFS_best=1.0
+# C: одна неделя 189 (пик ~9.45) → titan; OFS_best=1.0
 cC, tC, sC = comp("C")
 check("C: пик-тир = titan", "titan" in tC, tC)
 check("C: over_ofs_best = 1.0", abs(cC["over_ofs_best"] - 1.0) < 0.001,
       cC["over_ofs_best"])
-check("C: discipline учитывает пик (>0)", sC["discipline"] > 0, sC["discipline"])
+check("C: достижения учитывают пик (>0)", sC["achievement"] > 0, sC["achievement"])
 
-# Гость тоже получает compliance со стриками (дерево доступно всем)
+# Гость тоже получает compliance с XP (дерево доступно всем)
 gm = db.valor_get_current(with_reg_notes=False)["members"]
-check("compliance со стриками есть у всех", all(
-    (m["compliance"] is None) or ("over_streak_max" in m["compliance"]) for m in gm))
+check("compliance с total_xp есть у всех", all(
+    (m["compliance"] is None) or ("total_xp" in m["compliance"]) for m in gm))
+
+# ── КЛЮЧЕВОЕ: магнитуда влияет на прогресс. C набрал 189 на W10 (×9.45),
+# A — ровно 40 (×2) каждую неделю. У C XP больше именно за счёт магнитуды,
+# хотя серии одинаковой длины. То есть «насколько перевыполнил» теперь влияет.
+check("магнитуда влияет на XP: C (был ×9.45) XP > A (ровно ×2)",
+      cC["total_xp"] > cA["total_xp"], (cC["total_xp"], cA["total_xp"]))
 
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])

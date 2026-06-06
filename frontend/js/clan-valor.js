@@ -285,6 +285,30 @@
     year10:     { label: "Десятилетие — Вечный", icon: "✵", color: "#fff0b0",
                   cls: "tag-ach", glow: 1,
                   tip: "10 лет перевыполнения подряд (520 недель) — легенда клана." },
+    // ── ПУТЬ ДОБЛЕСТИ — накопительный XP (доблесть × серия). Чем больше и
+    //    чаще перевыполняешь — тем быстрее открываются эти роли. ──
+    xp1:  { label: "Искра доблести", icon: "✦", cls: "tag-ach",
+            tip: "Накоплено 50 доблесть-XP." },
+    xp2:  { label: "Ратник", icon: "⚔", cls: "tag-ach",
+            tip: "Накоплено 150 доблесть-XP." },
+    xp3:  { label: "Закалённый", icon: "⛨", cls: "tag-ach",
+            tip: "Накоплено 400 доблесть-XP." },
+    xp4:  { label: "Сокрушитель", icon: "⚒", cls: "tag-ach",
+            tip: "Накоплено 900 доблесть-XP." },
+    xp5:  { label: "Гроза рейдов", icon: "⚡", cls: "tag-ach",
+            tip: "Накоплено 2 000 доблесть-XP." },
+    xp6:  { label: "Покоритель", icon: "♆", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 4 500 доблесть-XP." },
+    xp7:  { label: "Чемпион клана", icon: "✪", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 10 000 доблесть-XP." },
+    xp8:  { label: "Витязь легенд", icon: "♛", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 22 000 доблесть-XP." },
+    xp9:  { label: "Архонт доблести", icon: "✷", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 48 000 доблесть-XP." },
+    xp10: { label: "Аватар войны", icon: "☄", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 100 000 доблесть-XP." },
+    xp11: { label: "Бессмертный", icon: "✵", cls: "tag-ach", glow: 1,
+            tip: "Накоплено 220 000 доблесть-XP — вершина пути." },
     veteran:    { label: "Ветеран", icon: "★", color: "#ffd24a",
                   cls: "tag-veteran",
                   tip: "Был в первоначальном составе клана." },
@@ -303,10 +327,13 @@
                                "record", "triple", "double", "over"]);
   // Новая ветка — серии перевыполнения (от 2 недель до 10 лет).
   const STREAK_TAGS = new Set(["streak2", "streak3", "month1", "month2",
-    "month3", "half1", "year1", "year2", "year3", "year5", "year10"]);
+    "month3", "half1", "year1", "year2", "year3", "year5", "year10"]); // legacy
+  // Путь доблести — накопительный XP (текущая ветка прогресса).
+  const XP_TAGS = new Set(["xp1", "xp2", "xp3", "xp4", "xp5", "xp6",
+    "xp7", "xp8", "xp9", "xp10", "xp11"]);
   const AUTO_TAGS = new Set([
     "in_socials", "officer",
-    ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS]);
+    ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS, ...XP_TAGS]);
 
   // ── Система РЕДКОСТИ (как в MMO: WoW-палитра качества) + очки достижений ──
   const RARITY = {
@@ -323,11 +350,15 @@
     // Магнитуда (лучшая неделя ×N)
     over: "uncommon", double: "uncommon", triple: "rare", record: "rare",
     phenom: "epic", titan: "epic", overlord: "legendary", absolute: "mythic",
-    // Серии перевыполнения
+    // Серии перевыполнения (legacy, оставлены для совместимости)
     streak2: "common", streak3: "uncommon", month1: "uncommon",
     month2: "rare", month3: "rare", half1: "epic",
     year1: "legendary", year2: "legendary", year3: "mythic",
     year5: "mythic", year10: "mythic",
+    // Путь доблести (XP)
+    xp1: "common", xp2: "uncommon", xp3: "uncommon", xp4: "rare", xp5: "rare",
+    xp6: "epic", xp7: "epic", xp8: "legendary", xp9: "legendary",
+    xp10: "mythic", xp11: "mythic",
   };
   function tierRarity(key) { return RARITY[TIER_RARITY[key]] || null; }
   // Цвет роли: для тиров — по редкости, иначе — собственный из TAG_META.
@@ -438,10 +469,10 @@
         { title: "Ветка «Сила одного пика»",
           note: "За лучшую отдельную неделю — во сколько раз перекрыта норма. Достаточно один раз достичь порога; роль остаётся.",
           tags: ["over", "double", "triple", "record", "phenom", "titan", "overlord", "absolute"] },
-        { title: "Ветка «Серии перевыполнения»",
-          note: "За перевыполнение нормы несколько недель ПОДРЯД (от 2 недель до 10 лет). Открывается по самой длинной серии за всё время — один срыв не лишает уже открытых ступеней. Ценность каждого перевыполнения считается относительно потолка 189 доблести: чем ближе к потолку, тем дороже неделя.",
-          tags: ["streak2", "streak3", "month1", "month2", "month3", "half1",
-                 "year1", "year2", "year3", "year5", "year10"] },
+        { title: "Ветка «Путь доблести» (накопительный XP)",
+          note: "Каждую неделю начисляется доблесть-XP = НАБРАННАЯ доблесть × бонус за серию перевыполнения (до ×2). Поэтому НАСКОЛЬКО ты перевыполнил норму — напрямую ускоряет путь (×7 даёт втрое больше, чем ×2). XP копится и НЕ сгорает — всегда можно докачать до нужной роли.",
+          tags: ["xp1", "xp2", "xp3", "xp4", "xp5", "xp6",
+                 "xp7", "xp8", "xp9", "xp10", "xp11"] },
       ] },
     { group: "Статусные роли", icon: "🛡",
       gintro: "Не зависят от доблести — отмечают место человека в клане.",
@@ -1101,7 +1132,35 @@
       .ach-bar{height:8px;background:#0a1c0e;border:1px solid #1f5a26;border-radius:5px;
         overflow:hidden;margin:4px 0 2px}
       .ach-bar i{display:block;height:100%;background:linear-gradient(90deg,#2a6,#7CFC00)}
-      .ach-bar-lbl{color:#9fb;font-size:11px;margin-bottom:8px}`;
+      .ach-bar-lbl{color:#9fb;font-size:11px;margin-bottom:8px}
+      /* ── Diablo-стиль зала доблести ── */
+      .ach-diablo{background:linear-gradient(180deg,#0c0d12,#070809);border-color:#3a2f1a;
+        box-shadow:0 0 34px rgba(0,0,0,.6),inset 0 0 60px rgba(60,40,10,.10)}
+      .ach-diablo h3{color:#e8c879;text-shadow:0 0 10px rgba(232,200,121,.35);text-align:center}
+      /* Главная XP-шкала (как уровень) */
+      .ach-xpbar{margin:6px 0 12px;padding:9px 11px;border:1px solid #3a2f1a;border-radius:10px;
+        background:radial-gradient(circle at 50% 0,#16130c,#0a0a0d)}
+      .ach-xpbar-top{display:flex;justify-content:space-between;font-size:12px;color:#d8c79a;margin-bottom:6px}
+      .ach-xpbar-top b{color:#ffd866}
+      .ach-xpfill{height:12px;border-radius:7px;background:#0a0a0d;border:1px solid #4a3a1a;overflow:hidden}
+      .ach-xpfill i{display:block;height:100%;
+        background:linear-gradient(90deg,#7a5a18,#ffd866,#fff2c0);box-shadow:0 0 12px rgba(255,216,102,.5)}
+      /* Цепочка-ветка с путём */
+      .ach-chain{position:relative;margin:2px 0 6px}
+      .ach-path{position:absolute;left:24px;top:14px;bottom:14px;width:3px;background:#26262e;border-radius:2px;overflow:hidden}
+      .ach-path i{position:absolute;top:0;left:0;width:100%;opacity:.85;box-shadow:0 0 8px currentColor}
+      .ach-nodes{position:relative;z-index:1}
+      .ach-node{display:flex;align-items:center;gap:11px;padding:4px 6px;margin:2px 0;border-radius:8px}
+      .ach-node.next{background:#10140c;border:1px solid #3c7}
+      .ach-node.locked{opacity:.6}
+      .ach-medal{flex:0 0 34px;width:34px;height:34px;border-radius:50%;display:flex;
+        align-items:center;justify-content:center;font-size:16px;border:2px solid #444}
+      .ach-nm{flex:1;font-size:13px;color:#cfe;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+      .ach-rar{font-size:9.5px;border:1px solid #444;border-radius:4px;padding:0 5px;
+        text-transform:uppercase;letter-spacing:.4px}
+      .ach-req{color:#9a8f70;font-size:11px;white-space:nowrap}
+      .ach-pts{font-size:11px;color:#667;min-width:34px;text-align:right}
+      .ach-st{flex:0 0 20px;text-align:center;font-size:13px}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1285,36 +1344,45 @@
     { key: "phenom", mult: 5.5 }, { key: "titan", mult: 7 },
     { key: "overlord", mult: 9.5 }, { key: "absolute", mult: 13 },
   ];
-  const STREAK_LADDER_F = [   // серии перевыполнения подряд (недель)
-    { key: "streak2", w: 2 }, { key: "streak3", w: 3 }, { key: "month1", w: 4 },
-    { key: "month2", w: 8 }, { key: "month3", w: 12 }, { key: "half1", w: 26 },
-    { key: "year1", w: 52 }, { key: "year2", w: 104 }, { key: "year3", w: 156 },
-    { key: "year5", w: 260 }, { key: "year10", w: 520 },
+  // Путь доблести — накопительный XP (зеркало бэкенда _XP_LADDER).
+  const XP_LADDER_F = [
+    { key: "xp1", xp: 50 }, { key: "xp2", xp: 150 }, { key: "xp3", xp: 400 },
+    { key: "xp4", xp: 900 }, { key: "xp5", xp: 2000 }, { key: "xp6", xp: 4500 },
+    { key: "xp7", xp: 10000 }, { key: "xp8", xp: 22000 }, { key: "xp9", xp: 48000 },
+    { key: "xp10", xp: 100000 }, { key: "xp11", xp: 220000 },
   ];
+  const fmtN = (n) => Number(n).toLocaleString("ru-RU");
 
-  function medalStyle(col, lit) {
-    return lit
-      ? `color:${col};border-color:${col};` +
-        `background:radial-gradient(circle, ${col}33, #0a0f0a 72%);box-shadow:0 0 11px ${col}66;`
-      : `color:#777;border-color:#3a3a3a;background:#0c120c;filter:grayscale(1);opacity:.85;`;
-  }
-  // Карточка-достижение с медальоном по редкости (MMO-стиль).
-  function achRow(key, reqText, lit, isNext) {
+  // Узел-достижение в Diablo-стиле (медальон по редкости + статус).
+  function achNode(key, reqText, lit, isNext) {
     const meta = TAG_META[key] || { label: key, icon: "·" };
     const r = tierRarity(key);
     const col = r ? r.color : ((TAG_META[key] || {}).color || "#9fb");
     const cls = lit ? "lit" : (isNext ? "next" : "locked");
-    const st = lit ? "✓" : (isNext ? "→" : "🔒");
+    const st = lit ? "✓" : (isNext ? "▶" : "🔒");
+    const medal = lit
+      ? `color:${col};border-color:${col};background:radial-gradient(circle,${col}3a,#0c0d10 72%);box-shadow:0 0 12px ${col}77;`
+      : (isNext
+        ? `color:${col};border-color:${col};background:#0c1410;box-shadow:0 0 8px ${col}55;`
+        : `color:#6a6a6a;border-color:#39393f;background:#101015;filter:grayscale(1);opacity:.8;`);
     const rbadge = r
       ? `<span class="ach-rar" style="color:${lit ? col : '#888'};border-color:${lit ? col : '#444'}">${r.name}</span>`
       : "";
     const pts = r ? `<span class="ach-pts" style="${lit ? 'color:#ffd866' : ''}">${lit ? '+' : ''}${r.pts}</span>` : "";
-    return `<div class="ach-row ${cls}">
-      <span class="ach-medal" style="${medalStyle(col, lit)}">${lit ? meta.icon : "🔒"}</span>
-      <span class="ach-nm" style="${lit ? "color:" + col : ""}">${esc(meta.label)}${rbadge}</span>
+    return `<div class="ach-node ${cls}">
+      <span class="ach-medal" style="${medal}">${lit ? meta.icon : (isNext ? meta.icon : "🔒")}</span>
+      <span class="ach-nm" style="${lit ? "color:" + col : (isNext ? "color:#cfe" : "")}">${esc(meta.label)}${rbadge}</span>
       <span class="ach-req">${esc(reqText)}</span>
       ${pts}
       <span class="ach-st">${st}</span></div>`;
+  }
+  // Цепочка узлов с «путём» (как ветка скилл-дерева Diablo): вертикальная
+  // линия, заполненная до достигнутого прогресса цветом ветки.
+  function achChain(rowsHtml, litFrac, col) {
+    const pct = Math.max(0, Math.min(100, Math.round(litFrac * 100)));
+    return `<div class="ach-chain">
+      <div class="ach-path"><i style="height:${pct}%;background:linear-gradient(${col},${col})"></i></div>
+      <div class="ach-nodes">${rowsHtml}</div></div>`;
   }
 
   function openAchievements(m) {
@@ -1322,22 +1390,49 @@
     closeEditModal();
     const c = m.compliance || {};
     const peak = c.peak_ratio || 0;
-    const omax = c.over_streak_max || 0;
-    const ocur = c.over_streak_cur || 0;
+    const xp = c.total_xp || 0;
     const score = m.score || {};
-
-    // Конкретное число доблести для каждой роли = ×N × норму текущей недели.
     const norm = (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
-    const magTiers = MAG_LADDER.map(t => ({
-      key: t.key, lit: peak >= t.mult, w: 0, mult: t.mult,
-      req: norm
-        ? `×${t.mult} · ${Math.ceil(t.mult * norm)} доблести`
-        : `≥ ×${t.mult} от нормы`,
-    }));
-    const strTiers = STREAK_LADDER_F.map(t => ({ key: t.key, lit: omax >= t.w, req: `${t.w} нед. подряд`, w: t.w }));
 
-    // Сводка: открыто/всего, очки достижений, высшая редкость.
-    const allTiers = magTiers.concat(strTiers);
+    // ── Ветка «Путь доблести» (накопительный XP) ──
+    const xpTiers = XP_LADDER_F.map(t => ({ key: t.key, xp: t.xp, lit: xp >= t.xp }));
+    let nextXp = null;
+    const xpUnlocked = xpTiers.filter(t => t.lit).length;
+    const xpRows = xpTiers.map(t => {
+      const isNext = !t.lit && !nextXp; if (isNext) nextXp = t;
+      return achNode(t.key, `${fmtN(t.xp)} XP`, t.lit, isNext);
+    }).join("");
+    const xpFrac = (xpUnlocked + (nextXp ? (c.xp_pct || 0) / 100 : 0)) / xpTiers.length;
+    const xpChain = achChain(xpRows, xpFrac, "#57d982");
+
+    // XP-шкала прокачки (главный прогресс-бар, как уровень в Diablo).
+    let xpbar;
+    if (nextXp) {
+      const left = nextXp.xp - xp;
+      const nm = (TAG_META[nextXp.key] || {}).label || nextXp.key;
+      xpbar = `<div class="ach-xpbar">
+        <div class="ach-xpbar-top"><span>⚜ Доблесть-XP: <b>${fmtN(xp)}</b></span>
+          <span>до «${esc(nm)}»: <b>${fmtN(left)}</b> XP</span></div>
+        <div class="ach-xpfill"><i style="width:${c.xp_pct || 0}%"></i></div></div>`;
+    } else {
+      xpbar = `<div class="ach-xpbar"><div class="ach-xpbar-top">
+        <span>⚜ Доблесть-XP: <b>${fmtN(xp)}</b></span><span>путь пройден — Бессмертный 👑</span>
+        </div><div class="ach-xpfill"><i style="width:100%"></i></div></div>`;
+    }
+
+    // ── Ветка «Сила» (магнитуда, лучшая неделя ×N) ──
+    const magTiers = MAG_LADDER.map(t => ({ key: t.key, mult: t.mult, lit: peak >= t.mult }));
+    let magNext = false;
+    const magUnlocked = magTiers.filter(t => t.lit).length;
+    const magRows = magTiers.map(t => {
+      const isNext = !t.lit && !magNext; if (isNext) magNext = true;
+      const req = norm ? `×${t.mult} · ${fmtN(Math.ceil(t.mult * norm))} доблести` : `×${t.mult} от нормы`;
+      return achNode(t.key, req, t.lit, isNext);
+    }).join("");
+    const magChain = achChain(magRows, magUnlocked / magTiers.length, "#ffc83c");
+
+    // Сводка.
+    const allTiers = xpTiers.concat(magTiers);
     let unlocked = 0, pts = 0, topRarIdx = -1;
     allTiers.forEach(t => {
       if (!t.lit) return;
@@ -1347,42 +1442,13 @@
     });
     const topRar = topRarIdx >= 0 ? RARITY[RARITY_ORDER[topRarIdx]] : null;
 
-    let magNext = false;
-    const magRows = magTiers.map(t => {
-      const isNext = !t.lit && !magNext; if (isNext) magNext = true;
-      return achRow(t.key, t.req, t.lit, isNext);
-    }).join("");
-
-    let nextStreak = null;
-    const strRows = strTiers.map(t => {
-      const isNext = !t.lit && !nextStreak; if (isNext) nextStreak = t;
-      return achRow(t.key, t.req, t.lit, isNext);
-    }).join("");
-
-    let progressHtml;
-    if (nextStreak) {
-      const pct = Math.min(100, Math.round(omax / nextStreak.w * 100));
-      const left = nextStreak.w - omax;
-      const nm = (TAG_META[nextStreak.key] || {}).label || nextStreak.key;
-      progressHtml = `<div class="ach-bar"><i style="width:${pct}%"></i></div>
-        <div class="ach-bar-lbl">До «${esc(nm)}»: ещё ${left} нед. подряд
-        (лучшая серия ${omax}, сейчас подряд ${ocur}).</div>`;
-    } else {
-      progressHtml = `<div class="ach-bar-lbl">Все серии открыты — легенда клана! 👑</div>`;
-    }
-
     const others = ["veteran", "officer", "in_socials"].map(k => {
       const has = (m.tags || []).indexOf(k) >= 0;
-      const meta = TAG_META[k] || { label: k, icon: "·", color: "#9fb" };
-      return `<div class="ach-row ${has ? "lit" : "locked"}">
-        <span class="ach-medal" style="${medalStyle(meta.color, has)}">${has ? meta.icon : "🔒"}</span>
-        <span class="ach-nm" style="${has ? "color:" + meta.color : ""}">${esc(meta.label)}</span>
-        <span class="ach-req">${has ? "получена" : "не получена"}</span>
-        <span class="ach-st">${has ? "✓" : "🔒"}</span></div>`;
+      return achNode(k, has ? "получена" : "не получена", has, false);
     }).join("");
 
     const rarLegend = RARITY_ORDER.map(k =>
-      `<span class="ach-leg" style="color:${RARITY[k].color}">● ${RARITY[k].name} <small>${RARITY[k].pts}</small></span>`).join("");
+      `<span class="ach-leg" style="color:${RARITY[k].color}">● ${RARITY[k].name}</span>`).join("");
 
     const header = `<div class="ach-hdr">
       <div class="ach-hstat"><b>${unlocked}<small>/${allTiers.length}</small></b><span>открыто</span></div>
@@ -1395,16 +1461,16 @@
     ov.id = "vedit-overlay";
     ov.className = "vedit-overlay";
     ov.innerHTML = `
-      <div class="vedit-card wide ach-card" role="dialog" aria-modal="true">
-        <h3>🏆 Зал достижений · ${esc(m.nick)}</h3>
+      <div class="vedit-card wide ach-card ach-diablo" role="dialog" aria-modal="true">
+        <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
         ${header}
+        ${xpbar}
         <div class="ach-legend">${rarLegend}</div>
-        <div class="ach-sub">✓ открыто (навсегда) · → следующая цель · 🔒 закрыто. Очки достижений растут с редкостью.</div>
-        <div class="ach-sec-h">⚔ Магнитуда · сила лучшей недели${norm ? ` (норма недели: ${norm} доблести)` : ""}</div>
-        ${magRows}
-        <div class="ach-sec-h">🔥 Серии перевыполнения · недель подряд (навсегда)</div>
-        ${progressHtml}
-        ${strRows}
+        <div class="ach-sub">✓ открыто (навсегда) · ▶ следующая цель · 🔒 закрыто. Чем больше доблести набираешь — тем быстрее растёт путь.</div>
+        <div class="ach-sec-h">⚜ Путь доблести · накопительный опыт (XP = доблесть × серия)</div>
+        ${xpChain}
+        <div class="ach-sec-h">⚔ Сила · мощь лучшей недели (пик ×N от нормы)</div>
+        ${magChain}
         <div class="ach-sec-h">🎖 Статусные роли</div>
         ${others}
         <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
