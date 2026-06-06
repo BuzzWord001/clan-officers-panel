@@ -2687,13 +2687,23 @@ def _afk_streak(history):
     valor_start = history[i][2] if i >= 0 else streak[0][2]
     gained = (valor_now - valor_start
               if valor_now is not None and valor_start is not None else None)
+    # Понедельная история: сколько доблести набрано ИМЕННО за каждую неделю
+    # АФК (дельта к предыдущей неделе). Для первой недели база — доблесть в
+    # неделю ПЕРЕД уходом в АФК; если такой недели нет (человек появился уже
+    # в АФК) — gained=None (не от чего считать).
+    weekly = []
+    prev = history[i][2] if i >= 0 else None
+    for (w, _a, v) in streak:
+        gw = (v - prev) if (v is not None and prev is not None) else None
+        weekly.append({"week": w, "valor": v, "gained": gw})
+        prev = v
     return {
         "weeks":        len(streak),
         "since_week":   since_week,
         "valor_start":  valor_start,
         "valor_now":    valor_now,
         "valor_gained": gained,
-        "weekly":       [{"week": w, "valor": v} for (w, _a, v) in streak],
+        "weekly":       weekly,
     }
 
 

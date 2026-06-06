@@ -543,9 +543,15 @@
         }
         let tip = `АФК ${a.weeks} нед. (с ${a.since_week}). Норматив не ` +
           `оценивается.\n${gainTip}`;
-        if (a.weekly && a.weekly.length > 1) {
-          tip += "\nПо неделям: " +
-            a.weekly.map(w => `${w.week}: ${w.valor == null ? "—" : w.valor}`).join(", ");
+        if (a.weekly && a.weekly.length) {
+          // Понедельно: сколько набрал ЗА эту неделю АФК (дельта) + накоплено.
+          tip += "\nНабор по неделям АФК:";
+          for (const w of a.weekly) {
+            const dl = w.gained == null
+              ? "—"
+              : (w.gained > 0 ? `+${w.gained}` : `${w.gained}`);
+            tip += `\n  ${w.week}: ${dl}  (всего ${w.valor == null ? "—" : w.valor})`;
+          }
         }
         return `<span class="norm-cell norm-afk" title="${esc(tip)}"
           >АФК · ${a.weeks} нед.${gainHtml}</span>`;
