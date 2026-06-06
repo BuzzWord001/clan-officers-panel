@@ -548,42 +548,31 @@
   function renderScore(s) {
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
-    const officerLine = s.top_rank
-      ? `• офицер: ${s.officer} / 14 (макс: ${s.top_rank}` +
-        (s.cur_rank && s.cur_rank !== s.top_rank
-          ? `, сейчас: ${s.cur_rank}` : ``) + `)`
-      : `• офицер: 0 / 14`;
-    // Иммунные — доблесть не оценивается, score нормализован к /100
+    // Порядок по ценности: достижения ≥ доблесть ≫ ветеран > офицер > соцсети > чаты.
+    const achLine = `• достижения: ${s.achievement ?? 0} / ${s.achievement_max ?? 40}` +
+      (s.achievement_points ? `  (${s.achievement_points} очк. достижений)` : "");
     const compLine = s.compliance == null
       ? `• доблесть: не оценивается (иммунитет)`
-      : `• доблесть: ${s.compliance} / 60`;
-    const disc = s.discipline || 0;
-    const ofMax = s.overfulfill_max || 20;
+      : `• доблесть: ${s.compliance} / ${s.compliance_max ?? 35}`;
+    const officerLine = s.top_rank
+      ? `• офицер: ${s.officer} / ${s.officer_max ?? 8} (макс: ${s.top_rank}` +
+        (s.cur_rank && s.cur_rank !== s.top_rank
+          ? `, сейчас: ${s.cur_rank}` : ``) + `)`
+      : `• офицер: ${s.officer ?? 0} / ${s.officer_max ?? 8}`;
     const headLine = s.immunity_adjusted
       ? `Итог: ~${s.total} / 100 (норм. из ${s.raw_total} / ${s.max})\n` +
-         `Иммунитет: доблесть исключена из оценки.\n`
-      : disc > 0
-        ? `Итог: ${s.total} / 100  (база ${s.raw_total} + перевыполнение ${disc})\n`
-        : `Итог: ${s.total} / 100\n`;
-    // Порядок — по ценности: доблесть ≫ ПЕРЕВЫПОЛНЕНИЕ > ветеран > офицер >
-    // соцсети ≈ чаты. Перевыполнение — второй по значимости (бонус сверх 100).
-    const discLine = disc > 0
-      ? `• перевыполнение: +${disc} / ${ofMax} (сверх нормы ` +
-        `${Math.round(s.over_avg || 0)}% · серия ${s.max_streak || 0} нед.)\n`
-      : "";
+         `Иммунитет новичка: доблесть текущей недели исключена.\n`
+      : `Итог: ${s.total} / 100\n`;
     const tip = headLine
+      + achLine + "\n"
       + compLine + "\n"
-      + discLine
-      + `• ветеран: ${s.veteran} / 16\n`
+      + `• ветеран: ${s.veteran} / ${s.veteran_max ?? 12}\n`
       + officerLine + "\n"
-      + `• соцсети: ${s.socials} / 5\n`
-      + `• чаты: ${s.chat} / 5 (${s.chat_msgs} сообщ.)`;
-    // Иммунные — «*»; выдающиеся (>100 за счёт перевыполнения) — «★».
+      + `• соцсети: ${s.socials} / ${s.socials_max ?? 3}\n`
+      + `• чаты: ${s.chat} / ${s.chat_max ?? 2} (${s.chat_msgs} сообщ.)`;
     const star = s.immunity_adjusted
-      ? `<small class="imm-mark" title="скор нормализован — без компонента доблести">*</small>`
-      : (!s.immunity_adjusted && s.total > 100)
-        ? `<small class="disc-mark" title="перевыполнение доблести сверх нормы">★</small>`
-        : "";
+      ? `<small class="imm-mark" title="скор нормализован — без доблести текущей недели">*</small>`
+      : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
       ><b>${s.total}</b>${star}<small style="opacity:0.7">/100</small></span>`;
   }

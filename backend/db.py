@@ -2829,20 +2829,59 @@ def _rank_frac(rank: str) -> float:
     return _rank_score(rank) / _RANK_SCORE_MAX
 
 
-# ── Веса финального score «Ценность для клана» ──
-# Базовая раскладка (сумма = 100) + бонус перевыполнения сверху.
+# ── Веса финального score «Ценность для клана» (пересчёт 2026-06-07) ──
+# Сумма = 100. Мотивируем набирать доблесть и достижения — это самое ценное.
 # Значимость по убыванию:
-#   1) доблесть (сколько набрал) — главный фактор;
-#   2) ПЕРЕВЫПОЛНЕНИЕ доблести — второй по значимости (бонус сверх 100),
-#      ВАЖНЕЕ ветерана; складывается из самого перевыполнения (overshoot),
-#      серии выполнений подряд и безупречной истории;
-#   3) ветеран, 4) офицер, 5) соцсети ≈ чаты.
-VALOR_W_DOBLEST     = 60   # compliance.avg_pct, главный фактор
-VALOR_W_OVERFULFILL = 20   # перевыполнение (бонус сверх 100) — #2, > ветерана
-VALOR_W_VETERAN     = 16   # был в первоначальном списке клана
-VALOR_W_OFFICER     = 14   # макс; смесь высшего поста (70%) и текущего (30%)
-VALOR_W_SOCIALS     = 5    # присутствие в соцсетях (2.5 VK + 2.5 TG)
-VALOR_W_CHAT        = 5    # активность в чатах
+#   1) ДОСТИЖЕНИЯ за доблесть — самый ценный фактор (40);
+#   2) ДОБЛЕСТЬ (средн. % выполнения нормы) — рядом (35);
+#      вместе доблесть+достижения = 75% ценности, явно доминируют;
+#   3) ветеран (12); 4) офицер (8, прошлые + текущий пост);
+#   5) соцсети (3); 6) общительность/чаты (2).
+VALOR_W_ACHIEVE     = 40   # достижения за доблесть — ГЛАВНЫЙ фактор
+VALOR_W_DOBLEST     = 35   # compliance.avg_pct — сколько набрано нормы
+VALOR_W_VETERAN     = 12   # был в первоначальном составе клана
+VALOR_W_OFFICER     = 8    # высший пост за всё время (70%) + текущий (30%)
+VALOR_W_SOCIALS     = 3    # присутствие в соцсетях (1.5 VK + 1.5 TG)
+VALOR_W_CHAT        = 2    # активность в чатах
+VALOR_W_OVERFULFILL = VALOR_W_ACHIEVE  # legacy-алиас (старое имя поля)
+
+# Очки достижений по редкости тира (зеркало фронтовой RARITY) — из них
+# складывается «achievement score» игрока, который и даёт компонент ценности.
+_RARITY_PTS = {"common": 5, "uncommon": 10, "rare": 25, "epic": 50,
+               "legendary": 100, "mythic": 250}
+_TIER_RARITY = {
+    "over": "uncommon", "double": "uncommon", "triple": "rare", "record": "rare",
+    "phenom": "epic", "titan": "epic", "overlord": "legendary", "absolute": "mythic",
+    "streak2": "common", "streak3": "uncommon", "month1": "uncommon",
+    "month2": "rare", "month3": "rare", "half1": "epic",
+    "year1": "legendary", "year2": "legendary", "year3": "mythic",
+    "year5": "mythic", "year10": "mythic",
+}
+# Пороги тиров (для подсчёта ВСЕХ открытых ачивок, не только высшей).
+_MAG_THRESH = [(1.5, "over"), (2, "double"), (3, "triple"), (4, "record"),
+               (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute")]
+_ACH_POINTS_K = 100   # мягкая кривая: ранние ачивки дают заметный прирост
+
+
+def _achievement_points(peak: float, omax: int) -> int:
+    """Сумма очков редкости ВСЕХ открытых достижений (магнитуда + серии).
+    Совпадает с «очки достижений» в Зале достижений."""
+    pts = 0
+    for mult, key in _MAG_THRESH:
+        if peak >= mult:
+            pts += _RARITY_PTS[_TIER_RARITY[key]]
+    for thr, key, _w in _STREAK_LADDER:
+        if omax >= thr:
+            pts += _RARITY_PTS[_TIER_RARITY[key]]
+    return pts
+
+
+def _achievement_value(points: int) -> float:
+    """Очки достижений → компонент ценности 0..VALOR_W_ACHIEVE. Кривая с
+    насыщением: ранние ачивки заметно поднимают ценность, топ — асимптота."""
+    if points <= 0:
+        return 0.0
+    return round(VALOR_W_ACHIEVE * points / (points + _ACH_POINTS_K), 1)
 
 
 def valor_top_rank_per_canon() -> dict[str, str]:
@@ -4249,11 +4288,18 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             is_immune_now = (immunity and
                              immunity["status"] in ("active", "extended"))
             if is_immune_now:
-                comp_pts = None  # «не оценивается»
+                comp_pts = None  # текущая неделя не оценивается
             elif comp_obj:
                 comp_pts = round(comp_obj["avg_pct"] * VALOR_W_DOBLEST / 100, 1)
             else:
                 comp_pts = 0.0
+            # ── ДОСТИЖЕНИЯ — главный фактор. Сумма очков редкости открытых
+            # ачивок (магнитуда + серии) → кривая с насыщением. Историческое,
+            # считается и у иммунных.
+            ach_points = _achievement_points(
+                (comp_obj or {}).get("peak_ratio", 0.0),
+                (comp_obj or {}).get("over_streak_max", 0))
+            ach_pts = _achievement_value(ach_points)
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
             soc_pts = 0.0
@@ -4267,54 +4313,46 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             officer_pts = round(
                 VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
                                    + 0.3 * _rank_frac(m.get("rank", ""))), 1)
-            # ── Бонус ПЕРЕВЫПОЛНЕНИЯ доблести (сверх базовых 100) ──
-            # Второй по значимости фактор ценности (потолок 20 > ветеран 16).
-            # Доминирует само перевыполнение (overshoot), плюс надбавки за
-            # стабильность:
-            #   перевыполнение: до +12 (по среднему % сверх нормы, overshoot
-            #                   капится на 100% = ×2, поэтому over_avg∈[0,100]),
-            #   серия выполнений подряд: до +5 (max_streak),
-            #   безупречная история: +3 (все недели выполнены, при ≥3 нед.).
-            # ── Ценность перевыполнения (бонус сверх 100, ≤ VALOR_W_OVERFULFILL).
-            # Серия перевыполнений (вес тира по длине × качество OFS) + бонус
-            # за лучший единичный пик (OFS лучшей недели). Всё оценивается
-            # относительно потолка 189, чтобы было честно при любой норме.
-            discipline = 0.0
-            if comp_obj and not is_immune_now:
-                tw = _streak_tier_weight(comp_obj.get("over_streak_max", 0))
-                streak_component = tw * (0.5 + 0.5 * comp_obj.get("over_ofs_avg", 0.0))
-                peak_component = comp_obj.get("over_ofs_best", 0.0) * 5.0
-                discipline = round(min(streak_component + peak_component,
-                                       VALOR_W_OVERFULFILL), 1)
-            # Сумма доступных компонентов
-            other_pts = chat_pts + soc_pts + veteran_pts + officer_pts
+            # ── Итог: всё в пределах 100. Доблесть+достижения доминируют (75) ──
+            other_pts = ach_pts + chat_pts + soc_pts + veteran_pts + officer_pts
             if is_immune_now:
-                max_pts = 100 - VALOR_W_DOBLEST  # без доблести
+                # Доблесть текущей недели исключена → нормализуем к 100.
+                # Достижения (историческое) остаются в зачёте.
+                max_pts = 100 - VALOR_W_DOBLEST
                 raw_total = round(other_pts, 1)
-                # Нормализуем к 100 чтобы было сопоставимо с обычными
-                total = round(raw_total / max_pts * 100, 1)
+                total = round(raw_total / max_pts * 100, 1) if max_pts else 0.0
             else:
                 max_pts = 100
                 raw_total = round((comp_pts or 0) + other_pts, 1)
-                total = round(raw_total + discipline, 1)  # дисциплина сверх 100
+                total = raw_total
             m["score"] = {
                 "total":           total,
                 "raw_total":       raw_total,
                 "max":             max_pts,
-                "discipline":      discipline,
-                "overfulfill_max": VALOR_W_OVERFULFILL,
-                "over_avg":        (comp_obj or {}).get("over_avg", 0) if comp_obj else 0,
-                "max_streak":      (comp_obj or {}).get("max_streak", 0) if comp_obj else 0,
+                "immunity_adjusted": is_immune_now,
+                # доблесть
+                "compliance":      comp_pts,            # None если иммун
+                "compliance_max":  VALOR_W_DOBLEST,
+                # достижения — главный фактор
+                "achievement":     ach_pts,
+                "achievement_max": VALOR_W_ACHIEVE,
+                "achievement_points": ach_points,
+                "discipline":      ach_pts,             # legacy-алиас
+                "overfulfill_max": VALOR_W_ACHIEVE,     # legacy
                 "over_streak_max": (comp_obj or {}).get("over_streak_max", 0) if comp_obj else 0,
                 "over_streak_cur": (comp_obj or {}).get("over_streak_cur", 0) if comp_obj else 0,
                 "over_ofs_avg":    (comp_obj or {}).get("over_ofs_avg", 0) if comp_obj else 0,
-                "immunity_adjusted": is_immune_now,
-                "compliance":      comp_pts,  # None если иммун
+                "peak_ratio":      (comp_obj or {}).get("peak_ratio", 0) if comp_obj else 0,
+                # прочее
                 "chat":            chat_pts,
+                "chat_max":        VALOR_W_CHAT,
                 "chat_msgs":       msgs,
                 "socials":         soc_pts,
+                "socials_max":     VALOR_W_SOCIALS,
                 "veteran":         veteran_pts,
+                "veteran_max":     VALOR_W_VETERAN,
                 "officer":         officer_pts,
+                "officer_max":     VALOR_W_OFFICER,
                 "top_rank":        top_rank or None,
                 "cur_rank":        m.get("rank") or None,
             }

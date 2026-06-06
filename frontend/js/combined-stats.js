@@ -18,6 +18,7 @@
           <h2>Совмещённая ценность для клана</h2>
           <select id="cs-sort">
             <option value="total">сортировка: суммарно</option>
+            <option value="ach">по достижениям</option>
             <option value="comp">по доблести</option>
             <option value="chat">по активности в чатах</option>
             <option value="soc">по соцсетям</option>
@@ -136,12 +137,12 @@
       <span>средняя ценность: <b style="color:var(--accent)">${avgReg}/100</b></span>
       ${afkChip}
       ${immChip}
+      <span style="color:#ffc83c">▌ достижения (главное)</span>
       <span style="color:#88ff88">▌ доблесть</span>
-      <span style="color:#69b7e4">▌ чаты</span>
-      <span style="color:#b070dc">▌ соцсети</span>
-      <span style="color:#ffe070">▌ ветеран</span>
+      <span style="color:#d2aa5a">▌ ветеран</span>
       <span style="color:#ff9a44">▌ офицер</span>
-      <span style="color:#f078aa">▌ перевыполнение (бонус сверх 100, #2)</span>
+      <span style="color:#b070dc">▌ соцсети</span>
+      <span style="color:#69b7e4">▌ чаты</span>
     `;
 
     // Чем больше людей — тем выше холст. ~24px на строку — комфортно
@@ -170,19 +171,37 @@
         labels: items.map(m => m._is_sep
           ? (SEP_LABELS[m._sep_kind] || SEP_LABELS.immune)
           : (m.nick + (m.true_name ? " · " + m.true_name : ""))),
+        // Порядок по ценности: доблесть+достижения (вместе, доминируют) →
+        // ветеран → офицер → соцсети → чаты. Достижения — самый ценный фактор.
         datasets: [
           {
             label: "Доблесть",
             data: items.map(m => m.score.compliance ?? 0),
-            backgroundColor: "rgba(80,220,80,0.75)",
-            borderColor: "rgba(80,220,80,0.95)",
+            backgroundColor: "rgba(80,220,80,0.78)",
+            borderColor: "rgba(80,220,80,0.98)",
             borderWidth: 1,
           },
           {
-            label: "Чаты",
-            data: items.map(m => m.score.chat ?? 0),
-            backgroundColor: "rgba(105,183,228,0.75)",
-            borderColor: "rgba(105,183,228,0.95)",
+            // ДОСТИЖЕНИЯ — главный фактор ценности. Показаны отдельным
+            // сегментом рядом с доблестью, чтобы видеть их долю.
+            label: "Достижения",
+            data: items.map(m => m.score.achievement ?? 0),
+            backgroundColor: "rgba(255,200,60,0.88)",
+            borderColor: "rgba(255,200,60,1)",
+            borderWidth: 1,
+          },
+          {
+            label: "Ветеран",
+            data: items.map(m => m.score.veteran ?? 0),
+            backgroundColor: "rgba(210,170,90,0.78)",
+            borderColor: "rgba(210,170,90,0.98)",
+            borderWidth: 1,
+          },
+          {
+            label: "Офицер",
+            data: items.map(m => m.score.officer ?? 0),
+            backgroundColor: "rgba(255,154,68,0.80)",
+            borderColor: "rgba(255,154,68,1)",
             borderWidth: 1,
           },
           {
@@ -193,27 +212,10 @@
             borderWidth: 1,
           },
           {
-            label: "Ветеран",
-            data: items.map(m => m.score.veteran ?? 0),
-            backgroundColor: "rgba(255,224,112,0.75)",
-            borderColor: "rgba(255,224,112,0.95)",
-            borderWidth: 1,
-          },
-          {
-            label: "Офицер",
-            data: items.map(m => m.score.officer ?? 0),
-            backgroundColor: "rgba(255,154,68,0.78)",
-            borderColor: "rgba(255,154,68,0.98)",
-            borderWidth: 1,
-          },
-          {
-            // Перевыполнение доблести (overshoot + серии + безупречность).
-            // Второй по значимости фактор (потолок 20 > ветеран). Идёт сверх
-            // базовых 100 — поэтому именно он «вытягивает» Ценность выше 100.
-            label: "Перевыполнение",
-            data: items.map(m => m.score.discipline ?? 0),
-            backgroundColor: "rgba(240,120,170,0.80)",
-            borderColor: "rgba(240,120,170,1)",
+            label: "Чаты",
+            data: items.map(m => m.score.chat ?? 0),
+            backgroundColor: "rgba(105,183,228,0.75)",
+            borderColor: "rgba(105,183,228,0.95)",
             borderWidth: 1,
           },
         ],
@@ -270,8 +272,8 @@
               // Для «Офицер» дописываем top_rank, для «Чаты» — кол-во сообщ.
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
-                const MAX = {"Доблесть":60,"Чаты":5,"Соцсети":5,
-                              "Ветеран":16,"Офицер":14,"Перевыполнение":20};
+                const MAX = {"Достижения":40,"Доблесть":35,"Ветеран":12,
+                              "Офицер":8,"Соцсети":3,"Чаты":2};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
                 const max = MAX[lbl] || 0;
@@ -285,13 +287,13 @@
                   suffix = "  · " + sc.top_rank;
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
-                } else if (lbl === "Перевыполнение") {
-                  // Новая логика баланса: серия ПЕРЕВЫПОЛНЕНИЯ подряд (омакс)
-                  // × качество OFS (относительно потолка 189).
+                } else if (lbl === "Достижения") {
+                  // Главный фактор: очки достижений (редкость открытых ролей)
+                  // + макс. серия перевыполнения.
                   const parts = [];
-                  if (sc.over_streak_max) parts.push("макс. серия " + sc.over_streak_max + " нед. подряд");
-                  if (sc.over_streak_cur) parts.push("сейчас " + sc.over_streak_cur);
-                  if (sc.over_ofs_avg) parts.push("качество " + Math.round(sc.over_ofs_avg * 100) + "%");
+                  if (sc.achievement_points) parts.push(sc.achievement_points + " очк.");
+                  if (sc.over_streak_max) parts.push("серия " + sc.over_streak_max + " нед.");
+                  if (sc.peak_ratio) parts.push("пик ×" + Number(sc.peak_ratio).toFixed(1));
                   if (parts.length) suffix = "  · " + parts.join(", ");
                 }
                 return `  ${lbl}: ${val} / ${max}${suffix}`;
@@ -345,7 +347,8 @@
 
   function sortVal(m, key) {
     const s = m.score;
-    if (key === "comp") return s.compliance;
+    if (key === "ach")  return s.achievement || 0;
+    if (key === "comp") return s.compliance || 0;
     if (key === "chat") return s.chat;
     if (key === "soc")  return s.socials;
     if (key === "off")  return s.officer || 0;
