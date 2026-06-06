@@ -64,6 +64,9 @@
       return;
     }
     IS_ADMIN = me?.role === "admin";
+    // Отдельный атрибут для help-tips (не трогаем data-role, чтобы не задеть
+    // CSS-гейт .admin-only). help-tips покажет блок «Для администратора» админу.
+    document.body.setAttribute("data-help-role", me?.role || "");
     const who = me?.role === "admin"
       ? `${esc(me.username || me.name || "")} · админ`
       : `${esc(me.username || me.name || "")} · офицер`;
