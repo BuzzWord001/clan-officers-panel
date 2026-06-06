@@ -2658,6 +2658,45 @@ def _title_warn(title: str):
     return None
 
 
+def _title_is_afk(title: str) -> bool:
+    """АФК-статус определяется по подстроке в титуле, в любом регистре и
+    форме: «афк», «АФК», «НикАФК», «АФК до пт», «afk», «Afk» и т.п.
+    Офицеры помечают АФК по-разному, поэтому матчим вхождение, а не равенство.
+    """
+    low = (title or "").lower()
+    return "афк" in low or "afk" in low
+
+
+def _afk_streak(history):
+    """history: список кортежей (week, is_afk, valor) по ВОЗРАСТАНИЮ недели.
+
+    Если в последней неделе человек НЕ АФК — возвращаем None. Иначе считаем
+    серию АФК-недель подряд с конца и доблесть, набранную за время АФК:
+    от доблести в неделю ПЕРЕД уходом в АФК до текущей (а если предыдущей
+    недели нет — от первой АФК-недели). Это позволяет видеть, кто набирал
+    доблесть даже находясь в статусе АФК.
+    """
+    if not history or not history[-1][1]:
+        return None
+    i = len(history) - 1
+    while i >= 0 and history[i][1]:
+        i -= 1
+    streak = history[i + 1:]               # последовательные АФК-недели
+    valor_now = streak[-1][2]
+    since_week = streak[0][0]
+    valor_start = history[i][2] if i >= 0 else streak[0][2]
+    gained = (valor_now - valor_start
+              if valor_now is not None and valor_start is not None else None)
+    return {
+        "weeks":        len(streak),
+        "since_week":   since_week,
+        "valor_start":  valor_start,
+        "valor_now":    valor_now,
+        "valor_gained": gained,
+        "weekly":       [{"week": w, "valor": v} for (w, _a, v) in streak],
+    }
+
+
 _RANK_SCORE_MAX = max(_RANK_SCORE.values())  # 30 (мастер)
 
 
@@ -3217,7 +3256,8 @@ def valor_save_snapshot(
             canon = _valor_canon(nick)
             current_canons.add(canon)
 
-            is_afk = bool(m.get("is_afk"))
+            # АФК: флаг от бота ИЛИ подстрока «афк/afk» в титуле (НикАФК и т.п.).
+            is_afk = bool(m.get("is_afk")) or _title_is_afk(m.get("title"))
             norm_met_raw = m.get("norm_met")
             valor_val = m.get("valor") if isinstance(m.get("valor"), int) else None
             imm = immunity_map.get(canon)
@@ -3755,6 +3795,20 @@ def valor_get_current() -> dict[str, Any]:
         ):
             title_hist_week[r["nick_canon"]] = r["week"]
 
+        # ── АФК-история по неделям (для подсчёта недель подряд и доблести,
+        # набранной за время статуса). is_afk берём из БД ИЛИ из титула —
+        # на случай старых снимков, где флаг не проставился, а в титуле «АФК».
+        afk_hist: dict[str, list] = {}
+        for r in conn.execute(
+            """SELECT vm.nick_canon, vs.week, vm.is_afk, vm.title, vm.valor
+               FROM valor_members vm
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
+               ORDER BY vm.nick_canon, vs.week"""
+        ):
+            afk_eff = bool(r["is_afk"]) or _title_is_afk(r["title"])
+            afk_hist.setdefault(r["nick_canon"], []).append(
+                (r["week"], afk_eff, r["valor"]))
+
         # Активные предупреждения за невыполнение норматива (replay истории).
         warn_map = valor_active_warnings()
         # Ручные предупреждения, добавленные офицером через UI.
@@ -3791,7 +3845,7 @@ def valor_get_current() -> dict[str, Any]:
         members = []
         for r in rows:
             m = dict(r)
-            m["is_afk"] = bool(m["is_afk"])
+            m["is_afk"] = bool(m["is_afk"]) or _title_is_afk(m.get("title"))
             m["flag_new_nick"] = bool(m["flag_new_nick"])
             m["flag_ocr_suspect"] = bool(m["flag_ocr_suspect"])
             if m["norm_met"] is not None:
@@ -3799,6 +3853,8 @@ def valor_get_current() -> dict[str, Any]:
             # Соцсети (по canon ника)
             cn = m["nick_canon"]
             m["socials"] = socials.get(cn) or None
+            # АФК: недели подряд в статусе + доблесть, набранная за это время.
+            m["afk_info"] = _afk_streak(afk_hist.get(cn)) if m["is_afk"] else None
             # Теги: ручные + авто. Авто-теги НЕ пишутся в БД —
             # подмешиваются на лету при выдаче.
             auto_tags = []

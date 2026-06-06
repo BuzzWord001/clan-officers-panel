@@ -526,6 +526,30 @@
 
   function renderNorm(m, norm) {
     if (m.is_afk) {
+      const a = m.afk_info;
+      if (a && a.weeks) {
+        const g = a.valor_gained;
+        // Доблесть, набранная за время АФК: + (рос даже в АФК), 0, или —.
+        let gainHtml = "", gainTip;
+        if (g == null) {
+          gainTip = "Доблесть за время АФК: нет данных.";
+        } else if (g > 0) {
+          gainHtml = ` · <b style="color:#7CFC00">+${g}</b>`;
+          gainTip = `Набрал(а) доблесть даже в АФК: +${g} ` +
+            `(с ${a.valor_start} до ${a.valor_now}).`;
+        } else {
+          gainHtml = ` · <b style="color:#888">0</b>`;
+          gainTip = `Доблесть за время АФК не росла (${a.valor_now}).`;
+        }
+        let tip = `АФК ${a.weeks} нед. (с ${a.since_week}). Норматив не ` +
+          `оценивается.\n${gainTip}`;
+        if (a.weekly && a.weekly.length > 1) {
+          tip += "\nПо неделям: " +
+            a.weekly.map(w => `${w.week}: ${w.valor == null ? "—" : w.valor}`).join(", ");
+        }
+        return `<span class="norm-cell norm-afk" title="${esc(tip)}"
+          >АФК · ${a.weeks} нед.${gainHtml}</span>`;
+      }
       return `<span class="norm-cell norm-afk"
         title="АФК — норматив не оценивается">АФК</span>`;
     }
