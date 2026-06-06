@@ -58,47 +58,50 @@ check("XP: 0 → None", db._xp_tier(0) is None)
 for i, wk in enumerate(["2026-W10", "2026-W11", "2026-W12", "2026-W13", "2026-W14"]):
     snap(wk, [("A", 40), ("B", 40 if i != 2 else 15), ("C", 189 if i == 0 else 21)])
 cA, tA, sA = comp("A")
-check("A: total_xp ~ 240 (доблесть×серия)", abs(cA["total_xp"] - 240) <= 2, cA["total_xp"])
-check("A: XP-тир = xp2 (240 ≥ 150)", "xp2" in tA, tA)
+# Множитель: текущий стрик 5 нед × OFS(40,norm20)=0.118 → Σ≈0.59 → ×1.71.
+check("A: текущий стрик = 5", cA["over_streak_cur"] == 5, cA["over_streak_cur"])
+check("A: множитель ~1.7 (1.5..1.9)", 1.5 < sA["streak_mult"] < 1.9, sA["streak_mult"])
+check("A: доблесть-база = 40 (форма 100%)", abs(sA["doblest_base"] - 40) < 0.1, sA["doblest_base"])
+check("A: доблесть-итог = база × множитель",
+      abs(sA["doblest_value"] - round(40 * sA["streak_mult"], 1)) < 0.2, sA["doblest_value"])
+check("A: бонус серий = итог − база",
+      abs(sA["streak_bonus"] - round(sA["doblest_value"] - 40, 1)) < 0.2, sA["streak_bonus"])
+check("A: total = доблесть×множ + офицер + общит + ветеран",
+      abs(sA["total"] - round(sA["doblest_value"] + sA["officer"] + sA["social"] + sA["veteran"], 1)) < 0.2,
+      (sA["total"], sA["doblest_value"]))
+check("A: веса веток (офицер 14, ветеран 12, чат 6)",
+      sA["officer_max"] == 14 and sA["veteran_max"] == 12 and sA["chat_max"] == 6)
 check("A: пик-тир = double", "double" in tA, tA)
-check("A: достижения (achievement) > 0", sA.get("achievement", 0) > 0, sA.get("achievement"))
-check("A: achievement = discipline (alias)", sA.get("achievement") == sA.get("discipline"))
-check("A: веса — достижения 45, доблесть 30",
-      sA.get("achievement_max") == 45 and sA.get("compliance_max") == 30,
-      (sA.get("achievement_max"), sA.get("compliance_max")))
-check("A: доблесть = форма (recent_pct) присутствует", "recent_pct" in sA)
-check("A: ветеран12/офицер8/соцсети3/чаты2",
-      sA.get("veteran_max") == 12 and sA.get("officer_max") == 8
-      and sA.get("socials_max") == 3 and sA.get("chat_max") == 2)
-_sum = ((sA.get("compliance") or 0) + sA.get("achievement", 0) + sA.get("veteran", 0)
-        + sA.get("officer", 0) + sA.get("socials", 0) + sA.get("chat", 0))
-check("A: total = сумма компонентов (в пределах 100)",
-      abs(sA["total"] - round(_sum, 1)) < 0.2 and sA["total"] <= 100, (sA["total"], _sum))
+check("A: стрик-тир в таблице (текущий) есть", any(t.startswith("streak") or t.startswith("month") for t in tA), tA)
 
-# B: серия прервалась на W12 (15<20) → max серия = 4 (W11..W14? нет: W10 over,
-#    W11 over, W12 miss, W13 over, W14 over) → omax=2
-cB, tB, sB = comp("B")
-check("B: over_streak_max=2 (прервалась на miss)", cB["over_streak_max"] == 2,
-      cB["over_streak_max"])
-check("B: XP-тир есть (xp1+)", any(t in tB for t in ("xp1", "xp2", "xp3")), tB)
-
-# C: одна неделя 189 (пик ~9.45) → titan; OFS_best=1.0
+# C: 189 на W10 (×9.45) + 21×4. Текущий стрик тоже 5, но множитель ВЫШЕ A,
+# т.к. магнитуда (OFS большой 189-недели) усиливает множитель.
 cC, tC, sC = comp("C")
 check("C: пик-тир = titan", "titan" in tC, tC)
-check("C: over_ofs_best = 1.0", abs(cC["over_ofs_best"] - 1.0) < 0.001,
-      cC["over_ofs_best"])
-check("C: достижения учитывают пик (>0)", sC["achievement"] > 0, sC["achievement"])
+check("C: множитель > A (магнитуда усиливает)", sC["streak_mult"] > sA["streak_mult"],
+      (sC["streak_mult"], sA["streak_mult"]))
+check("C: доблесть-итог > A (тот же стрик, больше магнитуда)",
+      sC["doblest_value"] > sA["doblest_value"], (sC["doblest_value"], sA["doblest_value"]))
 
-# Гость тоже получает compliance с XP (дерево доступно всем)
+# B: серия прервалась на W12 → текущий стрик = 2 (W13,W14). Множитель меньше.
+cB, tB, sB = comp("B")
+check("B: текущий стрик = 2 (после miss)", cB["over_streak_cur"] == 2, cB["over_streak_cur"])
+check("B: множитель < A (стрик короче)", sB["streak_mult"] < sA["streak_mult"],
+      (sB["streak_mult"], sA["streak_mult"]))
+
+# Множитель сбрасывается при потере стрика: свежая неделя без перевыполнения.
+db.valor_save_snapshot(week="2026-W15", valor_norm=NORM, members=[
+    {"nick": n, "valor": v, "norm_met": v >= NORM, "is_afk": False,
+     "title": "", "rank": "", "class_": "", "level": 80, "true_name": ""}
+    for n, v in [("A", 10), ("C", 21)]])   # A провалил норму → стрик сброшен
+sA2 = comp("A")[2]
+check("сброс стрика: A набрал <нормы → множитель = 1",
+      sA2["streak_mult"] == 1.0 and sA2["over_streak_cur"] == 0,
+      (sA2["streak_mult"], sA2["over_streak_cur"]))
+
+# Гость тоже получает score (Зал доступен всем)
 gm = db.valor_get_current(with_reg_notes=False)["members"]
-check("compliance с total_xp есть у всех", all(
-    (m["compliance"] is None) or ("total_xp" in m["compliance"]) for m in gm))
-
-# ── КЛЮЧЕВОЕ: магнитуда влияет на прогресс. C набрал 189 на W10 (×9.45),
-# A — ровно 40 (×2) каждую неделю. У C XP больше именно за счёт магнитуды,
-# хотя серии одинаковой длины. То есть «насколько перевыполнил» теперь влияет.
-check("магнитуда влияет на XP: C (был ×9.45) XP > A (ровно ×2)",
-      cC["total_xp"] > cA["total_xp"], (cC["total_xp"], cA["total_xp"]))
+check("score есть у всех", all(m.get("score") for m in gm))
 
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])

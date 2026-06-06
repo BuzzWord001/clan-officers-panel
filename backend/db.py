@@ -2829,21 +2829,43 @@ def _rank_frac(rank: str) -> float:
     return _rank_score(rank) / _RANK_SCORE_MAX
 
 
-# ── Веса финального score «Ценность для клана» (пересчёт 2026-06-07) ──
-# Сумма = 100. Мотивируем набирать доблесть и достижения — это самое ценное.
-# Значимость по убыванию:
-#   1) ДОСТИЖЕНИЯ за доблесть — самый ценный фактор (40);
-#   2) ДОБЛЕСТЬ (средн. % выполнения нормы) — рядом (35);
-#      вместе доблесть+достижения = 75% ценности, явно доминируют;
-#   3) ветеран (12); 4) офицер (8, прошлые + текущий пост);
-#   5) соцсети (3); 6) общительность/чаты (2).
-VALOR_W_ACHIEVE     = 45   # достижения за доблесть — ГЛАВНЫЙ (долгосрочный)
-VALOR_W_DOBLEST     = 30   # доблесть «форма» — средн. % за последние 4 недели
-VALOR_W_VETERAN     = 12   # был в первоначальном составе клана
-VALOR_W_OFFICER     = 8    # высший пост за всё время (70%) + текущий (30%)
-VALOR_W_SOCIALS     = 3    # присутствие в соцсетях (1.5 VK + 1.5 TG)
-VALOR_W_CHAT        = 2    # активность в чатах
-VALOR_W_OVERFULFILL = VALOR_W_ACHIEVE  # legacy-алиас (старое имя поля)
+# ── Модель «Ценность для клана» (3 ветки, пересчёт 2026-06-07) ──
+# Ветка 1 «Доблесть»: база (форма за 4 нед) × МНОЖИТЕЛЬ за текущий стрик.
+#   Множитель = 1 + Σ(OFS за недели текущего стрика) × K, потолок MULT_CAP.
+#   OFS недели = (доблесть−норма)/(189−норма) ∈ [0..1]. Сумма растёт и с
+#   длиной серии, и с магнитудой → 2 нед ×3 ≈ ×1.4, 2 нед ×5 ≈ ×1.7,
+#   мощные длинные стрики → потолок ×3. Сбился стрик → множитель 1.
+# Ветки 2 и 3 и Ветеран — АДДИТИВНЫ, ничего не умножают.
+DOBLEST_BASE = 40.0   # макс. база доблести (при форме 100%) до множителя
+MULT_K       = 1.2    # коэффициент множителя стрика
+MULT_CAP     = 3.0    # потолок множителя
+VALOR_W_VETERAN = 12  # руна ветерана (в углу)
+VALOR_W_OFFICER = 14  # ветка офицерства (по высшему + текущему посту)
+VALOR_W_VK   = 3      # руна ВКонтакте
+VALOR_W_TG   = 3      # руна Telegram
+VALOR_W_CHAT = 6      # руна общительности (активность из «Участников»)
+# legacy-алиасы (могут встречаться в старом коде)
+VALOR_W_DOBLEST = DOBLEST_BASE
+VALOR_W_ACHIEVE = DOBLEST_BASE
+VALOR_W_SOCIALS = VALOR_W_VK + VALOR_W_TG
+VALOR_W_OVERFULFILL = DOBLEST_BASE
+
+
+def _streak_multiplier(cur_ofs_sum: float) -> float:
+    """Множитель ветки доблести по ТЕКУЩЕМУ стрику. cur_ofs_sum — сумма OFS
+    недель текущей серии перевыполнения (0 если стрик сбит). Растёт и с
+    длиной, и с магнитудой; потолок MULT_CAP."""
+    return round(min(1.0 + cur_ofs_sum * MULT_K, MULT_CAP), 2)
+
+
+# Редкость текущей стрик-руны по средней магнитуде серии (avg OFS).
+def _streak_rarity(avg_ofs: float) -> str:
+    if avg_ofs >= 0.55: return "mythic"
+    if avg_ofs >= 0.38: return "legendary"
+    if avg_ofs >= 0.24: return "epic"
+    if avg_ofs >= 0.14: return "rare"
+    if avg_ofs >= 0.07: return "uncommon"
+    return "common"
 
 # Очки достижений по редкости тира (зеркало фронтовой RARITY) — из них
 # складывается «achievement score» игрока, который и даёт компонент ценности.
@@ -4266,6 +4288,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     "xp_next":     _xpp["next"],
                     "xp_prev":     _xpp["prev"],
                     "xp_pct":      _xpp["pct"],
+                    "cur_ofs_sum": round(d["o_cur_ofs"], 3),
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
                     "over_avg":    round(d["over_sum"] / d["n"], 1),
@@ -4291,14 +4314,14 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 }
             else:
                 m["compliance"] = None
-            # Достижения за доблесть: магнитуда (пик ×N) + путь доблести
-            # (высший открытый XP-тир). Обе роли — в начало списка меток.
-            _c = m["compliance"] or {}
-            peak_key = _peak_tier(_c.get("peak_ratio", 0.0))
-            xp_key = _xp_tier(_c.get("total_xp", 0))
+            # Роли в таблице: магнитуда (пик ×N) + ТЕКУЩИЙ стрик-тир
+            # (сбрасывается при потере серии — как и множитель).
+            _cc = m["compliance"] or {}
+            peak_key = _peak_tier(_cc.get("peak_ratio", 0.0))
+            streak_key = _streak_tier(_cc.get("over_streak_cur", 0))
             m["achievement"] = peak_key
-            m["xp_tag"] = xp_key
-            _ach_tags = [k for k in (peak_key, xp_key) if k]
+            m["streak_tag"] = streak_key
+            _ach_tags = [k for k in (peak_key, streak_key) if k]
             if _ach_tags:
                 m["tags"] = _ach_tags + [t for t in m["tags"] if t not in _ach_tags]
 
@@ -4347,83 +4370,76 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             comp_obj = m.get("compliance")
             is_immune_now = (immunity and
                              immunity["status"] in ("active", "extended"))
-            # ДОБЛЕСТЬ «форма» — средн. % за последние 4 недели (активность
-            # СЕЙЧАС). Долгосрок несут достижения; этот фактор — текущая форма.
+            _c = comp_obj or {}
+            # ── ВЕТКА 1: ДОБЛЕСТЬ × МНОЖИТЕЛЬ стрика ──
+            recent = _c.get("recent_pct", _c.get("avg_pct", 0)) if comp_obj else 0
             if is_immune_now:
-                comp_pts = None  # текущая неделя не оценивается
+                doblest_base = None            # текущая неделя не оценивается
             elif comp_obj:
-                comp_pts = round(comp_obj.get("recent_pct", comp_obj["avg_pct"])
-                                 * VALOR_W_DOBLEST / 100, 1)
+                doblest_base = round(min(recent, 100) * DOBLEST_BASE / 100, 1)
             else:
-                comp_pts = 0.0
-            # ── ДОСТИЖЕНИЯ — главный фактор. Сумма очков редкости открытых
-            # ачивок (магнитуда + серии) → кривая с насыщением. Историческое,
-            # считается и у иммунных.
-            ach_points = _achievement_points(
-                (comp_obj or {}).get("peak_ratio", 0.0),
-                (comp_obj or {}).get("total_xp", 0))
-            ach_pts = _achievement_value(ach_points)
+                doblest_base = 0.0
+            cur_ofs_sum = _c.get("cur_ofs_sum", 0.0)
+            mult = _streak_multiplier(cur_ofs_sum)
+            if doblest_base is None:
+                doblest_value, streak_bonus = None, 0.0
+            else:
+                doblest_value = round(doblest_base * mult, 1)
+                streak_bonus = round(doblest_value - doblest_base, 1)
+            # ── ВЕТКА 3: ОБЩИТЕЛЬНОСТЬ (VK + Telegram + чаты) ──
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
-            soc_pts = 0.0
             soc = m.get("socials") or {}
-            if soc.get("vk_id") or soc.get("vk_screen_name"):
-                soc_pts += VALOR_W_SOCIALS / 2
-            if soc.get("tg_id") or soc.get("tg_username"):
-                soc_pts += VALOR_W_SOCIALS / 2
+            vk_pts = VALOR_W_VK if (soc.get("vk_id") or soc.get("vk_screen_name")) else 0
+            tg_pts = VALOR_W_TG if (soc.get("tg_id") or soc.get("tg_username")) else 0
+            social_pts = round(vk_pts + tg_pts + chat_pts, 1)
+            # ── Руна ВЕТЕРАНА + ВЕТКА 2: ОФИЦЕРСТВО (аддитивно, без множителя) ──
             veteran_pts = VALOR_W_VETERAN if "veteran" in m["tags"] else 0
-            # Офицер: высший пост за всё время (вес 70%) + текущий пост (30%).
             officer_pts = round(
                 VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
                                    + 0.3 * _rank_frac(m.get("rank", ""))), 1)
-            # ── Итог: всё в пределах 100. Доблесть+достижения доминируют (75) ──
-            other_pts = ach_pts + chat_pts + soc_pts + veteran_pts + officer_pts
-            if is_immune_now:
-                # Доблесть текущей недели исключена → нормализуем к 100.
-                # Достижения (историческое) остаются в зачёте.
-                max_pts = 100 - VALOR_W_DOBLEST
-                raw_total = round(other_pts, 1)
-                total = round(raw_total / max_pts * 100, 1) if max_pts else 0.0
-            else:
-                max_pts = 100
-                raw_total = round((comp_pts or 0) + other_pts, 1)
-                total = raw_total
+            # ── Итог: доблесть×множитель + аддитивные ветки ──
+            total = round((doblest_value or 0) + officer_pts + social_pts + veteran_pts, 1)
+            # Очки достижений (флейвор для Зала) — по открытым рунам.
+            ach_points = _achievement_points(_c.get("peak_ratio", 0.0), _c.get("total_xp", 0))
             m["score"] = {
                 "total":           total,
-                "raw_total":       raw_total,
-                "max":             max_pts,
                 "immunity_adjusted": is_immune_now,
-                # доблесть («форма» — последние 4 недели)
-                "compliance":      comp_pts,            # None если иммун
-                "compliance_max":  VALOR_W_DOBLEST,
-                "recent_pct":      (comp_obj or {}).get("recent_pct", 0) if comp_obj else 0,
-                "recent_weeks":    (comp_obj or {}).get("recent_weeks", 0) if comp_obj else 0,
-                "avg_pct":         (comp_obj or {}).get("avg_pct", 0) if comp_obj else 0,
-                # достижения — главный фактор
-                "achievement":     ach_pts,
-                "achievement_max": VALOR_W_ACHIEVE,
+                # ветка 1 — доблесть × множитель
+                "doblest_base":    doblest_base,        # None если иммун
+                "doblest_base_max": DOBLEST_BASE,
+                "streak_mult":     mult,
+                "streak_bonus":    streak_bonus,        # вклад множителя (доля стриков)
+                "doblest_value":   doblest_value,
+                "recent_pct":      _c.get("recent_pct", 0),
+                "recent_weeks":    _c.get("recent_weeks", 0),
+                "avg_pct":         _c.get("avg_pct", 0),
+                "peak_ratio":      _c.get("peak_ratio", 0),
+                "over_streak_max": _c.get("over_streak_max", 0),
+                "over_streak_cur": _c.get("over_streak_cur", 0),
+                "over_ofs_avg":    _c.get("over_ofs_avg", 0),
+                "total_xp":        _c.get("total_xp", 0),
                 "achievement_points": ach_points,
-                "discipline":      ach_pts,             # legacy-алиас
-                "overfulfill_max": VALOR_W_ACHIEVE,     # legacy
-                "over_streak_max": (comp_obj or {}).get("over_streak_max", 0) if comp_obj else 0,
-                "over_streak_cur": (comp_obj or {}).get("over_streak_cur", 0) if comp_obj else 0,
-                "peak_ratio":      (comp_obj or {}).get("peak_ratio", 0) if comp_obj else 0,
-                "total_xp":        (comp_obj or {}).get("total_xp", 0) if comp_obj else 0,
-                "xp_next":         (comp_obj or {}).get("xp_next") if comp_obj else None,
-                "xp_prev":         (comp_obj or {}).get("xp_prev", 0) if comp_obj else 0,
-                "xp_pct":          (comp_obj or {}).get("xp_pct", 0) if comp_obj else 0,
-                # прочее
-                "chat":            chat_pts,
-                "chat_max":        VALOR_W_CHAT,
-                "chat_msgs":       msgs,
-                "socials":         soc_pts,
-                "socials_max":     VALOR_W_SOCIALS,
-                "veteran":         veteran_pts,
-                "veteran_max":     VALOR_W_VETERAN,
+                # ветка 2 — офицерство
                 "officer":         officer_pts,
                 "officer_max":     VALOR_W_OFFICER,
                 "top_rank":        top_rank or None,
                 "cur_rank":        m.get("rank") or None,
+                # ветка 3 — общительность
+                "vk":              vk_pts,
+                "tg":              tg_pts,
+                "chat":            chat_pts,
+                "chat_max":        VALOR_W_CHAT,
+                "chat_msgs":       msgs,
+                "social":          social_pts,
+                # руна ветерана
+                "veteran":         veteran_pts,
+                "veteran_max":     VALOR_W_VETERAN,
+                # legacy-алиасы (совместимость со старым фронтом до обновления)
+                "compliance":      doblest_value,
+                "achievement":     streak_bonus,
+                "discipline":      streak_bonus,
+                "socials":         round(vk_pts + tg_pts, 1),
             }
             # Предупреждения, отмеченные офицером в игре (числовой титул 1–9).
             # Показываем ОТДЕЛЬНО от авто-счётчика по нормативу. Так как это

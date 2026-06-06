@@ -1161,7 +1161,34 @@
         text-transform:uppercase;letter-spacing:.4px}
       .ach-req{color:#9a8f70;font-size:11px;white-space:nowrap}
       .ach-pts{font-size:11px;color:#667;min-width:34px;text-align:right}
-      .ach-st{flex:0 0 20px;text-align:center;font-size:13px}`;
+      .ach-st{flex:0 0 20px;text-align:center;font-size:13px}
+      /* ── 3 ветки каменных рун (Diablo 4) ── */
+      .ach-card.ach-diablo{position:relative}
+      .ach-multline{font-size:11.5px;color:#cdbf9a;background:#0c0d10;border:1px solid #2a2418;
+        border-radius:8px;padding:7px 10px;margin:0 0 10px}
+      .ach-multline b{color:#ffd866}
+      .ach-tree{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+      .ach-branch{flex:1 1 175px;min-width:155px;max-width:230px;
+        background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
+        border-radius:12px;padding:10px 8px 12px;box-shadow:inset 0 0 26px rgba(0,0,0,.5)}
+      .ach-branch-h{text-align:center;color:#e3cd92;font-weight:600;font-size:12.5px;margin-bottom:3px}
+      .ach-branch-hint{text-align:center;color:#8a8470;font-size:10px;margin-bottom:8px;line-height:1.35}
+      .ach-branch-runes{display:flex;flex-direction:column;align-items:center}
+      .ach-rune-wrap{display:flex;flex-direction:column;align-items:center;text-align:center}
+      .ach-rune{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;
+        justify-content:center;font-size:20px;border:2px solid #5a4a2a;color:#7a715a;
+        background:linear-gradient(145deg,#26231c,#121013);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 -3px 6px rgba(0,0,0,.55)}
+      .ach-rune-wrap.locked .ach-rune{filter:grayscale(1);opacity:.5}
+      .ach-rune-cap{font-size:10px;color:#b9ad8e;margin-top:3px;max-width:96px;line-height:1.2}
+      .ach-rune-wrap.locked .ach-rune-cap{color:#6a6458}
+      .ach-rune-req{font-size:9px;color:#7e7660;margin-top:1px}
+      .ach-link{width:3px;height:13px;background:#2a2620;border-radius:2px;margin:2px 0}
+      .ach-link.lit{box-shadow:0 0 6px currentColor}
+      .ach-subdiv{font-size:9.5px;color:#8a8470;text-transform:uppercase;letter-spacing:.5px;
+        margin:7px 0 3px;border-top:1px dashed #2c2a22;padding-top:7px;width:100%;text-align:center}
+      .ach-vet{position:absolute;top:12px;right:14px;display:flex;flex-direction:column;align-items:center}
+      .ach-vet.locked{opacity:.5}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1337,143 +1364,143 @@
     else document.body.appendChild(btn);
   }
 
-  // ───────────────── Дерево достижений и ролей (клик по нику) ─────────────
-  // Доступно ВСЕМ ролям (данные из m.compliance, которые получает каждый).
-  const MAG_LADDER = [   // магнитуда: лучшая неделя ×N от нормы
+  // ──────────── Зал доблести: 3 ветки рун в стиле Diablo 4 (клик 🏆) ─────────
+  // Доступно ВСЕМ ролям (данные из m.compliance/score, их получает каждый).
+  const MAG_LADDER = [
     { key: "over", mult: 1.5 }, { key: "double", mult: 2 },
     { key: "triple", mult: 3 }, { key: "record", mult: 4 },
     { key: "phenom", mult: 5.5 }, { key: "titan", mult: 7 },
     { key: "overlord", mult: 9.5 }, { key: "absolute", mult: 13 },
   ];
-  // Путь доблести — накопительный XP (зеркало бэкенда _XP_LADDER).
-  const XP_LADDER_F = [
-    { key: "xp1", xp: 50 }, { key: "xp2", xp: 150 }, { key: "xp3", xp: 400 },
-    { key: "xp4", xp: 900 }, { key: "xp5", xp: 2000 }, { key: "xp6", xp: 4500 },
-    { key: "xp7", xp: 10000 }, { key: "xp8", xp: 22000 }, { key: "xp9", xp: 48000 },
-    { key: "xp10", xp: 100000 }, { key: "xp11", xp: 220000 },
+  const STREAK_LADDER_F = [
+    { key: "streak2", w: 2 }, { key: "streak3", w: 3 }, { key: "month1", w: 4 },
+    { key: "month2", w: 8 }, { key: "month3", w: 12 }, { key: "half1", w: 26 },
+    { key: "year1", w: 52 }, { key: "year2", w: 104 }, { key: "year3", w: 156 },
+    { key: "year5", w: 260 }, { key: "year10", w: 520 },
+  ];
+  const OFFICER_RANKS = [   // ветка офицерства (по возрастанию престижа)
+    { name: "Лейтенант", ord: 4, ico: "▚" }, { name: "Капитан", ord: 3, ico: "✜" },
+    { name: "Майор", ord: 2, ico: "❰" }, { name: "Маршал", ord: 1, ico: "✠" },
+    { name: "Мастер", ord: 0, ico: "♔" },
   ];
   const fmtN = (n) => Number(n).toLocaleString("ru-RU");
+  function streakRarity(avgOfs) {
+    if (avgOfs >= 0.55) return "mythic"; if (avgOfs >= 0.38) return "legendary";
+    if (avgOfs >= 0.24) return "epic"; if (avgOfs >= 0.14) return "rare";
+    if (avgOfs >= 0.07) return "uncommon"; return "common";
+  }
 
-  // Узел-достижение в Diablo-стиле (медальон по редкости + статус).
-  function achNode(key, reqText, lit, isNext) {
-    const meta = TAG_META[key] || { label: key, icon: "·" };
-    const r = tierRarity(key);
-    const col = r ? r.color : ((TAG_META[key] || {}).color || "#9fb");
+  // Каменная руна Diablo-стиля: квадрат-камень + подпись. Возвращает {html,lit,col}.
+  function rune(icon, name, sub, lit, col, isNext) {
     const cls = lit ? "lit" : (isNext ? "next" : "locked");
-    const st = lit ? "✓" : (isNext ? "▶" : "🔒");
-    const medal = lit
-      ? `color:${col};border-color:${col};background:radial-gradient(circle,${col}3a,#0c0d10 72%);box-shadow:0 0 12px ${col}77;`
-      : (isNext
-        ? `color:${col};border-color:${col};background:#0c1410;box-shadow:0 0 8px ${col}55;`
-        : `color:#6a6a6a;border-color:#39393f;background:#101015;filter:grayscale(1);opacity:.8;`);
-    const rbadge = r
-      ? `<span class="ach-rar" style="color:${lit ? col : '#888'};border-color:${lit ? col : '#444'}">${r.name}</span>`
-      : "";
-    const pts = r ? `<span class="ach-pts" style="${lit ? 'color:#ffd866' : ''}">${lit ? '+' : ''}${r.pts}</span>` : "";
-    return `<div class="ach-node ${cls}">
-      <span class="ach-medal" style="${medal}">${lit ? meta.icon : (isNext ? meta.icon : "🔒")}</span>
-      <span class="ach-nm" style="${lit ? "color:" + col : (isNext ? "color:#cfe" : "")}">${esc(meta.label)}${rbadge}</span>
-      <span class="ach-req">${esc(reqText)}</span>
-      ${pts}
-      <span class="ach-st">${st}</span></div>`;
+    const rs = lit
+      ? `border-color:${col};color:${col};box-shadow:0 0 13px ${col}77,inset 0 -3px 7px rgba(0,0,0,.55);`
+      : (isNext ? `border-color:${col};color:${col};opacity:.9;` : ``);
+    return {
+      lit, col, html:
+      `<div class="ach-rune-wrap ${cls}">
+        <div class="ach-rune" style="${rs}">${(lit || isNext) ? icon : "🔒"}</div>
+        <div class="ach-rune-cap"${lit ? ` style="color:${col}"` : ""}>${esc(name)}</div>
+        ${sub ? `<div class="ach-rune-req">${esc(sub)}</div>` : ""}</div>`
+    };
   }
-  // Цепочка узлов с «путём» (как ветка скилл-дерева Diablo): вертикальная
-  // линия, заполненная до достигнутого прогресса цветом ветки.
-  function achChain(rowsHtml, litFrac, col) {
-    const pct = Math.max(0, Math.min(100, Math.round(litFrac * 100)));
-    return `<div class="ach-chain">
-      <div class="ach-path"><i style="height:${pct}%;background:linear-gradient(${col},${col})"></i></div>
-      <div class="ach-nodes">${rowsHtml}</div></div>`;
+  // Ветка-колонка: руны, соединённые линиями (линия загорается, когда
+  // достигнута следующая руна) — как путь скилл-дерева Diablo.
+  function branchCol(title, hint, runes) {
+    let body = "";
+    runes.forEach((r, i) => {
+      if (i > 0) body += `<div class="ach-link${r.lit ? " lit" : ""}"${r.lit ? ` style="background:${r.col};box-shadow:0 0 7px ${r.col}"` : ""}></div>`;
+      body += r.html;
+    });
+    return `<div class="ach-branch"><div class="ach-branch-h">${title}</div>` +
+      (hint ? `<div class="ach-branch-hint">${hint}</div>` : "") +
+      `<div class="ach-branch-runes">${body}</div></div>`;
   }
+  function tcol(key) { const r = tierRarity(key); return r ? r.color : "#9fb"; }
+  function tname(key) { return (TAG_META[key] || {}).label || key; }
+  function tico(key) { return (TAG_META[key] || {}).icon || "◆"; }
 
   function openAchievements(m) {
     injectEditStyles();
     closeEditModal();
     const c = m.compliance || {};
+    const s = m.score || {};
     const peak = c.peak_ratio || 0;
-    const xp = c.total_xp || 0;
-    const score = m.score || {};
+    const cur = c.over_streak_cur || 0;          // текущий стрик (сбрасывается)
+    const curOfsSum = c.cur_ofs_sum || 0;
+    const avgCurOfs = cur > 0 ? curOfsSum / cur : 0;
+    const mult = s.streak_mult || 1;
     const norm = (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
 
-    // ── Ветка «Путь доблести» (накопительный XP) ──
-    const xpTiers = XP_LADDER_F.map(t => ({ key: t.key, xp: t.xp, lit: xp >= t.xp }));
-    let nextXp = null;
-    const xpUnlocked = xpTiers.filter(t => t.lit).length;
-    const xpRows = xpTiers.map(t => {
-      const isNext = !t.lit && !nextXp; if (isNext) nextXp = t;
-      return achNode(t.key, `${fmtN(t.xp)} XP`, t.lit, isNext);
-    }).join("");
-    const xpFrac = (xpUnlocked + (nextXp ? (c.xp_pct || 0) / 100 : 0)) / xpTiers.length;
-    const xpChain = achChain(xpRows, xpFrac, "#57d982");
-
-    // XP-шкала прокачки (главный прогресс-бар, как уровень в Diablo).
-    let xpbar;
-    if (nextXp) {
-      const left = nextXp.xp - xp;
-      const nm = (TAG_META[nextXp.key] || {}).label || nextXp.key;
-      xpbar = `<div class="ach-xpbar">
-        <div class="ach-xpbar-top"><span>⚜ Доблесть-XP: <b>${fmtN(xp)}</b></span>
-          <span>до «${esc(nm)}»: <b>${fmtN(left)}</b> XP</span></div>
-        <div class="ach-xpfill"><i style="width:${c.xp_pct || 0}%"></i></div></div>`;
-    } else {
-      xpbar = `<div class="ach-xpbar"><div class="ach-xpbar-top">
-        <span>⚜ Доблесть-XP: <b>${fmtN(xp)}</b></span><span>путь пройден — Бессмертный 👑</span>
-        </div><div class="ach-xpfill"><i style="width:100%"></i></div></div>`;
-    }
-
-    // ── Ветка «Сила» (магнитуда, лучшая неделя ×N) ──
-    const magTiers = MAG_LADDER.map(t => ({ key: t.key, mult: t.mult, lit: peak >= t.mult }));
+    // ── ВЕТКА 1: «Сила недели» (магнитуда, по пику) ──
     let magNext = false;
-    const magUnlocked = magTiers.filter(t => t.lit).length;
-    const magRows = magTiers.map(t => {
-      const isNext = !t.lit && !magNext; if (isNext) magNext = true;
-      const req = norm ? `×${t.mult} · ${fmtN(Math.ceil(t.mult * norm))} доблести` : `×${t.mult} от нормы`;
-      return achNode(t.key, req, t.lit, isNext);
-    }).join("");
-    const magChain = achChain(magRows, magUnlocked / magTiers.length, "#ffc83c");
-
-    // Сводка.
-    const allTiers = xpTiers.concat(magTiers);
-    let unlocked = 0, pts = 0, topRarIdx = -1;
-    allTiers.forEach(t => {
-      if (!t.lit) return;
-      unlocked++;
-      const rk = TIER_RARITY[t.key];
-      if (rk) { pts += RARITY[rk].pts; const i = RARITY_ORDER.indexOf(rk); if (i > topRarIdx) topRarIdx = i; }
+    const magRunes = MAG_LADDER.map(t => {
+      const lit = peak >= t.mult; const isN = !lit && !magNext; if (isN) magNext = true;
+      const req = norm ? `${fmtN(Math.ceil(t.mult * norm))} добл.` : `×${t.mult}`;
+      return rune(tico(t.key), tname(t.key), req, lit, tcol(t.key), isN);
     });
-    const topRar = topRarIdx >= 0 ? RARITY[RARITY_ORDER[topRarIdx]] : null;
+    // Стрик-руны (по ТЕКУЩЕМУ стрику; редкость по магнитуде серии; сброс при потере)
+    let strNext = false;
+    const strRarCol = RARITY[streakRarity(avgCurOfs)].color;
+    const strRunes = STREAK_LADDER_F.map(t => {
+      const lit = cur >= t.w; const isN = !lit && !strNext; if (isN) strNext = true;
+      const col = lit ? strRarCol : tcol(t.key);
+      return rune(tico(t.key), tname(t.key), `${t.w} нед.`, lit, col, isN);
+    });
 
-    const others = ["veteran", "officer", "in_socials"].map(k => {
-      const has = (m.tags || []).indexOf(k) >= 0;
-      return achNode(k, has ? "получена" : "не получена", has, false);
-    }).join("");
+    // ── ВЕТКА 2: Офицерство (по высшему посту; текущий — подсвечен) ──
+    const topOrd = rankOrder(s.top_rank || "");
+    const offRunes = OFFICER_RANKS.map(r => {
+      const lit = topOrd <= r.ord;     // достиг хотя бы этого поста
+      const isCur = (s.cur_rank || "").toLowerCase() === r.name.toLowerCase();
+      const col = isCur ? "#ff8f3f" : "#caa15a";
+      return rune(r.ico, r.name + (isCur ? " ·сейчас" : ""), lit ? (isCur ? "занимает" : "занимал") : "", lit, col, false);
+    });
+
+    // ── ВЕТКА 3: Общительность (VK + Telegram + чаты из «Участников») ──
+    const socRunes = [
+      rune("◈", "ВКонтакте", (s.vk || 0) > 0 ? "привязан" : "", (s.vk || 0) > 0, "#5a91d8", false),
+      rune("✈", "Telegram", (s.tg || 0) > 0 ? "привязан" : "", (s.tg || 0) > 0, "#3aa0e0", false),
+      rune("✦", "Общительность", `${s.chat_msgs || 0} сообщ.`, (s.chat || 0) > 0, "#57d982", false),
+    ];
+
+    // Руна ветерана (в углу).
+    const hasVet = (s.veteran || 0) > 0;
+    const vetRune = `<div class="ach-vet ${hasVet ? "lit" : "locked"}" title="Ветеран — состоял в первоначальном составе клана">
+      <div class="ach-rune" style="${hasVet ? "border-color:#ffd24a;color:#ffd24a;box-shadow:0 0 13px #ffd24a88,inset 0 -3px 7px rgba(0,0,0,.55);" : ""}">${hasVet ? "★" : "🔒"}</div>
+      <div class="ach-rune-cap"${hasVet ? ' style="color:#ffd24a"' : ""}>Ветеран</div></div>`;
+
+    // Шапка: ценность + МНОЖИТЕЛЬ (главное) + стрик + пик.
+    const header = `<div class="ach-hdr">
+      <div class="ach-hstat"><b>${s.total != null ? s.total : "—"}</b><span>ценность клану</span></div>
+      <div class="ach-hstat"><b style="color:#ffd866">×${mult.toFixed(2)}</b><span>множитель серии</span></div>
+      <div class="ach-hstat"><b style="color:#57d982">${cur}<small> нед.</small></b><span>текущий стрик</span></div>
+      <div class="ach-hstat"><b style="color:#ffc83c">×${peak.toFixed(1)}</b><span>лучший пик</span></div>
+    </div>`;
+    // Пояснение множителя.
+    const base = s.doblest_base; const val = s.doblest_value;
+    const multLine = `<div class="ach-multline">⚜ Доблесть ${base == null ? "—" : base} ${base == null ? "" : `× <b style="color:#ffd866">${mult.toFixed(2)}</b> (стрик) = <b style="color:#57d982">${val}</b>`}.
+      ${cur > 0 ? `Серия ${cur} нед. усиливает вклад${avgCurOfs >= 0.24 ? " — мощная!" : ""}.` : "Стрика нет — множитель ×1. Перевыполняй норму подряд, чтобы он рос."}</div>`;
 
     const rarLegend = RARITY_ORDER.map(k =>
       `<span class="ach-leg" style="color:${RARITY[k].color}">● ${RARITY[k].name}</span>`).join("");
-
-    const header = `<div class="ach-hdr">
-      <div class="ach-hstat"><b>${unlocked}<small>/${allTiers.length}</small></b><span>открыто</span></div>
-      <div class="ach-hstat"><b style="color:#ffd866">${pts}</b><span>очки достижений</span></div>
-      <div class="ach-hstat"><b style="color:${topRar ? topRar.color : '#888'}">${topRar ? topRar.name : '—'}</b><span>высшая редкость</span></div>
-      <div class="ach-hstat"><b>${score.total != null ? score.total : '—'}</b><span>ценность клану</span></div>
-    </div>`;
 
     const ov = document.createElement("div");
     ov.id = "vedit-overlay";
     ov.className = "vedit-overlay";
     ov.innerHTML = `
       <div class="vedit-card wide ach-card ach-diablo" role="dialog" aria-modal="true">
+        ${vetRune}
         <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
         ${header}
-        ${xpbar}
+        ${multLine}
         <div class="ach-legend">${rarLegend}</div>
-        <div class="ach-sub">✓ открыто (навсегда) · ▶ следующая цель · 🔒 закрыто. Чем больше доблести набираешь — тем быстрее растёт путь.</div>
-        <div class="ach-sec-h">⚜ Путь доблести · накопительный опыт (XP = доблесть × серия)</div>
-        ${xpChain}
-        <div class="ach-sec-h">⚔ Сила · мощь лучшей недели (пик ×N от нормы)</div>
-        ${magChain}
-        <div class="ach-sec-h">🎖 Статусные роли</div>
-        ${others}
+        <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
+        <div class="ach-tree">
+          ${branchCol("⚔ Доблесть и серии", "Сила недели (пик) · ниже — серии-множители", magRunes.concat([{ html: '<div class="ach-subdiv">серии (множитель)</div>', lit: false, col: "" }]).concat(strRunes))}
+          ${branchCol("✠ Офицерство", "Аддитивно, без множителя", offRunes)}
+          ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes)}
+        </div>
         <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;
     document.body.appendChild(ov);

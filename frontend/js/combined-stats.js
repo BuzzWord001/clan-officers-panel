@@ -18,11 +18,11 @@
           <h2>Совмещённая ценность для клана</h2>
           <select id="cs-sort">
             <option value="total">сортировка: суммарно</option>
-            <option value="ach">по достижениям</option>
-            <option value="comp">по доблести</option>
-            <option value="chat">по активности в чатах</option>
-            <option value="soc">по соцсетям</option>
+            <option value="comp">по доблести (×множитель)</option>
+            <option value="ach">по бонусу серий</option>
             <option value="off">по офицерству</option>
+            <option value="soc">по общительности</option>
+            <option value="chat">по чатам</option>
           </select>
           <select id="cs-top">
             <option value="20">топ 20</option>
@@ -134,15 +134,14 @@
     document.getElementById("cs-stats").innerHTML = `
       <span>показано: <b>${regCut.length + afkCut.length + immCut.length}</b>
         <small style="opacity:0.7">(${regCut.length} обычных)</small></span>
-      <span>средняя ценность: <b style="color:var(--accent)">${avgReg}/100</b></span>
+      <span>средняя ценность: <b style="color:var(--accent)">${avgReg}</b></span>
       ${afkChip}
       ${immChip}
-      <span style="color:#ffc83c">▌ достижения (главное)</span>
-      <span style="color:#57d982">▌ доблесть (форма)</span>
-      <span style="color:#2bb6a4">▌ ветеран</span>
-      <span style="color:#5a91d8">▌ офицер</span>
-      <span style="color:#9b7bd4">▌ соцсети</span>
-      <span style="color:#6e94b0">▌ чаты</span>
+      <span style="color:#57d982">▌ доблесть (база)</span>
+      <span style="color:#ffc83c">▌ серии (×множитель)</span>
+      <span style="color:#ff8f3f">▌ офицерство</span>
+      <span style="color:#3aa0e0">▌ общительность</span>
+      <span style="color:#b07bd4">▌ ветеран</span>
     `;
 
     // Чем больше людей — тем выше холст. ~24px на строку — комфортно
@@ -156,7 +155,7 @@
     // но не ниже 100 — иначе самый дисциплинированный бар упирался бы в край.
     const maxTotal = items.reduce((mx, m) =>
       m._is_sep ? mx : Math.max(mx, m.score.total || 0), 0);
-    const xMax = Math.max(100, Math.ceil(maxTotal / 10) * 10);
+    const xMax = Math.max(40, Math.ceil(maxTotal / 10) * 10);
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
@@ -171,53 +170,45 @@
         labels: items.map(m => m._is_sep
           ? (SEP_LABELS[m._sep_kind] || SEP_LABELS.immune)
           : (m.nick + (m.true_name ? " · " + m.true_name : ""))),
-        // Порядок по ценности: достижения (главное) → доблесть (форма) →
-        // ветеран → офицер → соцсети → чаты. Палитра: зелёный-якорь (доблесть)
-        // + золото-акцент (достижения) + аналоговая прохладная гамма
-        // (teal→blue→violet) с убыванием насыщенности к менее важному.
+        // Ветка доблести (база + бонус множителя серии) доминирует, далее
+        // аддитивные: офицерство → общительность → ветеран. Зелёный-якорь
+        // доблести + золотой бонус серий + тёплые/прохладные различимые цвета.
         datasets: [
           {
-            // ДОСТИЖЕНИЯ — самый ценный, долгосрочный фактор. Золотой акцент.
-            label: "Достижения",
-            data: items.map(m => m.score.achievement ?? 0),
-            backgroundColor: "rgba(255,200,60,0.90)",
+            // Доблесть (база, форма за 4 нед) — зелёный-якорь.
+            label: "Доблесть",
+            data: items.map(m => m.score.doblest_base ?? 0),
+            backgroundColor: "rgba(87,217,130,0.84)",
+            borderColor: "rgba(87,217,130,1)",
+            borderWidth: 1,
+          },
+          {
+            // Бонус серии (множитель): доля, которую добавил стрик. Золото.
+            label: "Серии",
+            data: items.map(m => m.score.streak_bonus ?? 0),
+            backgroundColor: "rgba(255,200,60,0.92)",
             borderColor: "rgba(255,200,60,1)",
             borderWidth: 1,
           },
           {
-            // ДОБЛЕСТЬ (форма за 4 нед) — зелёный-якорь.
-            label: "Доблесть",
-            data: items.map(m => m.score.compliance ?? 0),
-            backgroundColor: "rgba(87,217,130,0.82)",
-            borderColor: "rgba(87,217,130,1)",
+            label: "Офицерство",
+            data: items.map(m => m.score.officer ?? 0),
+            backgroundColor: "rgba(255,143,63,0.82)",
+            borderColor: "rgba(255,143,63,1)",
+            borderWidth: 1,
+          },
+          {
+            label: "Общительность",
+            data: items.map(m => m.score.social ?? 0),
+            backgroundColor: "rgba(58,160,224,0.80)",
+            borderColor: "rgba(58,160,224,1)",
             borderWidth: 1,
           },
           {
             label: "Ветеран",
             data: items.map(m => m.score.veteran ?? 0),
-            backgroundColor: "rgba(43,182,164,0.80)",
-            borderColor: "rgba(43,182,164,1)",
-            borderWidth: 1,
-          },
-          {
-            label: "Офицер",
-            data: items.map(m => m.score.officer ?? 0),
-            backgroundColor: "rgba(90,145,216,0.80)",
-            borderColor: "rgba(90,145,216,1)",
-            borderWidth: 1,
-          },
-          {
-            label: "Соцсети",
-            data: items.map(m => m.score.socials ?? 0),
-            backgroundColor: "rgba(155,123,212,0.74)",
-            borderColor: "rgba(155,123,212,0.96)",
-            borderWidth: 1,
-          },
-          {
-            label: "Чаты",
-            data: items.map(m => m.score.chat ?? 0),
-            backgroundColor: "rgba(110,148,176,0.70)",
-            borderColor: "rgba(110,148,176,0.92)",
+            backgroundColor: "rgba(176,123,212,0.80)",
+            borderColor: "rgba(176,123,212,1)",
             borderWidth: 1,
           },
         ],
@@ -274,47 +265,38 @@
               // Для «Офицер» дописываем top_rank, для «Чаты» — кол-во сообщ.
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
-                const MAX = {"Достижения":45,"Доблесть":30,"Ветеран":12,
-                              "Офицер":8,"Соцсети":3,"Чаты":2};
                 const lbl = ctx.dataset.label;
                 const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
-                const max = MAX[lbl] || 0;
                 const m = items[ctx.dataIndex];
                 const sc = m.score || {};
                 if (lbl === "Доблесть" && sc.immunity_adjusted) {
                   return `  Доблесть: — не оценивается (иммунитет)`;
                 }
                 let suffix = "";
-                if (lbl === "Доблесть" && sc.recent_pct) {
-                  suffix = "  · форма " + sc.recent_pct + "% за " + (sc.recent_weeks || 0) + " нед.";
-                } else if (lbl === "Офицер" && sc.top_rank) {
-                  suffix = "  · " + sc.top_rank;
-                } else if (lbl === "Чаты") {
-                  suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
-                } else if (lbl === "Достижения") {
-                  // Главный фактор: очки достижений (редкость открытых ролей),
-                  // накопленный доблесть-XP и лучший пик.
+                if (lbl === "Доблесть") {
+                  if (sc.recent_pct) suffix = "  · форма " + sc.recent_pct + "% (" + (sc.recent_weeks || 0) + " нед.)";
+                } else if (lbl === "Серии") {
+                  // Бонус множителя серии = база × (множитель−1).
+                  const parts = ["множитель ×" + Number(sc.streak_mult || 1).toFixed(2)];
+                  if (sc.over_streak_cur) parts.push("стрик " + sc.over_streak_cur + " нед.");
+                  suffix = "  · " + parts.join(", ");
+                } else if (lbl === "Офицерство" && sc.top_rank) {
+                  suffix = "  · " + sc.top_rank + (sc.cur_rank && sc.cur_rank !== sc.top_rank ? " (сейчас " + sc.cur_rank + ")" : "");
+                } else if (lbl === "Общительность") {
                   const parts = [];
-                  if (sc.achievement_points) parts.push(sc.achievement_points + " очк.");
-                  if (sc.total_xp) parts.push(Number(sc.total_xp).toLocaleString("ru-RU") + " XP");
-                  if (sc.peak_ratio) parts.push("пик ×" + Number(sc.peak_ratio).toFixed(1));
-                  if (parts.length) suffix = "  · " + parts.join(", ");
+                  if (sc.vk) parts.push("VK"); if (sc.tg) parts.push("TG");
+                  parts.push((sc.chat_msgs || 0) + " сообщ.");
+                  suffix = "  · " + parts.join(", ");
                 }
-                return `  ${lbl}: ${val} / ${max}${suffix}`;
+                return `  ${lbl}: ${val}${suffix}`;
               },
-              // Footer: итог + процент. Для иммунных — нормализованный.
+              // Footer: итоговая ценность клану.
               footer: (tts) => {
                 if (!tts.length) return "";
                 const m = items[tts[0].dataIndex];
                 const sc = m.score || {};
-                if (sc.immunity_adjusted) {
-                  return `Итог: ~${sc.total} / 100 (норм. из ` +
-                    `${sc.raw_total} / ${sc.max})`;
-                }
-                const total = tts.reduce((a, t) => a + (t.parsed.x || 0), 0);
-                const rounded = Math.round(total * 10) / 10;
-                const pct = Math.round(total);
-                return `Итого: ${rounded} / 100 (${pct}%)`;
+                const note = sc.immunity_adjusted ? "  (иммунитет: доблесть не в зачёте)" : "";
+                return `Ценность клану: ${sc.total}${note}`;
               },
             },
           },
@@ -351,10 +333,10 @@
 
   function sortVal(m, key) {
     const s = m.score;
-    if (key === "ach")  return s.achievement || 0;
-    if (key === "comp") return s.compliance || 0;
-    if (key === "chat") return s.chat;
-    if (key === "soc")  return s.socials;
+    if (key === "ach")  return s.streak_bonus || 0;
+    if (key === "comp") return s.doblest_value || 0;
+    if (key === "chat") return s.chat || 0;
+    if (key === "soc")  return s.social || 0;
     if (key === "off")  return s.officer || 0;
     return s.total;
   }
