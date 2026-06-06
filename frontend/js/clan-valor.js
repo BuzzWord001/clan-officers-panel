@@ -1336,7 +1336,14 @@
     const ocur = c.over_streak_cur || 0;
     const score = m.score || {};
 
-    const magTiers = MAG_LADDER.map(t => ({ key: t.key, lit: peak >= t.mult, req: `≥ ×${t.mult} от нормы`, w: 0, mult: t.mult }));
+    // Конкретное число доблести для каждой роли = ×N × норму текущей недели.
+    const norm = (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
+    const magTiers = MAG_LADDER.map(t => ({
+      key: t.key, lit: peak >= t.mult, w: 0, mult: t.mult,
+      req: norm
+        ? `×${t.mult} · ${Math.ceil(t.mult * norm)} доблести`
+        : `≥ ×${t.mult} от нормы`,
+    }));
     const strTiers = STREAK_LADDER_F.map(t => ({ key: t.key, lit: omax >= t.w, req: `${t.w} нед. подряд`, w: t.w }));
 
     // Сводка: открыто/всего, очки достижений, высшая редкость.
@@ -1403,7 +1410,7 @@
         ${header}
         <div class="ach-legend">${rarLegend}</div>
         <div class="ach-sub">✓ открыто (навсегда) · → следующая цель · 🔒 закрыто. Очки достижений растут с редкостью.</div>
-        <div class="ach-sec-h">⚔ Магнитуда · сила лучшей недели (пик ×N от нормы)</div>
+        <div class="ach-sec-h">⚔ Магнитуда · сила лучшей недели${norm ? ` (норма недели: ${norm} доблести)` : ""}</div>
         ${magRows}
         <div class="ach-sec-h">🔥 Серии перевыполнения · недель подряд (навсегда)</div>
         ${progressHtml}
