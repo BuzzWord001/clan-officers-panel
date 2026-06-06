@@ -383,6 +383,29 @@ CREATE TABLE IF NOT EXISTS valor_nick_override (
     updated_at TEXT NOT NULL,
     updated_by TEXT NOT NULL DEFAULT ''
 );
+
+-- Слияние ников: ИИ распознал кого-то как нового/другого человека из-за
+-- ошибки OCR. Админ говорит «это он и есть» → alias_canon приравнивается к
+-- target_canon. Применяется при сохранении снимка (будущие кривые чтения
+-- сразу матчатся на правильного) и единоразово переписывает уже сохранённые
+-- строки на target.
+CREATE TABLE IF NOT EXISTS valor_alias (
+    alias_canon  TEXT PRIMARY KEY,
+    target_canon TEXT NOT NULL,
+    note         TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    created_by   TEXT NOT NULL DEFAULT ''
+);
+
+-- Ручной кик: админ переместил человека в архив, даже если он ещё есть в
+-- снимке (система не должна держать его в основном списке). Снимается при
+-- восстановлении или если человек снова появляется в новом снимке.
+CREATE TABLE IF NOT EXISTS valor_force_archived (
+    nick_canon  TEXT PRIMARY KEY,
+    archived_at TEXT NOT NULL,
+    archived_by TEXT NOT NULL DEFAULT '',
+    reason      TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -2564,6 +2587,31 @@ def _valor_canon(nick: str) -> str:
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
 
 
+def _alias_map(conn) -> dict:
+    """alias_canon → target_canon из valor_alias."""
+    return {r["alias_canon"]: r["target_canon"]
+            for r in conn.execute(
+                "SELECT alias_canon, target_canon FROM valor_alias")}
+
+
+def _resolve_canon(canon: str, amap: dict) -> str:
+    """Разворачивает цепочку алиасов до конечного target (с защитой от петель)."""
+    seen = set()
+    while canon in amap and canon not in seen:
+        seen.add(canon)
+        canon = amap[canon]
+    return canon
+
+
+def _valor_similar(a: str, b: str) -> float:
+    """Похожесть двух canon-ников 0..1 (для подсказки «возможно это X» при
+    ошибке OCR). difflib — стандартная либа, без зависимостей."""
+    import difflib
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
 # Иерархия должностей в PW (для умной сортировки в UI).
 # Чем меньше число — тем выше должность.
 _RANK_ORDER = {
@@ -3213,6 +3261,9 @@ def valor_save_snapshot(
             (week,)
         ).fetchone()
         prev_warnings: dict[str, int] = {}
+        # Карта алиасов (слияния ников админом) — кривые OCR-чтения матчим
+        # на правильного человека ещё на этапе сохранения.
+        alias_map = _alias_map(conn)
         prev_canons: set[str] = set()
         prev_snapshot_data: dict[str, dict] = {}  # canon → row dict
         if prev_snap:
@@ -3222,7 +3273,7 @@ def valor_save_snapshot(
                    FROM valor_members WHERE snapshot_id = ?""",
                 (prev_snap["id"],)
             ):
-                cn = r["nick_canon"]
+                cn = _resolve_canon(r["nick_canon"], alias_map)
                 prev_canons.add(cn)
                 prev_warnings[cn] = r["warning_count"] or 0
                 prev_snapshot_data[cn] = dict(r)
@@ -3297,7 +3348,7 @@ def valor_save_snapshot(
             if not nick:
                 continue
             cls = m.get("class_") or m.get("class") or ""
-            canon = _valor_canon(nick)
+            canon = _resolve_canon(_valor_canon(nick), alias_map)
             current_canons.add(canon)
 
             # АФК: флаг от бота ИЛИ подстрока «афк/afk» в титуле (НикАФК и т.п.).
@@ -3377,6 +3428,12 @@ def valor_save_snapshot(
                    VALUES (?, ?, ?, ?, 0)""",
                 (canon_new, nick_new, week, today_iso),
             )
+
+        # Кто снова появился в снимке — снимаем ручной кик (force_archived):
+        # человек вернулся, держать его в архиве больше не нужно.
+        for cn in current_canons:
+            conn.execute(
+                "DELETE FROM valor_force_archived WHERE nick_canon = ?", (cn,))
 
         # ── 4. Departed / Returned ──
         # Кто был в prev_canons но НЕ в current_canons — ушёл из клана.
@@ -3886,6 +3943,21 @@ def valor_get_current() -> dict[str, Any]:
             r["nick_canon"] for r in conn.execute(
                 "SELECT nick_canon FROM valor_first_seen WHERE verified = 0")
         }
+        # Ручной кик (force_archived) — этих в основном списке не показываем.
+        force_archived: set[str] = {
+            r["nick_canon"] for r in conn.execute(
+                "SELECT nick_canon FROM valor_force_archived")
+        }
+        # Пул кандидатов для подсказки «возможно это X» при кривом OCR-нике:
+        # текущие участники + ушедшие (искомый часто «ушёл», т.к. его нормальный
+        # ник в этом снимке не распознался).
+        match_pool: list[tuple] = []  # (canon, display_nick)
+        for r in conn.execute(
+                "SELECT nick_canon, nick FROM valor_members WHERE snapshot_id = ?",
+                (cur["id"],)):
+            match_pool.append((r["nick_canon"], r["nick"]))
+        for r in conn.execute("SELECT nick_canon, nick FROM valor_departed"):
+            match_pool.append((r["nick_canon"], r["nick"]))
 
         # Активные предупреждения за невыполнение норматива (replay истории).
         warn_map = valor_active_warnings()
@@ -3930,6 +4002,9 @@ def valor_get_current() -> dict[str, Any]:
                 m["norm_met"] = bool(m["norm_met"])
             # Соцсети (по canon ника)
             cn = m["nick_canon"]
+            # Ручной кик — этого человека в основном списке не показываем.
+            if cn in force_archived:
+                continue
             m["socials"] = socials.get(cn) or None
             # Ручная коррекция ника админом (canon стабилен — держится из
             # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
@@ -3938,6 +4013,20 @@ def valor_get_current() -> dict[str, Any]:
             if ov:
                 m["nick"] = ov
             m["ai_nick"] = (cn in ai_nick_canons) and not ov
+            # Подсказка «возможно это X»: для непроверенного ИИ-ника ищем
+            # самого похожего среди других участников и ушедших.
+            m["suggest"] = None
+            if m["ai_nick"]:
+                best = None
+                for pcn, pnick in match_pool:
+                    if pcn == cn:
+                        continue
+                    rt = _valor_similar(cn, pcn)
+                    if best is None or rt > best[0]:
+                        best = (rt, pnick, pcn)
+                if best and best[0] >= 0.72:
+                    m["suggest"] = {"nick": best[1], "canon": best[2],
+                                    "ratio": round(best[0], 2)}
             # АФК: недели подряд в статусе + доблесть, набранная за это время.
             m["afk_info"] = _afk_streak(afk_hist.get(cn)) if m["is_afk"] else None
             # Теги: ручные + авто. Авто-теги НЕ пишутся в БД —
@@ -4219,6 +4308,137 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             "SELECT * FROM valor_members WHERE id = ?", (member_id,)
         ).fetchone())
     return out
+
+
+def _dedup_member_rows(conn, canon: str) -> None:
+    """В каждом снимке оставляем одну строку для canon (с макс valor)."""
+    rows = conn.execute(
+        "SELECT id, snapshot_id FROM valor_members WHERE nick_canon = ? "
+        "ORDER BY snapshot_id, COALESCE(valor, -1) DESC", (canon,)
+    ).fetchall()
+    seen = set()
+    for r in rows:
+        if r["snapshot_id"] in seen:
+            conn.execute("DELETE FROM valor_members WHERE id = ?", (r["id"],))
+        else:
+            seen.add(r["snapshot_id"])
+
+
+def valor_merge(source_canon: str, target_nick: str, actor: dict) -> dict:
+    """«Это он и есть»: сливаем неверно распознанного (source_canon) в
+    существующего (target по нику). Переписывает строки/историю на target,
+    запоминает alias (будущие кривые чтения сами матчатся), чистит архив,
+    ставит отображаемый ник target. Чинит сразу оба случая ошибки ИИ:
+    «посчитал новым» и «отправил в архив»."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    with connection() as conn:
+        amap = _alias_map(conn)
+        target = _resolve_canon(_valor_canon(target_nick), amap)
+        source = _resolve_canon(source_canon, amap)
+        if not source or not target or source == target:
+            return {"ok": False, "reason": "same_or_empty"}
+        moved = conn.execute(
+            "UPDATE valor_members SET nick_canon = ? WHERE nick_canon = ?",
+            (target, source)).rowcount
+        conn.execute("UPDATE valor_history SET nick_canon = ? WHERE nick_canon = ?",
+                     (target, source))
+        for tbl in ("valor_tags", "valor_manual_warnings"):
+            try:
+                conn.execute(
+                    f"UPDATE OR IGNORE {tbl} SET nick_canon = ? WHERE nick_canon = ?",
+                    (target, source))
+            except Exception:
+                pass
+        conn.execute("DELETE FROM valor_first_seen WHERE nick_canon = ?", (source,))
+        conn.execute("DELETE FROM valor_departed WHERE nick_canon IN (?, ?)",
+                     (source, target))
+        conn.execute("DELETE FROM valor_force_archived WHERE nick_canon IN (?, ?)",
+                     (source, target))
+        _dedup_member_rows(conn, target)
+        conn.execute(
+            """INSERT INTO valor_alias (alias_canon, target_canon, note, created_at, created_by)
+               VALUES (?, ?, 'merge', ?, ?)
+               ON CONFLICT(alias_canon) DO UPDATE SET target_canon=excluded.target_canon,
+                 created_at=excluded.created_at, created_by=excluded.created_by""",
+            (source, target, now, by))
+        conn.execute(
+            """INSERT INTO valor_nick_override (nick_canon, nick, updated_at, updated_by)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(nick_canon) DO UPDATE SET nick=excluded.nick,
+                 updated_at=excluded.updated_at, updated_by=excluded.updated_by""",
+            (target, target_nick.strip(), now, by))
+        conn.execute("UPDATE valor_first_seen SET verified = 1 WHERE nick_canon = ?",
+                     (target,))
+    return {"ok": True, "moved": moved, "target_canon": target}
+
+
+def valor_archive_member(canon: str, actor: dict, reason: str = "") -> dict:
+    """Ручной кик: убрать человека из основного списка в архив доблести,
+    даже если он ещё есть в снимке (система поймёт, что его кикнули)."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    with connection() as conn:
+        canon = _resolve_canon(canon, _alias_map(conn))
+        row = conn.execute(
+            """SELECT vm.*, vs.week AS week FROM valor_members vm
+               JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
+               WHERE vm.nick_canon = ? ORDER BY vs.week DESC LIMIT 1""",
+            (canon,)).fetchone()
+        if not row:
+            return {"ok": False, "reason": "not_found"}
+        ov = conn.execute("SELECT nick FROM valor_nick_override WHERE nick_canon = ?",
+                          (canon,)).fetchone()
+        disp_nick = ov["nick"] if ov else row["nick"]
+        conn.execute(
+            """INSERT INTO valor_departed
+               (nick_canon, nick, true_name, last_week, last_rank, last_title,
+                last_level, last_class, last_valor, warning_count, departed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(nick_canon) DO UPDATE SET
+                 nick=excluded.nick, true_name=excluded.true_name,
+                 last_week=excluded.last_week, last_rank=excluded.last_rank,
+                 last_title=excluded.last_title, last_level=excluded.last_level,
+                 last_class=excluded.last_class, last_valor=excluded.last_valor,
+                 warning_count=excluded.warning_count, departed_at=excluded.departed_at""",
+            (canon, disp_nick, row["true_name"] or "", row["week"],
+             row["rank"] or "", row["title"] or "", row["level"],
+             row["class_"] or "", row["valor"], row["warning_count"] or 0, now))
+        conn.execute(
+            """INSERT INTO valor_force_archived (nick_canon, archived_at, archived_by, reason)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(nick_canon) DO UPDATE SET archived_at=excluded.archived_at,
+                 archived_by=excluded.archived_by, reason=excluded.reason""",
+            (canon, now, by, reason or ""))
+    return {"ok": True}
+
+
+def valor_restore(canon: str, actor: dict) -> dict:
+    """Вернуть человека из архива в основной список (снять ручной кик и убрать
+    из departed). Если он есть в текущем снимке — снова появится в списке."""
+    with connection() as conn:
+        canon = _resolve_canon(canon, _alias_map(conn))
+        conn.execute("DELETE FROM valor_force_archived WHERE nick_canon = ?", (canon,))
+        conn.execute("DELETE FROM valor_departed WHERE nick_canon = ?", (canon,))
+    return {"ok": True}
+
+
+def valor_delete_member(member_id: int) -> dict:
+    """Удалить ошибочную строку (фантом OCR) из текущего снимка."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT nick_canon FROM valor_members WHERE id = ?", (member_id,)
+        ).fetchone()
+        if not row:
+            return {"ok": False, "reason": "not_found"}
+        cn = row["nick_canon"]
+        conn.execute("DELETE FROM valor_members WHERE id = ?", (member_id,))
+        left = conn.execute(
+            "SELECT 1 FROM valor_members WHERE nick_canon = ? LIMIT 1", (cn,)
+        ).fetchone()
+        if not left:
+            conn.execute("DELETE FROM valor_first_seen WHERE nick_canon = ?", (cn,))
+    return {"ok": True}
 
 
 def valor_list_sessions() -> list[dict[str, Any]]:

@@ -188,6 +188,49 @@ def valor_member_edit(member_id: int, payload: ValorMemberEdit,
     return out
 
 
+class MergeIn(BaseModel):
+    source_canon: str = Field(..., min_length=1)
+    target_nick:  str = Field(..., min_length=1)
+
+
+class CanonIn(BaseModel):
+    canon:  str = Field(..., min_length=1)
+    reason: str | None = ""
+
+
+@router.post("/merge")
+def valor_merge_ep(payload: MergeIn, actor: dict = Depends(require_admin)) -> dict:
+    """«Это он и есть»: слить неверно распознанного в существующего (admin)."""
+    res = db.valor_merge(payload.source_canon, payload.target_nick, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, res.get("reason", "merge_failed"))
+    return res
+
+
+@router.post("/archive")
+def valor_archive_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> dict:
+    """Ручной кик: убрать человека в архив доблести (admin)."""
+    res = db.valor_archive_member(payload.canon, actor, payload.reason or "")
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "not_found"))
+    return res
+
+
+@router.post("/restore")
+def valor_restore_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> dict:
+    """Вернуть человека из архива в основной список (admin)."""
+    return db.valor_restore(payload.canon, actor)
+
+
+@router.delete("/member/{member_id}")
+def valor_delete_ep(member_id: int, _: dict = Depends(require_admin)) -> dict:
+    """Удалить ошибочную строку/фантом OCR из текущего снимка (admin)."""
+    res = db.valor_delete_member(member_id)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "not_found"))
+    return res
+
+
 @router.get("/history")
 def valor_history(nick: str = Query(..., min_length=1),
                   field: str | None = Query(default=None,

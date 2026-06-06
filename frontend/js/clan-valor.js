@@ -875,6 +875,7 @@
   }
 
   function apply() {
+    if (!DATA.snapshot) return;   // данные ещё не загружены
     const items = applyFilterSort();
     const norm = DATA.snapshot.valor_norm;
     const rows = items.map((m, i) => {
@@ -900,13 +901,21 @@
       const aiMark = m.ai_nick
         ? ` <span class="ai-nick" title="Ник распознан ИИ-зрением — проверьте и при необходимости исправьте вручную (только админ)">🤖</span>`
         : "";
-      const editBtn = IS_ADMIN
-        ? ` <button class="row-edit-btn" data-edit-id="${m.id}" title="Редактировать строку (админ)">✎</button>`
+      const sugHtml = (IS_ADMIN && m.ai_nick && m.suggest)
+        ? ` <button class="ai-sug" data-act="merge-suggest" data-canon="${esc(m.nick_canon)}" data-target="${esc(m.suggest.nick)}" title="Подтвердить слияние: это «${esc(m.suggest.nick)}»">🤖→ ${esc(m.suggest.nick)}?</button>`
+        : "";
+      const adminBtns = IS_ADMIN
+        ? ` <span class="row-admin">`
+          + `<button class="radm" data-act="edit" data-id="${m.id}" title="Редактировать">✎</button>`
+          + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Это он и есть (слияние)">🔗</button>`
+          + `<button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Кикнуть в архив">🗄</button>`
+          + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="Удалить фантом">🗑</button>`
+          + `</span>`
         : "";
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b>${esc(m.nick)}</b>${aiMark}${editBtn}</td>
+          <td class="m-cell-name"><b>${esc(m.nick)}</b>${aiMark}${sugHtml}${adminBtns}</td>
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
@@ -970,7 +979,28 @@
         border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
       .vedit-btn:hover{background:#16320f}
       .vedit-save{background:#13420f;border-color:#3c7;color:#dfffd0;font-weight:600}
-      .vedit-save:disabled{opacity:.5;cursor:default}`;
+      .vedit-save:disabled{opacity:.5;cursor:default}
+      .row-admin{white-space:nowrap;margin-left:6px}
+      .radm{background:none;border:1px solid #2a6;color:#8fd;border-radius:4px;
+        cursor:pointer;font-size:11px;line-height:1;padding:1px 4px;margin-left:3px;opacity:.6}
+      .radm:hover{opacity:1;background:#0c2a12}
+      .ai-sug{background:#2a1f06;border:1px solid #a83;color:#fc6;border-radius:4px;
+        cursor:pointer;font-size:11px;padding:1px 6px;margin-left:6px}
+      .ai-sug:hover{background:#3a2b08}
+      .dep-restore{background:#11210f;border:1px solid #2a6;color:#bfe;border-radius:5px;
+        cursor:pointer;font-size:12px;padding:3px 9px}
+      .dep-restore:hover{background:#16320f}
+      .admin-help-btn{background:#11210f;border:1px solid #3c7;color:#cfffcf;
+        border-radius:6px;cursor:pointer;font-size:13px;padding:6px 12px;margin:6px 0 6px 8px}
+      .admin-help-btn:hover{background:#16320f}
+      .ahelp-list{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+      .ahelp-item{display:flex;gap:10px;align-items:flex-start;
+        border:1px solid #1c3a1c;border-radius:8px;padding:9px 11px;background:#06120a}
+      .ahelp-ico{font-size:18px;flex:0 0 26px;text-align:center}
+      .ahelp-txt b{color:#7CFC00;font-size:13px}
+      .ahelp-txt div{color:#bcd;font-size:12px;margin-top:2px;line-height:1.45}
+      .ahelp-note{color:#8a9;font-size:11px;margin-top:12px;font-style:italic}
+      .vedit-card.wide{width:min(560px,94vw)}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1047,14 +1077,104 @@
     }
   }
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeEditModal(); });
-  $("valor-tbody").addEventListener("click", (ev) => {
-    const eb = ev.target.closest(".row-edit-btn");
-    if (!eb || !IS_ADMIN) return;
+
+  // Универсальный админ-вызов API (PATCH/POST/DELETE) с обработкой ошибок.
+  async function adminCall(method, path, body) {
+    const init = { method, credentials: "include", headers: authHeaders() };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    const res = await fetch(apiBase() + path, init);
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      alert("Ошибка: " + (res.status === 403 ? "только для администратора"
+                          : (t || ("HTTP " + res.status))));
+      throw new Error("admin call failed");
+    }
+    return res.status === 204 ? null : res.json().catch(() => null);
+  }
+
+  // Делегированные админ-действия в строках таблицы.
+  $("valor-tbody").addEventListener("click", async (ev) => {
+    const b = ev.target.closest(".radm, .ai-sug");
+    if (!b || !IS_ADMIN) return;
     ev.stopPropagation();
-    const id = parseInt(eb.dataset.editId, 10);
-    const m = (DATA.members || []).find(x => x.id === id);
-    if (m) openEditModal(m);
+    const act = b.dataset.act;
+    const id = b.dataset.id ? parseInt(b.dataset.id, 10) : null;
+    const canon = b.dataset.canon;
+    try {
+      if (act === "edit") {
+        const m = (DATA.members || []).find(x => x.id === id);
+        if (m) openEditModal(m);
+      } else if (act === "delete") {
+        if (!confirm(`Удалить строку «${b.dataset.nick}» из текущего снимка?\n(для фантомов/дублей OCR)`)) return;
+        await adminCall("DELETE", "/valor/member/" + id);
+        await load();
+      } else if (act === "archive") {
+        const reason = prompt(`Кикнуть «${b.dataset.nick}» в архив доблести?\nПричина (необязательно):`, "");
+        if (reason === null) return;
+        await adminCall("POST", "/valor/archive", { canon, reason });
+        await load(); await loadDeparted();
+      } else if (act === "merge") {
+        const target = (prompt(`«Это он и есть» — слить запись «${b.dataset.nick}» в существующего игрока.\nУкажите правильный ник:`, "") || "").trim();
+        if (!target) return;
+        await adminCall("POST", "/valor/merge", { source_canon: canon, target_nick: target });
+        await load(); await loadDeparted();
+      } else if (act === "merge-suggest") {
+        const target = b.dataset.target;
+        if (!confirm(`Подтвердить: это «${target}»?\nЗаписи будут объединены, кривой ник в будущем сам сматчится.`)) return;
+        await adminCall("POST", "/valor/merge", { source_canon: canon, target_nick: target });
+        await load(); await loadDeparted();
+      }
+    } catch (_) { /* adminCall уже показал alert */ }
   });
+
+  // ── Справка по инструментам админа (data-driven — новые функции просто
+  //    добавляются в массив и автоматически появляются в окне) ──
+  const ADMIN_TOOLS = [
+    { ico: "✎", t: "Редактировать строку",
+      d: "Изменить ник, имя, должность, титул, класс, уровень, доблесть и статус АФК любого игрока. Исправленное написание ника держится из недели в неделю." },
+    { ico: "🔗", t: "«Это он и есть» (слияние)",
+      d: "Если ИИ-зрение распознало игрока как нового или другого человека из-за ошибки чтения — укажите правильный ник. История объединится, а кривой OCR-ник в будущих снимках будет автоматически сопоставляться с правильным игроком." },
+    { ico: "🤖", t: "Подсказка похожего",
+      d: "Рядом с ником, который распознал ИИ, система сама предлагает «возможно это X» (поиск по похожести среди участников и ушедших). Один клик — подтвердить слияние." },
+    { ico: "🗄", t: "Кикнуть в архив",
+      d: "Вручную переместить игрока из основного списка в «Покинули клан», даже если он ещё есть в снимке. Система запомнит, что его кикнули." },
+    { ico: "↩", t: "Вернуть из архива",
+      d: "Кнопка «вернуть» в разделе «Покинули клан». Возвращает ошибочно ушедшего/кикнутого обратно в основной список (если он есть в текущем снимке)." },
+    { ico: "🗑", t: "Удалить фантом",
+      d: "Удалить ошибочную строку OCR (дубль или мусор) из текущего снимка." },
+    { ico: "🛡", t: "Авто-иммунитет новичкам",
+      d: "Новичок (нет в прошлом снимке и в реестре) автоматически получает иммунитет 7 дней и помечается 🤖 — проверьте и при необходимости поправьте ник." },
+  ];
+  function openAdminHelp() {
+    injectEditStyles();
+    closeEditModal();
+    const items = ADMIN_TOOLS.map(x => `
+      <div class="ahelp-item"><div class="ahelp-ico">${x.ico}</div>
+        <div class="ahelp-txt"><b>${esc(x.t)}</b><div>${esc(x.d)}</div></div></div>`).join("");
+    const ov = document.createElement("div");
+    ov.id = "vedit-overlay"; ov.className = "vedit-overlay";
+    ov.innerHTML = `
+      <div class="vedit-card wide" role="dialog" aria-modal="true">
+        <h3>🛠 Инструменты администратора</h3>
+        <div class="ahelp-list">${items}</div>
+        <div class="ahelp-note">Доступно только при входе как администратор. Новые инструменты будут появляться здесь автоматически.</div>
+        <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) closeEditModal(); });
+    ov.querySelector("#vedit-cancel").onclick = closeEditModal;
+  }
+  function injectAdminHelp() {
+    if (document.getElementById("admin-help-btn")) return;
+    injectEditStyles();
+    const btn = document.createElement("button");
+    btn.id = "admin-help-btn"; btn.className = "admin-help-btn";
+    btn.textContent = "🛠 Инструменты админа";
+    btn.onclick = openAdminHelp;
+    const anchor = document.getElementById("valor-filter");
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(btn, anchor.nextSibling);
+    else document.body.appendChild(btn);
+  }
 
   $("valor-filter").addEventListener("input", () => {
     // Сбрасываем горизонтальную прокрутку влево, чтобы при поиске колонка
@@ -1474,9 +1594,23 @@
             ? `<span class="warn-badge">⚠ ${d.warning_count}</span>`
             : '—'}
         </td>
+        ${IS_ADMIN
+          ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="Вернуть в основной список">↩ вернуть</button></td>`
+          : ""}
       </tr>
     `).join("");
   }
+
+  // Восстановление из архива (только админ).
+  $("dep-tbody").addEventListener("click", async (ev) => {
+    const b = ev.target.closest(".dep-restore");
+    if (!b || !IS_ADMIN) return;
+    if (!confirm(`Вернуть «${b.dataset.nick}» из архива в основной список?`)) return;
+    try {
+      await adminCall("POST", "/valor/restore", { canon: b.dataset.canon });
+      await load(); await loadDeparted();
+    } catch (_) { /* alert уже показан */ }
+  });
 
   $("dep-toggle").addEventListener("click", () => {
     const w = $("dep-wrap");
@@ -1493,6 +1627,10 @@
     load().then(() => { loadTimeline(); loadDeparted(); });
   });
 
-  loadMe();
-  load().then(() => { loadTimeline(); loadDeparted(); });
+  loadMe().then(() => {
+    if (IS_ADMIN) injectAdminHelp();
+    apply();          // перерисовать с учётом роли (no-op если данные не готовы)
+    loadDeparted();   // обновить архив с кнопками «вернуть»
+  });
+  load().then(() => { apply(); loadTimeline(); loadDeparted(); });
 })();
