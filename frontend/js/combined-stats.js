@@ -277,12 +277,16 @@
                   const parts = ["множитель ×" + Number(sc.streak_mult || 1).toFixed(2)];
                   if (sc.over_streak_cur) parts.push("стрик " + sc.over_streak_cur + " нед.");
                   suffix = "  · " + parts.join(", ");
-                } else if (lbl === "Офицерство" && sc.top_rank) {
-                  suffix = "  · " + sc.top_rank + (sc.cur_rank && sc.cur_rank !== sc.top_rank ? " (сейчас " + sc.cur_rank + ")" : "");
+                } else if (lbl === "Офицерство") {
+                  const p = [];
+                  if (sc.top_rank) p.push(sc.top_rank + (sc.cur_rank && sc.cur_rank !== sc.top_rank ? " (сейчас " + sc.cur_rank + ")" : ""));
+                  if (sc.officer_mult > 1) p.push("×" + Number(sc.officer_mult).toFixed(2));
+                  if (p.length) suffix = "  · " + p.join(", ");
                 } else if (lbl === "Общительность") {
                   const parts = [];
                   if (sc.vk) parts.push("VK"); if (sc.tg) parts.push("TG");
                   parts.push((sc.chat_msgs || 0) + " сообщ.");
+                  if (sc.social_mult > 1) parts.push("×" + Number(sc.social_mult).toFixed(2));
                   suffix = "  · " + parts.join(", ");
                 }
                 return `  ${lbl}: ${val}${suffix}`;

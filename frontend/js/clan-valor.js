@@ -586,13 +586,13 @@
       (s.over_streak_cur ? ` (${s.over_streak_cur} нед.)` : "") +
       ` = ${s.doblest_value ?? 0}`;
     const officerLine = s.top_rank
-      ? `• офицерство: ${s.officer} / ${s.officer_max ?? 14} (макс: ${s.top_rank}` +
-        (s.cur_rank && s.cur_rank !== s.top_rank ? `, сейчас: ${s.cur_rank}` : ``) + `)`
-      : `• офицерство: ${s.officer ?? 0} / ${s.officer_max ?? 14}`;
+      ? `• офицерство: ${s.officer} = база ${s.officer_base ?? 0} × ${Number(s.officer_mult || 1).toFixed(2)}` +
+        ` (макс: ${s.top_rank}${s.cur_rank && s.cur_rank !== s.top_rank ? `, сейчас: ${s.cur_rank}` : ``}${s.is_cur_officer ? `, офицер сейчас` : ``})`
+      : `• офицерство: ${s.officer ?? 0}`;
     const tip = `Ценность клану: ${s.total}\n`
       + valLine + "\n"
       + officerLine + "\n"
-      + `• общительность: ${s.social ?? 0} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.)\n`
+      + `• общительность: ${s.social ?? 0} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.${s.social_mult > 1 ? `, ×${Number(s.social_mult).toFixed(2)}` : ``})\n`
       + `• ветеран: ${s.veteran} / ${s.veteran_max ?? 12}`
       + (s.immunity_adjusted ? `\nИммунитет новичка активен.` : ``);
     const star = (s.streak_mult > 1)
@@ -1160,24 +1160,29 @@
       .ach-multline{font-size:11.5px;color:#cdbf9a;background:#0c0d10;border:1px solid #2a2418;
         border-radius:8px;padding:7px 10px;margin:0 0 10px}
       .ach-multline b{color:#ffd866}
-      .ach-tree{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:4px}
-      .ach-branch{flex:1 1 175px;min-width:155px;max-width:230px;
+      .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh}
+      .ach-tree{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;margin-top:4px}
+      .ach-branch{flex:1 1 150px;min-width:140px;max-width:210px;
         background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
-        border-radius:12px;padding:10px 8px 12px;box-shadow:inset 0 0 26px rgba(0,0,0,.5)}
-      .ach-branch-h{text-align:center;color:#e3cd92;font-weight:600;font-size:12.5px;margin-bottom:3px}
-      .ach-branch-hint{text-align:center;color:#8a8470;font-size:10px;margin-bottom:8px;line-height:1.35}
+        border-radius:12px;padding:9px 7px 10px;box-shadow:inset 0 0 26px rgba(0,0,0,.5)}
+      .ach-branch-h{text-align:center;color:#e3cd92;font-weight:600;font-size:12px;margin-bottom:3px}
+      .ach-branch-hint{text-align:center;color:#8a8470;font-size:9.5px;margin-bottom:7px;line-height:1.3}
       .ach-branch-runes{display:flex;flex-direction:column;align-items:center}
       .ach-rune-wrap{display:flex;flex-direction:column;align-items:center;text-align:center}
-      .ach-rune{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;
-        justify-content:center;font-size:20px;border:2px solid #5a4a2a;color:#7a715a;
+      .ach-rune{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;
+        justify-content:center;font-size:17px;border:2px solid #5a4a2a;color:#7a715a;
         background:linear-gradient(145deg,#26231c,#121013);
         box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 -3px 6px rgba(0,0,0,.55)}
       .ach-rune-wrap.locked .ach-rune{filter:grayscale(1);opacity:.5}
-      .ach-rune-cap{font-size:10px;color:#b9ad8e;margin-top:3px;max-width:96px;line-height:1.2}
+      .ach-rune-cap{font-size:9.5px;color:#b9ad8e;margin-top:2px;max-width:96px;line-height:1.15}
       .ach-rune-wrap.locked .ach-rune-cap{color:#6a6458}
-      .ach-rune-req{font-size:9px;color:#7e7660;margin-top:1px}
-      .ach-link{width:3px;height:13px;background:#2a2620;border-radius:2px;margin:2px 0}
+      .ach-rune-req{font-size:8.5px;color:#7e7660;margin-top:0}
+      .ach-link{width:3px;height:9px;background:#2a2620;border-radius:2px;margin:1px 0}
       .ach-link.lit{box-shadow:0 0 6px currentColor}
+      .ach-mfoot{margin-top:9px;padding-top:7px;border-top:1px dashed #2c2a22;text-align:center}
+      .ach-mfoot-x{color:#ffd866;font-weight:700;font-size:14px;margin-right:5px}
+      .ach-mfoot-v{color:#57d982;font-weight:600;font-size:13px}
+      .ach-mfoot small{display:block;color:#8a8470;font-size:9px;margin-top:1px}
       .ach-subdiv{font-size:9.5px;color:#8a8470;text-transform:uppercase;letter-spacing:.5px;
         margin:7px 0 3px;border-top:1px dashed #2c2a22;padding-top:7px;width:100%;text-align:center}
       .ach-vet{position:absolute;top:12px;right:14px;display:flex;flex-direction:column;align-items:center}
@@ -1411,7 +1416,7 @@
   }
   // Ветка-колонка: руны, соединённые линиями (линия загорается, когда
   // достигнута следующая руна) — как путь скилл-дерева Diablo.
-  function branchCol(title, hint, runes) {
+  function branchCol(title, hint, runes, footer) {
     let body = "";
     runes.forEach((r, i) => {
       if (i > 0) body += `<div class="ach-link${r.lit ? " lit" : ""}"${r.lit ? ` style="background:${r.col};box-shadow:0 0 7px ${r.col}"` : ""}></div>`;
@@ -1419,7 +1424,14 @@
     });
     return `<div class="ach-branch"><div class="ach-branch-h">${title}</div>` +
       (hint ? `<div class="ach-branch-hint">${hint}</div>` : "") +
-      `<div class="ach-branch-runes">${body}</div></div>`;
+      `<div class="ach-branch-runes">${body}</div>` +
+      (footer || "") + `</div>`;
+  }
+  // Футер ветки с множителем: «× M ⇒ значение».
+  function multFooter(mult, value, note) {
+    if (!(mult > 1)) return `<div class="ach-mfoot"><span class="ach-mfoot-v">${value}</span><small>ценность</small></div>`;
+    return `<div class="ach-mfoot"><span class="ach-mfoot-x">×${Number(mult).toFixed(2)}</span>` +
+      `<span class="ach-mfoot-v">= ${value}</span>` + (note ? `<small>${esc(note)}</small>` : "") + `</div>`;
   }
   // Колонка рун с загорающимися линиями (без обёртки ветки).
   function runeCol(runes) {
@@ -1532,8 +1544,10 @@
         <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
         <div class="ach-tree">
           ${branchValor(magRunes, strRunes, mult, s.doblest_base, s.doblest_value)}
-          ${branchCol("✠ Офицерство", "Аддитивно, без множителя", offRunes)}
-          ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes)}
+          ${branchCol("✠ Офицерство", "Слабый множитель за посты", offRunes,
+            multFooter(s.officer_mult, s.officer, s.is_cur_officer ? "офицер сейчас" : ""))}
+          ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
+            multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
         </div>
         <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;

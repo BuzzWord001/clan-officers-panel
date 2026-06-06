@@ -2839,8 +2839,8 @@ def _rank_frac(rank: str) -> float:
 DOBLEST_BASE = 40.0   # макс. база доблести (при форме 100%) до множителя
 MULT_K       = 1.2    # коэффициент множителя стрика
 MULT_CAP     = 3.0    # потолок множителя
-VALOR_W_VETERAN = 12  # руна ветерана (в углу)
-VALOR_W_OFFICER = 14  # ветка офицерства (по высшему + текущему посту)
+VALOR_W_VETERAN = 12  # руна ветерана (в углу, без множителя)
+VALOR_W_OFFICER = 11  # база офицерства (× слабый множитель за посты, ≤~×1.4)
 VALOR_W_VK   = 3      # руна ВКонтакте
 VALOR_W_TG   = 3      # руна Telegram
 VALOR_W_CHAT = 6      # руна общительности (активность из «Участников»)
@@ -4392,20 +4392,28 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             mult = _streak_multiplier(cur_ofs_sum)
             doblest_value = round(doblest_base * mult, 1)
             streak_bonus = round(doblest_value - doblest_base, 1)
-            # ── ВЕТКА 3: ОБЩИТЕЛЬНОСТЬ (VK + Telegram + чаты) ──
+            # ── ВЕТКА 3: ОБЩИТЕЛЬНОСТЬ (VK+TG+чаты) × НЕБОЛЬШОЙ множитель ──
+            # Множитель за активность в чатах (общительность), мягкий ≤ ×1.2.
             msgs = chat_msgs.get(cn, 0)
             chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
             soc = m.get("socials") or {}
             vk_pts = VALOR_W_VK if (soc.get("vk_id") or soc.get("vk_screen_name")) else 0
             tg_pts = VALOR_W_TG if (soc.get("tg_id") or soc.get("tg_username")) else 0
-            social_pts = round(vk_pts + tg_pts + chat_pts, 1)
-            # ── Руна ВЕТЕРАНА + ВЕТКА 2: ОФИЦЕРСТВО (аддитивно, без множителя) ──
+            social_base = round(vk_pts + tg_pts + chat_pts, 1)
+            social_mult = round(1.0 + min(msgs / 300.0, 0.2), 2)        # до ×1.2
+            social_value = round(social_base * social_mult, 1)
+            # ── ВЕТКА 2: ОФИЦЕРСТВО (база по высшему посту × СЛАБЫЙ множитель
+            # за текущий пост и за то, насколько высоко поднимался). Заметно
+            # слабее доблести — она ценится больше. ──
+            officer_base = round(VALOR_W_OFFICER * _rank_frac(top_rank), 1)
+            is_cur_officer = _rank_frac(m.get("rank", "")) > 0
+            officer_mult = round(1.0 + (0.25 if is_cur_officer else 0.0)
+                                 + 0.15 * _rank_frac(top_rank), 2)       # до ~×1.4
+            officer_value = round(officer_base * officer_mult, 1)
+            # ── Руна ВЕТЕРАНА (сама по себе, БЕЗ множителя) ──
             veteran_pts = VALOR_W_VETERAN if "veteran" in m["tags"] else 0
-            officer_pts = round(
-                VALOR_W_OFFICER * (0.7 * _rank_frac(top_rank)
-                                   + 0.3 * _rank_frac(m.get("rank", ""))), 1)
-            # ── Итог: доблесть×множитель + аддитивные ветки ──
-            total = round((doblest_value or 0) + officer_pts + social_pts + veteran_pts, 1)
+            # ── Итог: доблесть×множитель + офицерство×множ + общит×множ + ветеран ──
+            total = round((doblest_value or 0) + officer_value + social_value + veteran_pts, 1)
             # Очки достижений (флейвор для Зала) — по открытым рунам.
             ach_points = _achievement_points(_c.get("peak_ratio", 0.0), _c.get("total_xp", 0))
             m["score"] = {
@@ -4426,18 +4434,23 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "over_ofs_avg":    _c.get("over_ofs_avg", 0),
                 "total_xp":        _c.get("total_xp", 0),
                 "achievement_points": ach_points,
-                # ветка 2 — офицерство
-                "officer":         officer_pts,
+                # ветка 2 — офицерство (× слабый множитель)
+                "officer":         officer_value,
+                "officer_base":    officer_base,
+                "officer_mult":    officer_mult,
                 "officer_max":     VALOR_W_OFFICER,
+                "is_cur_officer":  is_cur_officer,
                 "top_rank":        top_rank or None,
                 "cur_rank":        m.get("rank") or None,
-                # ветка 3 — общительность
+                # ветка 3 — общительность (× небольшой множитель)
                 "vk":              vk_pts,
                 "tg":              tg_pts,
                 "chat":            chat_pts,
                 "chat_max":        VALOR_W_CHAT,
                 "chat_msgs":       msgs,
-                "social":          social_pts,
+                "social_base":     social_base,
+                "social_mult":     social_mult,
+                "social":          social_value,
                 # руна ветерана
                 "veteran":         veteran_pts,
                 "veteran_max":     VALOR_W_VETERAN,

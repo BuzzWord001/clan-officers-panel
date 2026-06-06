@@ -71,8 +71,16 @@ check("A: руна перевыполнения даёт базу (>0)", sA["dob
 check("A: total = доблесть×множ + офицер + общит + ветеран",
       abs(sA["total"] - round(sA["doblest_value"] + sA["officer"] + sA["social"] + sA["veteran"], 1)) < 0.2,
       (sA["total"], sA["doblest_value"]))
-check("A: веса веток (офицер 14, ветеран 12, чат 6)",
-      sA["officer_max"] == 14 and sA["veteran_max"] == 12 and sA["chat_max"] == 6)
+check("A: веса веток (офицер 11, ветеран 12, чат 6)",
+      sA["officer_max"] == 11 and sA["veteran_max"] == 12 and sA["chat_max"] == 6)
+# Множители веток в разумных пределах (офицер ≤ ~1.4, общит ≤ 1.2).
+gm0 = db.valor_get_current()["members"]
+check("офицер-множитель в пределах 1..1.4",
+      all(1 <= (x["score"]["officer_mult"]) <= 1.41 for x in gm0))
+check("общит-множитель в пределах 1..1.2",
+      all(1 <= (x["score"]["social_mult"]) <= 1.2 for x in gm0))
+check("баланс: доблесть-ветка ≥ офицерства у сильного игрока",
+      sA["doblest_value"] >= sA["officer"])
 check("A: пик-тир = double", "double" in tA, tA)
 check("A: стрик-тир в таблице (текущий) есть", any(t.startswith("streak") or t.startswith("month") for t in tA), tA)
 
