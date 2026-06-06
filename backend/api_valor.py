@@ -76,9 +76,10 @@ def valor_snapshot(payload: ValorSnapshotIn,
 
 
 @router.get("/current")
-def valor_current(_: dict = Depends(require_viewer)) -> dict:
-    """Самый свежий снимок + все участники."""
-    return db.valor_get_current()
+def valor_current(s: dict = Depends(require_viewer)) -> dict:
+    """Самый свежий снимок + все участники. Примечание из реестра (reg_note)
+    добавляется только офицерам/админу — гость его не получает."""
+    return db.valor_get_current(with_reg_notes=(s.get("role") != "guest"))
 
 
 @router.get("/sessions")

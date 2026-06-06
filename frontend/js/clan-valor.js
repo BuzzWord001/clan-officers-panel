@@ -860,7 +860,7 @@
     let items = DATA.members.slice();
     if (q) {
       items = items.filter(m => {
-        const hay = [m.nick, m.true_name, m.rank, m.title, m.class_]
+        const hay = [m.nick, m.true_name, m.rank, m.title, m.class_, m.reg_note]
           .join(" ").toLowerCase();
         return hay.indexOf(q) >= 0;
       });
@@ -923,6 +923,7 @@
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="hist-cell" data-field="title">${renderTitle(m)}</td>
+          <td class="col-note" title="${m.reg_note ? esc(m.reg_note) : ""}">${esc(m.reg_note || "")}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>

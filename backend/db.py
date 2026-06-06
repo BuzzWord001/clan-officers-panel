@@ -3787,9 +3787,14 @@ def valor_get_departed() -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
-def valor_get_current() -> dict[str, Any]:
+def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
     """Самый свежий снапшот + все его участники + тренд vs предыдущий
-    снапшот (если есть)."""
+    снапшот (если есть).
+
+    with_reg_notes=True добавляет каждому участнику reg_note — примечание из
+    реестра приёма (по canon ника). Видно только офицерам/админу; гостю флаг
+    не выставляется, поэтому примечания в ответ не попадают.
+    """
     with connection() as conn:
         snaps = conn.execute(
             "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 2"
@@ -3948,6 +3953,17 @@ def valor_get_current() -> dict[str, Any]:
             r["nick_canon"] for r in conn.execute(
                 "SELECT nick_canon FROM valor_force_archived")
         }
+        # Примечание из реестра приёма по canon (только для офицеров/админа).
+        # ORDER BY accepted_date — более поздняя запись перетирает раннюю.
+        note_by_canon: dict[str, str] = {}
+        if with_reg_notes:
+            for r in conn.execute(
+                "SELECT game_nick, note FROM acceptances ORDER BY accepted_date"
+            ):
+                for piece in (r["game_nick"] or "").split(","):
+                    c = _valor_canon(piece)
+                    if c:
+                        note_by_canon[c] = r["note"] or ""
         # Пул кандидатов для подсказки «возможно это X» при кривом OCR-нике:
         # текущие участники + ушедшие (искомый часто «ушёл», т.к. его нормальный
         # ник в этом снимке не распознался).
@@ -4013,6 +4029,9 @@ def valor_get_current() -> dict[str, Any]:
             if ov:
                 m["nick"] = ov
             m["ai_nick"] = (cn in ai_nick_canons) and not ov
+            # Примечание из реестра (только если запрошено — т.е. не гость).
+            if with_reg_notes:
+                m["reg_note"] = note_by_canon.get(cn, "")
             # Подсказка «возможно это X»: для непроверенного ИИ-ника ищем
             # самого похожего среди других участников и ушедших.
             m["suggest"] = None

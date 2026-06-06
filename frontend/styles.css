@@ -822,6 +822,9 @@ body.guest-mode .tag-add-btn,
 body.guest-mode .warn-add-btn,
 body.guest-mode .warn-del-btn { display: none !important; }
 
+/* Колонка «Примечание» из реестра — только офицерам/админу, не гостю. */
+body.guest-mode .col-note { display: none !important; }
+
 .auth-secondary {
   margin-top: 18px;
   text-align: center;
