@@ -464,7 +464,7 @@
   // Структура гайда: группы → ветки → роли (по возрастанию престижа).
   const ROLE_GUIDE = [
     { group: "Достижения за доблесть", icon: "🏆",
-      gintro: "Начисляются автоматически по истории доблести. Кликни по нику в таблице — увидишь личное ДЕРЕВО достижений: что открыто, что следующее и сколько осталось. Открытые роли остаются навсегда.",
+      gintro: "Начисляются автоматически по истории доблести. Нажми кнопку 🏆 рядом с ником в таблице — откроется личный «Зал доблести»: шкала прокачки, что открыто, что следующее и сколько осталось. Открытые роли остаются навсегда.",
       sub: [
         { title: "Ветка «Сила одного пика»",
           note: "За лучшую отдельную неделю — во сколько раз перекрыта норма. Достаточно один раз достичь порога; роль остаётся.",
@@ -1010,10 +1010,11 @@
           + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="🗑 Удалить фантом — убрать ошибочную строку OCR (дубль или мусор) из текущего снимка.">🗑</button>`
           + `</span>`
         : "";
+      const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b class="nick-ach" data-nick="${esc(m.nick)}" title="Открыть дерево достижений и ролей">${esc(m.nick)}</b>${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
@@ -1481,7 +1482,7 @@
   }
 
   $("valor-tbody").addEventListener("click", (ev) => {
-    const nb = ev.target.closest(".nick-ach");
+    const nb = ev.target.closest(".ach-btn");
     if (!nb) return;
     ev.stopPropagation();
     const m = (DATA.members || []).find(x => x.nick === nb.dataset.nick);

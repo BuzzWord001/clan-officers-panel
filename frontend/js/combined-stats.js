@@ -292,11 +292,11 @@
                 } else if (lbl === "Чаты") {
                   suffix = "  · " + (sc.chat_msgs || 0) + " сообщ.";
                 } else if (lbl === "Достижения") {
-                  // Главный фактор: очки достижений (редкость открытых ролей)
-                  // + макс. серия перевыполнения.
+                  // Главный фактор: очки достижений (редкость открытых ролей),
+                  // накопленный доблесть-XP и лучший пик.
                   const parts = [];
                   if (sc.achievement_points) parts.push(sc.achievement_points + " очк.");
-                  if (sc.over_streak_max) parts.push("серия " + sc.over_streak_max + " нед.");
+                  if (sc.total_xp) parts.push(Number(sc.total_xp).toLocaleString("ru-RU") + " XP");
                   if (sc.peak_ratio) parts.push("пик ×" + Number(sc.peak_ratio).toFixed(1));
                   if (parts.length) suffix = "  · " + parts.join(", ");
                 }
