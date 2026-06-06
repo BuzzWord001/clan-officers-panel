@@ -905,14 +905,14 @@
         ? ` <span class="ai-nick" title="Ник распознан ИИ-зрением — проверьте и при необходимости исправьте вручную (только админ)">🤖</span>`
         : "";
       const sugHtml = (IS_ADMIN && m.ai_nick && m.suggest)
-        ? ` <button class="ai-sug" data-act="merge-suggest" data-canon="${esc(m.nick_canon)}" data-target="${esc(m.suggest.nick)}" title="Подтвердить слияние: это «${esc(m.suggest.nick)}»">🤖→ ${esc(m.suggest.nick)}?</button>`
+        ? ` <button class="ai-sug" data-act="merge-suggest" data-canon="${esc(m.nick_canon)}" data-target="${esc(m.suggest.nick)}" title="🤖 Возможно, ИИ распознал ник с ошибкой и это «${esc(m.suggest.nick)}». Нажми, чтобы подтвердить — записи объединятся, и кривой ник в будущем сам сматчится.">🤖→ ${esc(m.suggest.nick)}?</button>`
         : "";
       const adminBtns = IS_ADMIN
         ? ` <span class="row-admin">`
-          + `<button class="radm" data-act="edit" data-id="${m.id}" title="Редактировать">✎</button>`
-          + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Это он и есть (слияние)">🔗</button>`
-          + `<button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Кикнуть в архив">🗄</button>`
-          + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="Удалить фантом">🗑</button>`
+          + `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
+          + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🔗 «Это он и есть» — слить неверно распознанного игрока (как нового или ушедшего) в существующего. История объединится, кривой ник в будущем сам сматчится.">🔗</button>`
+          + `<button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Кикнуть в архив — убрать игрока в «Покинули клан», даже если он ещё есть в снимке. Система запомнит, что его кикнули.">🗄</button>`
+          + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="🗑 Удалить фантом — убрать ошибочную строку OCR (дубль или мусор) из текущего снимка.">🗑</button>`
           + `</span>`
         : "";
       return `
@@ -1598,7 +1598,7 @@
             : '—'}
         </td>
         ${IS_ADMIN
-          ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="Вернуть в основной список">↩ вернуть</button></td>`
+          ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="↩ Вернуть в основной список — если игрок ушёл/был кикнут по ошибке. Вернётся, если он есть в текущем снимке.">↩ вернуть</button></td>`
           : ""}
       </tr>
     `).join("");
