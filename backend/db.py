@@ -2918,6 +2918,17 @@ def _rank_frac(rank: str) -> float:
     return _rank_score(rank) / _RANK_SCORE_MAX
 
 
+# Офицерство начинается с КАПИТАНА (Капитан→Майор→Маршал→Мастер). Лейтенант и
+# ниже офицерами НЕ считаются — не дают офицерскую ценность/руну.
+_OFFICER_MIN_SCORE = _RANK_SCORE["капитан"]   # 12
+
+
+def _officer_frac(rank: str) -> float:
+    """Офицерская доля 0..1 (мастер=1.0). Ниже Капитана → 0 (не офицер)."""
+    sc = _rank_score(rank)
+    return (sc / _RANK_SCORE_MAX) if sc >= _OFFICER_MIN_SCORE else 0.0
+
+
 # ── Модель «Ценность для клана» (3 ветки, пересчёт 2026-06-07) ──
 # Ветка 1 «Доблесть»: база (форма за 4 нед) × МНОЖИТЕЛЬ за текущий стрик.
 #   Множитель = 1 + Σ(OFS за недели текущего стрика) × K, потолок MULT_CAP.
@@ -4422,7 +4433,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             if m["socials"]:
                 auto_tags.append("in_socials")
             top_rank = top_rank_map.get(cn, "")
-            if _rank_score(top_rank) > 0:
+            if _rank_score(top_rank) >= _OFFICER_MIN_SCORE:   # офицер = Капитан+
                 auto_tags.append("officer")
             manual_tags = tags_map.get(cn, [])
             # Сохраняем порядок: сначала ручные (veteran и т.п.) — затем авто
@@ -4580,10 +4591,10 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             social_value = round(social_base * social_mult, 1)
             # ── ВЕТКА 2: ОФИЦЕРСТВО (база по высшему посту × СЛАБЫЙ множитель).
             # База нормирована так, чтобы потолок ветки = вес «офицерство».
-            officer_base = round((W["officer"] / 1.4) * _rank_frac(top_rank), 2)
-            is_cur_officer = _rank_frac(m.get("rank", "")) > 0
+            officer_base = round((W["officer"] / 1.4) * _officer_frac(top_rank), 2)
+            is_cur_officer = _officer_frac(m.get("rank", "")) > 0
             officer_mult = round(1.0 + (0.25 if is_cur_officer else 0.0)
-                                 + 0.15 * _rank_frac(top_rank), 2)       # до ~×1.4
+                                 + 0.15 * _officer_frac(top_rank), 2)    # до ~×1.4
             officer_value = round(officer_base * officer_mult, 1)
             # ── Руна ВЕТЕРАНА (сама по себе, БЕЗ множителя) ──
             veteran_pts = W["veteran"] if "veteran" in m["tags"] else 0
