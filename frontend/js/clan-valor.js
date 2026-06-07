@@ -459,74 +459,72 @@
     in_socials: "Вступи в VK- или Telegram-сообщество клана и привяжи аккаунт через бота регистрации — роль появится сама.",
   };
 
-  // Структура гайда: группы → ветки → роли (по возрастанию престижа).
-  const ROLE_GUIDE = [
-    { group: "Достижения за доблесть", icon: "🏆",
-      gintro: "Начисляются автоматически по истории доблести. Нажми кнопку 🏆 рядом с ником в таблице — откроется личный «Зал доблести»: шкала прокачки, что открыто, что следующее и сколько осталось. Открытые роли остаются навсегда.",
-      sub: [
-        { title: "Ветка «Сила одного пика»",
-          note: "За лучшую отдельную неделю — во сколько раз перекрыта норма. Достаточно один раз достичь порога; роль остаётся.",
-          tags: ["over", "double", "triple", "record", "phenom", "titan", "overlord", "absolute"] },
-        { title: "Ветка «Путь доблести» (накопительный XP)",
-          note: "Каждую неделю начисляется доблесть-XP = НАБРАННАЯ доблесть × бонус за серию перевыполнения (до ×2). Поэтому НАСКОЛЬКО ты перевыполнил норму — напрямую ускоряет путь (×7 даёт втрое больше, чем ×2). XP копится и НЕ сгорает — всегда можно докачать до нужной роли.",
-          tags: ["xp1", "xp2", "xp3", "xp4", "xp5", "xp6",
-                 "xp7", "xp8", "xp9", "xp10", "xp11"] },
-      ] },
-    { group: "Статусные роли", icon: "🛡",
-      gintro: "Не зависят от доблести — отмечают место человека в клане.",
-      flat: ["veteran", "officer", "in_socials"] },
-  ];
-
-  // Чип роли — РОВНО как в таблице (renderTags): достижениям инлайн-цвет +
-  // свечение, статусным — их CSS-классы; авто-теги получают пунктир.
-  function guideChip(t) {
-    const meta = TAG_META[t] || { label: t, icon: "·", cls: "tag-default", tip: t };
-    const isAch = meta.cls && meta.cls.indexOf("tag-ach") >= 0;
-    let style = "";
-    if (isAch) {
-      const col = tagColor(t);
-      const rk = TIER_RARITY[t];
-      const glow = rk === "epic" || rk === "legendary" || rk === "mythic" || meta.glow;
-      style = ` style="color:${col};border-color:${col};background:${col}1f;` +
-              (glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
-    }
-    const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
-    const rr = tierRarity(t);
-    const rlbl = rr ? ` <span style="font-size:9px;opacity:.8">[${esc(rr.name)}]</span>` : "";
-    return `<span class="tag-chip ${meta.cls}${auto}"${style}` +
-      `><span class="ic">${meta.icon}</span>${esc(meta.label)}${rlbl}</span>`;
+  // ── Гайд ролей: 3 ветки каменных рун (как в «Зале доблести») + ветеран ──
+  // Руна-плитка для гайда (каменный стиль, как в Зале достижений).
+  function guideRune(icon, name, req, col, rar) {
+    return `<div class="ach-rune-wrap rg-rune" title="${esc(req)}">` +
+      `<div class="ach-rune" style="border-color:${col};color:${col};box-shadow:0 0 9px ${col}44">${icon}</div>` +
+      `<div class="ach-rune-cap" style="color:${col}">${esc(name)}</div>` +
+      `<div class="ach-rune-req">${esc(req)}</div>` +
+      (rar ? `<div class="rg-rar" style="color:${col}">${esc(rar)}</div>` : "") +
+      `</div>`;
   }
+  const guideRunes = (arr) => `<div class="rg-runes">${arr.join("")}</div>`;
 
-  function guideRows(tags) {
-    return tags.map((t) =>
-      `<div class="rg-row">` +
-        `<div class="rg-chip">${guideChip(t)}</div>` +
-        `<div class="rg-how">${esc(ROLE_HOWTO[t] || (TAG_META[t] || {}).tip || "")}</div>` +
-      `</div>`).join("");
-  }
+  function buildRoleGuide(W) {
+    const wb = W ? W.base : 35, ws = W ? W.streak : 40,
+          wo = W ? W.officer : 10, wv = W ? W.veteran : 10, wsoc = W ? W.social : 5;
+    const pct = (n) => `<span class="rg-pct">до ${Math.round(n)}% ценности</span>`;
+    const rar = (k) => (tierRarity(k) || {}).name || "";
 
-  function buildRoleGuide() {
-    let html =
-      `<div class="rg-head"><span>✦ Все доступные роли клана</span>` +
+    const mag = MAG_LADDER.map((t) =>
+      guideRune(tico(t.key), tname(t.key), `пик ≥ ×${t.mult} нормы`, tcol(t.key), rar(t.key)));
+    const streaks = STREAK_LADDER_F.map((t) =>
+      guideRune(tico(t.key), tname(t.key), `${t.w} нед. подряд`, tcol(t.key), rar(t.key)));
+    const officers = OFFICER_RANKS.map((r) =>
+      guideRune(r.ico, r.name, `пост «${r.name}»`, "#caa15a", ""));
+    const socials = [
+      guideRune("◈", "ВКонтакте", "вступить в VK клана", "#5a91d8", ""),
+      guideRune("✈", "Telegram", "вступить в Telegram клана", "#3aa0e0", ""),
+      guideRune("✦", "Общительность", "активность в чатах (из «Участники»)", "#57d982", ""),
+    ];
+    const vet = guideRune("★", "Ветеран", "состоял в клане с основания", "#ffd24a", "");
+
+    return `<div class="rg-head"><span>✦ Все доступные роли клана</span>` +
       `<button class="rg-close" type="button" aria-label="Закрыть">✕</button></div>` +
       `<div class="rg-body">` +
-      `<p class="rg-intro">Роли показываются в столбце «Роли» у каждого участника. ` +
-      `Достижения за доблесть начисляются <b>автоматически</b> по истории набора, ` +
-      `статусные — по составу клана и должности. Ниже — все роли по возрастанию ` +
-      `престижа и как получить каждую.</p>`;
-    ROLE_GUIDE.forEach((g) => {
-      html += `<section class="rg-group">` +
-        `<h3 class="rg-gtitle">${esc(g.icon)} ${esc(g.group)}</h3>`;
-      if (g.gintro) html += `<p class="rg-gintro">${esc(g.gintro)}</p>`;
-      const subs = g.sub || [{ tags: g.flat }];
-      subs.forEach((s) => {
-        if (s.title) html += `<h4 class="rg-stitle">${esc(s.title)}</h4>`;
-        if (s.note)  html += `<p class="rg-snote">${esc(s.note)}</p>`;
-        html += `<div class="rg-list">${guideRows(s.tags)}</div>`;
-      });
-      html += `</section>`;
-    });
-    return html + `</div>`;
+      `<p class="rg-intro">Все роли — <b>каменные руны</b> по веткам, как в личном ` +
+      `«Зале доблести» (кнопка 🏆 у ника в таблице). Итоговая <b>ценность для клана</b> = ` +
+      `<b style="color:#57d982">доблесть</b> (база × множитель серии) + офицерство + ` +
+      `общительность + ветеран. Доли веток настраивает админ — сейчас ` +
+      `доблесть и серии вместе ≈ <b>${Math.round(wb + ws)}%</b>, это главное.</p>` +
+
+      `<section class="rg-group"><h3 class="rg-gtitle">⚔ Доблесть и серии ${pct(wb + ws)}</h3>` +
+      `<p class="rg-gintro">Главная ветка. <b>Перевыполнение</b> даёт базу ценности, а ` +
+      `<b>серии</b> её УМНОЖАЮТ. Множитель растёт, пока бьёшь норму неделя за неделей, и ` +
+      `<b>сбрасывается, если серия прервётся</b> — поэтому стабильность ценится выше всего.</p>` +
+      `<h4 class="rg-stitle">Перевыполнение — база ${pct(wb)}</h4>` +
+      `<p class="rg-snote">Чем сильнее перекрыл норму в лучшую неделю — тем выше руна и база ценности. Открывается навсегда.</p>` +
+      guideRunes(mag) +
+      `<h4 class="rg-stitle">Серии — множитель ${pct(ws)}</h4>` +
+      `<p class="rg-snote">Сколько недель подряд перевыполняешь норму. Чем длиннее и мощнее серия — тем больше множитель. Срыв серии гасит руны и сбрасывает множитель.</p>` +
+      guideRunes(streaks) + `</section>` +
+
+      `<section class="rg-group"><h3 class="rg-gtitle">✠ Офицерство ${pct(wo)}</h3>` +
+      `<p class="rg-gintro">Своя руна за каждый достигнутый пост. Добавляет ценность ` +
+      `(слабый множитель: +25%, если ты офицер сейчас). Доблесть не умножает.</p>` +
+      guideRunes(officers) + `</section>` +
+
+      `<section class="rg-group"><h3 class="rg-gtitle">✦ Общительность ${pct(wsoc)}</h3>` +
+      `<p class="rg-gintro">За соцсети и активность в чатах (из таблицы «Участники»). ` +
+      `Небольшой бонус, доблесть не умножает.</p>` +
+      guideRunes(socials) + `</section>` +
+
+      `<section class="rg-group"><h3 class="rg-gtitle">⭐ Ветеран ${pct(wv)}</h3>` +
+      `<p class="rg-gintro">Состоял в клане с основания. Отдельная руна — даёт ценность ` +
+      `сама по себе, без множителя. Присваивает офицер.</p>` +
+      guideRunes([vet]) + `</section>` +
+      `</div>`;
   }
 
   let RG_OVERLAY = null;
@@ -535,13 +533,17 @@
     if (RG_OVERLAY) { RG_OVERLAY.remove(); RG_OVERLAY = null; }
     document.removeEventListener("keydown", rgEsc);
   }
-  function openRoleGuide() {
+  async function openRoleGuide() {
     if (RG_OVERLAY) return;
+    injectEditStyles();                 // стили каменных рун (.ach-rune ...)
+    let W = null;
+    try { W = await API.valorWeights(); } catch (_) {}
+    if (RG_OVERLAY) return;             // защита от двойного клика
     RG_OVERLAY = document.createElement("div");
     RG_OVERLAY.className = "rg-overlay";
     const modal = document.createElement("div");
     modal.className = "rg-modal";
-    modal.innerHTML = buildRoleGuide();
+    modal.innerHTML = buildRoleGuide(W);
     RG_OVERLAY.appendChild(modal);
     document.body.appendChild(RG_OVERLAY);
     RG_OVERLAY.addEventListener("click", (e) => {
@@ -1196,7 +1198,12 @@
       .ach-mult-badge{font-size:18px;font-weight:700;color:#ffd866;
         text-shadow:0 0 10px rgba(255,216,102,.5)}
       .ach-mult-eq{font-size:12px;color:#57d982;font-weight:600}
-      .ach-mult-note{font-size:8.5px;color:#8a8470;text-align:center;line-height:1.25;text-transform:uppercase;letter-spacing:.3px}`;
+      .ach-mult-note{font-size:8.5px;color:#8a8470;text-align:center;line-height:1.25;text-transform:uppercase;letter-spacing:.3px}
+      /* Руны в гайде «Все доступные роли» */
+      .rg-runes{display:flex;flex-wrap:wrap;gap:11px;margin:8px 0 6px}
+      .rg-rune{flex:0 0 auto;width:86px}
+      .rg-rar{font-size:8.5px;opacity:.85;margin-top:1px;text-transform:uppercase;letter-spacing:.3px;text-align:center}
+      .rg-pct{font-size:11px;color:#8a8470;font-weight:400;margin-left:8px}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
