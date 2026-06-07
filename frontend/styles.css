@@ -2784,6 +2784,8 @@ body.show-valor .valor-col { display: table-cell; }
   background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center;
   padding: 20px; cursor: zoom-out;
 }
+/* hidden-атрибут должен прятать лайтбокс (иначе display:flex его перекрывает) */
+.vs-lightbox[hidden] { display: none; }
 .vs-lightbox img { max-width: 100%; max-height: 100%; box-shadow: 0 0 40px rgba(0,0,0,0.8); }
 
 /* Заметная подсказка про горизонтальную прокрутку таблицы */
