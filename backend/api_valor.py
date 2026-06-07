@@ -178,6 +178,7 @@ class ValorMemberEdit(BaseModel):
     class_:    str | None = Field(default=None, alias="class")
     valor:     int | None = None
     is_afk:    bool | None = None
+    afk_note:  str | None = None
 
     class Config:
         populate_by_name = True

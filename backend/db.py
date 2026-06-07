@@ -474,6 +474,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass
 
+    # 2026-06-07: комментарий к статусу АФК (причина, до какого числа) — по
+    # canon, переживает недельные снимки. Заполняет админ в правке участника.
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS valor_afk_note (
+            nick_canon TEXT PRIMARY KEY,
+            note       TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT ''
+        )""")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-01: счётчик стрика невыполненного норматива в valor_members.
     # 0 — выполнил в эту неделю (или АФК). При невыполнении +1 от prev.
     # При выполнении сбрасывается до 0.
@@ -569,6 +581,13 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
             f"SELECT * FROM acceptances {where} ORDER BY accepted_date ASC, id ASC"
         ).fetchall()
         return [_row_to_acceptance(r) for r in rows]
+
+
+def valor_afk_notes() -> dict[str, str]:
+    """canon → комментарий к АФК (причина/до какого числа)."""
+    with connection() as conn:
+        return {r["nick_canon"]: r["note"] for r in conn.execute(
+            "SELECT nick_canon, note FROM valor_afk_note WHERE note != ''")}
 
 
 def valor_known_nicks() -> list[str]:
@@ -4229,14 +4248,17 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 d["peak_week"] = wk
             if ofs > d["ofs_best"]:
                 d["ofs_best"] = ofs
-            # ── Серия ПЕРЕВЫПОЛНЕНИЯ (множитель). АФК-простой НЕ сбрасывает
-            #    серию (пауза); перевыполнение в ЛЮБОМ статусе её ПРОДОЛЖАЕТ. ──
-            if over:
+            # ── Серия (множитель). Активный: растёт при ПЕРЕВЫПОЛНЕНИИ (>норма),
+            #    рвётся при невыполнении. АФК: растёт при ВЫПОЛНЕНИИ нормы
+            #    (≥норма); при недоборе/0 — НЕ растёт и НЕ рвётся (заморозка). ──
+            met = r["valor"] >= norm
+            grow = met if is_afk else over
+            if grow:
                 if d["ostreak"] == 0:
                     d["o_cur_start"] = wk
                     d["o_cur_ofs"] = 0.0
                 d["ostreak"] += 1
-                d["o_cur_ofs"] += ofs
+                d["o_cur_ofs"] += ofs          # ofs=0 если ровно норма (длина растёт, множитель — нет)
                 if d["ostreak"] > d["omax"]:
                     d["omax"] = d["ostreak"]
                     d["omax_ofs"] = d["o_cur_ofs"]
@@ -4245,7 +4267,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             elif not is_afk:
                 d["ostreak"] = 0
                 d["o_cur_ofs"] = 0.0
-            # else: АФК без перевыполнения → пауза, серию не трогаем.
+            # else: АФК + недобор → заморозка, серию не трогаем.
             # ── Доблесть-XP (накопительно): набранная доблесть × бонус серии. ──
             xp_mult = min(1 + 0.1 * (d["ostreak"] - 1), 2.0) if d["ostreak"] > 0 else 1.0
             d["xp"] += max(r["valor"], 0) * xp_mult
@@ -4295,6 +4317,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
         # Теги по canon (ветеран и т.п.) — для UI меток.
         tags_map = valor_list_tags()
         tag_dates_map = valor_tag_dates()
+        afk_notes_map = valor_afk_notes()   # комментарии к АФК по canon
         # Активность в чатах по canon — для финального score.
         chat_msgs = valor_chat_activity_by_canon()
         # Top-rank когда-либо (для авто-тега «Офицер» + score).
@@ -4686,6 +4709,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             m["warnings"] = sorted(w, key=lambda x: x["pct"])
             m["warning_count"] = len(w)  # для бейджа в колонке «Норматив»
             m["manual_warnings"] = manual_warn_map.get(cn, [])
+            m["afk_note"] = afk_notes_map.get(cn, "")
             members.append(m)
         # Карта недель → дата/время сбора (для расшифровки «W22» в UI).
         weeks_meta = {}
@@ -4741,6 +4765,21 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
         if "is_afk" in fields and fields["is_afk"] is not None:
             sets.append("is_afk = ?")
             vals.append(1 if fields["is_afk"] else 0)
+
+        # Комментарий к АФК (причина, до какого числа) — по canon, держится
+        # между неделями. Пустая строка → удаляем запись.
+        if "afk_note" in fields and fields["afk_note"] is not None:
+            note = str(fields["afk_note"]).strip()
+            if note:
+                conn.execute(
+                    """INSERT INTO valor_afk_note (nick_canon, note, updated_at, updated_by)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(nick_canon) DO UPDATE SET
+                         note=excluded.note, updated_at=excluded.updated_at,
+                         updated_by=excluded.updated_by""",
+                    (canon, note, now, by))
+            else:
+                conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
 
         # Ник: правим отображаемый ник строки + флаг.
         new_nick = fields.get("nick")

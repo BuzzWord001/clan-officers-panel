@@ -649,6 +649,9 @@
   function renderNorm(m, norm) {
     if (m.is_afk) {
       const a = m.afk_info;
+      const note = m.afk_note || "";
+      const noteTip = note ? `\n💬 Комментарий: ${note}` : "";
+      const noteMark = note ? ` <span class="afk-note-mark" title="${esc(note)}">💬</span>` : "";
       if (a && a.weeks) {
         // Доблесть недельная (сброс по понедельникам), поэтому за время АФК
         // суммируем недельные значения — кто фармил даже в АФК.
@@ -666,11 +669,11 @@
             tip += `\n  ${w.week}: ${w.valor == null ? "—" : w.valor}`;
           }
         }
-        return `<span class="norm-cell norm-afk" title="${esc(tip)}"
-          >АФК · ${a.weeks} нед.${gainHtml}</span>`;
+        return `<span class="norm-cell norm-afk" title="${esc(tip + noteTip)}"
+          >АФК · ${a.weeks} нед.${gainHtml}${noteMark}</span>`;
       }
       return `<span class="norm-cell norm-afk"
-        title="АФК — норматив не оценивается">АФК</span>`;
+        title="${esc("АФК — норматив не оценивается" + noteTip)}">АФК${noteMark}</span>`;
     }
     // ── Иммунитет имеет приоритет над обычной оценкой ──
     const imm = m.immunity;
@@ -1276,6 +1279,9 @@
         ${rows}
         <label class="vedit-row vedit-check"><span>АФК</span>
           <input data-k="is_afk" type="checkbox" ${m.is_afk ? "checked" : ""}></label>
+        <label class="vedit-row"><span>Коммент. АФК</span>
+          <input data-k="afk_note" type="text" value="${esc(m.afk_note || "")}"
+            placeholder="причина / до какого числа (напр. «отпуск до 20.07»)"></label>
         <div class="vedit-err" id="vedit-err"></div>
         <div class="vedit-actions">
           <button id="vedit-cancel" class="vedit-btn">Отмена</button>
