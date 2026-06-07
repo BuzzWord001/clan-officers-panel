@@ -30,6 +30,11 @@ def comp(nick):
     return m["compliance"], m.get("tags", []), m.get("score", {})
 
 
+def tags_all(nick):
+    m = {x["nick"]: x for x in db.valor_get_current()["members"]}[nick]
+    return m.get("tags_all", [])
+
+
 db.init_db()
 # helpers напрямую
 check("_streak_tier(1) = None", db._streak_tier(1) is None)
@@ -94,7 +99,8 @@ check("A: стрик-тир в таблице (текущий) есть", any(t.
 # C: 189 на W10 (×9.45) + 21×4. Текущий стрик тоже 5, но множитель ВЫШЕ A,
 # т.к. магнитуда (OFS большой 189-недели) усиливает множитель.
 cC, tC, sC = comp("C")
-check("C: пик-тир = titan", "titan" in tC, tC)
+check("C: лучший пик titan — в ролях ЗА ВСЁ ВРЕМЯ", "titan" in tags_all("C"), tags_all("C"))
+check("C: за неделю пик НЕ titan (последняя ×1.5)", "titan" not in tC, tC)
 check("C: множитель > A (магнитуда усиливает)", sC["streak_mult"] > sA["streak_mult"],
       (sC["streak_mult"], sA["streak_mult"]))
 check("C: доблесть-итог > A (тот же стрик, больше магнитуда)",

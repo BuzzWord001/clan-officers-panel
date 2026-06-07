@@ -4527,13 +4527,23 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # Роли в таблице: магнитуда (пик ×N) + ТЕКУЩИЙ стрик-тир
             # (сбрасывается при потере серии — как и множитель).
             _cc = m["compliance"] or {}
-            peak_key = _peak_tier(_cc.get("peak_ratio", 0.0))
-            streak_key = _streak_tier(_cc.get("over_streak_cur", 0))
-            m["achievement"] = peak_key
-            m["streak_tag"] = streak_key
-            _ach_tags = [k for k in (peak_key, streak_key) if k]
-            if _ach_tags:
-                m["tags"] = _ach_tags + [t for t in m["tags"] if t not in _ach_tags]
+            # Две колонки ролей:
+            #   tags     — «за неделю»: магнитуда ЭТОЙ недели + ТЕКУЩИЙ стрик;
+            #   tags_all — «за всё время»: лучший пик + МАКС. стрик + статусы.
+            status_tags = list(m["tags"])   # manual (veteran…) + auto (officer/in_socials)
+            _cur_ratio = (cv / cur_norm) if (cv is not None and cur_norm) else 0.0
+            week_mag = _peak_tier(_cur_ratio)
+            cur_streak = _streak_tier(_cc.get("over_streak_cur", 0))
+            # «за всё время» = максимум достигнутого; не меньше текущей недели.
+            peak_mag = _peak_tier(max(_cc.get("peak_ratio", 0.0), _cur_ratio))
+            max_streak = _streak_tier(max(_cc.get("over_streak_max", 0),
+                                          _cc.get("over_streak_cur", 0)))
+            m["achievement"] = peak_mag        # для совместимости (лучший пик)
+            m["streak_tag"] = cur_streak
+            _week = [k for k in (week_mag, cur_streak) if k]
+            _all = [k for k in (peak_mag, max_streak) if k]
+            m["tags"] = _week + [t for t in status_tags if t not in _week]
+            m["tags_all"] = _all + [t for t in status_tags if t not in _all]
 
             # Тренд: сравниваем % выполнения этой недели vs прошлой.
             #   pct_delta = cur_pct - prev_pct  (в процентных пунктах)

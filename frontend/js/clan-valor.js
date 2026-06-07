@@ -382,11 +382,14 @@
     return 0;
   }
 
-  function renderTags(m) {
-    const tags = m.tags || [];
-    const btn = `<button class="tag-add-btn" data-nick="${esc(m.nick)}"
-      title="Добавить роль">+</button>`;
-    if (!tags.length) return `<div class="tag-row">${btn}</div>`;
+  // renderTags(m) — роли «за неделю» (m.tags) с кнопкой «+».
+  // renderTagsAll(m) — роли «за всё время» (m.tags_all), без «+».
+  function renderTagsAll(m) { return renderTags(m, m.tags_all || [], false); }
+  function renderTags(m, tagsOverride, withAdd) {
+    const tags = tagsOverride || m.tags || [];
+    const btn = (withAdd === false) ? "" :
+      `<button class="tag-add-btn" data-nick="${esc(m.nick)}" title="Добавить роль">+</button>`;
+    if (!tags.length) return `<div class="tag-row">${btn || '<span style="color:#667">—</span>'}</div>`;
     const c = m.compliance || null;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
@@ -1038,6 +1041,7 @@
           <td class="m-cell-warn">${warnCell}</td>
           <td class="m-cell-num">${trendCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
+          <td class="tags-cell">${renderTagsAll(m)}</td>
           <td class="m-cell-num">${renderScore(m.score)}</td>
           <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
