@@ -1451,13 +1451,15 @@
   // Каменная руна Diablo-стиля: квадрат-камень + подпись. Возвращает {html,lit,col}.
   function rune(icon, name, sub, lit, col, isNext) {
     const cls = lit ? "lit" : (isNext ? "next" : "locked");
+    // ТОЛЬКО достигнутые руны светятся (цвет + glow). «Следующая цель» —
+    // тусклая серая пунктирная (НЕ светится), закрытые — серые с 🔒.
     const rs = lit
       ? `border-color:${col};color:${col};box-shadow:0 0 13px ${col}77,inset 0 -3px 7px rgba(0,0,0,.55);`
-      : (isNext ? `border-color:${col};color:${col};opacity:.9;` : ``);
+      : (isNext ? `border:2px dashed #57503a;color:#8a8470;opacity:.7;box-shadow:none;` : ``);
     return {
       lit, col, html:
       `<div class="ach-rune-wrap ${cls}">
-        <div class="ach-rune" style="${rs}">${(lit || isNext) ? icon : "🔒"}</div>
+        <div class="ach-rune" style="${rs}">${lit ? icon : (isNext ? "▸" : "🔒")}</div>
         <div class="ach-rune-cap"${lit ? ` style="color:${col}"` : ""}>${esc(name)}</div>
         ${sub ? `<div class="ach-rune-req">${esc(sub)}</div>` : ""}</div>`
     };
