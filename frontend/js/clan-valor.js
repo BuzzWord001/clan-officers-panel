@@ -321,6 +321,15 @@
     in_socials: { label: "В соцсетях", icon: "◉", color: "#b88dff",
                   cls: "tag-socials",
                   tip: "Состоит в VK или Telegram клана." },
+    vk:         { label: "ВКонтакте", icon: "◈", color: "#5a91d8",
+                  cls: "tag-socials",
+                  tip: "Привязан профиль ВКонтакте." },
+    tg:         { label: "Telegram", icon: "✈", color: "#3aa0e0",
+                  cls: "tag-socials",
+                  tip: "Привязан профиль Telegram." },
+    chat:       { label: "Общительность", icon: "✦", color: "#57d982",
+                  cls: "tag-socials",
+                  tip: "Активность в клановых чатах (из «Участников»)." },
     officer:    { label: "Офицер", icon: "✦", color: "#ff9a44",
                   cls: "tag-officer",
                   tip: "Занимал офицерский пост (Капитан и выше)." },
@@ -338,7 +347,7 @@
   const XP_TAGS = new Set(["xp1", "xp2", "xp3", "xp4", "xp5", "xp6",
     "xp7", "xp8", "xp9", "xp10", "xp11"]);
   const AUTO_TAGS = new Set([
-    "in_socials", "officer",
+    "in_socials", "officer", "vk", "tg", "chat",
     ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS, ...XP_TAGS]);
 
   // ── Система РЕДКОСТИ (как в MMO: WoW-палитра качества) + очки достижений ──
@@ -435,9 +444,15 @@
         (glow ? `box-shadow:0 0 8px ${col}77,inset 0 -2px 4px rgba(0,0,0,.55);`
               : `inset 0 -2px 4px rgba(0,0,0,.55);`);
       const wcol = ` data-wtipcolor="${col}"`;
+      // Руна «Общительность» показывает число сообщений.
+      let lbl = meta.label;
+      if (t === "chat") {
+        const msgs = (m.score && m.score.chat_msgs) || 0;
+        lbl = `${meta.label} · ${msgs}`;
+      }
       return `<span class="tag-chip tag-rune ${meta.cls}${auto}" data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
-        ><span class="tag-rune-ic" style="${icStyle}">${meta.icon}</span><span class="tag-rune-lb" style="color:${col}">${esc(meta.label)}${multHtml}</span></span>`;
+        ><span class="tag-rune-ic" style="${icStyle}">${meta.icon}</span><span class="tag-rune-lb" style="color:${col}">${esc(lbl)}${multHtml}</span></span>`;
     }).join("");
     return `<div class="tag-row">${chips}${btn}</div>`;
   }

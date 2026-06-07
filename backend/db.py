@@ -2938,6 +2938,16 @@ def _rank_frac(rank: str) -> float:
     return _rank_score(rank) / _RANK_SCORE_MAX
 
 
+def _iso_week_of(ts: str) -> str:
+    """ISO-строка даты/времени → «YYYY-Www» (для сравнения с неделей снимка)."""
+    try:
+        d = date.fromisoformat(str(ts)[:10])
+        y, w, _ = d.isocalendar()
+        return f"{y}-W{w:02d}"
+    except Exception:
+        return ""
+
+
 # Офицерство начинается с КАПИТАНА (Капитан→Майор→Маршал→Мастер). Лейтенант и
 # ниже офицерами НЕ считаются — не дают офицерскую ценность/руну.
 _OFFICER_MIN_SCORE = _RANK_SCORE["капитан"]   # 12
@@ -4207,15 +4217,17 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
         # Предыдущая доблесть и % выполнения предыдущей недели по canon
         prev_valor: dict[str, int | None] = {}
         prev_pct: dict[str, float | None] = {}
+        prev_rank: dict[str, str] = {}     # ранг на прошлой неделе (для «новый офицер»)
         if prev is not None:
             prev_norm = prev["valor_norm"] or 1
             for r in conn.execute(
-                "SELECT nick_canon, valor, is_afk FROM valor_members WHERE snapshot_id = ?",
+                "SELECT nick_canon, valor, is_afk, rank FROM valor_members WHERE snapshot_id = ?",
                 (prev["id"],)
             ):
                 cn = r["nick_canon"]
                 v = r["valor"]
                 prev_valor[cn] = v if v is not None else None
+                prev_rank[cn] = r["rank"] or ""
                 if r["is_afk"] or v is None:
                     prev_pct[cn] = None
                 else:
@@ -4508,17 +4520,35 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             m["afk_info"] = _afk_streak(afk_hist.get(cn)) if m["is_afk"] else None
             # Теги: ручные + авто. Авто-теги НЕ пишутся в БД —
             # подмешиваются на лету при выдаче.
-            auto_tags = []
-            if m["socials"]:
-                auto_tags.append("in_socials")
+            # Соц-роли по отдельности: ВКонтакте / Telegram / Общительность(чаты).
+            _soc = m["socials"] or {}
+            _has_vk = bool(_soc.get("vk_id") or _soc.get("vk_screen_name"))
+            _has_tg = bool(_soc.get("tg_id") or _soc.get("tg_username"))
+            _msgs = chat_msgs.get(cn, 0)
             top_rank = top_rank_map.get(cn, "")
-            if _rank_score(top_rank) >= _OFFICER_MIN_SCORE:   # офицер = Капитан+
-                auto_tags.append("officer")
+            is_officer = _rank_score(top_rank) >= _OFFICER_MIN_SCORE   # Капитан+
             manual_tags = tags_map.get(cn, [])
-            # Сохраняем порядок: сначала ручные (veteran и т.п.) — затем авто
-            m["tags"] = manual_tags + [t for t in auto_tags if t not in manual_tags]
             m["tag_dates"] = tag_dates_map.get(cn, {})
             m["top_rank"] = top_rank or None
+            # ВСЕ статусные роли (для «за всё время»): ручные (veteran…) +
+            # офицер + vk + tg + общительность.
+            status_all = list(manual_tags)
+            for t in (("officer",) if is_officer else ()):
+                if t not in status_all:
+                    status_all.append(t)
+            for t, has in (("vk", _has_vk), ("tg", _has_tg), ("chat", _msgs > 0)):
+                if has and t not in status_all:
+                    status_all.append(t)
+            # Статусы, полученные ИМЕННО НА ЭТОЙ НЕДЕЛЕ (для «за неделю»):
+            #   veteran — если метка проставлена на текущей неделе;
+            #   officer — если стал офицером на этой неделе (на прошлой не был).
+            status_new = []
+            _vd = m["tag_dates"].get("veteran")
+            if "veteran" in manual_tags and _vd and _iso_week_of(_vd) == cur["week"]:
+                status_new.append("veteran")
+            if is_officer and _rank_score(prev_rank.get(cn, "")) < _OFFICER_MIN_SCORE:
+                status_new.append("officer")
+            _has_vet = "veteran" in manual_tags
 
             # Иммунитет новичка: если активен или попадает в эту неделю —
             # корректируем оценку (effective_norm меньше base или null).
@@ -4598,7 +4628,6 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # Две колонки ролей:
             #   tags     — «за неделю»: магнитуда ЭТОЙ недели + ТЕКУЩИЙ стрик;
             #   tags_all — «за всё время»: лучший пик + МАКС. стрик + статусы.
-            status_tags = list(m["tags"])   # manual (veteran…) + auto (officer/in_socials)
             _cur_ratio = (cv / cur_norm) if (cv is not None and cur_norm) else 0.0
             week_mag = _peak_tier(_cur_ratio)
             cur_streak = _streak_tier(_cc.get("over_streak_cur", 0))
@@ -4608,10 +4637,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                                           _cc.get("over_streak_cur", 0)))
             m["achievement"] = peak_mag        # для совместимости (лучший пик)
             m["streak_tag"] = cur_streak
+            # «за неделю»: магнитуда+стрик этой недели + СТАТУСЫ, полученные
+            # именно на этой неделе (veteran/officer впервые).
             _week = [k for k in (week_mag, cur_streak) if k]
+            m["tags"] = _week + [t for t in status_new if t not in _week]
+            # «за всё время»: лучший пик + макс. стрик + ВСЕ статусы.
             _all = [k for k in (peak_mag, max_streak) if k]
-            m["tags"] = _week + [t for t in status_tags if t not in _week]
-            m["tags_all"] = _all + [t for t in status_tags if t not in _all]
+            m["tags_all"] = _all + [t for t in status_all if t not in _all]
 
             # Тренд: сравниваем % выполнения этой недели vs прошлой.
             #   pct_delta = cur_pct - prev_pct  (в процентных пунктах)
@@ -4686,7 +4718,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                                  + 0.15 * _officer_frac(top_rank), 2)    # до ~×1.4
             officer_value = round(officer_base * officer_mult, 1)
             # ── Руна ВЕТЕРАНА (сама по себе, БЕЗ множителя) ──
-            veteran_pts = W["veteran"] if "veteran" in m["tags"] else 0
+            veteran_pts = W["veteran"] if _has_vet else 0
             # ── Итог ЗА НЕДЕЛЮ: доблесть×множ + офицерство×множ + общит×множ + ветеран ──
             total = round((doblest_value or 0) + officer_value + social_value + veteran_pts, 1)
             # ── Итог ЗА ВСЁ ВРЕМЯ: накопленная доблесть-ценность (копится по
