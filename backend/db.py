@@ -2745,11 +2745,27 @@ _CANON_HOMO = {
 }
 
 
+# Разные игроки клана с никами, которые канон ИНАЧЕ схлопнул бы в один
+# (отличаются только регистром или декор-символами ~/_). Ключ — точное
+# написание ника как в игре; значение — отдельный уникальный канон.
+# Применяется ДО нормализации, чтобы развести их во ВСЕХ таблицах
+# (доблесть, реестр, чаты) одинаково.
+_CANON_OVERRIDE = {
+    "~Lica~":  "licatilde",    # Друид
+    "_Lica_":  "licaunder",    # Жнец
+    "AtiScaT": "atiscatscat",  # Бард
+    "AtisCat": "atiscatcat",   # Дух крови
+}
+
+
 def _valor_canon(nick: str) -> str:
     import re
     import unicodedata
+    raw = (nick or "").strip()
+    if raw in _CANON_OVERRIDE:        # разводим тёзок-омонимов вручную
+        return _CANON_OVERRIDE[raw]
     # NFKC — приводит полноширинные/совместимые формы (ＩＲＩＫ→IRIK и т.п.).
-    s = unicodedata.normalize("NFKC", (nick or "")).strip().lower()
+    s = unicodedata.normalize("NFKC", raw).lower()
     # Сворачиваем гомоглифы в латиницу.
     s = "".join(_CANON_HOMO.get(ch, ch) for ch in s)
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
