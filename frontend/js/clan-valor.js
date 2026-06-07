@@ -2067,13 +2067,25 @@
       <span>сумма доблести: <b>${TL_RAW.overall.total}</b></span>
     `;
 
+    // Линия СУММЫ доблести всего клана по неделям (по ВСЕМ сокланам,
+    // не зависит от фильтра/топ-N) — на отдельной правой оси.
+    const clanTotals = (TL_RAW.overall && TL_RAW.overall.week_totals) || [];
+    const totalDs = clanTotals.length ? [{
+      label: "🏆 Сумма по клану",
+      data: clanTotals,
+      borderColor: "#ffd24a",
+      backgroundColor: "rgba(255,210,74,0.12)",
+      borderWidth: 3, tension: 0.2, pointRadius: 4, pointHoverRadius: 7,
+      yAxisID: "yTotal", fill: true, order: 99,
+    }] : [];
+
     const ctx = $("tl-canvas").getContext("2d");
     if (CHART) CHART.destroy();
     CHART = new Chart(ctx, {
       type: "line",
       data: {
         labels: TL_RAW.periods,
-        datasets: series.map((s, i) => ({
+        datasets: totalDs.concat(series.map((s, i) => ({
           label: s.nick + (s.true_name ? "  ·  " + s.true_name : ""),
           data: s.counts,
           borderColor: pickColor(i, series.length),
@@ -2081,7 +2093,8 @@
           tension: 0.2,
           pointRadius: 3,
           pointHoverRadius: 6,
-        })),
+          yAxisID: "y",
+        }))),
       },
       options: {
         responsive: true,
@@ -2094,13 +2107,21 @@
         scales: {
           x: { ticks: { color: "#a0a0a0" }, grid: { color: "rgba(255,255,255,0.03)" } },
           y: { ticks: { color: "#a0a0a0" }, grid: { color: "rgba(255,255,255,0.05)" },
-                beginAtZero: true },
+                beginAtZero: true,
+                title: { display: true, text: "доблесть игрока", color: "#7a8a7a" } },
+          yTotal: { position: "right", beginAtZero: true,
+                ticks: { color: "#ffd24a" }, grid: { drawOnChartArea: false },
+                title: { display: true, text: "сумма по клану", color: "#ffd24a" } },
         },
       },
     });
-    // Своя легенда — кликабельная (toggle dataset)
-    $("tl-legend").innerHTML = series.map((s, i) => `
-      <span class="leg-item" data-i="${i}" style="color:${pickColor(i, series.length)}"
+    // Своя легенда — кликабельная (toggle dataset). data-i = индекс датасета
+    // в графике (с учётом линии суммы, которая идёт первой).
+    const off = totalDs.length;   // 0 или 1
+    const totalLeg = off ? `<span class="leg-item leg-total" data-i="0"
+        style="color:#ffd24a;font-weight:700">🏆 Сумма по клану <small>(${TL_RAW.overall.total})</small></span>` : "";
+    $("tl-legend").innerHTML = totalLeg + series.map((s, i) => `
+      <span class="leg-item" data-i="${i + off}" style="color:${pickColor(i, series.length)}"
         >● ${esc(s.nick)}${s.true_name ? " · " + esc(s.true_name) : ""}
         <small>(${s.total})</small></span>
     `).join(" ");

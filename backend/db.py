@@ -4566,9 +4566,8 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             if "veteran" in manual_tags and _vd and _iso_week_of(_vd) == cur["week"]:
                 status_new.append("veteran")
             if is_officer and _rank_score(prev_rank.get(cn, "")) < _OFFICER_MIN_SCORE:
-                _new_off = _officer_tag(m["rank"]) or off_tag_all
-                if _new_off:
-                    status_new.append(_new_off)
+                if off_tag_all:   # та же руна высшего звания → всегда ⊆ «за всё время»
+                    status_new.append(off_tag_all)
             _has_vet = "veteran" in manual_tags
 
             # Иммунитет новичка: если активен или попадает в эту неделю —
@@ -5190,9 +5189,14 @@ def valor_timeline(weeks: int = 12) -> dict[str, Any]:
             })
         series.sort(key=lambda s: -s["total"])
 
+        # Суммарная доблесть ВСЕГО клана по каждой неделе (для линии «Сумма
+        # по клану» на графике + это и есть запись истории по неделям).
+        week_totals = [sum(s["counts"][i] for s in series)
+                       for i in range(len(periods))]
         overall = {
             "total":  sum(s["total"] for s in series),
             "people": len(series),
+            "week_totals": week_totals,
         }
         return {
             "periods": periods,
