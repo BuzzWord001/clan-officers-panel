@@ -406,6 +406,19 @@ CREATE TABLE IF NOT EXISTS valor_force_archived (
     archived_by TEXT NOT NULL DEFAULT '',
     reason      TEXT NOT NULL DEFAULT ''
 );
+
+-- Веса (проценты) категорий «Ценности для клана». Одна строка id=1.
+-- Сумма ≤ 100; задаёт админ. Из них выводятся все коэффициенты формулы.
+CREATE TABLE IF NOT EXISTS valor_weights (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    w_base     REAL NOT NULL DEFAULT 35,
+    w_streak   REAL NOT NULL DEFAULT 40,
+    w_officer  REAL NOT NULL DEFAULT 10,
+    w_veteran  REAL NOT NULL DEFAULT 10,
+    w_social   REAL NOT NULL DEFAULT 5,
+    updated_at TEXT NOT NULL DEFAULT '',
+    updated_by TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -2860,11 +2873,11 @@ VALOR_W_SOCIALS = VALOR_W_VK + VALOR_W_TG
 VALOR_W_OVERFULFILL = DOBLEST_BASE
 
 
-def _streak_multiplier(cur_ofs_sum: float) -> float:
+def _streak_multiplier(cur_ofs_sum: float, cap: float | None = None) -> float:
     """Множитель ветки доблести по ТЕКУЩЕМУ стрику. cur_ofs_sum — сумма OFS
     недель текущей серии перевыполнения (0 если стрик сбит). Растёт и с
-    длиной, и с магнитудой; потолок MULT_CAP."""
-    return round(min(1.0 + cur_ofs_sum * MULT_K, MULT_CAP), 2)
+    длиной, и с магнитудой; потолок cap (по умолчанию MULT_CAP)."""
+    return round(min(1.0 + cur_ofs_sum * MULT_K, MULT_CAP if cap is None else cap), 2)
 
 
 # Редкость текущей стрик-руны по средней магнитуде серии (avg OFS).
@@ -2889,6 +2902,65 @@ MAG_BASE_MAX = 35.0
 
 def _magnitude_base(peak: float) -> float:
     return _MAG_BASE.get(_peak_tier(peak), 0.0)
+
+
+# Доли тиров магнитуды (отношение к высшему). Реальная база = ratio × вес «база».
+_MAG_RATIO = {"over": 0.20, "double": 0.314, "triple": 0.429, "record": 0.571,
+              "phenom": 0.714, "titan": 0.80, "overlord": 0.886, "absolute": 1.0}
+
+
+def _mag_base_w(peak: float, w_base: float) -> float:
+    """База доблести по руне с учётом настраиваемого веса «база» (%)."""
+    return round(_MAG_RATIO.get(_peak_tier(peak), 0.0) * w_base, 2)
+
+
+_WEIGHT_DEFAULTS = {"base": 35.0, "streak": 40.0, "officer": 10.0,
+                    "veteran": 10.0, "social": 5.0}
+_WEIGHT_KEYS = ("base", "streak", "officer", "veteran", "social")
+
+
+def get_valor_weights() -> dict:
+    """Текущие веса (%) категорий ценности. Если строки нет — дефолты."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT w_base, w_streak, w_officer, w_veteran, w_social, "
+            "updated_at, updated_by FROM valor_weights WHERE id = 1"
+        ).fetchone()
+    if not row:
+        return dict(_WEIGHT_DEFAULTS, updated_at="", updated_by="")
+    return {"base": row["w_base"], "streak": row["w_streak"],
+            "officer": row["w_officer"], "veteran": row["w_veteran"],
+            "social": row["w_social"], "updated_at": row["updated_at"],
+            "updated_by": row["updated_by"]}
+
+
+def set_valor_weights(vals: dict, actor: dict) -> dict:
+    """Сохраняет веса. Валидация: каждый ≥0, сумма ≤ 100. Возвращает {ok}|{error}."""
+    w = {}
+    for k in _WEIGHT_KEYS:
+        try:
+            v = float(vals.get(k))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": f"bad_value:{k}"}
+        if v < 0:
+            return {"ok": False, "error": f"negative:{k}"}
+        w[k] = round(v, 2)
+    if sum(w.values()) > 100.0 + 1e-6:
+        return {"ok": False, "error": "sum_over_100", "sum": round(sum(w.values()), 2)}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO valor_weights
+               (id, w_base, w_streak, w_officer, w_veteran, w_social, updated_at, updated_by)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 w_base=excluded.w_base, w_streak=excluded.w_streak,
+                 w_officer=excluded.w_officer, w_veteran=excluded.w_veteran,
+                 w_social=excluded.w_social, updated_at=excluded.updated_at,
+                 updated_by=excluded.updated_by""",
+            (w["base"], w["streak"], w["officer"], w["veteran"], w["social"], now, by))
+    return {"ok": True, **w}
 
 # Очки достижений по редкости тира (зеркало фронтовой RARITY) — из них
 # складывается «achievement score» игрока, который и даёт компонент ценности.
@@ -4213,6 +4285,15 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                ORDER BY valor DESC NULLS LAST, nick""",
             (cur["id"],),
         ).fetchall()
+        # Настраиваемые веса категорий (%): база/стрики/офицер/ветеран/общит.
+        _wr = conn.execute(
+            "SELECT w_base, w_streak, w_officer, w_veteran, w_social "
+            "FROM valor_weights WHERE id = 1").fetchone()
+        W = ({"base": _wr["w_base"], "streak": _wr["w_streak"],
+              "officer": _wr["w_officer"], "veteran": _wr["w_veteran"],
+              "social": _wr["w_social"]} if _wr else dict(_WEIGHT_DEFAULTS))
+        _mult_cap = round(1.0 + W["streak"] / max(W["base"], 0.01), 3)
+        _soc_base_max = W["social"] / 1.2 if W["social"] > 0 else 0.0
         members = []
         for r in rows:
             m = dict(r)
@@ -4398,31 +4479,30 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # База = ценность лучшей магнитудной руны (пик ×N): чем выше
             # перевыполнение — тем больше база. Стрик-руны её УМНОЖАЮТ.
             recent = _c.get("recent_pct", _c.get("avg_pct", 0)) if comp_obj else 0
-            doblest_base = _magnitude_base(_c.get("peak_ratio", 0.0))
+            doblest_base = _mag_base_w(_c.get("peak_ratio", 0.0), W["base"])
             cur_ofs_sum = _c.get("cur_ofs_sum", 0.0)
-            mult = _streak_multiplier(cur_ofs_sum)
+            mult = _streak_multiplier(cur_ofs_sum, _mult_cap)
             doblest_value = round(doblest_base * mult, 1)
             streak_bonus = round(doblest_value - doblest_base, 1)
             # ── ВЕТКА 3: ОБЩИТЕЛЬНОСТЬ (VK+TG+чаты) × НЕБОЛЬШОЙ множитель ──
-            # Множитель за активность в чатах (общительность), мягкий ≤ ×1.2.
+            # Доли веса: VK 25% + TG 25% + чаты 50% от базы; множитель ≤ ×1.2.
             msgs = chat_msgs.get(cn, 0)
-            chat_pts = round(min(msgs / 50.0, 1.0) * VALOR_W_CHAT, 1)
             soc = m.get("socials") or {}
-            vk_pts = VALOR_W_VK if (soc.get("vk_id") or soc.get("vk_screen_name")) else 0
-            tg_pts = VALOR_W_TG if (soc.get("tg_id") or soc.get("tg_username")) else 0
+            vk_pts = round(_soc_base_max * 0.25, 2) if (soc.get("vk_id") or soc.get("vk_screen_name")) else 0.0
+            tg_pts = round(_soc_base_max * 0.25, 2) if (soc.get("tg_id") or soc.get("tg_username")) else 0.0
+            chat_pts = round(_soc_base_max * 0.5 * min(msgs / 50.0, 1.0), 2)
             social_base = round(vk_pts + tg_pts + chat_pts, 1)
             social_mult = round(1.0 + min(msgs / 300.0, 0.2), 2)        # до ×1.2
             social_value = round(social_base * social_mult, 1)
-            # ── ВЕТКА 2: ОФИЦЕРСТВО (база по высшему посту × СЛАБЫЙ множитель
-            # за текущий пост и за то, насколько высоко поднимался). Заметно
-            # слабее доблести — она ценится больше. ──
-            officer_base = round(VALOR_W_OFFICER * _rank_frac(top_rank), 1)
+            # ── ВЕТКА 2: ОФИЦЕРСТВО (база по высшему посту × СЛАБЫЙ множитель).
+            # База нормирована так, чтобы потолок ветки = вес «офицерство».
+            officer_base = round((W["officer"] / 1.4) * _rank_frac(top_rank), 2)
             is_cur_officer = _rank_frac(m.get("rank", "")) > 0
             officer_mult = round(1.0 + (0.25 if is_cur_officer else 0.0)
                                  + 0.15 * _rank_frac(top_rank), 2)       # до ~×1.4
             officer_value = round(officer_base * officer_mult, 1)
             # ── Руна ВЕТЕРАНА (сама по себе, БЕЗ множителя) ──
-            veteran_pts = VALOR_W_VETERAN if "veteran" in m["tags"] else 0
+            veteran_pts = W["veteran"] if "veteran" in m["tags"] else 0
             # ── Итог: доблесть×множитель + офицерство×множ + общит×множ + ветеран ──
             total = round((doblest_value or 0) + officer_value + social_value + veteran_pts, 1)
             # Очки достижений (флейвор для Зала) — по открытым рунам.
@@ -4432,9 +4512,10 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "immunity_adjusted": is_immune_now,
                 # ветка 1 — доблесть × множитель
                 "doblest_base":    doblest_base,        # ценность магнитудной руны
-                "doblest_base_max": MAG_BASE_MAX,
+                "doblest_base_max": W["base"],
                 "streak_mult":     mult,
                 "streak_bonus":    streak_bonus,        # вклад множителя (доля стриков)
+                "streak_max":      W["streak"],
                 "doblest_value":   doblest_value,
                 "recent_pct":      _c.get("recent_pct", 0),
                 "recent_weeks":    _c.get("recent_weeks", 0),
@@ -4449,7 +4530,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "officer":         officer_value,
                 "officer_base":    officer_base,
                 "officer_mult":    officer_mult,
-                "officer_max":     VALOR_W_OFFICER,
+                "officer_max":     W["officer"],
                 "is_cur_officer":  is_cur_officer,
                 "top_rank":        top_rank or None,
                 "cur_rank":        m.get("rank") or None,
@@ -4457,14 +4538,14 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "vk":              vk_pts,
                 "tg":              tg_pts,
                 "chat":            chat_pts,
-                "chat_max":        VALOR_W_CHAT,
                 "chat_msgs":       msgs,
                 "social_base":     social_base,
                 "social_mult":     social_mult,
                 "social":          social_value,
+                "social_max":      W["social"],
                 # руна ветерана
                 "veteran":         veteran_pts,
-                "veteran_max":     VALOR_W_VETERAN,
+                "veteran_max":     W["veteran"],
                 # legacy-алиасы (совместимость со старым фронтом до обновления)
                 "compliance":      doblest_value,
                 "achievement":     streak_bonus,

@@ -189,6 +189,32 @@ def valor_member_edit(member_id: int, payload: ValorMemberEdit,
     return out
 
 
+# ── Веса (проценты) категорий ценности ───────────────────────────────────
+class ValorWeightsIn(BaseModel):
+    base:    float = Field(..., ge=0, le=100)
+    streak:  float = Field(..., ge=0, le=100)
+    officer: float = Field(..., ge=0, le=100)
+    veteran: float = Field(..., ge=0, le=100)
+    social:  float = Field(..., ge=0, le=100)
+
+
+@router.get("/weights")
+def valor_weights_get(_: dict = Depends(require_viewer)) -> dict:
+    """Текущие веса категорий (видно всем — для пояснений; правка — админ)."""
+    return db.get_valor_weights()
+
+
+@router.put("/weights")
+def valor_weights_set(payload: ValorWeightsIn,
+                      actor: dict = Depends(require_admin)) -> dict:
+    """Сохранить веса. Сумма не должна превышать 100% (проверяет и сервер)."""
+    res = db.set_valor_weights(payload.model_dump(), actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            res.get("error", "invalid_weights"))
+    return res
+
+
 class MergeIn(BaseModel):
     source_canon: str = Field(..., min_length=1)
     target_nick:  str = Field(..., min_length=1)

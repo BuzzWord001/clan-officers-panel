@@ -167,6 +167,8 @@
     },
 
     valorCurrent:   () => request("GET", "/valor/current"),
+    valorWeights:    () => request("GET", "/valor/weights"),
+    valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),
     valorDeparted:  () => request("GET", "/valor/departed"),
     valorByCanon:   (weeks = 0) => request("GET", "/valor/by-canon?weeks=" + weeks),

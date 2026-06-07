@@ -40,6 +40,49 @@
     }
   });
 
+  // ── Веса категорий ценности (%) ──
+  (function initWeights() {
+    const KEYS = ["base", "streak", "officer", "veteran", "social"];
+    const inp = (k) => $("w-" + k);
+    const DEFAULTS = { base: 35, streak: 40, officer: 10, veteran: 10, social: 5 };
+    function fill(w) { KEYS.forEach((k) => { inp(k).value = (w[k] != null ? w[k] : DEFAULTS[k]); }); recalc(); }
+    function vals() {
+      const o = {};
+      KEYS.forEach((k) => { o[k] = Math.max(0, parseFloat(inp(k).value) || 0); });
+      return o;
+    }
+    function recalc() {
+      const v = vals();
+      const sum = KEYS.reduce((a, k) => a + v[k], 0);
+      const r = Math.round(sum * 10) / 10;
+      $("w-sum").textContent = r;
+      const over = r > 100 + 1e-6;
+      $("w-sum-line").style.color = over ? "var(--danger)" : "var(--accent)";
+      $("w-sum-left").textContent = over
+        ? `превышение на ${Math.round((r - 100) * 10) / 10}% — уменьши значения`
+        : `осталось ${Math.round((100 - r) * 10) / 10}%`;
+      $("w-save").disabled = over;
+      $("w-save").style.opacity = over ? "0.5" : "";
+      return { sum: r, over };
+    }
+    KEYS.forEach((k) => inp(k).addEventListener("input", recalc));
+    $("w-reset").addEventListener("click", () => { fill(DEFAULTS); });
+    $("weights-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const st = $("w-status");
+      const { over } = recalc();
+      if (over) { flash(st, "Сумма больше 100% — не сохранить.", false); return; }
+      try {
+        await API.valorWeightsSet(vals());
+        flash(st, "✓ Веса сохранены. Ценность пересчитается на странице Доблести.", true);
+      } catch (e) {
+        const d = e.detail || e.message || "Ошибка";
+        flash(st, d === "sum_over_100" ? "Сумма больше 100%." : d, false);
+      }
+    });
+    API.valorWeights().then(fill).catch(() => fill(DEFAULTS));
+  })();
+
   // ── Admin credentials ──
   $("admin-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();

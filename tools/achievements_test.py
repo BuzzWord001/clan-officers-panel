@@ -71,8 +71,9 @@ check("A: руна перевыполнения даёт базу (>0)", sA["dob
 check("A: total = доблесть×множ + офицер + общит + ветеран",
       abs(sA["total"] - round(sA["doblest_value"] + sA["officer"] + sA["social"] + sA["veteran"], 1)) < 0.2,
       (sA["total"], sA["doblest_value"]))
-check("A: веса веток (офицер 7, ветеран 10, чат 2)",
-      sA["officer_max"] == 7 and sA["veteran_max"] == 10 and sA["chat_max"] == 2)
+check("A: веса-потолки по умолчанию (офицер 10, ветеран 10, общит 5)",
+      sA["officer_max"] == 10 and sA["veteran_max"] == 10 and sA["social_max"] == 5,
+      (sA["officer_max"], sA["veteran_max"], sA.get("social_max")))
 # Множители веток в разумных пределах (офицер ≤ ~1.4, общит ≤ 1.2).
 gm0 = db.valor_get_current()["members"]
 check("офицер-множитель в пределах 1..1.4",
