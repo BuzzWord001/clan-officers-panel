@@ -462,6 +462,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass
 
+    # 2026-06-07: архив Реестра — человек ушёл/кикнут (в т.ч. ДО попадания в
+    # таблицу доблести: добавлен в реестр, но не появился на воскресном скрине).
+    # archived=1 → скрыт из активного реестра, виден в «Архиве реестра».
+    for col in ("archived INTEGER NOT NULL DEFAULT 0",
+                "archived_at TEXT NOT NULL DEFAULT ''",
+                "archived_by TEXT NOT NULL DEFAULT ''",
+                "archived_reason TEXT NOT NULL DEFAULT ''"):
+        try:
+            conn.execute(f"ALTER TABLE acceptances ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
+
     # 2026-06-01: счётчик стрика невыполненного норматива в valor_members.
     # 0 — выполнил в эту неделю (или АФК). При невыполнении +1 от prev.
     # При выполнении сбрасывается до 0.
@@ -542,15 +554,52 @@ def _row_to_acceptance(row: sqlite3.Row) -> dict[str, Any]:
         "created_by_platform": row["created_by_platform"],
         "created_by_id": row["created_by_id"],
         "created_by_name": row["created_by_name"],
+        "archived": bool(row["archived"]) if "archived" in keys else False,
+        "archived_at": row["archived_at"] if "archived_at" in keys else "",
+        "archived_by": row["archived_by"] if "archived_by" in keys else "",
+        "archived_reason": row["archived_reason"] if "archived_reason" in keys else "",
     }
 
 
-def list_acceptances() -> list[dict[str, Any]]:
+def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
+    """Активный реестр (archived=0). include_archived=True → и ушедшие тоже."""
+    where = "" if include_archived else "WHERE COALESCE(archived,0) = 0"
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM acceptances ORDER BY accepted_date ASC, id ASC"
+            f"SELECT * FROM acceptances {where} ORDER BY accepted_date ASC, id ASC"
         ).fetchall()
         return [_row_to_acceptance(r) for r in rows]
+
+
+def list_archived_acceptances() -> list[dict[str, Any]]:
+    """Только ушедшие из клана (archived=1) — для «Архива реестра»."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM acceptances WHERE COALESCE(archived,0) = 1 "
+            "ORDER BY archived_at DESC, id DESC"
+        ).fetchall()
+        return [_row_to_acceptance(r) for r in rows]
+
+
+def set_acceptance_archived(acc_id: int, archived: bool, *, reason: str,
+                            actor: dict[str, str]) -> dict[str, Any] | None:
+    """Отправить запись реестра в архив (ушёл/кикнут) или вернуть из архива."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    with connection() as conn:
+        before = conn.execute("SELECT * FROM acceptances WHERE id = ?", (acc_id,)).fetchone()
+        if not before:
+            return None
+        conn.execute(
+            "UPDATE acceptances SET archived = ?, archived_at = ?, archived_by = ?, "
+            "archived_reason = ?, updated_at = ? WHERE id = ?",
+            (1 if archived else 0, now if archived else "", by if archived else "",
+             (reason or "").strip() if archived else "", now, acc_id))
+        after = conn.execute("SELECT * FROM acceptances WHERE id = ?", (acc_id,)).fetchone()
+        _write_audit(conn, "archive" if archived else "unarchive", acc_id,
+                     before["game_nick"], dict(before), dict(after), actor)
+        _mark_dirty(conn)
+        return _row_to_acceptance(after)
 
 
 def get_acceptance(acc_id: int) -> dict[str, Any] | None:
@@ -4083,28 +4132,29 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                ORDER BY vm.nick_canon, vs.week"""
         ):
             cn = r["nick_canon"]
-            if r["is_afk"]:
-                continue
-            if r["norm_met"] is None:
-                continue
             if r["valor"] is None:
                 continue
-            # Фикс: на старых снапшотах norm_met=False у иммунных — это
-            # ошибка. Пересчитываем _compute_immunity для week,canon.
+            is_afk = bool(r["is_afk"])
+            # Неоценённые/иммунные недели (НЕ АФК) — пропускаем полностью.
+            if r["norm_met"] is None and not is_afk:
+                continue
+            # Фикс: на старых снапшотах norm_met=False у иммунных — ошибка.
+            # Пересчитываем _compute_immunity; иммунную неделю пропускаем.
             acc = accepted_by_canon.get(cn)
             if acc:
                 imm = _compute_immunity(acc, r["week"])
                 if imm and imm["status"] in ("active", "extended"):
-                    continue  # эта неделя была иммунная — пропускаем
+                    continue
             norm = r["valor_norm"] or 1
             ratio = r["valor"] / norm
             pct = min(ratio, 1.0) * 100
-            # Перевыполнение этой недели (0..100): на сколько % сверх нормы,
-            # с потолком +100% (2× норма) — чтобы нельзя было «нафармить».
             overshoot = max(0.0, min((ratio - 1.0) * 100, 100.0))
             wk = r["week"]
+            over = r["valor"] > norm
+            head = max(VALOR_MAX_WEEKLY - norm, 1)
+            ofs = max(0.0, min((r["valor"] - norm) / head, 1.0))
             d = compliance.setdefault(cn, {
-                "sum": 0.0, "n": 0, "met": 0, "over_sum": 0.0,
+                "sum": 0.0, "n": 0, "met": 0, "over_sum": 0.0, "any": 0,
                 "streak": 0, "max_streak": 0, "peak": 0.0,
                 "cs2": 0, "ms2": 0, "cs3": 0, "ms3": 0,
                 "ln_sum": 0.0, "cs2_ln": 0.0, "ms2_geo": 1.0,
@@ -4117,31 +4167,20 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 "o_cur_start": "", "omax_start": "", "omax_end": "",
                 "ofs_best": 0.0, "xp": 0.0,
                 "pcts": []})   # % выполнения по неделям (для «формы» 4 нед)
-            d["pcts"].append(pct)
-            d["sum"] += pct
-            d["over_sum"] += overshoot
-            d["n"] += 1
+            d["any"] += 1
             if not d["first_week"]:
                 d["first_week"] = wk
             d["last_week"] = wk
-            # геом.среднее кратностей по ВСЕМ неделям: exp(mean(ln(ratio)))
-            d["ln_sum"] += math.log(max(ratio, 0.01))
+            # ── Статистика НАБРАННОЙ доблести — считается ВСЕГДА, в т.ч. в АФК
+            #    (если человек в АФК всё равно набрал — это идёт в зачёт). ──
             if ratio > d["peak"]:
                 d["peak"] = ratio
                 d["peak_week"] = wk
-            if r["valor"] >= norm:
-                d["met"] += 1
-                d["streak"] += 1
-                if d["streak"] > d["max_streak"]:
-                    d["max_streak"] = d["streak"]
-            else:
-                d["streak"] = 0
-            # ── Серия ПЕРЕВЫПОЛНЕНИЯ (строго valor > norm) + сила OFS ──
-            head = max(VALOR_MAX_WEEKLY - norm, 1)
-            ofs = max(0.0, min((r["valor"] - norm) / head, 1.0))
             if ofs > d["ofs_best"]:
                 d["ofs_best"] = ofs
-            if r["valor"] > norm:
+            # ── Серия ПЕРЕВЫПОЛНЕНИЯ (множитель). АФК-простой НЕ сбрасывает
+            #    серию (пауза); перевыполнение в ЛЮБОМ статусе её ПРОДОЛЖАЕТ. ──
+            if over:
                 if d["ostreak"] == 0:
                     d["o_cur_start"] = wk
                     d["o_cur_ofs"] = 0.0
@@ -4152,13 +4191,30 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     d["omax_ofs"] = d["o_cur_ofs"]
                     d["omax_start"] = d["o_cur_start"]
                     d["omax_end"] = wk
-            else:
+            elif not is_afk:
                 d["ostreak"] = 0
                 d["o_cur_ofs"] = 0.0
-            # ── Доблесть-XP (накопительно): набранная доблесть × бонус за
-            # серию перевыполнения. НАСКОЛЬКО перевыполнил — прямо влияет.
+            # else: АФК без перевыполнения → пауза, серию не трогаем.
+            # ── Доблесть-XP (накопительно): набранная доблесть × бонус серии. ──
             xp_mult = min(1 + 0.1 * (d["ostreak"] - 1), 2.0) if d["ostreak"] > 0 else 1.0
             d["xp"] += max(r["valor"], 0) * xp_mult
+
+            # ── Оценка НОРМЫ и «форма» — АФК ОСВОБОЖДЁН: его недели здесь не
+            #    учитываем (нет предупреждений, форма не падает). ──
+            if is_afk:
+                continue
+            d["pcts"].append(pct)
+            d["sum"] += pct
+            d["over_sum"] += overshoot
+            d["n"] += 1
+            d["ln_sum"] += math.log(max(ratio, 0.01))
+            if r["valor"] >= norm:
+                d["met"] += 1
+                d["streak"] += 1
+                if d["streak"] > d["max_streak"]:
+                    d["max_streak"] = d["streak"]
+            else:
+                d["streak"] = 0
             # серии перевыполнения: ≥1.5× (cs2, + геом.среднее серии) и ≥2× (cs3)
             if ratio >= 1.5:
                 if d["cs2"] == 0:
@@ -4380,12 +4436,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
 
             # Compliance — среднее % выполнения по всем неделям.
             d = compliance.get(m["nick_canon"])
-            if d and d["n"]:
+            if d and d.get("any"):
                 _recent = d["pcts"][-4:]
                 _xp = round(d["xp"])
                 _xpp = _xp_progress(_xp)
+                _n = d["n"] or 1   # АФК-игрок может иметь 0 оценённых недель
                 m["compliance"] = {
-                    "avg_pct":     round(d["sum"] / d["n"], 1),
+                    "avg_pct":     round(d["sum"] / _n, 1),
                     "recent_pct":  round(sum(_recent) / len(_recent), 1) if _recent else 0.0,
                     "recent_weeks": len(_recent),
                     "total_xp":    _xp,
@@ -4395,12 +4452,12 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     "cur_ofs_sum": round(d["o_cur_ofs"], 3),
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
-                    "over_avg":    round(d["over_sum"] / d["n"], 1),
+                    "over_avg":    round(d["over_sum"] / _n, 1),
                     "max_streak":  d["max_streak"],
                     "peak_ratio":  round(d["peak"], 2),
                     "streak2":     d["ms2"],
                     "streak3":     d["ms3"],
-                    "geomean_all": round(math.exp(d["ln_sum"] / d["n"]), 2),
+                    "geomean_all": round(math.exp(d["ln_sum"] / _n), 2),
                     "combo_len":   d["ms2"],
                     "combo_geo":   round(d["ms2_geo"], 2),
                     "peak_week":   d["peak_week"],

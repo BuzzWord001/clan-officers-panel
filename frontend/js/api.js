@@ -129,6 +129,9 @@
     create:        (payload) => request("POST",  "/acceptances", payload),
     update:        (id, payload) => request("PATCH", `/acceptances/${id}`, payload),
     remove:        (id) => request("DELETE", `/acceptances/${id}`),
+    accArchivedList: () => request("GET", "/acceptances/archived"),
+    accArchive:    (id, reason) => request("POST", `/acceptances/${id}/archive`, { reason: reason || "" }),
+    accUnarchive:  (id) => request("POST", `/acceptances/${id}/unarchive`),
 
     audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
     auditDelete:   (id) => request("DELETE", `/audit/${id}`),

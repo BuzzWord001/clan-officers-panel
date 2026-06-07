@@ -127,6 +127,33 @@
         </div>
         <div class="empty" id="empty-state" hidden>Список пуст — добавьте первого офицера</div>
       </div>
+
+      <div class="panel" id="arch-panel" style="margin-top:14px">
+        <div class="members-header" style="cursor:pointer" id="arch-toggle">
+          <div><span id="arch-arrow">▶</span>
+            <b>Архив реестра — ушли из клана</b>
+            <small id="arch-count" style="color:var(--text-dim);margin-left:6px"></small></div>
+        </div>
+        <p class="hint" style="margin:6px 0 10px">Сюда попадают принятые в клан, которые ушли/кикнуты — в том числе те, кто покинул клан досрочно и не успел попасть в таблицу доблести.</p>
+        <div id="arch-wrap" style="display:none">
+          <div class="table-scroll">
+            <table id="arch-table">
+              <thead>
+                <tr>
+                  <th style="width:42px;">№</th>
+                  <th>Ник</th><th>Титул</th>
+                  <th style="width:130px;">Принят</th>
+                  <th style="width:130px;">В архиве с</th>
+                  <th>Причина</th>
+                  <th style="width:140px;"></th>
+                </tr>
+              </thead>
+              <tbody id="arch-tbody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="arch-empty" hidden>Архив пуст</div>
+        </div>
+      </div>
     </main>
 
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
@@ -134,10 +161,10 @@
 
   <script src="config.js?v=1786000000"></script>
   <script src="js/matrix.js?v=1779743290"></script>
-  <script src="js/api.js?v=1786002300"></script>
+  <script src="js/api.js?v=1786002400"></script>
   <script src="js/dateutil.js?v=1779743290"></script>
   <script src="js/help-tips.js?v=1780600000"></script>
-  <script src="js/app.js?v=1786000000"></script>
+  <script src="js/app.js?v=1786002400"></script>
   <script src="js/tooltips.js?v=1786000400"></script>
 </body>
 </html>

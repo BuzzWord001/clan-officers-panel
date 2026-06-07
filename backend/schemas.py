@@ -31,6 +31,14 @@ class AcceptanceOut(BaseModel):
     created_by_platform: str
     created_by_id: str
     created_by_name: str
+    archived: bool = False
+    archived_at: str = ""
+    archived_by: str = ""
+    archived_reason: str = ""
+
+
+class ArchiveIn(BaseModel):
+    reason: str = Field(default="", max_length=200)
 
 
 class AuditOut(BaseModel):

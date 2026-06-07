@@ -96,6 +96,7 @@
         <td class="actor"></td>
         <td class="row-actions">
           <button class="btn-edit">Изменить</button>
+          <button class="btn-arch" title="Ушёл/кикнут — в архив (даже если не попал в доблесть)">В архив</button>
           <button class="btn-del danger">Удалить</button>
         </td>
       `;
@@ -106,9 +107,65 @@
 
       tr.querySelector(".btn-del").addEventListener("click", () => onDelete(r));
       tr.querySelector(".btn-edit").addEventListener("click", () => onEdit(tr, r));
+      tr.querySelector(".btn-arch").addEventListener("click", () => onArchive(r));
       tbody.appendChild(tr);
     });
   }
+
+  async function onArchive(r) {
+    const reason = prompt(
+      `Отправить "${r.game_nick}" в архив реестра (ушёл/кикнут из клана)?\n` +
+      `Можно указать причину (необязательно):`, "");
+    if (reason === null) return;   // отмена
+    try {
+      await API.accArchive(r.id, reason.trim());
+      await reload();
+      await loadArchive();
+    } catch (e) {
+      alert(`Не удалось архивировать: ${e.detail || e.message}`);
+    }
+  }
+
+  // ── Архив реестра (ушли из клана) ──
+  function renderArchive(rows) {
+    const tb = $("arch-tbody");
+    tb.innerHTML = "";
+    $("arch-count").textContent = rows.length ? `(${rows.length})` : "";
+    $("arch-empty").hidden = rows.length > 0;
+    rows.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td class="nick"></td><td class="title"></td>
+        <td>${DateRu.fmtRus(r.accepted_date)}</td>
+        <td>${r.archived_at ? DateRu.fmtRus(r.archived_at.slice(0, 10)) : "—"}</td>
+        <td class="reason"></td>
+        <td class="row-actions"><button class="btn-restore">Вернуть</button></td>`;
+      tr.querySelector(".nick").textContent = r.game_nick;
+      tr.querySelector(".title").textContent = r.title || "—";
+      tr.querySelector(".reason").textContent = r.archived_reason || "—";
+      tr.querySelector(".btn-restore").addEventListener("click", async () => {
+        try { await API.accUnarchive(r.id); await reload(); await loadArchive(); }
+        catch (e) { alert(`Не удалось вернуть: ${e.detail || e.message}`); }
+      });
+      tb.appendChild(tr);
+    });
+  }
+
+  async function loadArchive() {
+    try { renderArchive(await API.accArchivedList()); } catch (_) {}
+  }
+
+  (function initArchiveToggle() {
+    const t = $("arch-toggle");
+    if (!t) return;
+    t.addEventListener("click", () => {
+      const w = $("arch-wrap");
+      const open = w.style.display !== "none";
+      w.style.display = open ? "none" : "block";
+      $("arch-arrow").textContent = open ? "▶" : "▼";
+    });
+  })();
 
   async function reload() {
     try {
@@ -202,6 +259,7 @@
   }
 
   await reload();
+  await loadArchive();
   // Auto-refresh раз в 30 сек, но НЕ выбивает пользователя из редактирования.
   setInterval(() => { if (editingId === null) reload(); }, 30000);
 })();

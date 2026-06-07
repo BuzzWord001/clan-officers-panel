@@ -508,6 +508,7 @@
       guideRunes(mag) +
       `<h4 class="rg-stitle">Серии — множитель ${pct(ws)}</h4>` +
       `<p class="rg-snote">Сколько недель подряд перевыполняешь норму. Чем длиннее и мощнее серия — тем больше множитель. Срыв серии гасит руны и сбрасывает множитель.</p>` +
+      `<p class="rg-snote rg-afk">💤 <b>Статус АФК — это пауза, а не срыв.</b> Пока у тебя АФК, серия НЕ обнуляется за невыполненную норму и предупреждения не начисляются. Как только снова перевыполнишь норму — серия продолжится с того же места. Более того: если даже в АФК ты набираешь доблесть — она идёт в зачёт (статистика, пик, серия считаются как обычно).</p>` +
       guideRunes(streaks) + `</section>` +
 
       `<section class="rg-group"><h3 class="rg-gtitle">✠ Офицерство ${pct(wo)}</h3>` +
@@ -1205,7 +1206,10 @@
       .rg-runes{display:flex;flex-wrap:wrap;gap:11px;margin:8px 0 6px}
       .rg-rune{flex:0 0 auto;width:86px}
       .rg-rar{font-size:8.5px;opacity:.85;margin-top:1px;text-transform:uppercase;letter-spacing:.3px;text-align:center}
-      .rg-pct{font-size:11px;color:#8a8470;font-weight:400;margin-left:8px}`;
+      .rg-pct{font-size:11px;color:#8a8470;font-weight:400;margin-left:8px}
+      .rg-afk,.ach-afk{background:rgba(120,180,255,.08);border:1px solid rgba(120,180,255,.28);
+        border-radius:8px;padding:7px 10px;color:#bcd6ff !important}
+      .ach-afk{font-size:11px;margin:6px 0 2px}`;
     document.head.appendChild(s);
   }
   function closeEditModal() {
@@ -1551,6 +1555,7 @@
         ${multLine}
         <div class="ach-legend">${rarLegend}</div>
         <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
+        <div class="ach-sub ach-afk">💤 Статус АФК — это пауза: серия не рвётся за невыполнение нормы и предупреждений нет. Наберёшь норму снова — серия продолжится. Доблесть, набранная даже в АФК, идёт в зачёт.</div>
         <div class="ach-tree">
           ${branchValor(magRunes, strRunes, mult, s.doblest_base, s.doblest_value)}
           ${branchCol("✠ Офицерство", "Слабый множитель за посты", offRunes,
@@ -1558,8 +1563,9 @@
           ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
             multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
         </div>
-        <div class="vedit-actions">
-          <button id="ach-allroles" class="vedit-btn" type="button">✦ Все роли клана</button>
+        <div class="vedit-actions" style="align-items:center;gap:12px;flex-wrap:wrap">
+          <button id="ach-allroles" class="roles-guide-btn" type="button"
+            title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
           <button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;
     document.body.appendChild(ov);
