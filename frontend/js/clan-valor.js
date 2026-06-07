@@ -1173,6 +1173,10 @@
       .ach-multline{font-size:11.5px;color:#cdbf9a;background:#0c0d10;border:1px solid #2a2418;
         border-radius:8px;padding:7px 10px;margin:0 0 10px}
       .ach-multline b{color:#ffd866}
+      .ach-sumline{font-size:12px;color:#cdbf9a;background:#0c0d10;border:1px solid #3a2f1a;
+        border-radius:8px;padding:8px 11px;margin:0 0 10px;line-height:1.7}
+      .ach-sum-t{color:#e3cd92;font-weight:600;margin-right:4px}
+      .ach-sum-op{color:#8a8470;margin:0 3px}
       /* Зал: шапка с кнопками ФИКСИРОВАНА, скроллится только содержимое */
       .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh;
         display:flex;flex-direction:column;overflow:hidden}
@@ -1565,6 +1569,14 @@
     const base = s.doblest_base; const val = s.doblest_value;
     const multLine = `<div class="ach-multline">⚜ Доблесть <span class="val-gold">${base == null ? "—" : G.fmt(base)}</span> ${base == null ? "" : `× <b style="color:#ffd866">${mult.toFixed(2)}</b> (стрик) = <span class="val-gold">${G.fmt(val)}</span> золота`}.
       ${cur > 0 ? `Серия ${cur} нед. усиливает вклад${avgCurOfs >= 0.24 ? " — мощная!" : ""}.` : "Стрика нет — множитель ×1. Перевыполняй норму подряд, чтобы он рос."}</div>`;
+    // Из чего складывается ИТОГОВАЯ ценность клану (наглядно, золотом).
+    const sumLine = `<div class="ach-sumline">
+      <span class="ach-sum-t">Итог за неделю =</span>
+      ⚔ доблесть <span class="val-gold">${G.fmt(val)}</span>
+      <span class="ach-sum-op">+</span> ✠ офицерство <span class="val-gold">${G.fmt(s.officer)}</span>
+      <span class="ach-sum-op">+</span> ✦ общительность <span class="val-gold">${G.fmt(s.social)}</span>
+      <span class="ach-sum-op">+</span> ⭐ ветеран <span class="val-gold">${G.fmt(s.veteran)}</span>
+      <span class="ach-sum-op">=</span> <span class="val-gold">${G.coin()}${G.fmt(s.total)}</span> золота</div>`;
 
     const rarLegend = RARITY_ORDER.map(k =>
       `<span class="ach-leg" style="color:${RARITY[k].color}">● ${RARITY[k].name}</span>`).join("");
@@ -1583,6 +1595,7 @@
           <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
           ${header}
           ${multLine}
+          ${sumLine}
           <div class="ach-legend">${rarLegend}</div>
           <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
           <div class="ach-sub ach-afk">💤 Статус АФК — это пауза: серия не рвётся за невыполнение нормы и предупреждений нет. Наберёшь норму снова — серия продолжится. Доблесть, набранная даже в АФК, идёт в зачёт.</div>
