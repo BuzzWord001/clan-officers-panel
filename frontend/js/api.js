@@ -182,6 +182,8 @@
     },
 
     valorCurrent:   () => request("GET", "/valor/current"),
+    valorScreenshotWeeks: () => request("GET", "/valor/screenshots/weeks"),
+    valorScreenshots: (week) => request("GET", "/valor/screenshots?week=" + encodeURIComponent(week)),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),

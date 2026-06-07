@@ -474,6 +474,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass
 
+    # 2026-06-08: архив скриншотов сбора доблести (по неделям) — ссылки на R2.
+    # Сами кадры в R2 (заливает pw-valor-tracker), здесь — метаданные/ссылки.
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS valor_screenshots (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            week        TEXT    NOT NULL,
+            idx         INTEGER NOT NULL,
+            r2_url      TEXT    NOT NULL,
+            r2_key      TEXT    NOT NULL DEFAULT '',
+            uploaded_at TEXT    NOT NULL DEFAULT '',
+            uploaded_by TEXT    NOT NULL DEFAULT '',
+            UNIQUE(week, idx)
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_valor_screens_week "
+                     "ON valor_screenshots(week)")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-07: комментарий к статусу АФК (причина, до какого числа) — по
     # canon, переживает недельные снимки. Заполняет админ в правке участника.
     try:
@@ -581,6 +599,48 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
             f"SELECT * FROM acceptances {where} ORDER BY accepted_date ASC, id ASC"
         ).fetchall()
         return [_row_to_acceptance(r) for r in rows]
+
+
+def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = None) -> dict:
+    """Сохранить (заменить) набор скринов недели. shots: [{idx,url,key}]."""
+    week = (week or "").strip()
+    if not week:
+        return {"ok": False, "error": "no_week"}
+    by = (actor or {}).get("name", "")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute("DELETE FROM valor_screenshots WHERE week = ?", (week,))
+        n = 0
+        for s in shots or []:
+            url = (s.get("url") or "").strip()
+            if not url:
+                continue
+            conn.execute(
+                "INSERT OR REPLACE INTO valor_screenshots "
+                "(week, idx, r2_url, r2_key, uploaded_at, uploaded_by) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (week, int(s.get("idx", n)), url, s.get("key", ""), now, by))
+            n += 1
+    return {"ok": True, "week": week, "count": n}
+
+
+def valor_screenshot_weeks() -> list[dict]:
+    """Список недель со скринами (для «папок»): {week, count, uploaded_at}."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT week, COUNT(*) AS cnt, MAX(uploaded_at) AS up "
+            "FROM valor_screenshots GROUP BY week ORDER BY week DESC").fetchall()
+        return [{"week": r["week"], "count": r["cnt"], "uploaded_at": r["up"]}
+                for r in rows]
+
+
+def valor_screenshots_for(week: str) -> list[dict]:
+    """Скрины конкретной недели по порядку: {idx, url}."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
+            ((week or "").strip(),)).fetchall()
+        return [{"idx": r["idx"], "url": r["r2_url"]} for r in rows]
 
 
 def valor_afk_notes() -> dict[str, str]:

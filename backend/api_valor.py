@@ -90,6 +90,32 @@ def known_nicks(_=Depends(require_bot_token)) -> dict:
     return {"nicks": db.valor_known_nicks()}
 
 
+# ── Архив скриншотов сбора (по неделям) ──
+class ScreenshotsIn(BaseModel):
+    week:  str
+    shots: list[dict]   # [{idx, url, key}]
+
+
+@router.post("/screenshots")
+def valor_screenshots_save(payload: ScreenshotsIn,
+                           _=Depends(require_bot_token)) -> dict:
+    """Сохранить ссылки на скрины недели (заливает pw-valor-tracker в R2)."""
+    return db.valor_screenshots_set(payload.week, payload.shots)
+
+
+@router.get("/screenshots/weeks")
+def valor_screenshot_weeks(_: dict = Depends(require_officer)) -> list[dict]:
+    """Список недель со скринами (папки) — офицеру/админу."""
+    return db.valor_screenshot_weeks()
+
+
+@router.get("/screenshots")
+def valor_screenshots_list(week: str = Query(..., min_length=1),
+                           _: dict = Depends(require_officer)) -> dict:
+    """Скрины конкретной недели — офицеру/админу."""
+    return {"week": week, "shots": db.valor_screenshots_for(week)}
+
+
 @router.get("/sessions")
 def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     """Все снапшоты — для «Архив доблести»."""

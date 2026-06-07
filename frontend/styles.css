@@ -2749,6 +2749,43 @@ body.show-valor .valor-col { display: table-cell; }
 /* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
 .members-table-wrap { overflow-x: auto; }
 
+/* ── Архив скринов сбора (папки по неделям) ── */
+.vs-weeks { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 14px; }
+.vs-folder {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 14px; cursor: pointer;
+  background: rgba(0,0,0,0.25); color: var(--text, #cfe);
+  border: 1px solid rgba(0,255,65,0.18); border-radius: 10px;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.vs-folder:hover { background: rgba(0,255,65,0.08); border-color: rgba(0,255,65,0.4); }
+.vs-folder-on { border-color: #ffd24a; box-shadow: 0 0 10px rgba(255,210,74,0.25); background: rgba(255,210,74,0.08); }
+.vs-folder-ic { font-size: 20px; }
+.vs-folder-w { font-weight: 700; font-size: 14px; }
+.vs-folder-c { font-size: 11px; color: var(--text-dim, #8aa); }
+.vs-view-head { margin: 6px 0 10px; font-size: 13px; color: #ffe9a8; }
+.vs-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.vs-thumb {
+  position: relative; border: 1px solid rgba(0,255,65,0.15);
+  border-radius: 8px; overflow: hidden; background: #0a0f0a; cursor: zoom-in;
+}
+.vs-thumb img { display: block; width: 100%; height: auto; transition: transform .15s; }
+.vs-thumb:hover img { transform: scale(1.03); }
+.vs-thumb-n {
+  position: absolute; top: 4px; left: 4px;
+  font-size: 10px; padding: 1px 6px; border-radius: 5px;
+  background: rgba(0,0,0,0.65); color: #ffd24a; font-weight: 700;
+}
+.vs-lightbox {
+  position: fixed; inset: 0; z-index: 12000;
+  background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center;
+  padding: 20px; cursor: zoom-out;
+}
+.vs-lightbox img { max-width: 100%; max-height: 100%; box-shadow: 0 0 40px rgba(0,0,0,0.8); }
+
 /* Заметная подсказка про горизонтальную прокрутку таблицы */
 .scroll-hint {
   display: flex; align-items: center; gap: 10px;

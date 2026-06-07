@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
-  <title>SanTDeviL — Архив доблести</title>
+  <title>SanTDeviL — Скрины сбора</title>
   <link rel="stylesheet" href="styles.css?v=1786004200">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
-
   <canvas id="matrix-canvas"></canvas>
-  <img class="bg-girl" src="assets/bg.png?v=1779743290" alt="" aria-hidden="true">
+  <img class="bg-girl" src="assets/bg.png?v=1780000000" alt="" aria-hidden="true">
   <div class="scanlines"></div>
 
   <div class="shell">
@@ -30,7 +29,7 @@
 
     <section class="title-block">
       <div class="glitch">S a n T D e v i L</div>
-      <div class="subtitle">Архив снимков доблести</div>
+      <div class="subtitle">Скрины сбора доблести</div>
     </section>
 
     <main>
@@ -55,8 +54,8 @@
           <span class="tabs-group-label">клан</span>
           <div class="tabs-group-links">
             <a href="clan-valor.html">Доблесть</a>
-            <a href="clan-archive.html" class="active">Архив доблести</a>
-            <a href="valor-screens.html">Скрины сбора</a>
+            <a href="clan-archive.html">Архив доблести</a>
+            <a href="valor-screens.html" class="active">Скрины сбора</a>
           </div>
         </div>
         <div class="tabs-sep admin-only" aria-hidden="true"></div>
@@ -68,36 +67,28 @@
         </div>
       </div>
 
-      <div class="panel members-panel">
-        <div id="archive-summary" class="members-stats"></div>
-        <div id="archive-loading" class="chat-loading" hidden>Загрузка…</div>
-        <div class="members-table-wrap">
-          <table class="members-table" id="archive-table" data-help="clan-archive">
-            <thead>
-              <tr>
-                <th>Неделя</th>
-                <th>Дата снимка (UTC)</th>
-                <th class="m-col-num">Норматив</th>
-                <th class="m-col-num">Кадров</th>
-                <th class="m-col-num">Участников</th>
-                <th>Заметки</th>
-              </tr>
-            </thead>
-            <tbody id="archive-tbody"></tbody>
-          </table>
-        </div>
-        <div id="archive-empty" class="empty" hidden>Снимков нет</div>
+      <div class="panel">
+        <h2>Архив скринов сбора доблести</h2>
+        <p class="hint" style="margin-bottom:12px">
+          Здесь хранятся скриншоты списка гильдии, по которым собрана доблесть
+          за каждую неделю — по <b>отдельным папкам</b>. Это первоисточник:
+          по ним можно перепроверить любые цифры. Доступно всем офицерам и админу.
+        </p>
+        <div id="vs-loading" class="chat-loading">Загрузка…</div>
+        <div id="vs-weeks" class="vs-weeks"></div>
+        <div id="vs-empty" class="empty" hidden>Скринов пока нет — появятся после следующего сбора.</div>
+        <div id="vs-view"></div>
       </div>
     </main>
 
     <footer class="bottom">SanTDeviL — Офицерская панель</footer>
   </div>
 
+  <div id="vs-lightbox" class="vs-lightbox" hidden><img id="vs-lightbox-img" alt=""></div>
+
   <script src="config.js?v=1786000000"></script>
-  <script src="js/matrix.js?v=1779800000"></script>
+  <script src="js/matrix.js?v=1780000000"></script>
   <script src="js/api.js?v=1786004200"></script>
-  <script src="js/help-tips.js?v=1780600000"></script>
-  <script src="js/clan-archive.js?v=1786002100"></script>
-  <script src="js/tooltips.js?v=1786000400"></script>
+  <script src="js/valor-screens.js?v=1786004200"></script>
 </body>
 </html>
