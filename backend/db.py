@@ -624,6 +624,44 @@ def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = Non
     return {"ok": True, "week": week, "count": n}
 
 
+def valor_compare_data(week: str) -> dict:
+    """Данные для страницы сравнения скринов с распознанным: участники недели
+    (как внесла база) + флаги (распознан из реестра / ИИ / сомнительно) +
+    список скринов. Участники по убыванию доблести (как в игре)."""
+    week = (week or "").strip()
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT * FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"week": week, "snapshot": None, "members": [], "screenshots": []}
+        reg: set[str] = set()
+        for rr in conn.execute(
+                "SELECT DISTINCT game_nick FROM acceptances WHERE archived=0"):
+            for piece in (rr["game_nick"] or "").split(","):
+                c = _valor_canon(piece)
+                if c:
+                    reg.add(c)
+        rows = conn.execute(
+            "SELECT id, nick, nick_canon, true_name, rank, title, level, "
+            "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect "
+            "FROM valor_members WHERE snapshot_id = ? "
+            "ORDER BY COALESCE(valor, -1) DESC, nick", (snap["id"],)).fetchall()
+        members = [{
+            "id": r["id"], "nick": r["nick"], "nick_canon": r["nick_canon"],
+            "in_registry": r["nick_canon"] in reg,
+            "flag_new_nick": bool(r["flag_new_nick"]),
+            "flag_ocr_suspect": bool(r["flag_ocr_suspect"]),
+            "true_name": r["true_name"], "rank": r["rank"], "title": r["title"],
+            "level": r["level"], "class": r["class_"], "valor": r["valor"],
+            "is_afk": bool(r["is_afk"]),
+        } for r in rows]
+        shots = [{"idx": r["idx"], "url": r["r2_url"]} for r in conn.execute(
+            "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
+            (week,))]
+        return {"week": week, "snapshot": dict(snap),
+                "members": members, "screenshots": shots}
+
+
 def valor_screenshot_weeks() -> list[dict]:
     """Список недель со скринами (для «папок»): {week, count, uploaded_at}."""
     with connection() as conn:
@@ -4361,17 +4399,26 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # в ценность/роли/историю.
             acc = accepted_by_canon.get(cn)
             is_immune = False
+            is_grace = False
+            _gfactor = 1.0
             if acc:
                 imm = _compute_immunity(acc, r["week"])
                 if imm and imm["status"] in ("active", "extended"):
                     is_immune = True
+                elif imm and imm["status"] == "grace":
+                    is_grace = True
+                    _gfactor = imm["effective_norm_factor"]
             # Неоценённая (norm_met None) и НЕ освобождённая неделя — пропуск (legacy).
             if r["norm_met"] is None and not is_afk and not is_immune:
                 continue
             excused = is_afk or is_immune   # освобождён от нормы (АФК или иммун)
             norm = r["valor_norm"] or 1
+            # Оценку/форму grace-недели считаем от СНИЖЕННОЙ нормы (eff_norm),
+            # ценность/серию — от полной (ratio ниже). Иначе «Оценка всех недель»
+            # у только-что-вышедшего из иммуна занижается (4/6 как 29%, не 67%).
+            norm_eval = max(1, round(norm * _gfactor)) if is_grace else norm
             ratio = r["valor"] / norm
-            pct = min(ratio, 1.0) * 100
+            pct = min(r["valor"] / norm_eval, 1.0) * 100
             overshoot = max(0.0, min((ratio - 1.0) * 100, 100.0))
             wk = r["week"]
             over = r["valor"] > norm
@@ -4440,7 +4487,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             d["over_sum"] += overshoot
             d["n"] += 1
             d["ln_sum"] += math.log(max(ratio, 0.01))
-            if r["valor"] >= norm:
+            if r["valor"] >= norm_eval:   # grace — по сниженной норме
                 d["met"] += 1
                 d["streak"] += 1
                 if d["streak"] > d["max_streak"]:
@@ -4643,11 +4690,18 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             #   veteran — если метка проставлена на текущей неделе;
             #   офицерство — если стал офицером впервые (на прошлой неделе не был).
             status_new = []
+            # «Новая на этой неделе» статус-роль = появилась ПОСЛЕ прошлого
+            # сбора. Сравниваем со временем захвата прошлого снапшота, а НЕ с
+            # ISO-неделей: массовая выдача veteran при миграции (01.06 00:30)
+            # попадала в ISO-неделю W23 и ложно светилась у всех ветеранов.
+            _prev_cap = prev["captured_at"] if prev else None
             _vd = m["tag_dates"].get("veteran")
-            if "veteran" in manual_tags and _vd and _iso_week_of(_vd) == cur["week"]:
+            if "veteran" in manual_tags and _vd and _prev_cap and _vd > _prev_cap:
                 status_new.append("veteran")
-            if is_officer and _rank_score(prev_rank.get(cn, "")) < _OFFICER_MIN_SCORE:
-                if off_tag_all:   # та же руна высшего звания → всегда ⊆ «за всё время»
+            # Офицерство: показываем руну, если человек ПОВЫСИЛСЯ относительно
+            # прошлой недели (Рядовой→Капитан ИЛИ Капитан→Майор и т.д.).
+            if is_officer and _rank_score(top_rank) > _rank_score(prev_rank.get(cn, "")):
+                if off_tag_all:   # руна текущего звания ⊆ «за всё время»
                     status_new.append(off_tag_all)
             _has_vet = "veteran" in manual_tags
 
@@ -4770,9 +4824,14 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     pct_delta = None
                 else:
                     pct_delta = round(m["norm_pct"] - pp, 1)
-                # Kind определяем по pct_delta если есть, иначе по delta
-                ref = pct_delta if pct_delta is not None else delta
-                kind = "up" if ref > 0 else "down" if ref < 0 else "flat"
+                # Kind определяем по pct_delta если есть, иначе по delta.
+                # «Стабильно» (flat) — небольшая зона около нуля (а не только
+                # ровно 0): ±5 п.п. выполнения или ±3 доблести. Это позитивная
+                # оценка «держится стабильно», а не упрёк.
+                if pct_delta is not None:
+                    kind = "flat" if abs(pct_delta) <= 5 else ("up" if pct_delta > 0 else "down")
+                else:
+                    kind = "flat" if abs(delta) <= 3 else ("up" if delta > 0 else "down")
                 m["trend"] = {"kind": kind, "delta": delta,
                               "pct_delta": pct_delta}
 

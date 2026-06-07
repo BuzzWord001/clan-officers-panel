@@ -766,6 +766,11 @@
       return `<span class="norm-cell" style="color:#888"
         title="нет данных">—</span>`;
     }
+    // Нет оценённых недель (все недели — АФК/иммун) → не оценивался, а не «0%».
+    if (!c.weeks_count) {
+      return `<span class="norm-cell" style="color:#888"
+        title="нет оценённых недель — всё время под иммунитетом или в АФК">—</span>`;
+    }
     const cls = pctClass(c.avg_pct);
     const tip = `${c.weeks_met} / ${c.weeks_count} недель с полным выполнением`;
     return `<span class="norm-cell comp-cell norm-${cls}" title="${esc(tip)}"
@@ -956,6 +961,14 @@
     }
     if (t.kind === "lost") {
       return `<span class="trend trend-dead" title="нет данных доблести сейчас">✕</span>`;
+    }
+    // Стабильно — позитивная оценка «держится ровно», не упрёк.
+    if (t.kind === "flat") {
+      const dSign = t.delta > 0 ? "+" : "";
+      const tipS = t.pct_delta != null
+        ? `Держится стабильно (Δ ${t.pct_delta > 0 ? "+" : ""}${t.pct_delta} п.п.)`
+        : `Держится стабильно (Δ ${dSign}${t.delta})`;
+      return `<span class="trend trend-stable" title="${esc(tipS)}">✓ Стабильно</span>`;
     }
     const arrow = t.kind === "up" ? "▲" : t.kind === "down" ? "▼" : "▬";
     const sign = t.delta > 0 ? "+" : "";

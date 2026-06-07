@@ -184,6 +184,8 @@
     valorCurrent:   () => request("GET", "/valor/current"),
     valorScreenshotWeeks: () => request("GET", "/valor/screenshots/weeks"),
     valorScreenshots: (week) => request("GET", "/valor/screenshots?week=" + encodeURIComponent(week)),
+    valorCompare: (week) => request("GET", "/valor/compare?week=" + encodeURIComponent(week)),
+    valorMemberEdit: (id, fields) => request("PATCH", "/valor/member/" + id, fields),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),

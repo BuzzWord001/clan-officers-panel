@@ -116,6 +116,13 @@ def valor_screenshots_list(week: str = Query(..., min_length=1),
     return {"week": week, "shots": db.valor_screenshots_for(week)}
 
 
+@router.get("/compare")
+def valor_compare(week: str = Query(..., min_length=1),
+                  _: dict = Depends(require_officer)) -> dict:
+    """Сравнение скринов недели с распознанными данными (офицеру/админу)."""
+    return db.valor_compare_data(week)
+
+
 @router.get("/sessions")
 def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     """Все снапшоты — для «Архив доблести»."""
