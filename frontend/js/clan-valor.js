@@ -11,6 +11,7 @@
   let SORT = { key: "score", dir: "desc" };
   let IS_GUEST = false;   // гость — только просмотр, без правок
   let IS_ADMIN = false;   // админ — правка ников и данных в таблице
+  let IS_OFFICER = false; // офицер ИЛИ админ — предупреждения и статус АФК
 
   // Сетевой сбой (err.status === 0) — это «запрос не дошёл до сервера»
   // (РФ-блокировка fly.dev, флапающий мобильный интернет, TLS/CORS), а НЕ
@@ -64,6 +65,7 @@
       return;
     }
     IS_ADMIN = me?.role === "admin";
+    IS_OFFICER = (me?.role === "officer" || me?.role === "admin");
     // CSS-гейт админ-вкладок: body[data-role=admin] показывает .admin-only
     // (иначе вкладка «Настройки» скрыта даже у админа). Для help-tips —
     // отдельный data-help-role, чтобы блок «Для администратора» работал.
@@ -857,14 +859,14 @@
           (w.created_by ? ` — ${w.created_by}` : ``);
       }).join("\n");
       const latest = manual[manual.length - 1];
-      const del = ` <button class="warn-del-btn" data-id="${latest.id}" ` +
-        `title="Снять последнее ручное">✕</button>`;
+      const del = IS_OFFICER ? ` <button class="warn-del-btn" data-id="${latest.id}" ` +
+        `title="Снять последнее ручное">✕</button>` : "";
       chips.push(warnChip("wsev-" + worstSev, manual.length,
         `${sevTitle(worstSev)}\nРучное (от офицера)\n${detail}`,
         { manual: true, extra: del }));
     }
-    const addBtn = `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
-      `title="Добавить ручное предупреждение">+</button>`;
+    const addBtn = IS_OFFICER ? `<button class="warn-add-btn" data-nick="${esc(m.nick)}" ` +
+      `title="Добавить ручное предупреждение">+</button>` : "";
     const body = chips.length
       ? chips.join("")
       : `<span class="no-warn" data-wtip="Активных предупреждений нет">✓</span>`;
@@ -1039,7 +1041,7 @@
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>
-          <td class="m-cell-num">${normLabel}</td>
+          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
           <td class="m-cell-num">${compLabel}</td>
           <td class="m-cell-warn">${warnCell}</td>
           <td class="m-cell-num">${trendCell}</td>
@@ -1783,6 +1785,67 @@
       } catch (e) { alert("Ошибка: " + (e.message || e)); }
       return;
     }
+  });
+
+  // ── Статус АФК: дать/снять + комментарий (офицер/админ) ──
+  function afkBtn(m) {
+    if (!IS_OFFICER) return "";
+    return ` <button class="afk-set-btn" data-id="${m.id}" ` +
+      `data-afk="${m.is_afk ? 1 : 0}" data-note="${esc(m.afk_note || "")}" ` +
+      `data-nick="${esc(m.nick)}" title="${m.is_afk ? "Снять АФК / изменить комментарий" : "Дать статус АФК (с комментарием)"}">💤</button>`;
+  }
+  let AFK_POP = null;
+  function closeAfkPop() { if (AFK_POP) { AFK_POP.remove(); AFK_POP = null; } }
+  function openAfkPop(btn) {
+    closeAfkPop();
+    const id = btn.dataset.id, nick = btn.dataset.nick;
+    const cur = btn.dataset.afk === "1";
+    const note = btn.dataset.note || "";
+    const pop = document.createElement("div");
+    pop.className = "warn-add-pop";
+    pop.innerHTML =
+      `<div class="wap-title">Статус АФК: <b>${esc(nick)}</b></div>` +
+      `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px;cursor:pointer">` +
+        `<input type="checkbox" class="afk-chk" ${cur ? "checked" : ""} style="transform:scale(1.3)"> в статусе АФК</label>` +
+      `<input class="afk-note-inp" type="text" maxlength="200" value="${esc(note)}" ` +
+        `placeholder="причина / до какого числа (напр. «отпуск до 20.07»)">` +
+      `<div class="wap-actions">` +
+        `<button type="button" class="wap-add">Сохранить</button>` +
+        `<button type="button" class="wap-cancel">Отмена</button>` +
+      `</div>`;
+    document.body.appendChild(pop);
+    const r = btn.getBoundingClientRect();
+    let left = r.left;
+    if (left + pop.offsetWidth > window.innerWidth - 8)
+      left = window.innerWidth - pop.offsetWidth - 8;
+    pop.style.left = Math.max(8, left) + "px";
+    pop.style.top = (r.bottom + 6) + "px";
+    pop.querySelector(".wap-cancel").addEventListener("click", closeAfkPop);
+    pop.querySelector(".wap-add").addEventListener("click", async () => {
+      const is_afk = pop.querySelector(".afk-chk").checked;
+      const afk_note = pop.querySelector(".afk-note-inp").value.trim();
+      try {
+        const res = await fetch((window.OFFICERS_CONFIG?.API_URL || "") + "/valor/afk/" + id,
+          { method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json",
+              "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") },
+            body: JSON.stringify({ is_afk, afk_note }) });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        closeAfkPop(); await load();
+      } catch (e) { alert("Ошибка: " + (e.message || e)); }
+    });
+    pop.querySelector(".afk-note-inp").focus();
+    AFK_POP = pop;
+  }
+  document.addEventListener("click", (e) => {
+    if (AFK_POP && !e.target.closest(".warn-add-pop")
+        && !e.target.closest(".afk-set-btn")) closeAfkPop();
+  });
+  $("valor-tbody").addEventListener("click", (ev) => {
+    const b = ev.target.closest(".afk-set-btn");
+    if (!b || !IS_OFFICER) return;
+    ev.stopPropagation();
+    openAfkPop(b);
   });
 
   // ── Красивый тултип предупреждений (в стиле сайта) ──

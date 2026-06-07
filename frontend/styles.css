@@ -3185,6 +3185,14 @@ body.show-valor .valor-col { display: table-cell; }
 .wtip-severe { border-color: rgba(255,106,106,0.66);
                box-shadow: 0 4px 22px rgba(255,70,70,0.24), 0 0 50px rgba(0,0,0,0.7); }
 /* Кнопка «+» — добавить предупреждение вручную */
+.afk-set-btn {
+  border: none; background: none; cursor: pointer; padding: 0 0 0 4px;
+  font-size: 12px; opacity: 0.5; transition: opacity .15s;
+}
+.afk-set-btn:hover { opacity: 1; }
+.afk-note-mark { cursor: help; opacity: 0.85; font-size: 11px; }
+body.guest-mode .afk-set-btn { display: none; }
+
 .warn-add-btn {
   width: 16px; height: 16px;
   padding: 0; line-height: 1;

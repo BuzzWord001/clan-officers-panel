@@ -42,7 +42,10 @@
     accepted_date: "дата",
     note: "примечание",
   };
-  const ACTION_RU = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО" };
+  const ACTION_RU = { create: "ДОБАВЛЕНО", update: "ИЗМЕНЕНО", delete: "УДАЛЕНО",
+    archive: "В АРХИВ", unarchive: "ИЗ АРХИВА",
+    warn_add: "ПРЕДУПР. +", warn_remove: "ПРЕДУПР. −",
+    afk_on: "АФК ВКЛ", afk_off: "АФК ВЫКЛ" };
 
   function diffLines(before, after) {
     const keys = ["game_nick", "title", "accepted_date", "note"];

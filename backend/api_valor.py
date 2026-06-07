@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 import db
 from api_chat import require_bot_token, require_officer, require_viewer
-from session import require_admin
+from session import require_admin, current_actor
 
 log = logging.getLogger("api.valor")
 router = APIRouter(prefix="/valor", tags=["valor"])
@@ -154,18 +154,35 @@ class ManualWarnIn(BaseModel):
 
 @router.post("/warning")
 def valor_warning_add(payload: ManualWarnIn,
-                      who: dict = Depends(require_officer)) -> dict:
-    """Добавить ручное предупреждение нику (любой строгости)."""
-    by = who.get("name") or who.get("nick") or who.get("role") or ""
+                      _: dict = Depends(require_officer),
+                      actor: dict = Depends(current_actor)) -> dict:
+    """Добавить предупреждение (офицер/админ). Пишется в журнал действий."""
     return db.valor_add_manual_warning(
-        payload.nick, payload.severity, payload.reason, by)
+        payload.nick, payload.severity, payload.reason, actor)
 
 
 @router.delete("/warning")
 def valor_warning_delete(id: int = Query(..., ge=1),
-                         _: dict = Depends(require_officer)) -> dict:
-    """Удалить ручное предупреждение по id."""
-    return {"ok": db.valor_remove_manual_warning(id)}
+                         _: dict = Depends(require_officer),
+                         actor: dict = Depends(current_actor)) -> dict:
+    """Удалить предупреждение (офицер/админ). Пишется в журнал действий."""
+    return {"ok": db.valor_remove_manual_warning(id, actor)}
+
+
+class ValorAfkIn(BaseModel):
+    is_afk:   bool
+    afk_note: str | None = None
+
+
+@router.post("/afk/{member_id}")
+def valor_afk_set(member_id: int, payload: ValorAfkIn,
+                  _: dict = Depends(require_officer),
+                  actor: dict = Depends(current_actor)) -> dict:
+    """Дать/снять статус АФК + комментарий (офицер/админ). Лог действий."""
+    res = db.valor_set_afk(member_id, payload.is_afk, payload.afk_note, actor)
+    if res is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member_not_found")
+    return res
 
 
 class ValorMemberEdit(BaseModel):

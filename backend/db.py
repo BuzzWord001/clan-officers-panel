@@ -3950,11 +3950,13 @@ _MWARN_SEV = ("light", "mid", "severe")
 
 
 def valor_add_manual_warning(nick: str, severity: str, reason: str,
-                              created_by: str = "") -> dict:
-    """Добавить ручное предупреждение нику. severity ∈ ok|mid|low|bad|crit."""
+                             actor: dict | None = None) -> dict:
+    """Добавить ручное предупреждение нику. severity ∈ ok|mid|low|bad|crit.
+    Доступно офицеру/админу; пишется в журнал действий (audit_log)."""
     canon = _valor_canon(nick)
     if not canon:
         return {"ok": False, "error": "bad nick"}
+    actor = actor or {"platform": "", "id": "", "name": ""}
     sev = severity if severity in _MWARN_SEV else "mid"
     now = datetime.utcnow().isoformat(timespec="seconds")
     with connection() as conn:
@@ -3962,18 +3964,61 @@ def valor_add_manual_warning(nick: str, severity: str, reason: str,
             "INSERT INTO valor_manual_warnings "
             "(nick_canon, severity, reason, created_at, created_by) "
             "VALUES (?,?,?,?,?)",
-            (canon, sev, (reason or "").strip()[:200], now, created_by or ""),
+            (canon, sev, (reason or "").strip()[:200], now, actor.get("name", "")),
         )
+        _write_audit(conn, "warn_add", None, nick, None,
+                     {"severity": sev, "reason": (reason or "").strip()[:200]}, actor)
         return {"ok": True, "id": cur.lastrowid}
 
 
-def valor_remove_manual_warning(warning_id: int) -> bool:
-    """Удалить ручное предупреждение по id."""
+def valor_remove_manual_warning(warning_id: int, actor: dict | None = None) -> bool:
+    """Удалить ручное предупреждение по id. Пишется в журнал действий."""
+    actor = actor or {"platform": "", "id": "", "name": ""}
     with connection() as conn:
+        row = conn.execute(
+            "SELECT nick_canon, severity, reason FROM valor_manual_warnings WHERE id = ?",
+            (warning_id,)).fetchone()
         cur = conn.execute(
-            "DELETE FROM valor_manual_warnings WHERE id = ?", (warning_id,)
-        )
+            "DELETE FROM valor_manual_warnings WHERE id = ?", (warning_id,))
+        if cur.rowcount > 0 and row:
+            _write_audit(conn, "warn_remove", None, row["nick_canon"],
+                         {"severity": row["severity"], "reason": row["reason"]},
+                         None, actor)
         return cur.rowcount > 0
+
+
+def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
+                  actor: dict | None = None) -> dict | None:
+    """Дать/снять статус АФК + комментарий (офицер/админ). Лог в audit_log."""
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT nick, nick_canon, is_afk FROM valor_members WHERE id = ?",
+            (member_id,)).fetchone()
+        if not row:
+            return None
+        canon = row["nick_canon"]
+        before = {"is_afk": bool(row["is_afk"])}
+        conn.execute("UPDATE valor_members SET is_afk = ? WHERE id = ?",
+                     (1 if is_afk else 0, member_id))
+        if afk_note is not None:
+            note = str(afk_note).strip()
+            if note:
+                conn.execute(
+                    """INSERT INTO valor_afk_note (nick_canon, note, updated_at, updated_by)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(nick_canon) DO UPDATE SET
+                         note=excluded.note, updated_at=excluded.updated_at,
+                         updated_by=excluded.updated_by""",
+                    (canon, note, now, actor.get("name", "")))
+            else:
+                conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
+        after = {"is_afk": bool(is_afk),
+                 "afk_note": (afk_note or "").strip() if afk_note is not None else "—"}
+        _write_audit(conn, "afk_on" if is_afk else "afk_off", None,
+                     row["nick"], before, after, actor)
+        return {"ok": True, "is_afk": bool(is_afk)}
 
 
 def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
