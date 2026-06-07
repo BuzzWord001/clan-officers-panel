@@ -23,10 +23,8 @@
       $("who").textContent = me?.role === "admin"
         ? `${esc(me.username)} · админ`
         : `${esc(me.username)} · офицер`;
-      if (me.role !== "admin") {
-        document.querySelectorAll(".admin-only").forEach(el =>
-          el.style.display = "none");
-      }
+      // CSS-гейт: body[data-role=admin] показывает вкладку «Настройки».
+      document.body.setAttribute("data-role", me?.role || "");
     } catch { location.href = "login.html"; }
   }
 

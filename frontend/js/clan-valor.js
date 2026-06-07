@@ -64,17 +64,15 @@
       return;
     }
     IS_ADMIN = me?.role === "admin";
-    // Отдельный атрибут для help-tips (не трогаем data-role, чтобы не задеть
-    // CSS-гейт .admin-only). help-tips покажет блок «Для администратора» админу.
+    // CSS-гейт админ-вкладок: body[data-role=admin] показывает .admin-only
+    // (иначе вкладка «Настройки» скрыта даже у админа). Для help-tips —
+    // отдельный data-help-role, чтобы блок «Для администратора» работал.
+    document.body.setAttribute("data-role", me?.role || "");
     document.body.setAttribute("data-help-role", me?.role || "");
     const who = me?.role === "admin"
       ? `${esc(me.username || me.name || "")} · админ`
       : `${esc(me.username || me.name || "")} · офицер`;
     $("who").textContent = who;
-    if (me.role !== "admin") {
-      document.querySelectorAll(".admin-only").forEach(el =>
-        el.style.display = "none");
-    }
   }
 
   $("logout-btn").addEventListener("click", async () => {
