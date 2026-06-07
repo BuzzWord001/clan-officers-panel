@@ -417,19 +417,18 @@
       }
       if (whenTip) tip += `\nПолучена: ${whenTip}`;
       const auto = AUTO_TAGS.has(t) ? " tag-auto" : "";
-      // Достижения — инлайн-цвет по РЕДКОСТИ (+ свечение у эпик и выше).
+      // Роли отображаются как КАМЕННЫЕ РУНЫ (как в Зале): мини-руна по
+      // редкости (+ свечение у эпик и выше) + подпись цветом руны.
       const col = tagColor(t);
       const rk = TIER_RARITY[t];
       const glow = rk === "epic" || rk === "legendary" || rk === "mythic" || meta.glow;
-      let style = "";
-      if (isAch) {
-        style = ` style="color:${col};border-color:${col};background:${col}1f;` +
-                (glow ? `box-shadow:0 0 9px ${col}66;` : ``) + `"`;
-      }
+      const icStyle = `border-color:${col};color:${col};` +
+        (glow ? `box-shadow:0 0 8px ${col}77,inset 0 -2px 4px rgba(0,0,0,.55);`
+              : `inset 0 -2px 4px rgba(0,0,0,.55);`);
       const wcol = ` data-wtipcolor="${col}"`;
-      return `<span class="tag-chip ${meta.cls}${auto}"${style} data-wtip="${esc(tip)}"${wcol}
+      return `<span class="tag-chip tag-rune ${meta.cls}${auto}" data-wtip="${esc(tip)}"${wcol}
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
-        ><span class="ic">${meta.icon}</span>${esc(meta.label)}${multHtml}</span>`;
+        ><span class="tag-rune-ic" style="${icStyle}">${meta.icon}</span><span class="tag-rune-lb" style="color:${col}">${esc(meta.label)}${multHtml}</span></span>`;
     }).join("");
     return `<div class="tag-row">${chips}${btn}</div>`;
   }
@@ -1174,13 +1173,15 @@
       .ach-multline{font-size:11.5px;color:#cdbf9a;background:#0c0d10;border:1px solid #2a2418;
         border-radius:8px;padding:7px 10px;margin:0 0 10px}
       .ach-multline b{color:#ffd866}
-      .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh}
-      /* Верхняя панель кнопок Зала (видна всегда, прилипает при прокрутке) */
-      .ach-topbar{position:sticky;top:0;z-index:6;display:flex;gap:10px;
-        align-items:center;flex-wrap:wrap;padding:2px 0 8px;margin-bottom:4px;
-        background:linear-gradient(180deg,#0c0d12 80%,rgba(12,13,18,0))}
+      /* Зал: шапка с кнопками ФИКСИРОВАНА, скроллится только содержимое */
+      .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh;
+        display:flex;flex-direction:column;overflow:hidden}
+      .ach-topbar{flex:0 0 auto;display:flex;gap:10px;align-items:center;
+        flex-wrap:wrap;padding:0 0 10px;margin:0 0 6px;
+        border-bottom:1px solid #2a2418}
       .ach-topbar .roles-guide-btn{margin:0}
       .ach-topbar .vedit-btn{margin-left:auto}
+      .ach-scroll{flex:1 1 auto;overflow-y:auto;min-height:0;padding-right:4px}
       .ach-tree{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;margin-top:4px}
       .ach-branch{flex:1 1 150px;min-width:140px;max-width:210px;
         background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
@@ -1578,19 +1579,21 @@
             title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
           <button id="vedit-cancel" class="vedit-btn">✕ Закрыть</button>
         </div>
-        <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
-        ${header}
-        ${multLine}
-        <div class="ach-legend">${rarLegend}</div>
-        <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
-        <div class="ach-sub ach-afk">💤 Статус АФК — это пауза: серия не рвётся за невыполнение нормы и предупреждений нет. Наберёшь норму снова — серия продолжится. Доблесть, набранная даже в АФК, идёт в зачёт.</div>
-        <div class="ach-tree">
-          ${branchValor(magRunes, strRunes, mult, s.doblest_base, s.doblest_value)}
-          ${branchCol("✠ Офицерство", "Слабый множитель за посты", offRunes,
-            multFooter(s.officer_mult, s.officer, s.is_cur_officer ? "офицер сейчас" : ""))}
-          ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
-            multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
-          ${vetBox}
+        <div class="ach-scroll">
+          <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
+          ${header}
+          ${multLine}
+          <div class="ach-legend">${rarLegend}</div>
+          <div class="ach-sub">✓ открыто · ▶ следующая цель · 🔒 закрыто. Линии загораются по мере прокачки. Стрик-руны множат доблесть и сбрасываются при потере серии.</div>
+          <div class="ach-sub ach-afk">💤 Статус АФК — это пауза: серия не рвётся за невыполнение нормы и предупреждений нет. Наберёшь норму снова — серия продолжится. Доблесть, набранная даже в АФК, идёт в зачёт.</div>
+          <div class="ach-tree">
+            ${branchValor(magRunes, strRunes, mult, s.doblest_base, s.doblest_value)}
+            ${branchCol("✠ Офицерство", "Слабый множитель за посты", offRunes,
+              multFooter(s.officer_mult, s.officer, s.is_cur_officer ? "офицер сейчас" : ""))}
+            ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
+              multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
+            ${vetBox}
+          </div>
         </div>
       </div>`;
     document.body.appendChild(ov);
