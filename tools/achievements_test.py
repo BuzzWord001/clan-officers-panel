@@ -61,8 +61,14 @@ cA, tA, sA = comp("A")
 # Множитель: текущий стрик 5 нед × OFS(40,norm20)=0.118 → Σ≈0.59 → ×1.71.
 check("A: текущий стрик = 5", cA["over_streak_cur"] == 5, cA["over_streak_cur"])
 check("A: множитель ~1.7 (1.5..1.9)", 1.5 < sA["streak_mult"] < 1.9, sA["streak_mult"])
-# База = ценность магнитудной руны: A пик ×2 (double) → база 11.
-check("A: доблесть-база = 11 (руна double ×2)", abs(sA["doblest_base"] - 11) < 0.1, sA["doblest_base"])
+# База доблести теперь ПЛАВНАЯ (выполнил норму → ~30%, растёт до 100% при ×13).
+check("A: доблесть-база плавная (= формуле _mag_base_w)",
+      abs(sA["doblest_base"] - db._mag_base_w(cA["peak_ratio"], 35)) < 0.2, sA["doblest_base"])
+check("выполнение нормы (×1) даёт базу > 0", db._mag_base_w(1.0, 35) > 0, db._mag_base_w(1.0, 35))
+check("лёгкое перевыполнение (×1.43) > просто нормы (×1)",
+      db._mag_base_w(1.43, 35) > db._mag_base_w(1.0, 35),
+      (db._mag_base_w(1.43, 35), db._mag_base_w(1.0, 35)))
+check("пик-тир met для ×1..1.5", db._peak_tier(1.43) == "met" and db._peak_tier(1.0) == "met")
 check("A: доблесть-итог = база × множитель",
       abs(sA["doblest_value"] - round(sA["doblest_base"] * sA["streak_mult"], 1)) < 0.2, sA["doblest_value"])
 check("A: бонус серий = итог − база",

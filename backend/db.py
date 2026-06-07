@@ -2818,6 +2818,7 @@ def _peak_tier(peak: float):
     if peak >= 3.0:  return "triple"     # Утроил норму
     if peak >= 2.0:  return "double"     # Удвоил норму
     if peak >= 1.5:  return "over"       # Перевыполнил
+    if peak >= 1.0:  return "met"        # Выполнил норматив
     return None
 
 # Лестница СЕРИЙ перевыполнения (подряд недель с valor > norm). Разблокируется
@@ -2990,8 +2991,18 @@ _MAG_RATIO = {"over": 0.20, "double": 0.314, "triple": 0.429, "record": 0.571,
 
 
 def _mag_base_w(peak: float, w_base: float) -> float:
-    """База доблести по руне с учётом настраиваемого веса «база» (%)."""
-    return round(_MAG_RATIO.get(_peak_tier(peak), 0.0) * w_base, 2)
+    """База доблести (ПЛАВНО, в долях веса «база»):
+      • выполнил норму (×1)           → 30% веса (минимальный зачёт);
+      • дальше растёт логарифмически  → 100% при ×13 (Абсолют);
+      • не дотянул до нормы (peak<1)  → пропорционально меньше (частичный зачёт).
+    Так даже выполнение норматива и лёгкое перевыполнение оцениваются."""
+    if peak <= 0:
+        return 0.0
+    if peak < 1.0:
+        frac = 0.30 * peak
+    else:
+        frac = 0.30 + 0.70 * min(math.log(peak) / math.log(13.0), 1.0)
+    return round(frac * w_base, 2)
 
 
 _WEIGHT_DEFAULTS = {"base": 35.0, "streak": 40.0, "officer": 10.0,
@@ -4240,7 +4251,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             d["xp"] += max(r["valor"], 0) * xp_mult
             # ── Накопительная «Ценность для клана»: ценность ЭТОЙ недели =
             # база(руна недели) × множитель серии. Копится навсегда (прогресс). ──
-            _wk_base = _MAG_RATIO.get(_peak_tier(ratio), 0.0) * W["base"]
+            _wk_base = _mag_base_w(ratio, W["base"])
             if _wk_base > 0:
                 d["cum_value"] += _wk_base * _streak_multiplier(d["o_cur_ofs"], _mult_cap)
 
