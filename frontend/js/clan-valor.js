@@ -853,13 +853,19 @@
     const tw = m.title_warn;
     const manual = m.manual_warnings || [];
     const chips = [];
-    // Норматив — суровость по худшей неделе; в тултипе — недели с датами
+    // Норматив — суровость по худшей неделе; в тултипе — недели с датами.
+    // Grace-недели (иммун только-только спал, неполная неделя) — на ступень
+    // мягче: человек физически имел меньше времени набрать норматив.
     if (ws.length) {
-      const worstW = ws.reduce((a, b) => (b.pct < a.pct ? b : a));
+      const SOFTER = { severe: "mid", mid: "light", light: "light" };
+      const effSev = (w) => (w.grace ? SOFTER[sev3(w.pct)] : sev3(w.pct));
       const sorted = ws.slice().sort((a, b) => (a.week < b.week ? -1 : 1));
       const detail = sorted.map((w) =>
-        `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%`).join("\n");
-      const sev = sev3(worstW.pct);
+        `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%` +
+        (w.grace ? " (после иммунитета, неполная неделя)" : "")).join("\n");
+      // худшая эффективная суровость по всем неделям
+      const sev = ws.map(effSev).reduce(
+        (a, b) => (SEVRANK[b] > SEVRANK[a] ? b : a), "light");
       chips.push(warnChip("wsev-" + sev, ws.length,
         `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`));
     }

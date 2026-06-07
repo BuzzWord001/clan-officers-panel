@@ -3436,13 +3436,18 @@ def valor_active_warnings() -> dict[str, list[dict]]:
         acc = accepted.get(cn)
         active: list[dict] = []
         for r in weeks:
-            if acc:
-                imm = _compute_immunity(acc, r["week"])
-                if imm and imm["status"] in ("active", "extended"):
-                    continue  # иммунная неделя — не оцениваем
+            imm = _compute_immunity(acc, r["week"]) if acc else None
+            if imm and imm["status"] in ("active", "extended"):
+                continue  # иммунная неделя целиком — не оцениваем
             if r["is_afk"] or r["valor"] is None or r["norm_met"] is None:
                 continue
             norm = r["norm"] or 1
+            is_grace = bool(imm and imm["status"] == "grace")
+            if is_grace:
+                # У grace-недели норматив СНИЖЕН пропорционально дням без
+                # иммунитета — поэтому и «жёсткость» (pct) считаем от сниженной
+                # нормы, а не от полной (иначе 4/6 выглядит как суровое 29%).
+                norm = max(1, round(norm * imm["effective_norm_factor"]))
             if r["norm_met"]:
                 if active:
                     idx = min(range(len(active)),
@@ -3451,7 +3456,7 @@ def valor_active_warnings() -> dict[str, list[dict]]:
             else:
                 pct = round(min(r["valor"] / norm, 1.0) * 100, 1)
                 active.append({"week": r["week"], "valor": r["valor"],
-                               "norm": norm, "pct": pct})
+                               "norm": norm, "pct": pct, "grace": is_grace})
         if active:
             out[cn] = active
     return out
