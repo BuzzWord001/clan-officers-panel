@@ -1180,6 +1180,7 @@
         align-items:center;flex-wrap:wrap;padding:2px 0 8px;margin-bottom:4px;
         background:linear-gradient(180deg,#0c0d12 80%,rgba(12,13,18,0))}
       .ach-topbar .roles-guide-btn{margin:0}
+      .ach-topbar .vedit-btn{margin-left:auto}
       .ach-tree{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;margin-top:4px}
       .ach-branch{flex:1 1 150px;min-width:140px;max-width:210px;
         background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
@@ -1204,10 +1205,13 @@
       .ach-mfoot small{display:block;color:#8a8470;font-size:9px;margin-top:1px}
       .ach-subdiv{font-size:9.5px;color:#8a8470;text-transform:uppercase;letter-spacing:.5px;
         margin:7px 0 3px;border-top:1px dashed #2c2a22;padding-top:7px;width:100%;text-align:center}
-      .ach-vet{margin-left:auto;display:flex;flex-direction:column;align-items:center}
-      .ach-vet .ach-rune{width:32px;height:32px;font-size:15px}
-      .ach-vet .ach-rune-cap{font-size:9px}
-      .ach-vet.locked{opacity:.5}
+      /* Ветеран — отдельным уголком среди рун (в дереве) */
+      .ach-vet-corner{flex:0 0 auto;align-self:flex-start;display:flex;
+        flex-direction:column;align-items:center;min-width:96px;max-width:120px;
+        padding:9px 8px 10px;border:1px dashed #5a4a2a;border-radius:12px;
+        background:linear-gradient(180deg,#14110a,#0a090c)}
+      .ach-vet-corner .ach-vet-h{font-size:11px;color:#e3cd92;font-weight:600;margin-bottom:8px}
+      .ach-vet-corner.locked{opacity:.55}
       /* Ветка «Доблесть и серии» — две параллельные полоски + × посередине */
       .branch-valor{flex:1 1 360px;max-width:430px}
       .ach-dual{display:flex;align-items:flex-start;justify-content:center;gap:6px}
@@ -1540,11 +1544,13 @@
       rune("✦", "Общительность", `${s.chat_msgs || 0} сообщ.`, (s.chat || 0) > 0, "#57d982", false),
     ];
 
-    // Руна ветерана (в углу).
+    // Руна ветерана — отдельным уголком среди рун (в дереве).
     const hasVet = (s.veteran || 0) > 0;
-    const vetRune = `<div class="ach-vet ${hasVet ? "lit" : "locked"}" title="Ветеран — состоял в первоначальном составе клана">
+    const vetBox = `<div class="ach-vet-corner ${hasVet ? "lit" : "locked"}" title="Ветеран — состоял в первоначальном составе клана">
+      <div class="ach-vet-h">⭐ Ветеран</div>
       <div class="ach-rune" style="${hasVet ? "border-color:#ffd24a;color:#ffd24a;box-shadow:0 0 13px #ffd24a88,inset 0 -3px 7px rgba(0,0,0,.55);" : ""}">${hasVet ? "★" : "🔒"}</div>
-      <div class="ach-rune-cap"${hasVet ? ' style="color:#ffd24a"' : ""}>Ветеран</div></div>`;
+      <div class="ach-rune-cap"${hasVet ? ' style="color:#ffd24a"' : ""}>Ветеран</div>
+      <div class="ach-rune-req">${hasVet ? window.ClanValue.fmt(s.veteran) + " зол." : "не получена"}</div></div>`;
 
     // Шапка: ЦЕННОСТЬ-ЗОЛОТО (главное, крупно) + множитель + стрик + пик.
     const G = window.ClanValue;
@@ -1571,7 +1577,6 @@
           <button id="ach-allroles" class="roles-guide-btn" type="button"
             title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
           <button id="vedit-cancel" class="vedit-btn">✕ Закрыть</button>
-          ${vetRune}
         </div>
         <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
         ${header}
@@ -1585,6 +1590,7 @@
             multFooter(s.officer_mult, s.officer, s.is_cur_officer ? "офицер сейчас" : ""))}
           ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
             multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
+          ${vetBox}
         </div>
       </div>`;
     document.body.appendChild(ov);
