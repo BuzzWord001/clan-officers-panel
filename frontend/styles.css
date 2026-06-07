@@ -2672,10 +2672,33 @@ body.show-valor .valor-col { display: table-cell; }
   background: rgba(255, 107, 128, 0.08);
 }
 
+/* ── Ценность как игровая валюта: золотая монета + золотое свечение ── */
+.gold-coin {
+  display: inline-block; width: 1em; height: 1em; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c0 0%, #ffd24a 42%, #d99412 78%, #a8690a 100%);
+  border: 1px solid #8a5a10;
+  box-shadow: 0 0 5px rgba(255,200,60,.7), inset 0 -1px 2px rgba(120,70,0,.55),
+              inset 0 1px 1px rgba(255,255,255,.65);
+  vertical-align: -0.13em; position: relative; margin-right: 4px; flex: none;
+}
+.gold-coin::after {
+  content: "✦"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.62em; line-height: 1; color: #9a6a10;
+  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+}
+.val-gold {
+  font-weight: 800;
+  color: #ffd866;
+  text-shadow: 0 0 6px rgba(255,200,60,.65), 0 0 2px rgba(255,180,40,.9);
+  letter-spacing: .2px;
+}
+
 /* Финальный score-cell */
-.score-cell { font-size: 13px; padding: 2px 9px; }
+.score-cell { font-size: 13px; padding: 2px 9px; white-space: nowrap; }
 .score-cell b { font-size: 15px; }
 .score-cell small { font-size: 10px; margin-left: 2px; }
+.score-cell .val-gold { font-size: 14px; }
 .score-cell .imm-mark {
   color: #7bc7ff; font-size: 11px; margin-left: 1px;
   text-shadow: 0 0 4px rgba(120,180,255,0.4);
@@ -2949,7 +2972,7 @@ body.show-valor .valor-col { display: table-cell; }
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.86);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  z-index: 1000;
+  z-index: 10001;   /* выше Зала достижений (.vedit-overlay 9999) */
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
   animation: rg-fade .15s ease;

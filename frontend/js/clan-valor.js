@@ -579,27 +579,29 @@
   function renderScore(s) {
     if (!s) return `<span style="color:#888">—</span>`;
     const cls = pctClass(s.total);
+    const G = window.ClanValue;            // показываем как золото (×MULT)
+    const g = (v) => G.fmt(v);             // большое золотое число
     // Ветка доблести: база (перевыполнение) × множитель серии.
-    const valLine = `• доблесть: база ${s.doblest_base ?? 0}` +
+    const valLine = `• доблесть: база ${g(s.doblest_base)}` +
       (s.peak_ratio ? ` (пик ×${Number(s.peak_ratio).toFixed(1)})` : "") +
       ` × серия ×${Number(s.streak_mult || 1).toFixed(2)}` +
       (s.over_streak_cur ? ` (${s.over_streak_cur} нед.)` : "") +
-      ` = ${s.doblest_value ?? 0}`;
+      ` = ${g(s.doblest_value)}`;
     const officerLine = s.top_rank
-      ? `• офицерство: ${s.officer} = база ${s.officer_base ?? 0} × ${Number(s.officer_mult || 1).toFixed(2)}` +
+      ? `• офицерство: ${g(s.officer)} = база ${g(s.officer_base)} × ${Number(s.officer_mult || 1).toFixed(2)}` +
         ` (макс: ${s.top_rank}${s.cur_rank && s.cur_rank !== s.top_rank ? `, сейчас: ${s.cur_rank}` : ``}${s.is_cur_officer ? `, офицер сейчас` : ``})`
-      : `• офицерство: ${s.officer ?? 0}`;
-    const tip = `Ценность клану: ${s.total}\n`
+      : `• офицерство: ${g(s.officer)}`;
+    const tip = `★ Ценность клану: ${g(s.total)} золота\n`
       + valLine + "\n"
       + officerLine + "\n"
-      + `• общительность: ${s.social ?? 0} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.${s.social_mult > 1 ? `, ×${Number(s.social_mult).toFixed(2)}` : ``})\n`
-      + `• ветеран: ${s.veteran} / ${s.veteran_max ?? 12}`
+      + `• общительность: ${g(s.social)} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.${s.social_mult > 1 ? `, ×${Number(s.social_mult).toFixed(2)}` : ``})\n`
+      + `• ветеран: ${g(s.veteran)}`
       + (s.immunity_adjusted ? `\nИммунитет новичка активен.` : ``);
     const star = (s.streak_mult > 1)
-      ? `<small class="disc-mark" title="доблесть усилена серией ×${Number(s.streak_mult).toFixed(2)}">×</small>`
+      ? `<small class="disc-mark" title="доблесть усилена серией ×${Number(s.streak_mult).toFixed(2)}">×${Number(s.streak_mult).toFixed(2)}</small>`
       : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
-      ><b>${s.total}</b>${star}</span>`;
+      >${G.badge(s.total)}${star}</span>`;
   }
 
   function pctClass(pct) {
@@ -1432,11 +1434,12 @@
       `<div class="ach-branch-runes">${body}</div>` +
       (footer || "") + `</div>`;
   }
-  // Футер ветки с множителем: «× M ⇒ значение».
+  // Футер ветки с множителем: «× M ⇒ золото».
   function multFooter(mult, value, note) {
-    if (!(mult > 1)) return `<div class="ach-mfoot"><span class="ach-mfoot-v">${value}</span><small>ценность</small></div>`;
+    const gv = `<span class="ach-mfoot-v val-gold">${window.ClanValue.coin()}${window.ClanValue.fmt(value)}</span>`;
+    if (!(mult > 1)) return `<div class="ach-mfoot">${gv}<small>золота</small></div>`;
     return `<div class="ach-mfoot"><span class="ach-mfoot-x">×${Number(mult).toFixed(2)}</span>` +
-      `<span class="ach-mfoot-v">= ${value}</span>` + (note ? `<small>${esc(note)}</small>` : "") + `</div>`;
+      `= ${gv}` + (note ? `<small>${esc(note)}</small>` : "") + `</div>`;
   }
   // Колонка рун с загорающимися линиями (без обёртки ветки).
   function runeCol(runes) {
@@ -1459,7 +1462,7 @@
           ${runeCol(magRunes)}</div>
         <div class="ach-dual-mid">
           <div class="ach-mult-badge">×${mult.toFixed(2)}</div>
-          <div class="ach-mult-eq">= ${val == null ? "—" : val}</div>
+          <div class="ach-mult-eq val-gold">${window.ClanValue.coin()}${val == null ? "—" : window.ClanValue.fmt(val)}</div>
           <div class="ach-mult-note">серии<br>умножают<br>↑ базу</div>
         </div>
         <div class="ach-dual-side">
@@ -1521,16 +1524,17 @@
       <div class="ach-rune" style="${hasVet ? "border-color:#ffd24a;color:#ffd24a;box-shadow:0 0 13px #ffd24a88,inset 0 -3px 7px rgba(0,0,0,.55);" : ""}">${hasVet ? "★" : "🔒"}</div>
       <div class="ach-rune-cap"${hasVet ? ' style="color:#ffd24a"' : ""}>Ветеран</div></div>`;
 
-    // Шапка: ценность + МНОЖИТЕЛЬ (главное) + стрик + пик.
+    // Шапка: ЦЕННОСТЬ-ЗОЛОТО (главное, крупно) + множитель + стрик + пик.
+    const G = window.ClanValue;
     const header = `<div class="ach-hdr">
-      <div class="ach-hstat"><b>${s.total != null ? s.total : "—"}</b><span>ценность клану</span></div>
+      <div class="ach-hstat ach-hstat-gold"><b class="val-gold">${G.coin()}${G.fmt(s.total)}</b><span>★ ценность клану (золото)</span></div>
       <div class="ach-hstat"><b style="color:#ffd866">×${mult.toFixed(2)}</b><span>множитель серии</span></div>
       <div class="ach-hstat"><b style="color:#57d982">${cur}<small> нед.</small></b><span>текущий стрик</span></div>
       <div class="ach-hstat"><b style="color:#ffc83c">×${peak.toFixed(1)}</b><span>лучший пик</span></div>
     </div>`;
-    // Пояснение множителя.
+    // Пояснение множителя (значения — золотом).
     const base = s.doblest_base; const val = s.doblest_value;
-    const multLine = `<div class="ach-multline">⚜ Доблесть ${base == null ? "—" : base} ${base == null ? "" : `× <b style="color:#ffd866">${mult.toFixed(2)}</b> (стрик) = <b style="color:#57d982">${val}</b>`}.
+    const multLine = `<div class="ach-multline">⚜ Доблесть <span class="val-gold">${base == null ? "—" : G.fmt(base)}</span> ${base == null ? "" : `× <b style="color:#ffd866">${mult.toFixed(2)}</b> (стрик) = <span class="val-gold">${G.fmt(val)}</span> золота`}.
       ${cur > 0 ? `Серия ${cur} нед. усиливает вклад${avgCurOfs >= 0.24 ? " — мощная!" : ""}.` : "Стрика нет — множитель ×1. Перевыполняй норму подряд, чтобы он рос."}</div>`;
 
     const rarLegend = RARITY_ORDER.map(k =>
@@ -1554,11 +1558,14 @@
           ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
             multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
         </div>
-        <div class="vedit-actions"><button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
+        <div class="vedit-actions">
+          <button id="ach-allroles" class="vedit-btn" type="button">✦ Все роли клана</button>
+          <button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) closeEditModal(); });
     ov.querySelector("#vedit-cancel").onclick = closeEditModal;
+    ov.querySelector("#ach-allroles").onclick = () => openRoleGuide();
   }
 
   $("valor-tbody").addEventListener("click", (ev) => {

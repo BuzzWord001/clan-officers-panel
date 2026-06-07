@@ -104,6 +104,18 @@
     return data;
   }
 
+  // ── Отображение «Ценности для клана» как игровой валюты ──
+  // Внутренний счёт ≈0..200; для игроков умножаем на MULT (большие приятные
+  // числа) и показываем с золотой монетой. Чисто визуально, логику не трогает.
+  window.ClanValue = {
+    MULT: 100,
+    num(v) { return Math.round((Number(v) || 0) * this.MULT); },
+    fmt(v) { return this.num(v).toLocaleString("ru-RU"); },
+    // Золотая монета (CSS-иконка) + золотое число со свечением.
+    coin() { return `<span class="gold-coin" aria-hidden="true"></span>`; },
+    badge(v) { return `${this.coin()}<span class="val-gold">${this.fmt(v)}</span>`; },
+  };
+
   window.API = {
     me:            () => request("GET",  "/auth/me"),
     logout:        async () => { try { return await request("POST", "/auth/logout"); } finally { setToken(""); } },

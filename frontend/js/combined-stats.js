@@ -83,6 +83,7 @@
 
   function render() {
     if (!DATA) return;
+    const CV = window.ClanValue || { MULT: 1, num: (v) => v, fmt: (v) => String(v) };
     const mem = (DATA.members || []).filter(m => m.score);
     const sortKey = document.getElementById("cs-sort").value;
     const top = +document.getElementById("cs-top").value;
@@ -134,7 +135,7 @@
     document.getElementById("cs-stats").innerHTML = `
       <span>показано: <b>${regCut.length + afkCut.length + immCut.length}</b>
         <small style="opacity:0.7">(${regCut.length} обычных)</small></span>
-      <span>средняя ценность: <b style="color:var(--accent)">${avgReg}</b></span>
+      <span>средняя ценность: <b class="val-gold"><span class="gold-coin"></span>${CV.fmt(avgReg)}</b></span>
       ${afkChip}
       ${immChip}
       <span style="color:#57d982">▌ перевыполнение (база)</span>
@@ -155,7 +156,7 @@
     // но не ниже 100 — иначе самый дисциплинированный бар упирался бы в край.
     const maxTotal = items.reduce((mx, m) =>
       m._is_sep ? mx : Math.max(mx, m.score.total || 0), 0);
-    const xMax = Math.max(40, Math.ceil(maxTotal / 10) * 10);
+    const xMax = CV.num(Math.max(40, Math.ceil(maxTotal / 10) * 10));
 
     const ctx = document.getElementById("cs-canvas").getContext("2d");
     if (CHART) CHART.destroy();
@@ -177,7 +178,7 @@
           {
             // Перевыполнение (база по магнитудной руне ×N) — зелёный-якорь.
             label: "Перевыполнение",
-            data: items.map(m => m.score.doblest_base ?? 0),
+            data: items.map(m => CV.num(m.score.doblest_base ?? 0)),
             backgroundColor: "rgba(87,217,130,0.84)",
             borderColor: "rgba(87,217,130,1)",
             borderWidth: 1,
@@ -185,28 +186,28 @@
           {
             // Бонус серии (множитель): доля, которую добавил стрик. Золото.
             label: "Серии",
-            data: items.map(m => m.score.streak_bonus ?? 0),
+            data: items.map(m => CV.num(m.score.streak_bonus ?? 0)),
             backgroundColor: "rgba(255,200,60,0.92)",
             borderColor: "rgba(255,200,60,1)",
             borderWidth: 1,
           },
           {
             label: "Офицерство",
-            data: items.map(m => m.score.officer ?? 0),
+            data: items.map(m => CV.num(m.score.officer ?? 0)),
             backgroundColor: "rgba(255,143,63,0.82)",
             borderColor: "rgba(255,143,63,1)",
             borderWidth: 1,
           },
           {
             label: "Общительность",
-            data: items.map(m => m.score.social ?? 0),
+            data: items.map(m => CV.num(m.score.social ?? 0)),
             backgroundColor: "rgba(58,160,224,0.80)",
             borderColor: "rgba(58,160,224,1)",
             borderWidth: 1,
           },
           {
             label: "Ветеран",
-            data: items.map(m => m.score.veteran ?? 0),
+            data: items.map(m => CV.num(m.score.veteran ?? 0)),
             backgroundColor: "rgba(176,123,212,0.80)",
             borderColor: "rgba(176,123,212,1)",
             borderWidth: 1,
@@ -266,7 +267,7 @@
               // Для иммунных — «Доблесть: не оценивается».
               label: (ctx) => {
                 const lbl = ctx.dataset.label;
-                const val = Math.round((ctx.parsed.x || 0) * 10) / 10;
+                const val = Math.round(ctx.parsed.x || 0).toLocaleString("ru-RU");
                 const m = items[ctx.dataIndex];
                 const sc = m.score || {};
                 let suffix = "";
@@ -297,14 +298,15 @@
                 const m = items[tts[0].dataIndex];
                 const sc = m.score || {};
                 const note = sc.immunity_adjusted ? "  (иммунитет: доблесть не в зачёте)" : "";
-                return `Ценность клану: ${sc.total}${note}`;
+                return `★ Ценность клану: ${CV.fmt(sc.total)} золота${note}`;
               },
             },
           },
         },
         scales: {
           x: { stacked: true, max: xMax,
-                ticks: { color: "#a0a0a0", stepSize: 10 },
+                ticks: { color: "#a0a0a0", maxTicksLimit: 8,
+                  callback: (v) => Number(v).toLocaleString("ru-RU") },
                 grid: { color: "rgba(255,255,255,0.04)" }, },
           y: { stacked: true,
                 ticks: {
