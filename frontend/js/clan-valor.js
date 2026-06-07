@@ -2134,8 +2134,11 @@
       CHART.data.datasets.forEach((ds, di) => {
         CHART.getDatasetMeta(di).hidden = (isoI !== null && di !== isoI);
       });
-      legItems.forEach(el =>
-        el.classList.toggle("leg-off", isoI !== null && +el.dataset.i !== isoI));
+      legItems.forEach(el => {
+        const sel = isoI !== null && +el.dataset.i === isoI;
+        el.classList.toggle("leg-on", sel);                       // выбранный — подсветка
+        el.classList.toggle("leg-off", isoI !== null && !sel);    // остальные — серые
+      });
       CHART.update();
     };
     legItems.forEach(el => {

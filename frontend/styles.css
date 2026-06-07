@@ -2348,6 +2348,27 @@ video.chat-media-thumb {
   font-size: 11px; color: var(--muted); font-style: italic;
 }
 
+/* Легенда графика доблести: клик = изоляция (подсветка выбранного / серые) */
+.leg-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; cursor: pointer; user-select: none;
+  padding: 2px 8px; border-radius: 7px;
+  border: 1px solid transparent;
+  transition: opacity .15s, background .15s, box-shadow .15s, filter .15s;
+}
+.leg-item:hover { background: rgba(255,255,255,0.06); }
+.leg-item small { color: var(--text-dim); }
+.leg-item.leg-on {                       /* выбранный ник — подсвечен */
+  font-weight: 700;
+  background: rgba(255,255,255,0.10);
+  border-color: currentColor;
+  box-shadow: 0 0 8px rgba(255,255,255,0.18);
+}
+.leg-item.leg-off {                      /* остальные — серые */
+  opacity: 0.4; filter: grayscale(1);
+}
+.leg-total { font-weight: 700; }
+
 @media (max-width: 800px) {
   .timeline-chart-wrap { height: 300px; }
   .timeline-controls { font-size: 11px; }
