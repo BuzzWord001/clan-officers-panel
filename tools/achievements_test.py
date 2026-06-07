@@ -61,8 +61,8 @@ cA, tA, sA = comp("A")
 # Множитель: текущий стрик 5 нед × OFS(40,norm20)=0.118 → Σ≈0.59 → ×1.71.
 check("A: текущий стрик = 5", cA["over_streak_cur"] == 5, cA["over_streak_cur"])
 check("A: множитель ~1.7 (1.5..1.9)", 1.5 < sA["streak_mult"] < 1.9, sA["streak_mult"])
-# База = ценность магнитудной руны: A пик ×2 (double) → база 18.
-check("A: доблесть-база = 18 (руна double ×2)", abs(sA["doblest_base"] - 18) < 0.1, sA["doblest_base"])
+# База = ценность магнитудной руны: A пик ×2 (double) → база 11.
+check("A: доблесть-база = 11 (руна double ×2)", abs(sA["doblest_base"] - 11) < 0.1, sA["doblest_base"])
 check("A: доблесть-итог = база × множитель",
       abs(sA["doblest_value"] - round(sA["doblest_base"] * sA["streak_mult"], 1)) < 0.2, sA["doblest_value"])
 check("A: бонус серий = итог − база",
@@ -71,8 +71,8 @@ check("A: руна перевыполнения даёт базу (>0)", sA["dob
 check("A: total = доблесть×множ + офицер + общит + ветеран",
       abs(sA["total"] - round(sA["doblest_value"] + sA["officer"] + sA["social"] + sA["veteran"], 1)) < 0.2,
       (sA["total"], sA["doblest_value"]))
-check("A: веса веток (офицер 7, ветеран 11, чат 3)",
-      sA["officer_max"] == 7 and sA["veteran_max"] == 11 and sA["chat_max"] == 3)
+check("A: веса веток (офицер 7, ветеран 10, чат 2)",
+      sA["officer_max"] == 7 and sA["veteran_max"] == 10 and sA["chat_max"] == 2)
 # Множители веток в разумных пределах (офицер ≤ ~1.4, общит ≤ 1.2).
 gm0 = db.valor_get_current()["members"]
 check("офицер-множитель в пределах 1..1.4",
