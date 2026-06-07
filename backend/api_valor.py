@@ -82,6 +82,14 @@ def valor_current(s: dict = Depends(require_viewer)) -> dict:
     return db.valor_get_current(with_reg_notes=(s.get("role") != "guest"))
 
 
+@router.get("/known-nicks")
+def known_nicks(_=Depends(require_bot_token)) -> dict:
+    """Список известных ников клана (снимки доблести + override + активный
+    реестр/новенькие) — десктоп-сборщик шлёт его в Gemini как подсказку,
+    чтобы правильно распознавать и писать ники."""
+    return {"nicks": db.valor_known_nicks()}
+
+
 @router.get("/sessions")
 def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     """Все снапшоты — для «Архив доблести»."""

@@ -163,6 +163,9 @@
     if (key === "score") {
       return m.score ? m.score.total : -1;
     }
+    if (key === "score_all") {
+      return m.score ? (m.score.total_all_time ?? 0) : -1;
+    }
     if (key === "norm") {
       // Сортируем по % выполнения текущей недели; АФК в середине
       if (m.is_afk) return 50;
@@ -598,11 +601,18 @@
       + `• общительность: ${g(s.social)} (VK ${s.vk ? "✓" : "—"}, TG ${s.tg ? "✓" : "—"}, ${s.chat_msgs || 0} сообщ.${s.social_mult > 1 ? `, ×${Number(s.social_mult).toFixed(2)}` : ``})\n`
       + `• ветеран: ${g(s.veteran)}`
       + (s.immunity_adjusted ? `\nИммунитет новичка активен.` : ``);
-    const star = (s.streak_mult > 1)
-      ? `<small class="disc-mark" title="доблесть усилена серией ×${Number(s.streak_mult).toFixed(2)}">×${Number(s.streak_mult).toFixed(2)}</small>`
-      : "";
     return `<span class="norm-cell score-cell ${cls}" title="${esc(tip)}"
-      >${G.badge(s.total)}${star}</span>`;
+      >${G.badge(s.total)}</span>`;
+  }
+
+  // Накопительная ценность за всё время (золото, копится по неделям).
+  function renderScoreAll(s) {
+    if (!s) return `<span style="color:#888">—</span>`;
+    const G = window.ClanValue;
+    const tip = `★ Ценность за всё время: ${G.fmt(s.total_all_time)} золота\n` +
+      `Копится каждую неделю: накопленная доблесть + текущие офицерство, ` +
+      `общительность, ветеран. Только растёт.`;
+    return `<span class="norm-cell score-cell p100" title="${esc(tip)}">${G.badge(s.total_all_time)}</span>`;
   }
 
   function pctClass(pct) {
@@ -1025,6 +1035,7 @@
           <td class="m-cell-num">${trendCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
           <td class="m-cell-num">${renderScore(m.score)}</td>
+          <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
     }).join("");
     $("valor-tbody").innerHTML = rows;
@@ -1164,6 +1175,12 @@
         border-radius:8px;padding:7px 10px;margin:0 0 10px}
       .ach-multline b{color:#ffd866}
       .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh}
+      /* Верхняя панель кнопок Зала (видна всегда, прилипает при прокрутке) */
+      .ach-topbar{position:sticky;top:0;z-index:6;display:flex;gap:10px;
+        align-items:center;flex-wrap:wrap;padding:2px 70px 8px 0;margin-bottom:4px;
+        background:linear-gradient(180deg,#0c0d12 80%,rgba(12,13,18,0))}
+      .ach-topbar .roles-guide-btn{margin:0}
+      .ach-topbar .vedit-btn{margin-left:auto}
       .ach-tree{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;margin-top:4px}
       .ach-branch{flex:1 1 150px;min-width:140px;max-width:210px;
         background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
@@ -1549,6 +1566,11 @@
     ov.className = "vedit-overlay";
     ov.innerHTML = `
       <div class="vedit-card wide ach-card ach-diablo" role="dialog" aria-modal="true">
+        <div class="ach-topbar">
+          <button id="ach-allroles" class="roles-guide-btn" type="button"
+            title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
+          <button id="vedit-cancel" class="vedit-btn">✕ Закрыть</button>
+        </div>
         ${vetRune}
         <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
         ${header}
@@ -1563,10 +1585,6 @@
           ${branchCol("✦ Общительность", "Из таблицы «Участники»", socRunes,
             multFooter(s.social_mult, s.social, (s.chat_msgs || 0) + " сообщ."))}
         </div>
-        <div class="vedit-actions" style="align-items:center;gap:12px;flex-wrap:wrap">
-          <button id="ach-allroles" class="roles-guide-btn" type="button"
-            title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
-          <button id="vedit-cancel" class="vedit-btn">Закрыть</button></div>
       </div>`;
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) closeEditModal(); });

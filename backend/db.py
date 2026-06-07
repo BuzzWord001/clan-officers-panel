@@ -571,6 +571,26 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
         return [_row_to_acceptance(r) for r in rows]
 
 
+def valor_known_nicks() -> list[str]:
+    """Все известные ники клана — для подсказки Gemini/OCR при распознавании:
+    из снимков доблести, ручных override-ников и АКТИВНОГО реестра (новенькие).
+    Дедуп по нижнему регистру, сортировка по алфавиту."""
+    seen: dict[str, str] = {}
+    with connection() as conn:
+        queries = (
+            "SELECT DISTINCT nick FROM valor_members WHERE nick != ''",
+            "SELECT DISTINCT nick FROM valor_nick_override WHERE nick != ''",
+            "SELECT DISTINCT game_nick AS nick FROM acceptances "
+            "WHERE COALESCE(archived,0) = 0 AND game_nick != ''",
+        )
+        for q in queries:
+            for r in conn.execute(q):
+                n = (r["nick"] or "").strip()
+                if n:
+                    seen.setdefault(n.lower(), n)
+    return sorted(seen.values(), key=lambda s: s.lower())
+
+
 def list_archived_acceptances() -> list[dict[str, Any]]:
     """Только ушедшие из клана (archived=1) — для «Архива реестра»."""
     with connection() as conn:
@@ -4122,6 +4142,15 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
         #   • per-week иммунитет (для старых снапшотов где norm_met
         #     записывалась до фикса) — определяем по accepted_date
         accepted_by_canon = valor_accepted_date_per_canon()
+        # Веса категорий (нужны уже в цикле — для накопительной ценности).
+        _wr = conn.execute(
+            "SELECT w_base, w_streak, w_officer, w_veteran, w_social "
+            "FROM valor_weights WHERE id = 1").fetchone()
+        W = ({"base": _wr["w_base"], "streak": _wr["w_streak"],
+              "officer": _wr["w_officer"], "veteran": _wr["w_veteran"],
+              "social": _wr["w_social"]} if _wr else dict(_WEIGHT_DEFAULTS))
+        _mult_cap = round(1.0 + W["streak"] / max(W["base"], 0.01), 3)
+        _soc_base_max = W["social"] / 1.2 if W["social"] > 0 else 0.0
         compliance: dict[str, dict] = {}
         # ORDER BY ... week — чтобы корректно считать серии подряд (streak).
         for r in conn.execute(
@@ -4165,7 +4194,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                 #   (valor-norm)/(189-norm), 0..1.
                 "ostreak": 0, "omax": 0, "o_cur_ofs": 0.0, "omax_ofs": 0.0,
                 "o_cur_start": "", "omax_start": "", "omax_end": "",
-                "ofs_best": 0.0, "xp": 0.0,
+                "ofs_best": 0.0, "xp": 0.0, "cum_value": 0.0,
                 "pcts": []})   # % выполнения по неделям (для «формы» 4 нед)
             d["any"] += 1
             if not d["first_week"]:
@@ -4198,6 +4227,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # ── Доблесть-XP (накопительно): набранная доблесть × бонус серии. ──
             xp_mult = min(1 + 0.1 * (d["ostreak"] - 1), 2.0) if d["ostreak"] > 0 else 1.0
             d["xp"] += max(r["valor"], 0) * xp_mult
+            # ── Накопительная «Ценность для клана»: ценность ЭТОЙ недели =
+            # база(руна недели) × множитель серии. Копится навсегда (прогресс). ──
+            _wk_base = _MAG_RATIO.get(_peak_tier(ratio), 0.0) * W["base"]
+            if _wk_base > 0:
+                d["cum_value"] += _wk_base * _streak_multiplier(d["o_cur_ofs"], _mult_cap)
 
             # ── Оценка НОРМЫ и «форма» — АФК ОСВОБОЖДЁН: его недели здесь не
             #    учитываем (нет предупреждений, форма не падает). ──
@@ -4341,15 +4375,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                ORDER BY valor DESC NULLS LAST, nick""",
             (cur["id"],),
         ).fetchall()
-        # Настраиваемые веса категорий (%): база/стрики/офицер/ветеран/общит.
-        _wr = conn.execute(
-            "SELECT w_base, w_streak, w_officer, w_veteran, w_social "
-            "FROM valor_weights WHERE id = 1").fetchone()
-        W = ({"base": _wr["w_base"], "streak": _wr["w_streak"],
-              "officer": _wr["w_officer"], "veteran": _wr["w_veteran"],
-              "social": _wr["w_social"]} if _wr else dict(_WEIGHT_DEFAULTS))
-        _mult_cap = round(1.0 + W["streak"] / max(W["base"], 0.01), 3)
-        _soc_base_max = W["social"] / 1.2 if W["social"] > 0 else 0.0
+        # W / _mult_cap / _soc_base_max уже получены выше (до цикла compliance).
         members = []
         for r in rows:
             m = dict(r)
@@ -4450,6 +4476,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     "xp_prev":     _xpp["prev"],
                     "xp_pct":      _xpp["pct"],
                     "cur_ofs_sum": round(d["o_cur_ofs"], 3),
+                    "cum_value":   round(d["cum_value"], 1),
                     "weeks_count": d["n"],
                     "weeks_met":   d["met"],
                     "over_avg":    round(d["over_sum"] / _n, 1),
@@ -4560,12 +4587,18 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             officer_value = round(officer_base * officer_mult, 1)
             # ── Руна ВЕТЕРАНА (сама по себе, БЕЗ множителя) ──
             veteran_pts = W["veteran"] if "veteran" in m["tags"] else 0
-            # ── Итог: доблесть×множитель + офицерство×множ + общит×множ + ветеран ──
+            # ── Итог ЗА НЕДЕЛЮ: доблесть×множ + офицерство×множ + общит×множ + ветеран ──
             total = round((doblest_value or 0) + officer_value + social_value + veteran_pts, 1)
+            # ── Итог ЗА ВСЁ ВРЕМЯ: накопленная доблесть-ценность (копится по
+            # неделям) + текущие аддитивные ветки. Только растёт. ──
+            total_all_time = round(_c.get("cum_value", 0.0) + officer_value
+                                   + social_value + veteran_pts, 1)
             # Очки достижений (флейвор для Зала) — по открытым рунам.
             ach_points = _achievement_points(_c.get("peak_ratio", 0.0), _c.get("total_xp", 0))
             m["score"] = {
                 "total":           total,
+                "total_all_time":  total_all_time,
+                "cum_value":       _c.get("cum_value", 0.0),
                 "immunity_adjusted": is_immune_now,
                 # ветка 1 — доблесть × множитель
                 "doblest_base":    doblest_base,        # ценность магнитудной руны
