@@ -615,6 +615,13 @@ def update_acceptance(
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)
         ).fetchone()
+        # Синхронизация ника Реестр → Доблесть: если ник сменился, обновляем
+        # отображаемый ник в Доблести (override) и привязку (canon-миграция),
+        # чтобы это был тот же человек и связи (примечание/иммунитет) держались.
+        old_nick = before["game_nick"]
+        if new_nick != old_nick:
+            _by = actor.get("name") or actor.get("role") or ""
+            _sync_nick_in_conn(conn, _valor_canon(old_nick), new_nick, now, _by)
         _write_audit(conn, "update", acc_id, new_nick, dict(before), dict(after), actor)
         _mark_dirty(conn)
         return _row_to_acceptance(after)
@@ -4528,35 +4535,26 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             sets.append("is_afk = ?")
             vals.append(1 if fields["is_afk"] else 0)
 
-        # Ник: правим отображение + override по canon + снимаем «ИИ»-флаг.
+        # Ник: правим отображаемый ник строки + флаг.
         new_nick = fields.get("nick")
-        if new_nick is not None and str(new_nick).strip():
-            nn = str(new_nick).strip()
-            sets.append("nick = ?")
-            vals.append(nn)
-            sets.append("flag_new_nick = ?")
-            vals.append(0)
-            conn.execute(
-                """INSERT INTO valor_nick_override (nick_canon, nick, updated_at, updated_by)
-                   VALUES (?, ?, ?, ?)
-                   ON CONFLICT(nick_canon) DO UPDATE SET
-                     nick = excluded.nick, updated_at = excluded.updated_at,
-                     updated_by = excluded.updated_by""",
-                (canon, nn, now, by),
-            )
-            conn.execute(
-                "UPDATE valor_first_seen SET verified = 1 WHERE nick_canon = ?",
-                (canon,),
-            )
+        nn = str(new_nick).strip() if (new_nick is not None) else ""
+        if nn:
+            sets.append("nick = ?"); vals.append(nn)
+            sets.append("flag_new_nick = ?"); vals.append(0)
 
         if sets:
             conn.execute(
                 f"UPDATE valor_members SET {', '.join(sets)} WHERE id = ?",
                 (*vals, member_id),
             )
-        out = dict(conn.execute(
-            "SELECT * FROM valor_members WHERE id = ?", (member_id,)
-        ).fetchone())
+        # Двусторонняя синхронизация ника: Доблесть ↔ Реестр (override +
+        # game_nick по canon, с миграцией canon если он сменился).
+        if nn:
+            # member_id строки не меняется (мигрируется только nick_canon).
+            _sync_nick_in_conn(conn, canon, nn, now, by)
+        out_row = conn.execute(
+            "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
+        out = dict(out_row) if out_row else {"ok": True}
     return out
 
 
@@ -4572,6 +4570,59 @@ def _dedup_member_rows(conn, canon: str) -> None:
             conn.execute("DELETE FROM valor_members WHERE id = ?", (r["id"],))
         else:
             seen.add(r["snapshot_id"])
+
+
+def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str) -> str:
+    """Двусторонняя синхронизация ника человека между Доблестью и Реестром.
+
+    Меняет отображаемый ник ВЕЗДЕ, где это один и тот же человек (по canon):
+      • Доблесть — valor_nick_override(canon→nick) (+ снимает «ИИ»-флаг);
+      • Реестр — game_nick всех acceptances этого человека.
+    Если новый ник даёт ДРУГОЙ canon — мигрируем canon (как при merge:
+    переписываем valor-таблицы base→new + alias), чтобы примечание, иммунитет
+    и история не порвались. Возвращает итоговый canon.
+    """
+    new_nick = (new_nick or "").strip()
+    if not new_nick or not base_canon:
+        return base_canon
+    amap = _alias_map(conn)
+    src = _resolve_canon(base_canon, amap)
+    target = _resolve_canon(_valor_canon(new_nick), amap)
+    if target and src and target != src:
+        conn.execute("UPDATE valor_members SET nick_canon=? WHERE nick_canon=?", (target, src))
+        conn.execute("UPDATE valor_history SET nick_canon=? WHERE nick_canon=?", (target, src))
+        for tbl in ("valor_tags", "valor_manual_warnings"):
+            try:
+                conn.execute(f"UPDATE OR IGNORE {tbl} SET nick_canon=? WHERE nick_canon=?", (target, src))
+            except Exception:
+                pass
+        conn.execute("DELETE FROM valor_first_seen WHERE nick_canon=?", (src,))
+        conn.execute("DELETE FROM valor_departed WHERE nick_canon IN (?,?)", (src, target))
+        conn.execute("DELETE FROM valor_force_archived WHERE nick_canon=?", (src,))
+        _dedup_member_rows(conn, target)
+        conn.execute(
+            """INSERT INTO valor_alias (alias_canon, target_canon, note, created_at, created_by)
+               VALUES (?, ?, 'nick-sync', ?, ?)
+               ON CONFLICT(alias_canon) DO UPDATE SET target_canon=excluded.target_canon,
+                 created_at=excluded.created_at, created_by=excluded.created_by""",
+            (src, target, now, by))
+        final = target
+    else:
+        final = src
+    # Доблесть: отображаемый ник + снять «ИИ»-флаг.
+    conn.execute(
+        """INSERT INTO valor_nick_override (nick_canon, nick, updated_at, updated_by)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(nick_canon) DO UPDATE SET nick=excluded.nick,
+             updated_at=excluded.updated_at, updated_by=excluded.updated_by""",
+        (final, new_nick, now, by))
+    conn.execute("UPDATE valor_first_seen SET verified=1 WHERE nick_canon=?", (final,))
+    # Реестр: меняем game_nick у всех записей этого же человека (по canon).
+    for r in conn.execute("SELECT id, game_nick FROM acceptances").fetchall():
+        c = _resolve_canon(_valor_canon(r["game_nick"]), amap)
+        if c in (src, target, final) and r["game_nick"] != new_nick:
+            conn.execute("UPDATE acceptances SET game_nick=? WHERE id=?", (new_nick, r["id"]))
+    return final
 
 
 def valor_merge(source_canon: str, target_nick: str, actor: dict) -> dict:
