@@ -1177,10 +1177,9 @@
       .ach-card.ach-diablo{width:min(940px,96vw);max-height:94vh}
       /* Верхняя панель кнопок Зала (видна всегда, прилипает при прокрутке) */
       .ach-topbar{position:sticky;top:0;z-index:6;display:flex;gap:10px;
-        align-items:center;flex-wrap:wrap;padding:2px 70px 8px 0;margin-bottom:4px;
+        align-items:center;flex-wrap:wrap;padding:2px 0 8px;margin-bottom:4px;
         background:linear-gradient(180deg,#0c0d12 80%,rgba(12,13,18,0))}
       .ach-topbar .roles-guide-btn{margin:0}
-      .ach-topbar .vedit-btn{margin-left:auto}
       .ach-tree{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:flex-start;margin-top:4px}
       .ach-branch{flex:1 1 150px;min-width:140px;max-width:210px;
         background:linear-gradient(180deg,#111017,#0a090c);border:1px solid #2c2a22;
@@ -1205,7 +1204,9 @@
       .ach-mfoot small{display:block;color:#8a8470;font-size:9px;margin-top:1px}
       .ach-subdiv{font-size:9.5px;color:#8a8470;text-transform:uppercase;letter-spacing:.5px;
         margin:7px 0 3px;border-top:1px dashed #2c2a22;padding-top:7px;width:100%;text-align:center}
-      .ach-vet{position:absolute;top:12px;right:14px;display:flex;flex-direction:column;align-items:center}
+      .ach-vet{margin-left:auto;display:flex;flex-direction:column;align-items:center}
+      .ach-vet .ach-rune{width:32px;height:32px;font-size:15px}
+      .ach-vet .ach-rune-cap{font-size:9px}
       .ach-vet.locked{opacity:.5}
       /* Ветка «Доблесть и серии» — две параллельные полоски + × посередине */
       .branch-valor{flex:1 1 360px;max-width:430px}
@@ -1570,8 +1571,8 @@
           <button id="ach-allroles" class="roles-guide-btn" type="button"
             title="Открыть полный список ролей клана"><span class="rgb-ic">✦</span>Посмотреть все доступные роли</button>
           <button id="vedit-cancel" class="vedit-btn">✕ Закрыть</button>
+          ${vetRune}
         </div>
-        ${vetRune}
         <h3>🏆 Зал доблести · ${esc(m.nick)}</h3>
         ${header}
         ${multLine}
