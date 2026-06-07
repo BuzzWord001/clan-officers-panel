@@ -2959,6 +2959,18 @@ def _officer_frac(rank: str) -> float:
     return (sc / _RANK_SCORE_MAX) if sc >= _OFFICER_MIN_SCORE else 0.0
 
 
+# Тег-руна конкретного офицерского звания (для колонки «Роли»).
+_OFFICER_TAG = {
+    "мастер": "rank_master", "мастер гильдии": "rank_master", "мастер клана": "rank_master",
+    "маршал": "rank_marshal", "майор": "rank_major", "капитан": "rank_capitan",
+}
+
+
+def _officer_tag(rank: str) -> str | None:
+    """Звание → ключ руны (rank_master/marshal/major/capitan) или None (не офицер)."""
+    return _OFFICER_TAG.get((rank or "").strip().lower())
+
+
 # ── Модель «Ценность для клана» (3 ветки, пересчёт 2026-06-07) ──
 # Ветка 1 «Доблесть»: база (форма за 4 нед) × МНОЖИТЕЛЬ за текущий стрик.
 #   Множитель = 1 + Σ(OFS за недели текущего стрика) × K, потолок MULT_CAP.
@@ -4262,16 +4274,20 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             if r["valor"] is None:
                 continue
             is_afk = bool(r["is_afk"])
-            # Неоценённые/иммунные недели (НЕ АФК) — пропускаем полностью.
-            if r["norm_met"] is None and not is_afk:
-                continue
-            # Фикс: на старых снапшотах norm_met=False у иммунных — ошибка.
-            # Пересчитываем _compute_immunity; иммунную неделю пропускаем.
+            # Иммунитет (новичок) — это ПРЕИМУЩЕСТВО, а не лишение ценности:
+            # как и АФК, иммунный «освобождён» от нормы (нет предупреждений,
+            # серия не рвётся при недоборе), НО набранную доблесть засчитываем
+            # в ценность/роли/историю.
             acc = accepted_by_canon.get(cn)
+            is_immune = False
             if acc:
                 imm = _compute_immunity(acc, r["week"])
                 if imm and imm["status"] in ("active", "extended"):
-                    continue
+                    is_immune = True
+            # Неоценённая (norm_met None) и НЕ освобождённая неделя — пропуск (legacy).
+            if r["norm_met"] is None and not is_afk and not is_immune:
+                continue
+            excused = is_afk or is_immune   # освобождён от нормы (АФК или иммун)
             norm = r["valor_norm"] or 1
             ratio = r["valor"] / norm
             pct = min(ratio, 1.0) * 100
@@ -4309,7 +4325,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             #    рвётся при невыполнении. АФК: растёт при ВЫПОЛНЕНИИ нормы
             #    (≥норма); при недоборе/0 — НЕ растёт и НЕ рвётся (заморозка). ──
             met = r["valor"] >= norm
-            grow = met if is_afk else over
+            grow = met if excused else over
             if grow:
                 if d["ostreak"] == 0:
                     d["o_cur_start"] = wk
@@ -4321,10 +4337,10 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     d["omax_ofs"] = d["o_cur_ofs"]
                     d["omax_start"] = d["o_cur_start"]
                     d["omax_end"] = wk
-            elif not is_afk:
+            elif not excused:
                 d["ostreak"] = 0
                 d["o_cur_ofs"] = 0.0
-            # else: АФК + недобор → заморозка, серию не трогаем.
+            # else: АФК/иммун + недобор → заморозка, серию не трогаем.
             # ── Доблесть-XP (накопительно): набранная доблесть × бонус серии. ──
             xp_mult = min(1 + 0.1 * (d["ostreak"] - 1), 2.0) if d["ostreak"] > 0 else 1.0
             d["xp"] += max(r["valor"], 0) * xp_mult
@@ -4334,9 +4350,9 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             if _wk_base > 0:
                 d["cum_value"] += _wk_base * _streak_multiplier(d["o_cur_ofs"], _mult_cap)
 
-            # ── Оценка НОРМЫ и «форма» — АФК ОСВОБОЖДЁН: его недели здесь не
-            #    учитываем (нет предупреждений, форма не падает). ──
-            if is_afk:
+            # ── Оценка НОРМЫ и «форма» — АФК и ИММУННЫЕ ОСВОБОЖДЕНЫ: их недели
+            #    здесь не учитываем (нет предупреждений, форма не падает). ──
+            if excused:
                 continue
             d["pcts"].append(pct)
             d["sum"] += pct
@@ -4530,10 +4546,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             manual_tags = tags_map.get(cn, [])
             m["tag_dates"] = tag_dates_map.get(cn, {})
             m["top_rank"] = top_rank or None
+            # Руна офицерского ЗВАНИЯ: за всё время — по высшему посту,
+            # за неделю — по текущему (если стал офицером впервые на этой неделе).
+            off_tag_all = _officer_tag(top_rank) if is_officer else None
             # ВСЕ статусные роли (для «за всё время»): ручные (veteran…) +
-            # офицер + vk + tg + общительность.
+            # руна звания + vk + tg + общительность.
             status_all = list(manual_tags)
-            for t in (("officer",) if is_officer else ()):
+            for t in ((off_tag_all,) if off_tag_all else ()):
                 if t not in status_all:
                     status_all.append(t)
             for t, has in (("vk", _has_vk), ("tg", _has_tg), ("chat", _msgs > 0)):
@@ -4541,13 +4560,15 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
                     status_all.append(t)
             # Статусы, полученные ИМЕННО НА ЭТОЙ НЕДЕЛЕ (для «за неделю»):
             #   veteran — если метка проставлена на текущей неделе;
-            #   officer — если стал офицером на этой неделе (на прошлой не был).
+            #   офицерство — если стал офицером впервые (на прошлой неделе не был).
             status_new = []
             _vd = m["tag_dates"].get("veteran")
             if "veteran" in manual_tags and _vd and _iso_week_of(_vd) == cur["week"]:
                 status_new.append("veteran")
             if is_officer and _rank_score(prev_rank.get(cn, "")) < _OFFICER_MIN_SCORE:
-                status_new.append("officer")
+                _new_off = _officer_tag(m["rank"]) or off_tag_all
+                if _new_off:
+                    status_new.append(_new_off)
             _has_vet = "veteran" in manual_tags
 
             # Иммунитет новичка: если активен или попадает в эту неделю —

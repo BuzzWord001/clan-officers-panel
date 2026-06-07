@@ -333,6 +333,15 @@
     officer:    { label: "Офицер", icon: "✦", color: "#ff9a44",
                   cls: "tag-officer",
                   tip: "Занимал офицерский пост (Капитан и выше)." },
+    // Конкретные офицерские звания (руны как в Зале достижений).
+    rank_capitan: { label: "Капитан", icon: "✜", color: "#caa15a",
+                    cls: "tag-officer", tip: "Офицерский пост: Капитан." },
+    rank_major:   { label: "Майор", icon: "❰", color: "#d8a24a",
+                    cls: "tag-officer", tip: "Офицерский пост: Майор." },
+    rank_marshal: { label: "Маршал", icon: "✠", color: "#ecb44a",
+                    cls: "tag-officer", glow: 1, tip: "Офицерский пост: Маршал." },
+    rank_master:  { label: "Мастер", icon: "♔", color: "#ff8f3f",
+                    cls: "tag-officer", glow: 1, tip: "Офицерский пост: Мастер." },
   };
   // Авто-теги нельзя удалить вручную — они вычисляются на бэкенде.
   // Семейства ролей-достижений за доблесть.
@@ -348,6 +357,7 @@
     "xp7", "xp8", "xp9", "xp10", "xp11"]);
   const AUTO_TAGS = new Set([
     "in_socials", "officer", "vk", "tg", "chat",
+    "rank_capitan", "rank_major", "rank_marshal", "rank_master",
     ...FLAW_TAGS, ...COMBO_TAGS, ...PEAK_TAGS, ...STREAK_TAGS, ...XP_TAGS]);
 
   // ── Система РЕДКОСТИ (как в MMO: WoW-палитра качества) + очки достижений ──
