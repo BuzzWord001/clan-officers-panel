@@ -4726,9 +4726,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             soc = m.get("socials") or {}
             vk_pts = round(_soc_base_max * 0.25, 2) if (soc.get("vk_id") or soc.get("vk_screen_name")) else 0.0
             tg_pts = round(_soc_base_max * 0.25, 2) if (soc.get("tg_id") or soc.get("tg_username")) else 0.0
-            chat_pts = round(_soc_base_max * 0.5 * min(msgs / 50.0, 1.0), 2)
+            # Чат-вклад растёт с активностью до 300 сообщений (а не насыщается
+            # на 50) — чтобы САМЫЕ общительные получали больше, чем умеренные.
+            chat_pts = round(_soc_base_max * 0.5 * min(msgs / 300.0, 1.0), 2)
             social_base = round(vk_pts + tg_pts + chat_pts, 1)
-            social_mult = round(1.0 + min(msgs / 300.0, 0.2), 2)        # до ×1.2
+            social_mult = round(1.0 + min(msgs / 600.0, 0.2), 2)        # до ×1.2 (≈1200 сообщ.)
             social_value = round(social_base * social_mult, 1)
             # ── ВЕТКА 2: ОФИЦЕРСТВО (база по высшему посту × СЛАБЫЙ множитель).
             # База нормирована так, чтобы потолок ветки = вес «офицерство».

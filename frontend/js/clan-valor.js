@@ -2125,13 +2125,24 @@
         >● ${esc(s.nick)}${s.true_name ? " · " + esc(s.true_name) : ""}
         <small>(${s.total})</small></span>
     `).join(" ");
-    $("tl-legend").querySelectorAll(".leg-item").forEach(el => {
+    // Клик по элементу легенды = показать ТОЛЬКО его (изоляция). Повторный
+    // клик по нему же — вернуть все линии. Так можно смотреть и отдельного
+    // человека, и «Сумма по клану» отдельно.
+    const legItems = [...$("tl-legend").querySelectorAll(".leg-item")];
+    let isoI = null;
+    const applyIso = () => {
+      CHART.data.datasets.forEach((ds, di) => {
+        CHART.getDatasetMeta(di).hidden = (isoI !== null && di !== isoI);
+      });
+      legItems.forEach(el =>
+        el.classList.toggle("leg-off", isoI !== null && +el.dataset.i !== isoI));
+      CHART.update();
+    };
+    legItems.forEach(el => {
       el.addEventListener("click", () => {
         const i = +el.dataset.i;
-        const meta = CHART.getDatasetMeta(i);
-        meta.hidden = !meta.hidden;
-        el.classList.toggle("leg-off", meta.hidden);
-        CHART.update();
+        isoI = (isoI === i) ? null : i;
+        applyIso();
       });
     });
   }
