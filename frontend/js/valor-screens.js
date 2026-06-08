@@ -111,8 +111,15 @@
       const susBadge = warn
         ? ` <span class="cmp-badge bdg-sus" title="${esc("Проверь по скрину: " + tipAll)}">⚠ проверить</span>`
         : "";
+      // «✓ верно» — снять отметку сомнения у строки, где значение ЕСТЬ, просто
+      // нужно подтверждение человека (ник распознан ИИ / автоправка класса).
+      // Для пустых значений (доблесть/уровень) кнопки нет — их надо вписать.
+      const confirmable = !!(m.flag_new_nick || m.flag_ocr_suspect);
+      const okBtn = (warn && confirmable && IS_ADMIN)
+        ? ` <button class="cmp-ok" data-id="${m.id}" title="Я проверил — распознано верно, снять отметку сомнения">✓ верно</button>`
+        : "";
       const reasonsLine = warn
-        ? `<div class="cmp-reasons" title="${esc(tipAll)}">⚠ проверь: ${esc(keys.map(k => sf[k].label).join(", "))}</div>`
+        ? `<div class="cmp-reasons" title="${esc(tipAll)}">⚠ проверь: ${esc(keys.map(k => sf[k].label).join(", "))}${okBtn}</div>`
         : "";
       const valorWarn = !!sf.valor;
       return `<tr class="cmp-row${warn ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
@@ -174,7 +181,8 @@
       // Клик по строке (не по нику/значению/кнопке) → тоже показать кадр.
       tr.addEventListener("click", (e) => {
         if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
-            e.target.closest(".cmp-c") || e.target.closest(".cmp-nick-t")) return;
+            e.target.closest(".cmp-ok") || e.target.closest(".cmp-c") ||
+            e.target.closest(".cmp-nick-t")) return;
         selectRow(tr);
       });
     });
@@ -183,7 +191,18 @@
         b.addEventListener("click", () => openEdit(+b.dataset.id)));
       tbody.querySelectorAll(".cmp-del").forEach(b =>
         b.addEventListener("click", () => delMember(+b.dataset.id, b.dataset.nick)));
+      tbody.querySelectorAll(".cmp-ok").forEach(b =>
+        b.addEventListener("click", (e) => { e.stopPropagation(); verifyMember(+b.dataset.id); }));
     }
+  }
+
+  // ── Подтвердить, что строка распознана верно (снять сомнение) ──
+  async function verifyMember(id) {
+    try {
+      await API.valorMemberVerify(id);
+      toast("Отмечено как верное");
+      await loadWeek(openWeek, activeFolder());
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
 
   // Текущая выбранная папка недели (для перезагрузки после правок).
@@ -342,7 +361,10 @@
         });
         ov.hidden = true;
         toast("Сохранено: " + m.nick);
-        applyFilter();
+        // Перечитываем неделю: бэкенд мог снять флаги сомнений (правка класса
+        // → flag_ocr_suspect=0, правка ника → flag_new_nick=0), плюс ушла
+        // подсветка пустых доблести/уровня, если их вписали.
+        await loadWeek(openWeek, activeFolder());
       } catch (e) {
         msg.textContent = "Ошибка: " + (e.detail || e.message);
       }
@@ -368,7 +390,8 @@
     // каждом рендере). Страница доступна только офицеру/админу (гость
     // редиректится в начале файла), отдельный гейт не нужен.
     $("cmp-rows").addEventListener("dblclick", (e) => {
-      if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del")) return;
+      if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
+          e.target.closest(".cmp-ok")) return;
       const tr = e.target.closest(".cmp-row");
       if (!tr || !tr.dataset.canon) return;
       location.href = "clan-valor.html?focus=" + encodeURIComponent(tr.dataset.canon);

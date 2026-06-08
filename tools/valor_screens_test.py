@@ -163,6 +163,25 @@ order = [m["nick"] for m in db.valor_compare_data("2026-W31")["members"]]
 check("compare сохраняет порядок снимка как на скринах: Top, Bravo, Alpha",
       order == ["Top", "Bravo", "Alpha"])
 
+# ── 11) Подтверждение «верно» + авто-снятие сомнения при правке класса ──
+db.valor_save_snapshot(week="2026-W32", valor_norm=14, members=[
+    {**mk("Suspekt", 30), "flag_ocr_suspect": True},
+    {**mk("Suspekt2", 28), "flag_ocr_suspect": True},
+])
+c32 = {m["nick"]: m for m in db.valor_compare_data("2026-W32")["members"]}
+check("снимок сохранил flag_ocr_suspect", c32["Suspekt"]["flag_ocr_suspect"] is True)
+# verify снимает оба флага сомнения
+db.valor_verify_member(c32["Suspekt"]["id"], ACTOR)
+c32b = {m["nick"]: m for m in db.valor_compare_data("2026-W32")["members"]}
+check("verify снял flag_ocr_suspect", c32b["Suspekt"]["flag_ocr_suspect"] is False)
+check("verify снял flag_new_nick", c32b["Suspekt"]["flag_new_nick"] is False)
+# правка класса снимает flag_ocr_suspect автоматически
+db.valor_update_member(c32["Suspekt2"]["id"], {"class": "Маг"}, ACTOR)
+c32c = {m["nick"]: m for m in db.valor_compare_data("2026-W32")["members"]}
+check("правка класса сняла flag_ocr_suspect", c32c["Suspekt2"]["flag_ocr_suspect"] is False)
+check("verify несуществующего → not_found",
+      db.valor_verify_member(999999, ACTOR).get("reason") == "not_found")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

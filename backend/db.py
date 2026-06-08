@@ -5050,6 +5050,12 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             sets.append("is_afk = ?")
             vals.append(1 if fields["is_afk"] else 0)
 
+        # Правка класса = человек проверил распознавание → снимаем «сомнение
+        # OCR» (flag_ocr_suspect сейчас означает автоправку класса).
+        if "class" in fields and fields["class"] is not None:
+            sets.append("flag_ocr_suspect = ?")
+            vals.append(0)
+
         # Комментарий к АФК (причина, до какого числа) — по canon, держится
         # между неделями. Пустая строка → удаляем запись.
         if "afk_note" in fields and fields["afk_note"] is not None:
@@ -5086,6 +5092,21 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
         out = dict(out_row) if out_row else {"ok": True}
     return out
+
+
+def valor_verify_member(member_id: int, actor: dict) -> dict:
+    """Человек проверил строку и подтвердил, что распознано верно — снимаем
+    флаги сомнений: «ник распознан ИИ» (flag_new_nick) и «сомнение OCR по
+    классу» (flag_ocr_suspect). Значения полей не меняются."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM valor_members WHERE id = ?", (member_id,)).fetchone()
+        if not row:
+            return {"ok": False, "reason": "not_found"}
+        conn.execute(
+            "UPDATE valor_members SET flag_new_nick = 0, flag_ocr_suspect = 0 "
+            "WHERE id = ?", (member_id,))
+    return {"ok": True}
 
 
 def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:

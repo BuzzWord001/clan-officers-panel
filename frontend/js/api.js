@@ -188,6 +188,7 @@
     valorMemberEdit: (id, fields) => request("PATCH", "/valor/member/" + id, fields),
     valorMemberAdd:  (fields) => request("POST", "/valor/member", fields),
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),
+    valorMemberVerify: (id) => request("POST", "/valor/verify/" + id),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),

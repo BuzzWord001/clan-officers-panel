@@ -295,6 +295,17 @@ def valor_member_edit(member_id: int, payload: ValorMemberEdit,
     return out
 
 
+@router.post("/verify/{member_id}")
+def valor_member_verify(member_id: int,
+                        actor: dict = Depends(require_admin)) -> dict:
+    """Подтвердить, что строка распознана верно — снять флаги сомнений
+    (ИИ-ник / сомнение OCR). ТОЛЬКО админ."""
+    res = db.valor_verify_member(member_id, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "not_found"))
+    return res
+
+
 # ── Веса (проценты) категорий ценности ───────────────────────────────────
 class ValorWeightsIn(BaseModel):
     base:    float = Field(..., ge=0, le=100)
