@@ -299,7 +299,8 @@ CREATE TABLE IF NOT EXISTS valor_members (
     is_afk           INTEGER NOT NULL DEFAULT 0,
     norm_met         INTEGER,   -- NULL=АФК (не оценивается), 0=нет, 1=да
     flag_new_nick    INTEGER NOT NULL DEFAULT 0,
-    flag_ocr_suspect INTEGER NOT NULL DEFAULT 0
+    flag_ocr_suspect INTEGER NOT NULL DEFAULT 0,
+    frame            INTEGER   -- номер кадра (R2 idx), на котором ник распознан
 );
 CREATE INDEX IF NOT EXISTS idx_valor_members_canon
     ON valor_members(nick_canon);
@@ -515,6 +516,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-06-08: номер кадра (R2 idx), на котором Gemini увидел ник —
+    # чтобы клик по нику в «Скринах сбора» подсвечивал ТОЧНЫЙ скрин.
+    try:
+        conn.execute("ALTER TABLE valor_members ADD COLUMN frame INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-05-29 (поздно вечером): дедуп медиа. Стикеры/GIF/часто повторяющиеся
     # картинки бесполезно качать и заливать снова — раз уже в R2, ссылка та же.
     # Двухключевая дедупликация: платформенный file_unique_id (стабилен в
@@ -643,7 +651,7 @@ def valor_compare_data(week: str) -> dict:
                     reg.add(c)
         rows = conn.execute(
             "SELECT id, nick, nick_canon, true_name, rank, title, level, "
-            "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect "
+            "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect, frame "
             "FROM valor_members WHERE snapshot_id = ? "
             "ORDER BY COALESCE(valor, -1) DESC, nick", (snap["id"],)).fetchall()
         members = [{
@@ -653,13 +661,43 @@ def valor_compare_data(week: str) -> dict:
             "flag_ocr_suspect": bool(r["flag_ocr_suspect"]),
             "true_name": r["true_name"], "rank": r["rank"], "title": r["title"],
             "level": r["level"], "class": r["class_"], "valor": r["valor"],
-            "is_afk": bool(r["is_afk"]),
+            "is_afk": bool(r["is_afk"]), "frame": r["frame"],
         } for r in rows]
         shots = [{"idx": r["idx"], "url": r["r2_url"]} for r in conn.execute(
             "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
             (week,))]
         return {"week": week, "snapshot": dict(snap),
                 "members": members, "screenshots": shots}
+
+
+def valor_set_frames(week: str, items: list[dict]) -> dict:
+    """Проставляет valor_members.frame (idx скрина) по canon для снимка недели.
+    items: [{nick, frame}]. Не трогает остальные поля (правки сохраняются).
+    Возвращает {ok, updated, missing}."""
+    week = (week or "").strip()
+    updated = 0
+    missing = 0
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        amap = _alias_map(conn)
+        for it in items:
+            nick = (it.get("nick") or "").strip()
+            frame = it.get("frame")
+            if not nick or not isinstance(frame, int):
+                continue
+            canon = _resolve_canon(_valor_canon(nick), amap)
+            cur = conn.execute(
+                "UPDATE valor_members SET frame = ? "
+                "WHERE snapshot_id = ? AND nick_canon = ?",
+                (frame, snap["id"], canon))
+            if cur.rowcount:
+                updated += cur.rowcount
+            else:
+                missing += 1
+    return {"ok": True, "updated": updated, "missing": missing}
 
 
 def valor_screenshot_weeks() -> list[dict]:
@@ -3896,8 +3934,8 @@ def valor_save_snapshot(
                 """INSERT INTO valor_members
                    (snapshot_id, nick, nick_canon, true_name, rank, title,
                     level, class_, valor, is_afk, norm_met,
-                    flag_new_nick, flag_ocr_suspect, warning_count)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    flag_new_nick, flag_ocr_suspect, warning_count, frame)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     snap_id,
                     nick,
@@ -3914,6 +3952,7 @@ def valor_save_snapshot(
                     1 if (m.get("flag_new_nick") or is_new) else 0,
                     1 if m.get("flag_ocr_suspect") else 0,
                     warning_count,
+                    m.get("frame") if isinstance(m.get("frame"), int) else None,
                 ),
             )
 

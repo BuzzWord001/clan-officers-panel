@@ -37,6 +37,7 @@ class ValorMemberIn(BaseModel):
     norm_met:         bool | None = None
     flag_new_nick:    bool | None = False
     flag_ocr_suspect: bool | None = False
+    frame:            int | None = None   # номер кадра (idx), где распознан ник
 
     class Config:
         populate_by_name = True
@@ -101,6 +102,19 @@ def valor_screenshots_save(payload: ScreenshotsIn,
                            _=Depends(require_bot_token)) -> dict:
     """Сохранить ссылки на скрины недели (заливает pw-valor-tracker в R2)."""
     return db.valor_screenshots_set(payload.week, payload.shots)
+
+
+class FramesIn(BaseModel):
+    week:   str
+    frames: list[dict]   # [{nick, frame}]
+
+
+@router.post("/frames")
+def valor_frames_set(payload: FramesIn,
+                     _=Depends(require_bot_token)) -> dict:
+    """Проставить номер кадра (idx скрина) каждому нику недели — для точной
+    подсветки скрина при клике. Бэкфилл/обновление без пересохранения снимка."""
+    return db.valor_set_frames(payload.week, payload.frames)
 
 
 @router.get("/screenshots/weeks")

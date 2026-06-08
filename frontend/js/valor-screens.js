@@ -87,7 +87,7 @@
 
   function rowsHtml(list) {
     return list.map((m) =>
-      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}">
+      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
         <td class="cmp-num">${m._i + 1}</td>
         <td class="cmp-nick"><span class="cmp-nick-t" title="клик — показать кадр слева · двойной клик — к нику в Доблести">${esc(m.nick)}</span><br>${badges(m)}</td>
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cell(m.level)}
@@ -126,7 +126,8 @@
   function selectRow(tr) {
     const tbody = $("cmp-rows").querySelector("tbody");
     if (!tbody || !tr) return;
-    scrollToFrame(+tr.dataset.i);
+    const fr = tr.dataset.frame;
+    scrollToFrame(+tr.dataset.i, (fr === "" || fr == null) ? null : +fr);
     tbody.querySelectorAll(".cmp-row-on").forEach(x => x.classList.remove("cmp-row-on"));
     tr.classList.add("cmp-row-on");
   }
@@ -241,11 +242,24 @@
   }
 
   // Примерный кадр для строки i: пропорция позиции среди всех строк.
-  function scrollToFrame(i) {
+  function scrollToFrame(i, frameIdx) {
     const shots = DATA.screenshots; if (!shots.length) return;
-    const fi = Math.min(shots.length - 1,
-      Math.round(i / Math.max(1, DATA.members.length - 1) * (shots.length - 1)));
-    const el = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${shots[fi].idx}"]`);
+    let targetIdx;
+    if (Number.isInteger(frameIdx)) {
+      targetIdx = frameIdx;   // точный кадр (idx скрина), где распознан ник
+    } else {
+      // фолбэк (нет точного кадра): пропорция позиции в списке по доблести
+      const fi = Math.min(shots.length - 1,
+        Math.round(i / Math.max(1, DATA.members.length - 1) * (shots.length - 1)));
+      targetIdx = shots[fi].idx;
+    }
+    let el = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${targetIdx}"]`);
+    // если такого кадра нет в загруженных — берём ближайший существующий
+    if (!el && shots.length) {
+      const near = shots.reduce((a, b) =>
+        Math.abs(b.idx - targetIdx) < Math.abs(a.idx - targetIdx) ? b : a);
+      el = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${near.idx}"]`);
+    }
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("cmp-shot-on");
