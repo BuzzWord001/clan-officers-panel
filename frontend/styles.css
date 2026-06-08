@@ -3418,6 +3418,13 @@ body.guest-mode .afk-set-btn { display: none; }
   cursor: pointer; font-size: 10px; padding: 0 0 0 2px; line-height: 1;
 }
 .warn-del-btn:hover { opacity: 1; }
+.warn-dismiss-btn {
+  border: 0; background: transparent;
+  color: currentColor; opacity: 0.6;
+  cursor: pointer; font-size: 10px; padding: 0 0 0 2px; line-height: 1;
+}
+.warn-dismiss-btn:hover { opacity: 1; }
+body.guest-mode .warn-dismiss-btn { display: none !important; }
 /* Поповер добавления предупреждения */
 .warn-add-pop {
   position: fixed; z-index: 1100;

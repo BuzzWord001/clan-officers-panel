@@ -228,6 +228,35 @@ def valor_warning_delete(id: int = Query(..., ge=1),
     return {"ok": db.valor_remove_manual_warning(id, actor)}
 
 
+class WarnDismissIn(BaseModel):
+    canon: str = Field(..., min_length=1)
+    kind:  str   # norm | title
+
+
+class WarnCanonIn(BaseModel):
+    canon: str = Field(..., min_length=1)
+
+
+@router.post("/warning/dismiss")
+def valor_warning_dismiss(payload: WarnDismissIn,
+                          _: dict = Depends(require_officer),
+                          actor: dict = Depends(current_actor)) -> dict:
+    """«Простить» вычисляемое предупреждение: норматив (все текущие недели) или
+    титул (текущая цифра). Офицер/админ."""
+    res = db.valor_dismiss_warnings(payload.canon, payload.kind, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, res.get("reason", "failed"))
+    return res
+
+
+@router.post("/warning/restore")
+def valor_warning_restore(payload: WarnCanonIn,
+                          _: dict = Depends(require_officer),
+                          actor: dict = Depends(current_actor)) -> dict:
+    """Вернуть прощённые предупреждения (норматив+титул) для канона."""
+    return db.valor_restore_warnings(payload.canon, actor)
+
+
 class ValorAfkIn(BaseModel):
     is_afk:   bool
     afk_note: str | None = None

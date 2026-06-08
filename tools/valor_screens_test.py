@@ -303,6 +303,31 @@ check("монотонные кадры не тронуты (Fa=5, Fb=5)", fr["Fa
 check("smooth несущ. недели → no_snapshot",
       db.valor_smooth_frames("2026-W99").get("reason") == "no_snapshot")
 
+# ── 18) Снятие (прощение) титульных и авто (норматив) предупреждений ──
+# Титул: цифра в титуле → title_warn (не зависит от иммунитета).
+db.valor_save_snapshot(week="2026-W72", valor_norm=14,
+                       members=[{**mk("Titled", 50, title="3")}])
+tc = next((m for m in db.valor_get_current()["members"] if m["nick"] == "Titled"), None)
+check("есть титульное предупреждение (title_warn=3)", tc and tc["title_warn"] == 3)
+db.valor_dismiss_warnings(tc["nick_canon"], "title", ACTOR)
+tc2 = next((m for m in db.valor_get_current()["members"] if m["nick"] == "Titled"), None)
+check("после dismiss title — предупреждение снято", tc2 and tc2["title_warn"] is None)
+db.valor_restore_warnings(tc["nick_canon"], ACTOR)
+tc3 = next((m for m in db.valor_get_current()["members"] if m["nick"] == "Titled"), None)
+check("после restore — титульное вернулось (3)", tc3 and tc3["title_warn"] == 3)
+# Норматив: берём любого, у кого реально есть авто-предупреждение в тест-данных.
+aw = db.valor_active_warnings()
+if aw:
+    cn0 = next(iter(aw)); before_n = len(aw[cn0])
+    db.valor_dismiss_warnings(cn0, "norm", ACTOR)
+    check("dismiss norm убрал авто-предупреждения",
+          len(db.valor_active_warnings().get(cn0, [])) == 0)
+    db.valor_restore_warnings(cn0, ACTOR)
+    check("restore вернул авто-предупреждения по нормативу",
+          len(db.valor_active_warnings().get(cn0, [])) == before_n)
+else:
+    check("(в тест-данных нет авто-предупреждений — норм-кейс пропущен)", True)
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

@@ -907,15 +907,21 @@
       // худшая эффективная суровость по всем неделям
       const sev = ws.map(effSev).reduce(
         (a, b) => (SEVRANK[b] > SEVRANK[a] ? b : a), "light");
+      const ndel = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
+        `data-canon="${esc(m.nick_canon)}" data-kind="norm" ` +
+        `title="Снять все предупреждения по нормативу">✕</button>` : "";
       chips.push(warnChip("wsev-" + sev, ws.length,
-        `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`));
+        `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`, { extra: ndel }));
     }
     // Титул — строгий цвет; в тултипе — неделя проставления с датой
     if (tw) {
       const since = m.title_warn_since;
+      const tdel = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
+        `data-canon="${esc(m.nick_canon)}" data-kind="title" ` +
+        `title="Снять предупреждение из титула">✕</button>` : "";
       chips.push(warnChip("wtype-title", tw,
         `Предупреждение в титуле\nВыставлено руководством гильдии` +
-        (since ? `\nОтмечено: ${weekFull(since)}` : ``)));
+        (since ? `\nОтмечено: ${weekFull(since)}` : ``), { extra: tdel }));
     }
     // Ручные — цвет по худшей суровости + значок ✎; уголок = дата добавления
     if (manual.length) {
@@ -1875,6 +1881,21 @@
             headers: { "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") } });
         await load();
       } catch (e) { alert("Ошибка: " + (e.message || e)); }
+      return;
+    }
+    // «Простить» авто-предупреждение по нормативу или из титула.
+    const disB = ev.target.closest(".warn-dismiss-btn");
+    if (disB) {
+      ev.stopPropagation();
+      const kind = disB.dataset.kind;
+      const msg = kind === "title"
+        ? "Снять предупреждение из титула у этого игрока?"
+        : "Снять ВСЕ текущие предупреждения по нормативу у этого игрока?";
+      if (!confirm(msg)) return;
+      try {
+        await API.valorWarningDismiss(disB.dataset.canon, kind);
+        await load();
+      } catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); }
       return;
     }
   });

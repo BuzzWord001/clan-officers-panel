@@ -190,6 +190,8 @@
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),
     valorMemberVerify: (id) => request("POST", "/valor/verify/" + id),
     valorSnapshotMeta: (body) => request("PATCH", "/valor/snapshot-meta", body),
+    valorWarningDismiss: (canon, kind) => request("POST", "/valor/warning/dismiss", { canon, kind }),
+    valorWarningRestore: (canon) => request("POST", "/valor/warning/restore", { canon }),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),

@@ -347,6 +347,19 @@ CREATE TABLE IF NOT EXISTS valor_manual_warnings (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_mwarn ON valor_manual_warnings(nick_canon);
 
+-- «Прощённые» вычисляемые предупреждения (офицер снял вручную):
+--   kind='norm'  ref=week   — прощён авто-штраф за невыполнение норматива в неделю
+--   kind='title' ref=<N>    — прощён штраф из титула (цифра N); при смене цифры
+--                             в титуле штраф появится снова (это уже другое).
+CREATE TABLE IF NOT EXISTS valor_warn_dismiss (
+    nick_canon  TEXT    NOT NULL,
+    kind        TEXT    NOT NULL,
+    ref         TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL DEFAULT '',
+    created_by  TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (nick_canon, kind, ref)
+);
+
 -- Архив ушедших из клана. При save_snapshot, если ник был в prev,
 -- но в current его нет — INSERT/UPDATE сюда (последние известные
 -- данные). Если ник снова появился в новом снапшоте — DELETE.
@@ -3523,6 +3536,7 @@ def valor_active_warnings() -> dict[str, list[dict]]:
     """
     accepted = valor_accepted_date_per_canon()
     grouped: dict[str, list] = {}
+    dismissed_norm: dict[str, set] = {}   # canon → {прощённые недели}
     with connection() as conn:
         rows = conn.execute(
             """SELECT vm.nick_canon AS cn, vs.week AS week, vm.valor AS valor,
@@ -3532,6 +3546,9 @@ def valor_active_warnings() -> dict[str, list[dict]]:
                JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
                ORDER BY vm.nick_canon, vs.week"""
         ).fetchall()
+        for d in conn.execute(
+                "SELECT nick_canon, ref FROM valor_warn_dismiss WHERE kind='norm'"):
+            dismissed_norm.setdefault(d["nick_canon"], set()).add(d["ref"])
     for r in rows:
         grouped.setdefault(r["cn"], []).append(r)
     out: dict[str, list[dict]] = {}
@@ -3560,6 +3577,10 @@ def valor_active_warnings() -> dict[str, list[dict]]:
                 pct = round(min(r["valor"] / norm, 1.0) * 100, 1)
                 active.append({"week": r["week"], "valor": r["valor"],
                                "norm": norm, "pct": pct, "grace": is_grace})
+        # Убираем недели, которые офицер «простил» (сняты вручную).
+        dn = dismissed_norm.get(cn)
+        if dn:
+            active = [a for a in active if a["week"] not in dn]
         if active:
             out[cn] = active
     return out
@@ -4352,6 +4373,53 @@ def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
     return out
 
 
+def valor_dismiss_warnings(canon: str, kind: str, actor: dict) -> dict:
+    """«Простить» вычисляемое предупреждение (офицер/админ):
+      kind='norm'  — все текущие авто-штрафы за невыполнение норматива;
+      kind='title' — штраф из числового титула (текущая цифра).
+    Запись переживает пересчёт; фильтруется в valor_active_warnings /
+    valor_get_current. canon приходит с фронта (m.nick_canon) — совпадает с
+    ключами активных предупреждений."""
+    canon = (canon or "").strip()
+    if not canon:
+        return {"ok": False, "reason": "bad_canon"}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    by = actor.get("name") or actor.get("role") or ""
+    if kind == "norm":
+        refs = [a["week"] for a in valor_active_warnings().get(canon, [])]
+    elif kind == "title":
+        with connection() as conn:
+            row = conn.execute(
+                "SELECT title FROM valor_members WHERE nick_canon = ? "
+                "ORDER BY snapshot_id DESC LIMIT 1", (canon,)).fetchone()
+        tw = _title_warn(row["title"]) if row else None
+        if tw is None:
+            return {"ok": True, "dismissed": 0}
+        refs = [str(tw)]
+    else:
+        return {"ok": False, "reason": "bad_kind"}
+    if not refs:
+        return {"ok": True, "dismissed": 0}
+    with connection() as conn:
+        for ref in refs:
+            conn.execute(
+                "INSERT OR IGNORE INTO valor_warn_dismiss "
+                "(nick_canon, kind, ref, created_at, created_by) VALUES (?,?,?,?,?)",
+                (canon, kind, str(ref), now, by))
+    return {"ok": True, "dismissed": len(refs)}
+
+
+def valor_restore_warnings(canon: str, actor: dict) -> dict:
+    """Вернуть прощённые предупреждения (снять прощение) для канона — все типы."""
+    canon = (canon or "").strip()
+    if not canon:
+        return {"ok": False, "reason": "bad_canon"}
+    with connection() as conn:
+        cur = conn.execute(
+            "DELETE FROM valor_warn_dismiss WHERE nick_canon = ?", (canon,))
+    return {"ok": True, "restored": cur.rowcount or 0}
+
+
 def valor_list_tags() -> dict[str, list[str]]:
     """Возвращает map canon → [tags...]."""
     out: dict[str, list[str]] = {}
@@ -4780,6 +4848,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
         warn_map = valor_active_warnings()
         # Ручные предупреждения, добавленные офицером через UI.
         manual_warn_map = valor_manual_warnings_by_canon()
+        # «Прощённые» титульные предупреждения: canon → {реф-значения}.
+        dismissed_title: dict[str, set] = {}
+        for r in conn.execute(
+                "SELECT nick_canon, ref FROM valor_warn_dismiss WHERE kind='title'"):
+            dismissed_title.setdefault(r["nick_canon"], set()).add(r["ref"])
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -5135,6 +5208,9 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # абсолютное число из титула, повторно (пока цифра та же) оно не
             # «накручивается» — новым предупреждением считается только смена.
             tw = _title_warn(m.get("title"))
+            # Офицер мог «простить» титульное предупреждение для этой цифры.
+            if tw is not None and str(tw) in dismissed_title.get(cn, set()):
+                tw = None
             m["title_warn"] = tw
             m["title_warn_since"] = title_hist_week.get(cn) if tw else None
             # Активные норматив-предупреждения (строгие — первыми для показа).
