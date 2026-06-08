@@ -204,6 +204,20 @@ rn = next((m for m in db.valor_get_current()["members"] if m["nick"] == "RegNew"
 check("в реестре + first_seen verified=0 → ai_nick False (страница Доблести)",
       rn is not None and rn["ai_nick"] is False)
 
+# ── 13) Реестр — эталон написания: ник переписывается из реестра ──
+# Кейс «Ананасик`»: в реестре с `, а OCR прочитал без `. canon совпадает
+# (`, пробелы, гомоглифы срезаются), но показывать надо написание из реестра.
+db.create_acceptance(game_nick="Ананасик`", title="", accepted_date="2026-06-02",
+                     note="", actor=ACTOR)
+db.valor_save_snapshot(week="2026-W36", valor_norm=14, members=[{**mk("Ананасик", 45)}])
+acanon = db._valor_canon("Ананасик")
+mm = next((m for m in db.valor_compare_data("2026-W36")["members"]
+           if m["nick_canon"] == acanon), None)
+check("compare: ник переписан из реестра (Ананасик`)", mm and mm["nick"] == "Ананасик`")
+am = next((m for m in db.valor_get_current()["members"]
+           if m["nick_canon"] == acanon), None)
+check("Доблесть: ник из реестра (Ананасик`)", am and am["nick"] == "Ананасик`")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

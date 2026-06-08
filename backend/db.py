@@ -642,13 +642,19 @@ def valor_compare_data(week: str) -> dict:
             "SELECT * FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
         if not snap:
             return {"week": week, "snapshot": None, "members": [], "screenshots": []}
+        # Реестр приёма: набор canon + точное написание ника (эталон, Лир
+        # копирует из игры). reg_nick[canon] = написание; позднее перетирает.
         reg: set[str] = set()
+        reg_nick: dict[str, str] = {}
         for rr in conn.execute(
-                "SELECT DISTINCT game_nick FROM acceptances WHERE archived=0"):
+                "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0 "
+                "ORDER BY accepted_date"):
             for piece in (rr["game_nick"] or "").split(","):
-                c = _valor_canon(piece)
+                p = piece.strip()
+                c = _valor_canon(p)
                 if c:
                     reg.add(c)
+                    reg_nick[c] = p
         rows = conn.execute(
             "SELECT id, nick, nick_canon, true_name, rank, title, level, "
             "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect, frame "
@@ -661,7 +667,10 @@ def valor_compare_data(week: str) -> dict:
             "ORDER BY id",
             (snap["id"],)).fetchall()
         members = [{
-            "id": r["id"], "nick": r["nick"], "nick_canon": r["nick_canon"],
+            "id": r["id"],
+            # Написание из реестра — эталон; иначе как распознали со скрина.
+            "nick": reg_nick.get(r["nick_canon"], r["nick"]),
+            "nick_canon": r["nick_canon"],
             "in_registry": r["nick_canon"] in reg,
             # Если ник есть в реестре приёма — написание авторитетно (Лир
             # копирует ник из игры), сомнений по нику быть не должно. Поэтому
@@ -4610,15 +4619,20 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             r["nick_canon"] for r in conn.execute(
                 "SELECT nick_canon FROM valor_first_seen WHERE verified = 0")
         }
-        # Канон ников из реестра приёма (написание авторитетно — Лир копирует
-        # из игры). Кто в реестре — не помечаем «распознан ИИ» (нет сомнений).
+        # Реестр приёма: написание авторитетно (Лир копирует из игры). Кто в
+        # реестре — не помечаем «распознан ИИ», и показываем ИХ написание ника.
+        # canon → точное написание (позднее по дате перетирает раннее).
         ai_registered: set[str] = set()
+        reg_nick: dict[str, str] = {}
         for rr in conn.execute(
-                "SELECT DISTINCT game_nick FROM acceptances WHERE COALESCE(archived,0)=0"):
+                "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0 "
+                "ORDER BY accepted_date"):
             for piece in (rr["game_nick"] or "").split(","):
-                c = _valor_canon(piece)
+                p = piece.strip()
+                c = _valor_canon(p)
                 if c:
                     ai_registered.add(c)
+                    reg_nick[c] = p
         # Ручной кик (force_archived) — этих в основном списке не показываем.
         force_archived: set[str] = {
             r["nick_canon"] for r in conn.execute(
@@ -4698,7 +4712,13 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
             m["id"] = r["id"]
             ov = nick_override.get(cn)
-            if ov:
+            # Написание ника: реестр приёма — эталон (Лир копирует из игры),
+            # он главнее распознанного OCR. Иначе ручной override админа. Иначе
+            # как распознали.
+            reg_n = reg_nick.get(cn)
+            if reg_n:
+                m["nick"] = reg_n
+            elif ov:
                 m["nick"] = ov
             m["ai_nick"] = (cn in ai_nick_canons) and not ov and (cn not in ai_registered)
             # Примечание из реестра (только если запрошено — т.е. не гость).
