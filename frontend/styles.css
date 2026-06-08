@@ -2379,6 +2379,11 @@ video.chat-media-thumb {
 .members-table tr.row-afk  { background: rgba(255, 200, 100, 0.05); }
 .members-table tr.row-good { background: rgba( 80, 220,  80, 0.04); }
 .members-table tr.row-bad  { background: rgba(255,  80, 120, 0.07); }
+/* Подсветка игрока, на которого пришли двойным кликом со «Скринов сбора». */
+.members-table tbody tr.m-row.m-row-focus {
+  background: rgba(255,210,74,0.16) !important;
+  outline: 2px solid rgba(255,210,74,0.7); outline-offset: -2px;
+}
 
 .hist-cell { cursor: pointer; }
 .hist-cell:hover {
@@ -2845,9 +2850,6 @@ body.show-valor .valor-col { display: table-cell; }
 .cmp-done-btn { background: linear-gradient(#1f7a3a,#15602c); color: #fff; border: none;
   border-radius: 7px; cursor: pointer; padding: 6px 13px; font-size: 12.5px; font-weight: 700; }
 .cmp-done-btn:hover { filter: brightness(1.12); }
-.cmp-open-valor { color: #ffd24a; font-size: 12.5px; text-decoration: none; padding: 6px 8px;
-  border: 1px solid rgba(255,210,74,0.35); border-radius: 7px; }
-.cmp-open-valor:hover { background: rgba(255,210,74,0.12); }
 
 /* Модал правки */
 .cmp-edit-ov { position: fixed; inset: 0; z-index: 12001; background: rgba(0,0,0,0.7);

@@ -13,6 +13,23 @@
   let IS_ADMIN = false;   // админ — правка ников и данных в таблице
   let IS_OFFICER = false; // офицер ИЛИ админ — предупреждения и статус АФК
 
+  // Переход со «Скринов сбора» (двойной клик): подсветить нужный ник.
+  const FOCUS_CANON = new URLSearchParams(location.search).get("focus") || "";
+  let FOCUS_SCROLLED = false;
+  function applyFocus() {
+    if (!FOCUS_CANON) return;
+    const tb = $("valor-tbody");
+    const tr = [...tb.querySelectorAll("tr.m-row")]
+      .find(x => x.dataset.canon === FOCUS_CANON);
+    if (!tr) return;
+    tb.querySelectorAll(".m-row-focus").forEach(x => x.classList.remove("m-row-focus"));
+    tr.classList.add("m-row-focus");
+    if (!FOCUS_SCROLLED) {
+      tr.scrollIntoView({ behavior: "smooth", block: "center" });
+      FOCUS_SCROLLED = true;
+    }
+  }
+
   // Сетевой сбой (err.status === 0) — это «запрос не дошёл до сервера»
   // (РФ-блокировка fly.dev, флапающий мобильный интернет, TLS/CORS), а НЕ
   // «нет сессии». Разовые «Failed to fetch» лечатся ретраем. Настоящие 401/403
@@ -1074,7 +1091,7 @@
         : "";
       const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
       return `
-        <tr class="${rowCls}" data-nick="${esc(m.nick)}">
+        <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
           <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td>${esc(m.true_name)}</td>
@@ -1102,6 +1119,7 @@
       if (th.dataset.sort === SORT.key)
         th.classList.add(SORT.dir === "asc" ? "sort-asc" : "sort-desc");
     });
+    applyFocus();   // подсветить ник, на который пришли со «Скринов сбора»
   }
 
   // ───────────────── Админ-редактор строки доблести ─────────────────
@@ -1685,6 +1703,17 @@
     ev.stopPropagation();
     const m = (DATA.members || []).find(x => x.nick === nb.dataset.nick);
     if (m) openAchievements(m);
+  });
+
+  // Двойной клик по строке игрока → перейти к нему в «Скрины сбора»
+  // (последняя неделя). Только офицер/админ; гостю недоступно.
+  $("valor-tbody").addEventListener("dblclick", (ev) => {
+    if (!IS_OFFICER) return;
+    if (ev.target.closest("button") || ev.target.closest("input") ||
+        ev.target.closest("a")) return;
+    const tr = ev.target.closest("tr.m-row");
+    if (!tr || !tr.dataset.canon) return;
+    location.href = "valor-screens.html?focus=" + encodeURIComponent(tr.dataset.canon);
   });
 
   $("valor-filter").addEventListener("input", () => {

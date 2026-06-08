@@ -34,6 +34,8 @@
   }
 
   let DATA = null, openWeek = null;
+  // Переход с таблицы Доблести (двойной клик): подсветить нужный ник.
+  const FOCUS_CANON = new URLSearchParams(location.search).get("focus") || "";
 
   // ── Загрузка недели для сравнения ──
   async function loadWeek(week, cardEl) {
@@ -85,9 +87,9 @@
 
   function rowsHtml(list) {
     return list.map((m) =>
-      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}">
+      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}">
         <td class="cmp-num">${m._i + 1}</td>
-        <td class="cmp-nick"><span class="cmp-nick-t" title="клик — копировать">${esc(m.nick)}</span><br>${badges(m)}</td>
+        <td class="cmp-nick"><span class="cmp-nick-t" title="клик — показать кадр слева · двойной клик — к нику в Доблести">${esc(m.nick)}</span><br>${badges(m)}</td>
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cell(m.level)}
         ${cell(m.class)}<td class="cmp-c cmp-valor" title="клик — копировать">${m.valor == null ? "—" : m.valor}</td>
         <td class="cmp-act">${IS_ADMIN
@@ -121,20 +123,35 @@
     bindRows();
   }
 
+  function selectRow(tr) {
+    const tbody = $("cmp-rows").querySelector("tbody");
+    if (!tbody || !tr) return;
+    scrollToFrame(+tr.dataset.i);
+    tbody.querySelectorAll(".cmp-row-on").forEach(x => x.classList.remove("cmp-row-on"));
+    tr.classList.add("cmp-row-on");
+  }
+
   function bindRows() {
     const tbody = $("cmp-rows").querySelector("tbody");
     if (!tbody) return;
-    // копирование значений
-    tbody.querySelectorAll(".cmp-c, .cmp-nick-t").forEach(c =>
+    // копирование значений (только ячейки данных, не ник)
+    tbody.querySelectorAll(".cmp-c").forEach(c =>
       c.addEventListener("click", () => copy(c.textContent.trim())));
-    // клик по строке (не по кнопке/значению) → подскролить скрины к кадру
     tbody.querySelectorAll(".cmp-row").forEach(tr => {
+      // Ник: одиночный клик — показать кадр слева; двойной — к нику в Доблести.
+      const nickEl = tr.querySelector(".cmp-nick-t");
+      if (nickEl) {
+        nickEl.addEventListener("click", () => selectRow(tr));
+        nickEl.addEventListener("dblclick", () => {
+          const canon = tr.dataset.canon;
+          if (canon) location.href = "clan-valor.html?focus=" + encodeURIComponent(canon);
+        });
+      }
+      // Клик по строке (не по нику/значению/кнопке) → тоже показать кадр.
       tr.addEventListener("click", (e) => {
-        if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-c") ||
-            e.target.closest(".cmp-nick-t")) return;
-        scrollToFrame(+tr.dataset.i);
-        tbody.querySelectorAll(".cmp-row-on").forEach(x => x.classList.remove("cmp-row-on"));
-        tr.classList.add("cmp-row-on");
+        if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
+            e.target.closest(".cmp-c") || e.target.closest(".cmp-nick-t")) return;
+        selectRow(tr);
       });
     });
     if (IS_ADMIN) {
@@ -147,6 +164,18 @@
 
   // Текущая выбранная папка недели (для перезагрузки после правок).
   const activeFolder = () => document.querySelector(".vs-folder-on");
+
+  // Подсветить ник, на который пришли двойным кликом из таблицы Доблести.
+  function focusFromUrl() {
+    if (!FOCUS_CANON) return;
+    const tbody = $("cmp-rows").querySelector("tbody");
+    if (!tbody) return;
+    const tr = [...tbody.querySelectorAll(".cmp-row")]
+      .find(x => x.dataset.canon === FOCUS_CANON);
+    if (!tr) return;
+    tr.scrollIntoView({ behavior: "smooth", block: "center" });
+    selectRow(tr);
+  }
 
   // ── Удаление строки (админ): фантом OCR / дубль ──
   async function delMember(id, nick) {
@@ -304,7 +333,7 @@
       $("cmp-done").addEventListener("click", doneRefresh);
     }
     const first = $("vs-weeks").querySelector(".vs-folder");
-    if (first) loadWeek(first.dataset.week, first);
+    if (first) loadWeek(first.dataset.week, first).then(focusFromUrl);
   } catch (e) {
     $("vs-loading").textContent = "Ошибка загрузки: " + (e.detail || e.message);
   }
