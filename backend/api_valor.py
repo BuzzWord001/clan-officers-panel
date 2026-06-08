@@ -44,11 +44,12 @@ class ValorMemberIn(BaseModel):
 
 
 class ValorSnapshotIn(BaseModel):
-    week:          str   # 2026-W22
-    valor_norm:    int
-    screens_count: int = 0
-    notes:         str = ""
-    members:       list[ValorMemberIn]
+    week:           str   # 2026-W22
+    valor_norm:     int
+    screens_count:  int = 0
+    notes:          str = ""
+    actual_members: int | None = None   # реально людей в клане на момент сбора
+    members:        list[ValorMemberIn]
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ def valor_snapshot(payload: ValorSnapshotIn,
         members=members,
         screens_count=payload.screens_count,
         notes=payload.notes,
+        actual_members=payload.actual_members,
     )
     # Класс не меняется — пустой/сомнительный класс заполняем из прошлых сборов
     # и снимаем сомнение. Делается ПОСЛЕ коммита снапшота (отдельная транзакция).
@@ -301,6 +303,28 @@ def valor_member_edit(member_id: int, payload: ValorMemberEdit,
     if out is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "member_not_found")
     return out
+
+
+class SnapshotMetaIn(BaseModel):
+    week:           str = Field(..., min_length=1)
+    actual_members: int | None = None
+    valor_norm:     int | None = None
+    notes:          str | None = None
+
+
+@router.patch("/snapshot-meta")
+def valor_snapshot_meta(payload: SnapshotMetaIn,
+                        actor: dict = Depends(require_admin)) -> dict:
+    """Правка метаданных снимка недели (Архив скринов): реально людей в клане,
+    норматив, заметки. ТОЛЬКО админ."""
+    fields = payload.model_dump(exclude_unset=True)
+    fields.pop("week", None)
+    res = db.valor_update_snapshot_meta(payload.week, fields)
+    if not res.get("ok"):
+        code = (status.HTTP_404_NOT_FOUND if res.get("reason") == "no_snapshot"
+                else status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(code, res.get("reason", "update_failed"))
+    return res
 
 
 @router.post("/verify/{member_id}")

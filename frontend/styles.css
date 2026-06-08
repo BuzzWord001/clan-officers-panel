@@ -2777,6 +2777,12 @@ body.show-valor .valor-col { display: table-cell; }
 .vs-folder-w { font-weight: 700; font-size: 14px; }
 .vs-folder-c { font-size: 11px; color: var(--text-dim, #8aa); }
 .vs-folder-d { font-size: 10px; color: var(--muted, #9a8); opacity: .9; }
+.vs-folder-warn { color: #ff9aa9 !important; }
+.cmp-meta-warn { color: #ff9aa9; font-weight: 700; }
+.cmp-people-edit { background: rgba(224,162,74,0.15); color: #ecc587;
+  border: 1px solid rgba(224,162,74,0.4); border-radius: 6px; cursor: pointer;
+  font-size: 11px; padding: 1px 8px; margin-left: 8px; }
+.cmp-people-edit:hover { background: rgba(224,162,74,0.3); }
 .vs-folder-n { font-size: 10px; color: #cdb892; max-width: 280px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .vs-view-head { margin: 6px 0 10px; font-size: 13px; color: #ffe9a8; }

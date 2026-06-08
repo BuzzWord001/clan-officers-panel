@@ -51,10 +51,44 @@
       $("cmp-meta").textContent = "Ошибка: " + (e.detail || e.message); return;
     }
     const sn = DATA.snapshot || {};
+    const rec = DATA.members.length;            // распознал Gemini
+    const real = sn.actual_members;             // реально в клане (ввод офицера)
+    let people;
+    if (real != null) {
+      const diff = real - rec;
+      people = `распознано <b>${rec}</b> из <b>${real}</b> в клане` +
+        (diff ? ` <span class="cmp-meta-warn" title="Gemini распознал ${rec}, в клане ${real}">⚠ ${diff > 0 ? "не хватает " + diff : "лишних " + (-diff)}</span>` : " ✓");
+    } else {
+      people = `распознано <b>${rec}</b>`;
+    }
+    const editBtn = IS_ADMIN
+      ? ` <button class="cmp-people-edit" title="Указать/исправить, сколько реально людей было в клане на этот сбор">✎ людей в клане</button>`
+      : "";
     $("cmp-meta").innerHTML = `<b>${esc(week)}</b> · норма ${sn.valor_norm ?? "?"} · ` +
-      `${DATA.members.length} строк · ${DATA.screenshots.length} кадров`;
+      `${people} · ${DATA.screenshots.length} кадров${editBtn}`;
+    if (IS_ADMIN) {
+      const eb = $("cmp-meta").querySelector(".cmp-people-edit");
+      if (eb) eb.addEventListener("click", () => editClanSize(week, real));
+    }
     renderShots();
     renderRows();
+  }
+
+  // Правка «реально людей в клане» для недели (админ).
+  async function editClanSize(week, current) {
+    const v = prompt(`Сколько реально людей было в клане на сбор ${week}?\n` +
+      `(Gemini распознал ${ (DATA.members || []).length }. Пусто — не менять.)`,
+      current == null ? "" : String(current));
+    if (v == null) return;
+    const t = v.trim();
+    if (t === "") return;
+    const n = parseInt(t, 10);
+    if (!Number.isFinite(n) || n < 0) { toast("Нужно число"); return; }
+    try {
+      await API.valorSnapshotMeta({ week, actual_members: n });
+      toast("Сохранено: в клане " + n);
+      await loadWeek(week, activeFolder());
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
 
   // ── Левая колонка: скрины ──
@@ -419,16 +453,21 @@
     $("vs-weeks").innerHTML = list.map(s => {
       const shots = (shotsByWeek[s.week] != null) ? shotsByWeek[s.week] : (s.screens_count || 0);
       const dt = (s.captured_at || "").replace("T", " ").slice(0, 16);
+      const people = (s.actual_members != null)
+        ? `${s.members_count ?? 0}/${s.actual_members} чел.`   // распознано / в клане
+        : ((s.members_count != null) ? `${s.members_count} уч.` : null);
+      const mismatch = (s.actual_members != null && s.members_count != null
+        && s.members_count !== s.actual_members);
       const meta = [
         `${shots} кадр.`,
-        (s.members_count != null) ? `${s.members_count} уч.` : null,
+        people,
         (s.valor_norm != null) ? `норма ${s.valor_norm}` : null,
       ].filter(Boolean).join(" · ");
       return `<button class="vs-folder" data-week="${esc(s.week)}">
          <span class="vs-folder-ic">📁</span>
          <span class="vs-folder-txt">
            <span class="vs-folder-w">${esc(s.week)}</span>
-           <span class="vs-folder-c">${esc(meta)}</span>
+           <span class="vs-folder-c${mismatch ? " vs-folder-warn" : ""}">${esc(meta)}${mismatch ? " ⚠" : ""}</span>
            ${dt ? `<span class="vs-folder-d">собрано ${esc(dt)} UTC</span>` : ""}
            ${s.notes ? `<span class="vs-folder-n" title="${esc(s.notes)}">✎ ${esc(s.notes)}</span>` : ""}
          </span>

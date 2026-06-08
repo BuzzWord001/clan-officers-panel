@@ -268,6 +268,23 @@ check("сомнительный класс взят из истории (Doubter
 check("нет истории класса → не трогаем, сомнение остаётся (Warry)",
       post["Warry"]["flag_ocr_suspect"] is True and post["Warry"]["class"] == "Воен")
 
+# ── 16) actual_members (реально людей в клане) + правка меты снимка ──
+db.valor_save_snapshot(week="2026-W50", valor_norm=14, actual_members=200,
+                       members=[mk("AAx", 10), mk("BBx", 5)])
+sess = {s["week"]: s for s in db.valor_list_sessions()}
+check("снимок хранит actual_members (реально в клане)",
+      sess["2026-W50"].get("actual_members") == 200)
+check("members_count = распознано Gemini (2)",
+      sess["2026-W50"].get("members_count") == 2)
+cmpW50 = db.valor_compare_data("2026-W50")
+check("compare отдаёт snapshot.actual_members",
+      cmpW50["snapshot"].get("actual_members") == 200)
+rm = db.valor_update_snapshot_meta("2026-W50", {"actual_members": 198})
+check("правка меты обновила actual_members (200→198)",
+      rm.get("ok") and db.valor_compare_data("2026-W50")["snapshot"]["actual_members"] == 198)
+check("правка меты несущ. недели → no_snapshot",
+      db.valor_update_snapshot_meta("2026-W99", {"actual_members": 1}).get("reason") == "no_snapshot")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

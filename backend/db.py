@@ -276,7 +276,8 @@ CREATE TABLE IF NOT EXISTS valor_snapshots (
     captured_at   TEXT    NOT NULL,           -- ISO timestamp
     valor_norm    INTEGER NOT NULL,           -- норматив на эту неделю
     screens_count INTEGER NOT NULL DEFAULT 0, -- сколько кадров было
-    members_count INTEGER NOT NULL DEFAULT 0,
+    members_count INTEGER NOT NULL DEFAULT 0,  -- сколько распознал Gemini
+    actual_members INTEGER,                    -- реально людей в клане на сбор (ввод офицера)
     notes         TEXT    NOT NULL DEFAULT ''
 );
 
@@ -520,6 +521,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # чтобы клик по нику в «Скринах сбора» подсвечивал ТОЧНЫЙ скрин.
     try:
         conn.execute("ALTER TABLE valor_members ADD COLUMN frame INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
+    # 2026-06-08: реально людей в клане на момент сбора (ввод офицера) —
+    # чтобы сравнивать с тем, сколько распознал Gemini (members_count).
+    try:
+        conn.execute("ALTER TABLE valor_snapshots ADD COLUMN actual_members INTEGER")
     except sqlite3.OperationalError:
         pass
 
@@ -3840,6 +3848,7 @@ def valor_save_snapshot(
     members: list[dict],
     screens_count: int = 0,
     notes: str = "",
+    actual_members: int | None = None,
 ) -> dict[str, Any]:
     """Сохраняет недельный снапшот. Если запись на эту неделю уже есть
     — REPLACE (старые valor_members удаляются каскадом).
@@ -3912,10 +3921,12 @@ def valor_save_snapshot(
         cur = conn.execute(
             """INSERT INTO valor_snapshots
                (week, captured_at, valor_norm, screens_count,
-                members_count, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+                members_count, actual_members, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (week, now, int(valor_norm), int(screens_count),
-             len(members), notes),
+             len(members),
+             int(actual_members) if isinstance(actual_members, int) else None,
+             notes),
         )
         snap_id = cur.lastrowid
 
@@ -5512,6 +5523,29 @@ def valor_list_sessions() -> list[dict[str, Any]]:
             "SELECT * FROM valor_snapshots ORDER BY week DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def valor_update_snapshot_meta(week: str, fields: dict) -> dict:
+    """Правка метаданных снимка недели (для «Архива скринов»): реально людей в
+    клане (actual_members), норматив, заметки. Меняет только переданные поля."""
+    week = (week or "").strip()
+    sets, vals = [], []
+    for k in ("actual_members", "valor_norm"):
+        if k in fields and fields[k] is not None:
+            sets.append(f"{k} = ?")
+            vals.append(int(fields[k]))
+    if "notes" in fields and fields["notes"] is not None:
+        sets.append("notes = ?")
+        vals.append(str(fields["notes"]))
+    if not sets:
+        return {"ok": False, "reason": "nothing_to_update"}
+    with connection() as conn:
+        cur = conn.execute(
+            f"UPDATE valor_snapshots SET {', '.join(sets)} WHERE week = ?",
+            (*vals, week))
+        if not cur.rowcount:
+            return {"ok": False, "reason": "no_snapshot"}
+    return {"ok": True}
 
 
 def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:
