@@ -78,25 +78,54 @@
       b.push(`<span class="cmp-badge bdg-ai" title="впервые появился в сборе, распознан ИИ — проверь по скрину и при желании занеси в реестр">ИИ-ник</span>`);
     else
       b.push(`<span class="cmp-badge bdg-seen" title="постоянный участник: есть в таблице Доблести со стабильным ником, просто не занесён в реестр приёма — это нормально">в Доблести</span>`);
-    if (m.flag_ocr_suspect)
-      b.push(`<span class="cmp-badge bdg-sus" title="система сомневается в распознавании — проверь по скрину">⚠ проверить</span>`);
     if (m.is_afk) b.push(`<span class="cmp-badge bdg-afk">АФК</span>`);
     return b.join(" ");
   }
+
+  // Конкретные поля, в распознавании которых система сомневается.
+  // field → {label: коротко, tip: подробно}. Берём из имеющихся сигналов.
+  function suspectFields(m) {
+    const f = {};
+    if (m.flag_new_nick)
+      f.nick = { label: "написание ника", tip: "ник распознан ИИ и не найден в реестре — сверь написание со скрином" };
+    if (m.valor == null)
+      f.valor = { label: "доблесть", tip: "доблесть не распознана со скрина — впиши вручную" };
+    if (m.level == null)
+      f.level = { label: "уровень", tip: "уровень не распознан со скрина" };
+    if (m.flag_ocr_suspect)
+      f.class_ = { label: "класс", tip: "класс распознан с автоправкой (напр. Mar→Маг) — проверь" };
+    return f;
+  }
+  function isSuspect(m) { return Object.keys(suspectFields(m)).length > 0; }
+
   const cell = (v) => `<td class="cmp-c" title="клик — копировать">${esc(v == null || v === "" ? "—" : v)}</td>`;
+  const cellW = (v, warn, tip) =>
+    `<td class="cmp-c${warn ? " cmp-cell-warn" : ""}" title="${warn ? esc(tip) : "клик — копировать"}">${esc(v == null || v === "" ? "—" : v)}</td>`;
 
   function rowsHtml(list) {
-    return list.map((m) =>
-      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
+    return list.map((m) => {
+      const sf = suspectFields(m);
+      const keys = Object.keys(sf);
+      const warn = keys.length > 0;
+      const tipAll = keys.map(k => sf[k].tip).join("; ");
+      const susBadge = warn
+        ? ` <span class="cmp-badge bdg-sus" title="${esc("Проверь по скрину: " + tipAll)}">⚠ проверить</span>`
+        : "";
+      const reasonsLine = warn
+        ? `<div class="cmp-reasons" title="${esc(tipAll)}">⚠ проверь: ${esc(keys.map(k => sf[k].label).join(", "))}</div>`
+        : "";
+      const valorWarn = !!sf.valor;
+      return `<tr class="cmp-row${warn ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
         <td class="cmp-num">${m._i + 1}</td>
-        <td class="cmp-nick"><span class="cmp-nick-t" title="клик — показать кадр слева · двойной клик — к нику в Доблести">${esc(m.nick)}</span><br>${badges(m)}</td>
-        ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cell(m.level)}
-        ${cell(m.class)}<td class="cmp-c cmp-valor" title="клик — копировать">${m.valor == null ? "—" : m.valor}</td>
+        <td class="cmp-nick"><span class="cmp-nick-t${sf.nick ? " cmp-cell-warn" : ""}" title="${sf.nick ? esc(sf.nick.tip) : "клик — показать кадр слева · двойной клик — к нику в Доблести"}">${esc(m.nick)}</span><br>${badges(m)}${susBadge}${reasonsLine}</td>
+        ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cellW(m.level, !!sf.level, sf.level && sf.level.tip)}
+        ${cellW(m.class, !!sf.class_, sf.class_ && sf.class_.tip)}<td class="cmp-c cmp-valor${valorWarn ? " cmp-cell-warn" : ""}" title="${valorWarn ? esc(sf.valor.tip) : "клик — копировать"}">${m.valor == null ? "—" : m.valor}</td>
         <td class="cmp-act">${IS_ADMIN
           ? `<button class="cmp-ed" data-id="${m.id}" title="править">✎</button>` +
             ` <button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button>`
           : ""}</td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
   }
 
   function renderRows() {
@@ -114,7 +143,7 @@
     const q = ($("cmp-filter").value || "").trim().toLowerCase();
     const onlySus = $("cmp-suspect").checked;
     const list = DATA.members.filter(m => {
-      if (onlySus && !(m.flag_ocr_suspect || m.flag_new_nick)) return false;
+      if (onlySus && !isSuspect(m)) return false;
       if (!q) return true;
       return [m.nick, m.true_name, m.class, m.title, m.rank]
         .some(v => (v || "").toLowerCase().includes(q));

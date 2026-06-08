@@ -2814,18 +2814,25 @@ body.show-valor .valor-col { display: table-cell; }
 .bdg-sus { background: rgba(255,90,110,0.16); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.45); }
 .bdg-afk { background: rgba(150,170,255,0.16); color: #b9c6ff; border: 1px solid rgba(150,170,255,0.4); }
 
-.cmp-split { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 12px; align-items: start; }
+.cmp-split { display: grid; grid-template-columns: 0.72fr 1.28fr; gap: 10px; align-items: start; }
 .cmp-shots, .cmp-rows { max-height: 78vh; overflow-y: auto; border: 1px solid rgba(0,255,65,0.12);
   border-radius: 10px; background: rgba(0,0,0,0.22); padding: 8px; }
+/* колонка «Добл» не должна обрезаться: таблица компактнее, при нехватке —
+   горизонтальный скролл внутри блока (а не обрезка) */
+.cmp-rows { overflow-x: auto; }
 .cmp-shot { margin: 0 0 10px; border: 1px solid rgba(0,255,65,0.12); border-radius: 8px; overflow: hidden; background: #0a0f0a; }
 .cmp-shot img { display: block; width: 100%; height: auto; cursor: zoom-in; }
 .cmp-shot figcaption { font-size: 10px; color: #ffd24a; padding: 2px 6px; background: rgba(0,0,0,0.5); }
 .cmp-shot-on { outline: 2px solid #ffd24a; box-shadow: 0 0 14px rgba(255,210,74,0.4); }
 
-.cmp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .cmp-table th { position: sticky; top: 0; background: #0c130c; color: #8fdfa0;
-  font-size: 11px; text-align: left; padding: 6px 7px; border-bottom: 1px solid rgba(0,255,65,0.2); z-index: 1; }
-.cmp-table td { padding: 5px 7px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  font-size: 10.5px; text-align: left; padding: 4px 5px; border-bottom: 1px solid rgba(0,255,65,0.2); z-index: 1; }
+.cmp-table td { padding: 4px 5px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+/* подсветка конкретной ячейки, в распознавании которой система сомневается */
+.cmp-cell-warn { background: rgba(255,90,110,0.16); outline: 1px solid rgba(255,90,110,0.5);
+  border-radius: 4px; }
+.cmp-reasons { font-size: 10px; color: #ff9aa9; margin-top: 3px; line-height: 1.35; }
 .cmp-row { cursor: pointer; }
 .cmp-row:hover { background: rgba(0,255,65,0.05); }
 .cmp-row-on { background: rgba(255,210,74,0.10); outline: 1px solid rgba(255,210,74,0.4); }
