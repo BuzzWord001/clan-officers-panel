@@ -362,6 +362,25 @@ CREATE TABLE IF NOT EXISTS valor_warn_dismiss (
     PRIMARY KEY (nick_canon, kind, ref)
 );
 
+-- Журнал правок данных доблести (Архив скринов) — по неделям, с before/after
+-- для отмены. action: edit | add | delete | verify | meta.
+CREATE TABLE IF NOT EXISTS valor_edit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    week        TEXT    NOT NULL,
+    action      TEXT    NOT NULL,
+    member_id   INTEGER,
+    nick_canon  TEXT    NOT NULL DEFAULT '',
+    nick        TEXT    NOT NULL DEFAULT '',
+    before_json TEXT    NOT NULL DEFAULT '',
+    after_json  TEXT    NOT NULL DEFAULT '',
+    actor_name  TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL DEFAULT '',
+    undone      INTEGER NOT NULL DEFAULT 0,
+    undone_at   TEXT    NOT NULL DEFAULT '',
+    undone_by   TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_valor_edit_log_week ON valor_edit_log(week);
+
 -- Архив ушедших из клана. При save_snapshot, если ник был в prev,
 -- но в current его нет — INSERT/UPDATE сюда (последние известные
 -- данные). Если ник снова появился в новом снапшоте — DELETE.
@@ -5293,6 +5312,41 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
 _VALOR_EDIT_TEXT = ("true_name", "rank", "title", "class_")
 _VALOR_EDIT_INT = ("level", "valor")
 
+# Поля строки valor_members, которые имеют смысл хранить в журнале правок.
+_MEMBER_LOG_FIELDS = ("nick", "nick_canon", "true_name", "rank", "title",
+                      "level", "class_", "valor", "is_afk", "norm_met",
+                      "flag_new_nick", "flag_ocr_suspect", "frame", "warning_count")
+
+
+def _member_snap(row) -> dict:
+    """Срез строки valor_members (dict) для журнала before/after."""
+    if row is None:
+        return {}
+    d = dict(row)
+    return {k: d.get(k) for k in _MEMBER_LOG_FIELDS if k in d}
+
+
+def _week_of_member(conn, member_id: int) -> str:
+    r = conn.execute(
+        "SELECT vs.week AS w FROM valor_members vm "
+        "JOIN valor_snapshots vs ON vm.snapshot_id = vs.id WHERE vm.id = ?",
+        (member_id,)).fetchone()
+    return r["w"] if r else ""
+
+
+def _log_valor_edit(conn, *, week, action, member_id, nick, canon,
+                    before, after, actor):
+    """Записать действие правки данных доблести в журнал (внутри транзакции)."""
+    conn.execute(
+        "INSERT INTO valor_edit_log "
+        "(week, action, member_id, nick_canon, nick, before_json, after_json, "
+        " actor_name, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (week or "", action, member_id, canon or "", nick or "",
+         json.dumps(before, ensure_ascii=False) if before is not None else "",
+         json.dumps(after, ensure_ascii=False) if after is not None else "",
+         (actor.get("name") or actor.get("role") or "") if actor else "",
+         datetime.utcnow().isoformat(timespec="seconds")))
+
 
 def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | None:
     """Админ-правка строки доблести. Редактируемые поля: nick, true_name,
@@ -5379,6 +5433,11 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
         out_row = conn.execute(
             "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
         out = dict(out_row) if out_row else {"ok": True}
+        _log_valor_edit(conn, week=_week_of_member(conn, member_id),
+                        action="edit", member_id=member_id,
+                        nick=(out_row["nick"] if out_row else ""),
+                        canon=canon, before=_member_snap(row),
+                        after=_member_snap(out_row), actor=actor)
     return out
 
 
@@ -5388,12 +5447,20 @@ def valor_verify_member(member_id: int, actor: dict) -> dict:
     классу» (flag_ocr_suspect). Значения полей не меняются."""
     with connection() as conn:
         row = conn.execute(
-            "SELECT id FROM valor_members WHERE id = ?", (member_id,)).fetchone()
+            "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
         if not row:
             return {"ok": False, "reason": "not_found"}
+        before = _member_snap(row)
         conn.execute(
             "UPDATE valor_members SET flag_new_nick = 0, flag_ocr_suspect = 0 "
             "WHERE id = ?", (member_id,))
+        after = dict(before)
+        after["flag_new_nick"] = 0
+        after["flag_ocr_suspect"] = 0
+        _log_valor_edit(conn, week=_week_of_member(conn, member_id),
+                        action="verify", member_id=member_id,
+                        nick=row["nick"], canon=row["nick_canon"],
+                        before=before, after=after, actor=actor)
     return {"ok": True}
 
 
@@ -5516,6 +5583,10 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
                     "VALUES (?, ?, ?, ?, ?)", (canon, fld, val, wk, now))
 
         out = conn.execute("SELECT * FROM valor_members WHERE id = ?", (mid,)).fetchone()
+        _log_valor_edit(conn, week=wk, action="add", member_id=mid,
+                        nick=(out["nick"] if out else nick),
+                        canon=(out["nick_canon"] if out else canon),
+                        before=None, after=_member_snap(out), actor=actor)
     return {"ok": True, "id": mid, "week": wk, "member": dict(out) if out else None}
 
 
@@ -5685,21 +5756,27 @@ def valor_restore(canon: str, actor: dict) -> dict:
     return {"ok": True}
 
 
-def valor_delete_member(member_id: int) -> dict:
+def valor_delete_member(member_id: int, actor: dict | None = None) -> dict:
     """Удалить ошибочную строку (фантом OCR) из текущего снимка."""
     with connection() as conn:
         row = conn.execute(
-            "SELECT nick_canon FROM valor_members WHERE id = ?", (member_id,)
+            "SELECT * FROM valor_members WHERE id = ?", (member_id,)
         ).fetchone()
         if not row:
             return {"ok": False, "reason": "not_found"}
         cn = row["nick_canon"]
+        week = _week_of_member(conn, member_id)
+        before = _member_snap(row)
+        before["snapshot_week"] = week   # чтобы восстановить в нужную неделю
         conn.execute("DELETE FROM valor_members WHERE id = ?", (member_id,))
         left = conn.execute(
             "SELECT 1 FROM valor_members WHERE nick_canon = ? LIMIT 1", (cn,)
         ).fetchone()
         if not left:
             conn.execute("DELETE FROM valor_first_seen WHERE nick_canon = ?", (cn,))
+        _log_valor_edit(conn, week=week, action="delete", member_id=member_id,
+                        nick=row["nick"], canon=cn,
+                        before=before, after=None, actor=actor or {})
     return {"ok": True}
 
 
@@ -5712,7 +5789,10 @@ def valor_list_sessions() -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
-def valor_update_snapshot_meta(week: str, fields: dict) -> dict:
+_SNAP_META_FIELDS = ("actual_members", "valor_norm", "notes")
+
+
+def valor_update_snapshot_meta(week: str, fields: dict, actor: dict | None = None) -> dict:
     """Правка метаданных снимка недели (для «Архива скринов»): реально людей в
     клане (actual_members), норматив, заметки. Меняет только переданные поля."""
     week = (week or "").strip()
@@ -5727,12 +5807,161 @@ def valor_update_snapshot_meta(week: str, fields: dict) -> dict:
     if not sets:
         return {"ok": False, "reason": "nothing_to_update"}
     with connection() as conn:
-        cur = conn.execute(
+        snap = conn.execute(
+            "SELECT * FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        before = {k: dict(snap).get(k) for k in _SNAP_META_FIELDS}
+        conn.execute(
             f"UPDATE valor_snapshots SET {', '.join(sets)} WHERE week = ?",
             (*vals, week))
-        if not cur.rowcount:
-            return {"ok": False, "reason": "no_snapshot"}
+        after = dict(before)
+        for k in ("actual_members", "valor_norm"):
+            if k in fields and fields[k] is not None:
+                after[k] = int(fields[k])
+        if "notes" in fields and fields["notes"] is not None:
+            after["notes"] = str(fields["notes"])
+        _log_valor_edit(conn, week=week, action="meta", member_id=None,
+                        nick="(снимок недели)", canon="",
+                        before=before, after=after, actor=actor or {})
     return {"ok": True}
+
+
+def valor_edit_log_for(week: str) -> list[dict]:
+    """Журнал правок недели (новые сверху). Для UI «Журнал правок»."""
+    week = (week or "").strip()
+    out = []
+    with connection() as conn:
+        for r in conn.execute(
+                "SELECT * FROM valor_edit_log WHERE week = ? ORDER BY id DESC",
+                (week,)):
+            d = dict(r)
+            for k in ("before_json", "after_json"):
+                try:
+                    d[k[:-5]] = json.loads(d[k]) if d[k] else None
+                except Exception:
+                    d[k[:-5]] = None
+            d.pop("before_json", None); d.pop("after_json", None)
+            d["undone"] = bool(d.get("undone"))
+            out.append(d)
+    return out
+
+
+def valor_edit_log_actors(week: str) -> list[dict]:
+    """Кто и сколько НЕотменённых правок сделал за неделю (для выбора человека)."""
+    week = (week or "").strip()
+    with connection() as conn:
+        return [{"actor_name": r["actor_name"], "count": r["c"]} for r in conn.execute(
+            "SELECT actor_name, COUNT(*) AS c FROM valor_edit_log "
+            "WHERE week = ? AND undone = 0 GROUP BY actor_name ORDER BY c DESC",
+            (week,))]
+
+
+def _undo_one(conn, entry, by: str) -> bool:
+    """Отменить одно действие журнала (внутри транзакции). Возвращает True
+    если что-то изменилось. Сам по себе НЕ пишет новых записей в журнал."""
+    if entry["undone"]:
+        return False
+    action = entry["action"]
+    before = entry["before"]
+    mid = entry["member_id"]
+    ok = False
+    if action in ("edit", "verify") and before:
+        cols = [c for c in _MEMBER_LOG_FIELDS if c in before]
+        if cols:
+            sets = ", ".join(f"{c} = ?" for c in cols)
+            vals = [before[c] for c in cols]
+            cur = None
+            if mid:
+                cur = conn.execute(
+                    f"UPDATE valor_members SET {sets} WHERE id = ?", (*vals, mid))
+            # Фолбэк: строку могли удалить+восстановить (новый id) — ищем по
+            # canon в снимке этой недели.
+            if (not cur or not cur.rowcount) and before.get("nick_canon"):
+                snap = conn.execute(
+                    "SELECT id FROM valor_snapshots WHERE week = ?",
+                    (entry["week"],)).fetchone()
+                if snap:
+                    cur = conn.execute(
+                        f"UPDATE valor_members SET {sets} "
+                        "WHERE snapshot_id = ? AND nick_canon = ?",
+                        (*vals, snap["id"], before["nick_canon"]))
+            ok = bool(cur and cur.rowcount)
+    elif action == "add" and mid:
+        cur = conn.execute("DELETE FROM valor_members WHERE id = ?", (mid,))
+        ok = bool(cur.rowcount)
+    elif action == "delete" and before:
+        sw = before.get("snapshot_week") or entry["week"]
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (sw,)).fetchone()
+        if snap:
+            cols = [c for c in _MEMBER_LOG_FIELDS if c in before]
+            collist = ", ".join(["snapshot_id"] + cols)
+            ph = ", ".join(["?"] * (len(cols) + 1))
+            vals = [snap["id"]] + [before[c] for c in cols]
+            conn.execute(
+                f"INSERT INTO valor_members ({collist}) VALUES ({ph})", vals)
+            ok = True
+    elif action == "meta" and before:
+        sets, vals = [], []
+        for k in _SNAP_META_FIELDS:
+            if k in before:
+                sets.append(f"{k} = ?"); vals.append(before[k])
+        if sets:
+            cur = conn.execute(
+                f"UPDATE valor_snapshots SET {', '.join(sets)} WHERE week = ?",
+                (*vals, entry["week"]))
+            ok = bool(cur.rowcount)
+    # помечаем запись отменённой в любом случае (действие обработано)
+    conn.execute(
+        "UPDATE valor_edit_log SET undone = 1, undone_at = ?, undone_by = ? "
+        "WHERE id = ?",
+        (datetime.utcnow().isoformat(timespec="seconds"), by, entry["id"]))
+    return ok
+
+
+def _load_log_entry(conn, log_id: int):
+    r = conn.execute("SELECT * FROM valor_edit_log WHERE id = ?", (log_id,)).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    try:
+        d["before"] = json.loads(d["before_json"]) if d["before_json"] else None
+    except Exception:
+        d["before"] = None
+    d["undone"] = bool(d["undone"])
+    return d
+
+
+def valor_undo_edit(log_id: int, actor: dict) -> dict:
+    """Отменить одно действие журнала (только админ — гейт на уровне API)."""
+    by = (actor.get("name") or actor.get("role") or "") if actor else ""
+    with connection() as conn:
+        entry = _load_log_entry(conn, log_id)
+        if not entry:
+            return {"ok": False, "reason": "not_found"}
+        if entry["undone"]:
+            return {"ok": False, "reason": "already_undone"}
+        changed = _undo_one(conn, entry, by)
+    return {"ok": True, "changed": changed}
+
+
+def valor_undo_by_actor(week: str, actor_name: str, actor: dict) -> dict:
+    """Отменить ВСЕ неотменённые действия одного человека за неделю
+    (в обратном порядке — сначала самые поздние)."""
+    week = (week or "").strip()
+    by = (actor.get("name") or actor.get("role") or "") if actor else ""
+    undone = 0
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM valor_edit_log WHERE week = ? AND actor_name = ? "
+            "AND undone = 0 ORDER BY id DESC", (week, actor_name)).fetchall()
+        for r in rows:
+            entry = _load_log_entry(conn, r["id"])
+            if entry and not entry["undone"]:
+                _undo_one(conn, entry, by)
+                undone += 1
+    return {"ok": True, "undone": undone}
 
 
 def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:

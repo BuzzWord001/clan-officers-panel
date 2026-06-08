@@ -2883,6 +2883,22 @@ body.show-valor .valor-col { display: table-cell; }
 /* hidden-атрибут должен прятать модалку (иначе display:flex рисует полупрозрачный
    чёрный слой поверх всей страницы, перекрывая её) */
 .cmp-edit-ov[hidden] { display: none; }
+
+/* Окно «Журнал правок» */
+.el-box { width: min(860px, 96vw) !important; }
+.el-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; font-size: 12px; color: var(--text-dim); }
+.el-bar select { background: rgba(0,0,0,0.3); border: 1px solid rgba(224,162,74,0.3); color: #f3e8d2; border-radius: 6px; padding: 4px 8px; }
+.el-scroll { max-height: 60vh; overflow: auto; border: 1px solid rgba(224,162,74,0.2); border-radius: 8px; }
+.el-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.el-table th { position: sticky; top: 0; background: #2a1a0c; color: #ecc587; text-align: left; padding: 5px 7px; }
+.el-table td { padding: 5px 7px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f3e8d2; vertical-align: top; }
+.el-sum { color: #cdb892; }
+.el-dt { white-space: nowrap; color: #cdb892; }
+.el-undone td, tr.el-undone td { opacity: 0.5; text-decoration: line-through; }
+.el-done { color: #8a7a5e; }
+.el-empty { text-align: center; color: #cdb892; padding: 14px; }
+.el-undo { background: rgba(255,90,110,0.14); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.4); border-radius: 6px; cursor: pointer; font-size: 11px; padding: 1px 8px; }
+.el-undo:hover { background: rgba(255,90,110,0.3); }
 .ce-box { background: #0c130c; border: 1px solid rgba(224,162,74,0.3); border-radius: 12px;
   padding: 16px 18px; width: 360px; max-width: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
 .ce-h { font-size: 14px; margin-bottom: 10px; color: #cfe; }

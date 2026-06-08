@@ -358,7 +358,7 @@ def valor_snapshot_meta(payload: SnapshotMetaIn,
     норматив, заметки. ТОЛЬКО админ."""
     fields = payload.model_dump(exclude_unset=True)
     fields.pop("week", None)
-    res = db.valor_update_snapshot_meta(payload.week, fields)
+    res = db.valor_update_snapshot_meta(payload.week, fields, actor)
     if not res.get("ok"):
         code = (status.HTTP_404_NOT_FOUND if res.get("reason") == "no_snapshot"
                 else status.HTTP_400_BAD_REQUEST)
@@ -438,12 +438,48 @@ def valor_restore_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> 
 
 
 @router.delete("/member/{member_id}")
-def valor_delete_ep(member_id: int, _: dict = Depends(require_admin)) -> dict:
+def valor_delete_ep(member_id: int, actor: dict = Depends(require_admin)) -> dict:
     """Удалить ошибочную строку/фантом OCR из текущего снимка (admin)."""
-    res = db.valor_delete_member(member_id)
+    res = db.valor_delete_member(member_id, actor)
     if not res.get("ok"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "not_found"))
     return res
+
+
+# ── Журнал правок Архива скринов (ТОЛЬКО админ) ──
+@router.get("/editlog")
+def valor_editlog(week: str = Query(..., min_length=1),
+                  _: dict = Depends(require_admin)) -> dict:
+    """Журнал правок недели + список редакторов (для просмотра/отмены)."""
+    return {"week": week,
+            "items": db.valor_edit_log_for(week),
+            "actors": db.valor_edit_log_actors(week)}
+
+
+class EditUndoIn(BaseModel):
+    id: int
+
+
+@router.post("/editlog/undo")
+def valor_editlog_undo(payload: EditUndoIn,
+                       actor: dict = Depends(require_admin)) -> dict:
+    """Отменить одно действие из журнала (admin)."""
+    res = db.valor_undo_edit(payload.id, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, res.get("reason", "failed"))
+    return res
+
+
+class EditUndoActorIn(BaseModel):
+    week:  str = Field(..., min_length=1)
+    actor: str = Field(..., min_length=1)
+
+
+@router.post("/editlog/undo-actor")
+def valor_editlog_undo_actor(payload: EditUndoActorIn,
+                             actor: dict = Depends(require_admin)) -> dict:
+    """Отменить ВСЕ правки одного редактора за неделю (admin)."""
+    return db.valor_undo_by_actor(payload.week, payload.actor, actor)
 
 
 @router.get("/history")

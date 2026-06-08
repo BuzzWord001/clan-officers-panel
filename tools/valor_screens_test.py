@@ -347,6 +347,44 @@ db.valor_restore_warnings(hc["nick_canon"], ACTOR)
 check("после restore история пуста",
       len(db.valor_dismissed_history(hc["nick_canon"])) == 0)
 
+# ── 20) Журнал правок Архива скринов + отмена (поштучно и пакетом) ──
+db.valor_save_snapshot(week="2026-W80", valor_norm=14,
+                       members=[{**mk("LogA", 30), "class_": "Маг"}])
+la = next(m for m in db.valor_compare_data("2026-W80")["members"] if m["nick"] == "LogA")
+db.valor_update_member(la["id"], {"class": "Воин"}, ACTOR)
+db.valor_update_member(la["id"], {"valor": 99}, ACTOR)
+log = db.valor_edit_log_for("2026-W80")
+check("журнал: >=2 записи edit", sum(1 for e in log if e["action"] == "edit") >= 2)
+check("журнал: записан автор (Тест) и before/after",
+      log[0]["actor_name"] == "Тест" and log[0]["before"] is not None
+      and log[0]["after"] is not None)
+# отмена последней правки (valor 99 → 30)
+db.valor_undo_edit(log[0]["id"], ACTOR)
+c = next(m for m in db.valor_compare_data("2026-W80")["members"] if m["nick"] == "LogA")
+check("отмена правки valor вернула 30", c["valor"] == 30)
+check("класс при этом остался Воин (не трогали)", c["class"] == "Воин")
+# add + отмена
+db.valor_add_member("2026-W80", mk("LogB", 20), ACTOR)
+addlog = next(e for e in db.valor_edit_log_for("2026-W80") if e["action"] == "add")
+db.valor_undo_edit(addlog["id"], ACTOR)
+check("отмена add убрала LogB",
+      not any(m["nick"] == "LogB" for m in db.valor_compare_data("2026-W80")["members"]))
+# delete + отмена (строка возвращается)
+db.valor_delete_member(la["id"], ACTOR)
+check("LogA удалён",
+      not any(m["nick"] == "LogA" for m in db.valor_compare_data("2026-W80")["members"]))
+dellog = next(e for e in db.valor_edit_log_for("2026-W80") if e["action"] == "delete")
+db.valor_undo_edit(dellog["id"], ACTOR)
+check("отмена delete вернула LogA",
+      any(m["nick"] == "LogA" for m in db.valor_compare_data("2026-W80")["members"]))
+# отмена ВСЕХ правок автора за неделю
+ub = db.valor_undo_by_actor("2026-W80", "Тест", ACTOR)
+check("undo-by-actor: ok", ub.get("ok"))
+check("после undo-by-actor у «Тест» нет активных правок",
+      not any(a["actor_name"] == "Тест" for a in db.valor_edit_log_actors("2026-W80")))
+caf = next(m for m in db.valor_compare_data("2026-W80")["members"] if m["nick"] == "LogA")
+check("после отмены всех правок класс вернулся к Маг", caf["class"] == "Маг")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

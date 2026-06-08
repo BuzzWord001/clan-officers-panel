@@ -352,6 +352,99 @@
     toast("Готово — таблица «Доблесть» содержит данные недели " + openWeek);
   }
 
+  // ── Журнал правок недели (только админ): просмотр + отмена ──
+  const ELOG_ACT = { edit: "Правка", add: "Добавление", delete: "Удаление",
+                     verify: "Снято сомнение", meta: "Правка снимка" };
+  const ELOG_FIELDS = { nick: "ник", true_name: "имя", rank: "должн.",
+                        title: "титул", level: "ур.", class_: "класс",
+                        valor: "добл.", is_afk: "АФК" };
+  const elv = (v) => (v == null || v === "") ? "—" : String(v);
+
+  function elogSummary(it) {
+    const b = it.before || {}, a = it.after || {};
+    if (it.action === "add") return "добавлена строка";
+    if (it.action === "delete") return "удалена строка";
+    if (it.action === "verify") return "снято сомнение (ИИ-ник / класс)";
+    if (it.action === "meta") {
+      const p = [];
+      if (a.actual_members !== b.actual_members) p.push(`людей в клане: ${elv(b.actual_members)} → ${elv(a.actual_members)}`);
+      if (a.valor_norm !== b.valor_norm) p.push(`норматив: ${elv(b.valor_norm)} → ${elv(a.valor_norm)}`);
+      if ((a.notes || "") !== (b.notes || "")) p.push("заметка изменена");
+      return p.join("; ") || "правка снимка";
+    }
+    const p = [];
+    for (const k in ELOG_FIELDS) {
+      if (k in a && a[k] !== b[k]) p.push(`${ELOG_FIELDS[k]}: ${elv(b[k])} → ${elv(a[k])}`);
+    }
+    return p.join("; ") || "правка";
+  }
+
+  async function openEditLog(week) {
+    if (!week) { toast("Сначала выбери неделю"); return; }
+    let data;
+    try { data = await API.valorEditLog(week); }
+    catch (e) { toast("Ошибка: " + (e.detail || e.message)); return; }
+    renderEditLog(week, data);
+  }
+
+  function renderEditLog(week, data) {
+    const items = (data && data.items) || [];
+    const actors = (data && data.actors) || [];
+    const fmtDT = (s) => s ? String(s).replace("T", " ").slice(0, 16) : "—";
+    const rows = items.length ? items.map(it => `
+      <tr class="${it.undone ? "el-undone" : ""}">
+        <td>${esc(ELOG_ACT[it.action] || it.action)}</td>
+        <td>${esc(it.nick || "")}</td>
+        <td class="el-sum">${esc(elogSummary(it))}</td>
+        <td>${esc(it.actor_name || "—")}</td>
+        <td class="el-dt">${fmtDT(it.created_at)}</td>
+        <td>${it.undone
+          ? `<span class="el-done">отменено</span>`
+          : `<button class="el-undo" data-id="${it.id}">отменить</button>`}</td>
+      </tr>`).join("") : `<tr><td colspan="6" class="el-empty">Правок за эту неделю нет</td></tr>`;
+    const actorOpts = actors.map(a =>
+      `<option value="${esc(a.actor_name)}">${esc(a.actor_name)} (${a.count})</option>`).join("");
+    const ov = $("cmp-edit");
+    ov.innerHTML =
+      `<div class="ce-box el-box">
+        <div class="ce-h">🧾 Журнал правок · неделя <b>${esc(week)}</b></div>
+        ${actors.length ? `<div class="el-bar">
+          <span>Отменить все правки человека:</span>
+          <select id="el-actor">${actorOpts}</select>
+          <button id="el-undo-actor" class="cmp-del">↩ Отменить всё</button>
+        </div>` : ""}
+        <div class="el-scroll">
+          <table class="el-table">
+            <thead><tr><th>Действие</th><th>Ник</th><th>Что изменено</th><th>Кто</th><th>Когда (UTC)</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="ce-btns"><button id="el-close" class="ce-cancel">Закрыть</button></div>
+      </div>`;
+    ov.hidden = false;
+    ov.onclick = (e) => { if (e.target === ov) ov.hidden = true; };
+    ov.querySelector("#el-close").onclick = () => { ov.hidden = true; };
+    ov.querySelectorAll(".el-undo").forEach(b => b.addEventListener("click", async () => {
+      try {
+        await API.valorEditUndo(+b.dataset.id);
+        toast("Действие отменено");
+        await reloadKeepScroll();
+        openEditLog(week);   // обновить окно журнала
+      } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+    }));
+    const ua = ov.querySelector("#el-undo-actor");
+    if (ua) ua.addEventListener("click", async () => {
+      const who = ov.querySelector("#el-actor").value;
+      if (!confirm(`Отменить ВСЕ правки «${who}» за неделю ${week}?`)) return;
+      try {
+        const r = await API.valorEditUndoActor(week, who);
+        toast(`Отменено действий: ${r.undone || 0}`);
+        await reloadKeepScroll();
+        openEditLog(week);
+      } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+    });
+  }
+
   // Примерный кадр для строки i: пропорция позиции среди всех строк.
   function scrollToFrame(i, frameIdx) {
     const shots = DATA.screenshots; if (!shots.length) return;
@@ -493,6 +586,7 @@
       $("cmp-admin-actions").hidden = false;
       $("cmp-add").addEventListener("click", openAdd);
       $("cmp-done").addEventListener("click", doneRefresh);
+      $("cmp-log").addEventListener("click", () => openEditLog(openWeek));
     }
     const first = $("vs-weeks").querySelector(".vs-folder");
     if (first) loadWeek(first.dataset.week, first).then(focusFromUrl);
