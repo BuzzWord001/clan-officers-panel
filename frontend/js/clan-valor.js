@@ -1115,10 +1115,14 @@
           + `</span>`
         : "";
       const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
+      // Кнопка истории снятых (прощённых) предупреждений — только если они есть.
+      const dhistBtn = (IS_OFFICER && m.dismissed_count)
+        ? ` <button class="dhist-btn" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="История снятых предупреждений (${m.dismissed_count})">🕮${m.dismissed_count}</button>`
+        : "";
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
@@ -1724,11 +1728,76 @@
 
   $("valor-tbody").addEventListener("click", (ev) => {
     const nb = ev.target.closest(".ach-btn");
-    if (!nb) return;
-    ev.stopPropagation();
-    const m = (DATA.members || []).find(x => x.nick === nb.dataset.nick);
-    if (m) openAchievements(m);
+    if (nb) {
+      ev.stopPropagation();
+      const m = (DATA.members || []).find(x => x.nick === nb.dataset.nick);
+      if (m) openAchievements(m);
+      return;
+    }
+    const dh = ev.target.closest(".dhist-btn");
+    if (dh) {
+      ev.stopPropagation();
+      openDismissHistory(dh.dataset.canon, dh.dataset.nick);
+    }
   });
+
+  // ── Окно «История снятых предупреждений» ──
+  const KIND_RU = { norm: "По нормативу", title: "Из титула", manual: "Ручное" };
+  async function openDismissHistory(canon, nick) {
+    let items = [];
+    try {
+      const res = await API.valorDismissedHistory(canon);
+      items = (res && res.items) || [];
+    } catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); return; }
+    injectEditStyles();
+    const fmtDT = (s) => s ? String(s).replace("T", " ").slice(0, 16) + " UTC" : "—";
+    const rows = items.length ? items.map((it) => {
+      const d = it.detail || {};
+      let what = "";
+      if (it.kind === "norm") {
+        what = `неделя ${esc(d.week || it.ref)}` +
+          (d.valor != null ? ` · набрано ${esc(d.valor)} из ${esc(d.norm)} (${esc(d.pct)}%)` : "") +
+          (d.grace ? " · после иммунитета" : "");
+      } else if (it.kind === "title") {
+        what = `цифра в титуле: ${esc(d.value != null ? d.value : it.ref)}` +
+          (d.title ? ` (титул «${esc(d.title)}»)` : "");
+      } else {
+        what = esc(it.ref || "");
+      }
+      return `<tr>
+        <td class="dh-kind">${esc(KIND_RU[it.kind] || it.kind)}</td>
+        <td>${what}</td>
+        <td>${esc(it.created_by || "—")}</td>
+        <td class="dh-dt">${fmtDT(it.created_at)}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="4" class="dh-empty">Снятых предупреждений нет</td></tr>`;
+    const ov = document.createElement("div");
+    ov.className = "vedit-overlay";
+    ov.innerHTML =
+      `<div class="vedit-card dh-card">
+        <div class="dh-head">
+          <h3>🕮 История снятых предупреждений · <b>${esc(nick || "")}</b></h3>
+          <button id="dh-close" class="vedit-btn">✕ Закрыть</button>
+        </div>
+        <div class="dh-scroll">
+          <table class="dh-table">
+            <thead><tr><th>Тип</th><th>Что было</th><th>Кто снял</th><th>Когда сняли</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        ${items.length ? `<div class="dh-foot">${IS_ADMIN ? `<button id="dh-restore" class="vedit-btn">↩ Вернуть все предупреждения</button>` : ""}</div>` : ""}
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+    ov.querySelector("#dh-close").onclick = close;
+    const rb = ov.querySelector("#dh-restore");
+    if (rb) rb.onclick = async () => {
+      if (!confirm("Вернуть ВСЕ снятые предупреждения этому игроку?")) return;
+      try { await API.valorWarningRestore(canon); close(); await load(); }
+      catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); }
+    };
+  }
 
   // Двойной клик по строке игрока → перейти к нему в «Скрины сбора»
   // (последняя неделя). Только офицер/админ; гостю недоступно.

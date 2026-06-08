@@ -257,6 +257,13 @@ def valor_warning_restore(payload: WarnCanonIn,
     return db.valor_restore_warnings(payload.canon, actor)
 
 
+@router.get("/warning/dismissed")
+def valor_warning_dismissed(canon: str = Query(..., min_length=1),
+                            _: dict = Depends(require_officer)) -> dict:
+    """История прощённых предупреждений игрока (кто/когда/тип/что было)."""
+    return {"canon": canon, "items": db.valor_dismissed_history(canon)}
+
+
 class ValorAfkIn(BaseModel):
     is_afk:   bool
     afk_note: str | None = None

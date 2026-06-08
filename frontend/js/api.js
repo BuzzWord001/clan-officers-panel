@@ -192,6 +192,7 @@
     valorSnapshotMeta: (body) => request("PATCH", "/valor/snapshot-meta", body),
     valorWarningDismiss: (canon, kind) => request("POST", "/valor/warning/dismiss", { canon, kind }),
     valorWarningRestore: (canon) => request("POST", "/valor/warning/restore", { canon }),
+    valorDismissedHistory: (canon) => request("GET", "/valor/warning/dismissed?canon=" + encodeURIComponent(canon)),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
     valorSessions:  () => request("GET", "/valor/sessions"),

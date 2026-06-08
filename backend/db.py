@@ -355,6 +355,7 @@ CREATE TABLE IF NOT EXISTS valor_warn_dismiss (
     nick_canon  TEXT    NOT NULL,
     kind        TEXT    NOT NULL,
     ref         TEXT    NOT NULL DEFAULT '',
+    detail      TEXT    NOT NULL DEFAULT '',   -- JSON: что было на момент выставления
     created_at  TEXT    NOT NULL DEFAULT '',
     created_by  TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (nick_canon, kind, ref)
@@ -541,6 +542,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # чтобы сравнивать с тем, сколько распознал Gemini (members_count).
     try:
         conn.execute("ALTER TABLE valor_snapshots ADD COLUMN actual_members INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
+    # 2026-06-08: детали прощённого предупреждения (для истории прощений).
+    try:
+        conn.execute("ALTER TABLE valor_warn_dismiss ADD COLUMN detail TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -4385,8 +4392,16 @@ def valor_dismiss_warnings(canon: str, kind: str, actor: dict) -> dict:
         return {"ok": False, "reason": "bad_canon"}
     now = datetime.utcnow().isoformat(timespec="seconds")
     by = actor.get("name") or actor.get("role") or ""
+    details: dict[str, dict] = {}   # ref → подробности на момент выставления
     if kind == "norm":
-        refs = [a["week"] for a in valor_active_warnings().get(canon, [])]
+        active = valor_active_warnings().get(canon, [])
+        refs = [a["week"] for a in active]
+        for a in active:
+            details[a["week"]] = {
+                "week": a["week"], "valor": a.get("valor"),
+                "norm": a.get("norm"), "pct": a.get("pct"),
+                "grace": bool(a.get("grace")),
+            }
     elif kind == "title":
         with connection() as conn:
             row = conn.execute(
@@ -4396,17 +4411,41 @@ def valor_dismiss_warnings(canon: str, kind: str, actor: dict) -> dict:
         if tw is None:
             return {"ok": True, "dismissed": 0}
         refs = [str(tw)]
+        details[str(tw)] = {"value": tw, "title": (row["title"] if row else "")}
     else:
         return {"ok": False, "reason": "bad_kind"}
     if not refs:
         return {"ok": True, "dismissed": 0}
     with connection() as conn:
         for ref in refs:
+            det = json.dumps(details.get(ref, {}), ensure_ascii=False)
             conn.execute(
                 "INSERT OR IGNORE INTO valor_warn_dismiss "
-                "(nick_canon, kind, ref, created_at, created_by) VALUES (?,?,?,?,?)",
-                (canon, kind, str(ref), now, by))
+                "(nick_canon, kind, ref, detail, created_at, created_by) "
+                "VALUES (?,?,?,?,?,?)",
+                (canon, kind, str(ref), det, now, by))
     return {"ok": True, "dismissed": len(refs)}
+
+
+def valor_dismissed_history(canon: str) -> list[dict]:
+    """Полная история прощённых предупреждений игрока (для окна у ника):
+    тип, что было (неделя/доблесть/норма/цифра), кто и когда простил."""
+    canon = (canon or "").strip()
+    out: list[dict] = []
+    if not canon:
+        return out
+    with connection() as conn:
+        for r in conn.execute(
+                "SELECT kind, ref, detail, created_at, created_by "
+                "FROM valor_warn_dismiss WHERE nick_canon = ? ORDER BY created_at",
+                (canon,)):
+            try:
+                det = json.loads(r["detail"]) if r["detail"] else {}
+            except Exception:
+                det = {}
+            out.append({"kind": r["kind"], "ref": r["ref"], "detail": det,
+                        "created_at": r["created_at"], "created_by": r["created_by"]})
+    return out
 
 
 def valor_restore_warnings(canon: str, actor: dict) -> dict:
@@ -4853,6 +4892,12 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
         for r in conn.execute(
                 "SELECT nick_canon, ref FROM valor_warn_dismiss WHERE kind='title'"):
             dismissed_title.setdefault(r["nick_canon"], set()).add(r["ref"])
+        # Сколько всего прощённых предупреждений у канона — для кнопки истории.
+        dismissed_count: dict[str, int] = {}
+        for r in conn.execute(
+                "SELECT nick_canon, COUNT(*) AS c FROM valor_warn_dismiss "
+                "GROUP BY nick_canon"):
+            dismissed_count[r["nick_canon"]] = r["c"]
 
         # Социалки по canon — для UI колонки «Данные VK / Telegram».
         socials: dict[str, dict] = {}
@@ -5218,6 +5263,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             m["warnings"] = sorted(w, key=lambda x: x["pct"])
             m["warning_count"] = len(w)  # для бейджа в колонке «Норматив»
             m["manual_warnings"] = manual_warn_map.get(cn, [])
+            m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
             members.append(m)
         # Карта недель → дата/время сбора (для расшифровки «W22» в UI).

@@ -328,6 +328,22 @@ if aw:
 else:
     check("(в тест-данных нет авто-предупреждений — норм-кейс пропущен)", True)
 
+# ── 19) История прощённых предупреждений (детали + счётчик) ──
+db.valor_save_snapshot(week="2026-W73", valor_norm=14,
+                       members=[{**mk("Histo", 50, title="5")}])
+hc = next(m for m in db.valor_get_current()["members"] if m["nick"] == "Histo")
+db.valor_dismiss_warnings(hc["nick_canon"], "title", ACTOR)
+hist = db.valor_dismissed_history(hc["nick_canon"])
+check("история прощений: 1 запись", len(hist) == 1)
+check("история: тип title + кто простил + деталь с цифрой 5",
+      hist and hist[0]["kind"] == "title" and hist[0]["created_by"] == "Тест"
+      and hist[0]["detail"].get("value") == 5)
+hc2 = next(m for m in db.valor_get_current()["members"] if m["nick"] == "Histo")
+check("dismissed_count=1 у члена (для кнопки истории)", hc2.get("dismissed_count") == 1)
+db.valor_restore_warnings(hc["nick_canon"], ACTOR)
+check("после restore история пуста",
+      len(db.valor_dismissed_history(hc["nick_canon"])) == 0)
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

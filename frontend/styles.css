@@ -3425,6 +3425,26 @@ body.guest-mode .afk-set-btn { display: none; }
 }
 .warn-dismiss-btn:hover { opacity: 1; }
 body.guest-mode .warn-dismiss-btn { display: none !important; }
+
+/* Кнопка истории снятых предупреждений у ника */
+.dhist-btn {
+  background: rgba(224,162,74,0.14); color: #ecc587;
+  border: 1px solid rgba(224,162,74,0.4); border-radius: 5px;
+  cursor: pointer; font-size: 10px; padding: 1px 6px; margin-left: 4px; line-height: 1;
+}
+.dhist-btn:hover { background: rgba(224,162,74,0.3); }
+/* Окно истории снятых предупреждений */
+.dh-card { width: min(720px, 94vw) !important; }
+.dh-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.dh-head h3 { margin: 0; }
+.dh-scroll { max-height: 60vh; overflow: auto; border: 1px solid rgba(224,162,74,0.2); border-radius: 8px; }
+.dh-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dh-table th { position: sticky; top: 0; background: #2a1a0c; color: #ecc587; text-align: left; padding: 6px 8px; }
+.dh-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f3e8d2; vertical-align: top; }
+.dh-kind { font-weight: 700; white-space: nowrap; }
+.dh-dt { white-space: nowrap; color: #cdb892; }
+.dh-empty { text-align: center; color: #cdb892; padding: 14px; }
+.dh-foot { margin-top: 12px; text-align: right; }
 /* Поповер добавления предупреждения */
 .warn-add-pop {
   position: fixed; z-index: 1100;
