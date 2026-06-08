@@ -87,7 +87,10 @@
         <td class="cmp-nick"><span class="cmp-nick-t" title="клик — копировать">${esc(m.nick)}</span><br>${badges(m)}</td>
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cell(m.level)}
         ${cell(m.class)}<td class="cmp-c cmp-valor" title="клик — копировать">${m.valor == null ? "—" : m.valor}</td>
-        <td class="cmp-act">${IS_ADMIN ? `<button class="cmp-ed" data-id="${m.id}" title="править">✎</button>` : ""}</td>
+        <td class="cmp-act">${IS_ADMIN
+          ? `<button class="cmp-ed" data-id="${m.id}" title="править">✎</button>` +
+            ` <button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button>`
+          : ""}</td>
       </tr>`).join("");
   }
 
@@ -131,8 +134,84 @@
         tr.classList.add("cmp-row-on");
       });
     });
-    if (IS_ADMIN) tbody.querySelectorAll(".cmp-ed").forEach(b =>
-      b.addEventListener("click", () => openEdit(+b.dataset.id)));
+    if (IS_ADMIN) {
+      tbody.querySelectorAll(".cmp-ed").forEach(b =>
+        b.addEventListener("click", () => openEdit(+b.dataset.id)));
+      tbody.querySelectorAll(".cmp-del").forEach(b =>
+        b.addEventListener("click", () => delMember(+b.dataset.id, b.dataset.nick)));
+    }
+  }
+
+  // Текущая выбранная папка недели (для перезагрузки после правок).
+  const activeFolder = () => document.querySelector(".vs-folder-on");
+
+  // ── Удаление строки (админ): фантом OCR / дубль ──
+  async function delMember(id, nick) {
+    if (!confirm(`Удалить строку «${nick}» из недели ${openWeek}?\n` +
+      `Используй для фантома OCR или дубля. Строка исчезнет и из таблицы «Доблесть».`)) return;
+    try {
+      await API.valorMemberDelete(id);
+      toast("Удалено: " + nick);
+      await loadWeek(openWeek, activeFolder());
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+
+  // ── Добавить пропущенную строку (админ) ──
+  function openAdd() {
+    if (!openWeek) { toast("Сначала выбери неделю"); return; }
+    const ov = $("cmp-edit");
+    const f = (lbl, key, val, type) =>
+      `<label class="ce-f"><span>${lbl}</span>
+        <input data-k="${key}" type="${type || "text"}" value="${esc(val == null ? "" : val)}"></label>`;
+    ov.innerHTML =
+      `<div class="ce-box">
+        <div class="ce-h">Добавить строку · неделя <b>${esc(openWeek)}</b></div>
+        ${f("Ник", "nick", "")}
+        ${f("Имя (true_name)", "true_name", "")}
+        ${f("Должность", "rank", "")}
+        ${f("Титул", "title", "")}
+        ${f("Уровень", "level", "", "number")}
+        ${f("Класс", "class", "")}
+        ${f("Доблесть", "valor", "", "number")}
+        <label class="ce-f ce-chk"><input data-k="is_afk" type="checkbox"> АФК</label>
+        <div class="ce-btns">
+          <button id="ce-save" class="ce-save">Добавить</button>
+          <button id="ce-cancel" class="ce-cancel">Отмена</button>
+        </div>
+        <div class="ce-msg" id="ce-msg"></div>
+      </div>`;
+    ov.hidden = false;
+    ov.querySelector("#ce-cancel").onclick = () => { ov.hidden = true; };
+    ov.onclick = (e) => { if (e.target === ov) ov.hidden = true; };
+    ov.querySelector("#ce-save").onclick = async () => {
+      const fields = { week: openWeek };
+      ov.querySelectorAll("[data-k]").forEach(inp => {
+        const k = inp.dataset.k;
+        if (k === "is_afk") fields[k] = inp.checked;
+        else if (inp.type === "number") fields[k] = inp.value === "" ? null : parseInt(inp.value, 10);
+        else fields[k] = inp.value;
+      });
+      const msg = ov.querySelector("#ce-msg");
+      if (!(fields.nick || "").trim()) { msg.textContent = "Укажи ник"; return; }
+      msg.textContent = "Добавление…";
+      try {
+        await API.valorMemberAdd(fields);
+        ov.hidden = true;
+        toast("Добавлено: " + fields.nick);
+        await loadWeek(openWeek, activeFolder());
+      } catch (e) {
+        msg.textContent = e.status === 409
+          ? "Такой ник уже есть в этой неделе — правь его строкой ✎"
+          : "Ошибка: " + (e.detail || e.message);
+      }
+    };
+  }
+
+  // ── «Готово»: перечитать неделю и подтвердить, что Доблесть актуальна ──
+  async function doneRefresh() {
+    if (!openWeek) { toast("Сначала выбери неделю"); return; }
+    await loadWeek(openWeek, activeFolder());
+    toast("Готово — таблица «Доблесть» содержит данные недели " + openWeek);
   }
 
   // Примерный кадр для строки i: пропорция позиции среди всех строк.
@@ -215,6 +294,12 @@
       el.addEventListener("click", () => loadWeek(el.dataset.week, el)));
     $("cmp-filter").addEventListener("input", applyFilter);
     $("cmp-suspect").addEventListener("change", applyFilter);
+    if (IS_ADMIN) {
+      $("cmp-live").hidden = false;
+      $("cmp-admin-actions").hidden = false;
+      $("cmp-add").addEventListener("click", openAdd);
+      $("cmp-done").addEventListener("click", doneRefresh);
+    }
     const first = $("vs-weeks").querySelector(".vs-folder");
     if (first) loadWeek(first.dataset.week, first);
   } catch (e) {

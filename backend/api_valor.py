@@ -234,6 +234,39 @@ class ValorMemberEdit(BaseModel):
         populate_by_name = True
 
 
+class ValorMemberAdd(BaseModel):
+    """Админ-добавление пропущенной строки (OCR не распознал игрока)."""
+    week:      str | None = None   # пусто → последний снимок
+    nick:      str = Field(..., min_length=1)
+    true_name: str | None = ""
+    rank:      str | None = ""
+    title:     str | None = ""
+    level:     int | None = None
+    class_:    str | None = Field(default="", alias="class")
+    valor:     int | None = None
+    is_afk:    bool | None = False
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/member")
+def valor_member_add(payload: ValorMemberAdd,
+                     actor: dict = Depends(require_admin)) -> dict:
+    """Добавить пропущенную строку в снимок недели (ТОЛЬКО админ).
+    Дубликат по canon в этом снимке → 409."""
+    fields = payload.model_dump(by_alias=True)
+    week = fields.pop("week", None)
+    res = db.valor_add_member(week, fields, actor)
+    if not res.get("ok"):
+        reason = res.get("reason", "add_failed")
+        code = (status.HTTP_409_CONFLICT if reason == "exists"
+                else status.HTTP_404_NOT_FOUND if reason == "no_snapshot"
+                else status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(code, reason)
+    return res
+
+
 @router.patch("/member/{member_id}")
 def valor_member_edit(member_id: int, payload: ValorMemberEdit,
                       actor: dict = Depends(require_admin)) -> dict:

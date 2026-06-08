@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Скрины сбора</title>
-  <link rel="stylesheet" href="styles.css?v=1786004500">
+  <link rel="stylesheet" href="styles.css?v=1786200000">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -80,6 +80,12 @@
         <div id="vs-empty" class="empty" hidden>Скринов пока нет — появятся после следующего сбора.</div>
 
         <div id="cmp" hidden>
+          <div class="cmp-live admin-only" id="cmp-live" hidden>
+            ✎ Правки на этой странице применяются к таблице «Доблесть» сразу —
+            отдельной публикации не требуется. Исправь строки по скринам, при
+            необходимости удали фантом OCR или добавь пропущенного, затем нажми
+            «Готово» — таблица Доблести обновится текущими данными.
+          </div>
           <div class="cmp-bar">
             <span id="cmp-meta" class="cmp-meta"></span>
             <input type="text" id="cmp-filter" placeholder="фильтр: ник / имя / класс / титул">
@@ -89,6 +95,11 @@
               <span class="cmp-badge bdg-ai">ИИ-ник</span>
               <span class="cmp-badge bdg-sus">⚠ проверить</span>
               <span class="cmp-badge bdg-afk">АФК</span>
+            </span>
+            <span class="cmp-admin-actions admin-only" id="cmp-admin-actions" hidden>
+              <button id="cmp-add" class="cmp-add-btn" title="Добавить пропущенную строку, которую OCR не распознал">➕ Добавить строку</button>
+              <button id="cmp-done" class="cmp-done-btn" title="Перечитать неделю и подтвердить, что таблица Доблести содержит исправленные данные">✓ Готово — обновить Доблесть</button>
+              <a href="clan-valor.html" class="cmp-open-valor" title="Открыть таблицу Доблести">↗ Доблесть</a>
             </span>
           </div>
           <div class="cmp-split">
@@ -108,7 +119,7 @@
 
   <script src="config.js?v=1786000000"></script>
   <script src="js/matrix.js?v=1780000000"></script>
-  <script src="js/api.js?v=1786004500"></script>
-  <script src="js/valor-screens.js?v=1786004500"></script>
+  <script src="js/api.js?v=1786200000"></script>
+  <script src="js/valor-screens.js?v=1786200000"></script>
 </body>
 </html>

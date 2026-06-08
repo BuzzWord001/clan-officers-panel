@@ -5043,6 +5043,128 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
     return out
 
 
+def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
+    """Админ: добавить пропущенную строку (OCR не распознал игрока) в снимок.
+
+    week пустой → последний снимок. Дубликат по canon в этом снимке →
+    {ok:False, reason:'exists', id}. Логика иммунитета/АФК/warning_count и
+    история повторяют valor_save_snapshot, чтобы оценки/графики были верны.
+    Если человек был помечен ушедшим/кикнутым — снимается (он снова в списке).
+    """
+    nick = (fields.get("nick") or "").strip()
+    if not nick:
+        return {"ok": False, "reason": "no_nick"}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        if week and week.strip():
+            snap = conn.execute(
+                "SELECT * FROM valor_snapshots WHERE week = ?", (week.strip(),)
+            ).fetchone()
+        else:
+            snap = conn.execute(
+                "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 1"
+            ).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        snap_id = snap["id"]
+        wk = snap["week"]
+        valor_norm = int(snap["valor_norm"] or 0)
+
+        alias_map = _alias_map(conn)
+        canon = _resolve_canon(_valor_canon(nick), alias_map)
+        if not canon:
+            return {"ok": False, "reason": "bad_nick"}
+        dup = conn.execute(
+            "SELECT id FROM valor_members WHERE snapshot_id = ? AND nick_canon = ?",
+            (snap_id, canon)).fetchone()
+        if dup:
+            return {"ok": False, "reason": "exists", "id": dup["id"]}
+
+        cls = (fields.get("class_") or fields.get("class") or "").strip()
+        title = (fields.get("title") or "").strip()
+        rank = (fields.get("rank") or "").strip()
+        true_name = (fields.get("true_name") or "").strip()
+        is_afk = bool(fields.get("is_afk")) or _title_is_afk(title)
+        valor_val = fields.get("valor") if isinstance(fields.get("valor"), int) else None
+        level_val = fields.get("level") if isinstance(fields.get("level"), int) else None
+
+        # warning_count: продолжаем серию от прошлой недели этого человека.
+        prev_snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week < ? ORDER BY week DESC LIMIT 1",
+            (wk,)).fetchone()
+        prev_warn = 0
+        if prev_snap:
+            r = conn.execute(
+                "SELECT warning_count FROM valor_members "
+                "WHERE snapshot_id = ? AND nick_canon = ?",
+                (prev_snap["id"], canon)).fetchone()
+            if r:
+                prev_warn = r["warning_count"] or 0
+
+        imm = valor_immunity_per_canon(wk).get(canon)
+        if imm and imm["status"] in ("active", "extended"):
+            norm_met_raw, warning_count = None, 0
+        elif imm and imm["status"] == "grace":
+            eff = max(1, round(valor_norm * imm["effective_norm_factor"]))
+            norm_met_raw = (valor_val is not None and valor_val >= eff)
+            warning_count = 0 if norm_met_raw else prev_warn + 1
+        elif is_afk:
+            norm_met_raw, warning_count = None, 0
+        else:
+            norm_met_raw = (valor_val is not None and valor_val >= valor_norm) if valor_norm else None
+            warning_count = 0 if norm_met_raw else prev_warn + 1
+
+        cur = conn.execute(
+            """INSERT INTO valor_members
+               (snapshot_id, nick, nick_canon, true_name, rank, title,
+                level, class_, valor, is_afk, norm_met,
+                flag_new_nick, flag_ocr_suspect, warning_count)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (snap_id, nick, canon, true_name, rank, title, level_val, cls,
+             valor_val, 1 if is_afk else 0,
+             None if norm_met_raw is None else (1 if norm_met_raw else 0),
+             0, 0, warning_count))
+        mid = cur.lastrowid
+
+        # Снова в списке → не ушедший и не кикнутый.
+        conn.execute("DELETE FROM valor_departed WHERE nick_canon = ?", (canon,))
+        conn.execute("DELETE FROM valor_force_archived WHERE nick_canon = ?", (canon,))
+        cnt = conn.execute(
+            "SELECT COUNT(*) AS c FROM valor_members WHERE snapshot_id = ?",
+            (snap_id,)).fetchone()["c"]
+        conn.execute(
+            "UPDATE valor_snapshots SET members_count = ? WHERE id = ?", (cnt, snap_id))
+
+        # История (valor — всегда; остальные — если значение задано).
+        for fld in _HIST_FIELDS:
+            if fld == "class":
+                val = cls
+            elif fld == "level":
+                val = str(level_val) if isinstance(level_val, int) else ""
+            elif fld == "valor":
+                val = str(valor_val) if isinstance(valor_val, int) else ""
+            elif fld == "rank":
+                val = rank
+            elif fld == "title":
+                val = title
+            else:
+                val = (fields.get(fld) or "").strip()
+            if fld == "valor":
+                conn.execute(
+                    "DELETE FROM valor_history WHERE nick_canon = ? AND field = ? AND week = ?",
+                    (canon, fld, wk))
+                conn.execute(
+                    "INSERT INTO valor_history (nick_canon, field, value, week, captured_at) "
+                    "VALUES (?, ?, ?, ?, ?)", (canon, fld, val, wk, now))
+            elif val:
+                conn.execute(
+                    "INSERT INTO valor_history (nick_canon, field, value, week, captured_at) "
+                    "VALUES (?, ?, ?, ?, ?)", (canon, fld, val, wk, now))
+
+        out = conn.execute("SELECT * FROM valor_members WHERE id = ?", (mid,)).fetchone()
+    return {"ok": True, "id": mid, "week": wk, "member": dict(out) if out else None}
+
+
 def _dedup_member_rows(conn, canon: str) -> None:
     """В каждом снимке оставляем одну строку для canon (с макс valor)."""
     rows = conn.execute(

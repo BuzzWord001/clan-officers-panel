@@ -2827,10 +2827,33 @@ body.show-valor .valor-col { display: table-cell; }
 .cmp-ed { background: rgba(255,210,74,0.15); color: #ffd24a; border: 1px solid rgba(255,210,74,0.4);
   border-radius: 6px; cursor: pointer; padding: 2px 8px; font-size: 13px; }
 .cmp-ed:hover { background: rgba(255,210,74,0.3); }
+.cmp-del { background: rgba(255,90,110,0.14); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.4);
+  border-radius: 6px; cursor: pointer; padding: 2px 7px; font-size: 13px; }
+.cmp-del:hover { background: rgba(255,90,110,0.3); }
+
+/* Баннер: правки тут применяются к таблице Доблести сразу */
+.cmp-live { margin: 0 0 10px; padding: 9px 13px; border-radius: 9px; font-size: 12.5px;
+  line-height: 1.5; color: #cfe; background: rgba(0,255,65,0.06);
+  border: 1px solid rgba(0,255,65,0.25); }
+
+/* Админ-кнопки в строке управления сравнением */
+.cmp-admin-actions { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+.cmp-add-btn { background: rgba(0,255,65,0.12); color: #9fe9b6; border: 1px solid rgba(0,255,65,0.4);
+  border-radius: 7px; cursor: pointer; padding: 6px 11px; font-size: 12.5px; font-weight: 700; }
+.cmp-add-btn:hover { background: rgba(0,255,65,0.22); }
+.cmp-done-btn { background: linear-gradient(#1f7a3a,#15602c); color: #fff; border: none;
+  border-radius: 7px; cursor: pointer; padding: 6px 13px; font-size: 12.5px; font-weight: 700; }
+.cmp-done-btn:hover { filter: brightness(1.12); }
+.cmp-open-valor { color: #ffd24a; font-size: 12.5px; text-decoration: none; padding: 6px 8px;
+  border: 1px solid rgba(255,210,74,0.35); border-radius: 7px; }
+.cmp-open-valor:hover { background: rgba(255,210,74,0.12); }
 
 /* Модал правки */
 .cmp-edit-ov { position: fixed; inset: 0; z-index: 12001; background: rgba(0,0,0,0.7);
   display: flex; align-items: center; justify-content: center; padding: 16px; }
+/* hidden-атрибут должен прятать модалку (иначе display:flex рисует полупрозрачный
+   чёрный слой поверх всей страницы, перекрывая её) */
+.cmp-edit-ov[hidden] { display: none; }
 .ce-box { background: #0c130c; border: 1px solid rgba(0,255,65,0.3); border-radius: 12px;
   padding: 16px 18px; width: 360px; max-width: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
 .ce-h { font-size: 14px; margin-bottom: 10px; color: #cfe; }
