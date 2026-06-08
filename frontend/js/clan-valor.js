@@ -25,8 +25,13 @@
     tb.querySelectorAll(".m-row-focus").forEach(x => x.classList.remove("m-row-focus"));
     tr.classList.add("m-row-focus");
     if (!FOCUS_SCROLLED) {
-      tr.scrollIntoView({ behavior: "smooth", block: "center" });
       FOCUS_SCROLLED = true;
+      // rAF — чтобы скролл сработал после раскладки таблицы.
+      requestAnimationFrame(() => {
+        tr.scrollIntoView({ behavior: "smooth", block: "center" });
+        tr.classList.add("m-row-flash");
+        setTimeout(() => tr.classList.remove("m-row-flash"), 1600);
+      });
     }
   }
 

@@ -138,15 +138,9 @@
     tbody.querySelectorAll(".cmp-c").forEach(c =>
       c.addEventListener("click", () => copy(c.textContent.trim())));
     tbody.querySelectorAll(".cmp-row").forEach(tr => {
-      // Ник: одиночный клик — показать кадр слева; двойной — к нику в Доблести.
+      // Ник: одиночный клик — показать кадр слева.
       const nickEl = tr.querySelector(".cmp-nick-t");
-      if (nickEl) {
-        nickEl.addEventListener("click", () => selectRow(tr));
-        nickEl.addEventListener("dblclick", () => {
-          const canon = tr.dataset.canon;
-          if (canon) location.href = "clan-valor.html?focus=" + encodeURIComponent(canon);
-        });
-      }
+      if (nickEl) nickEl.addEventListener("click", () => selectRow(tr));
       // Клик по строке (не по нику/значению/кнопке) → тоже показать кадр.
       tr.addEventListener("click", (e) => {
         if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
@@ -326,6 +320,16 @@
       el.addEventListener("click", () => loadWeek(el.dataset.week, el)));
     $("cmp-filter").addEventListener("input", applyFilter);
     $("cmp-suspect").addEventListener("change", applyFilter);
+    // Двойной клик по строке справа → к этому нику в таблице Доблести.
+    // Делегируем на стабильный #cmp-rows (его <tbody> пересоздаётся при
+    // каждом рендере). Страница доступна только офицеру/админу (гость
+    // редиректится в начале файла), отдельный гейт не нужен.
+    $("cmp-rows").addEventListener("dblclick", (e) => {
+      if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del")) return;
+      const tr = e.target.closest(".cmp-row");
+      if (!tr || !tr.dataset.canon) return;
+      location.href = "clan-valor.html?focus=" + encodeURIComponent(tr.dataset.canon);
+    });
     if (IS_ADMIN) {
       $("cmp-live").hidden = false;
       $("cmp-admin-actions").hidden = false;
