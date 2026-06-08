@@ -70,11 +70,14 @@
   // ── Правая колонка: распознанные строки ──
   function badges(m) {
     const b = [];
-    b.push(m.in_registry
-      ? `<span class="cmp-badge bdg-reg" title="ник совпал с реестром (надёжно)">реестр</span>`
-      : `<span class="cmp-badge bdg-ai" title="ник распознан ИИ, в реестре не найден — проверить">ИИ-ник</span>`);
+    if (m.in_registry)
+      b.push(`<span class="cmp-badge bdg-reg" title="ник совпал с реестром приёма (надёжно)">реестр</span>`);
+    else if (m.flag_new_nick)
+      b.push(`<span class="cmp-badge bdg-ai" title="впервые появился в сборе, распознан ИИ — проверь по скрину и при желании занеси в реестр">ИИ-ник</span>`);
+    else
+      b.push(`<span class="cmp-badge bdg-seen" title="постоянный участник: есть в таблице Доблести со стабильным ником, просто не занесён в реестр приёма — это нормально">в Доблести</span>`);
     if (m.flag_ocr_suspect)
-      b.push(`<span class="cmp-badge bdg-sus" title="система сомневается в распознавании">⚠ проверить</span>`);
+      b.push(`<span class="cmp-badge bdg-sus" title="система сомневается в распознавании — проверь по скрину">⚠ проверить</span>`);
     if (m.is_afk) b.push(`<span class="cmp-badge bdg-afk">АФК</span>`);
     return b.join(" ");
   }
@@ -82,7 +85,7 @@
 
   function rowsHtml(list) {
     return list.map((m) =>
-      `<tr class="cmp-row${m.flag_ocr_suspect || !m.in_registry ? " cmp-row-warn" : ""}" data-i="${m._i}">
+      `<tr class="cmp-row${m.flag_ocr_suspect || m.flag_new_nick ? " cmp-row-warn" : ""}" data-i="${m._i}">
         <td class="cmp-num">${m._i + 1}</td>
         <td class="cmp-nick"><span class="cmp-nick-t" title="клик — копировать">${esc(m.nick)}</span><br>${badges(m)}</td>
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cell(m.level)}
@@ -109,7 +112,7 @@
     const q = ($("cmp-filter").value || "").trim().toLowerCase();
     const onlySus = $("cmp-suspect").checked;
     const list = DATA.members.filter(m => {
-      if (onlySus && !(m.flag_ocr_suspect || !m.in_registry)) return false;
+      if (onlySus && !(m.flag_ocr_suspect || m.flag_new_nick)) return false;
       if (!q) return true;
       return [m.nick, m.true_name, m.class, m.title, m.rank]
         .some(v => (v || "").toLowerCase().includes(q));

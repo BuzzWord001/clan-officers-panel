@@ -2800,6 +2800,7 @@ body.show-valor .valor-col { display: table-cell; }
 .cmp-badge { font-size: 10px; padding: 1px 7px; border-radius: 6px; font-weight: 700; white-space: nowrap; }
 .bdg-reg { background: rgba(80,220,120,0.18); color: #9fe9b6; border: 1px solid rgba(80,220,120,0.4); }
 .bdg-ai  { background: rgba(255,200,90,0.16); color: #ffd886; border: 1px solid rgba(255,200,90,0.4); }
+.bdg-seen { background: rgba(120,180,255,0.14); color: #bcd6ff; border: 1px solid rgba(120,180,255,0.4); }
 .bdg-sus { background: rgba(255,90,110,0.16); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.45); }
 .bdg-afk { background: rgba(150,170,255,0.16); color: #b9c6ff; border: 1px solid rgba(150,170,255,0.4); }
 

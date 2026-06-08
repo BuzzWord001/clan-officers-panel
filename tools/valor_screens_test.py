@@ -115,6 +115,21 @@ empty = db.valor_add_member("2026-W23", mk("", 1), ACTOR)
 check("add без ника → reason=no_nick",
       empty.get("ok") is False and empty.get("reason") == "no_nick")
 
+# ── 8) Состояния бейджа: реестр / постоянный-не-в-реестре (кейс ~АдаНет~) ──
+# Alpha заносим в реестр → in_registry=True. Bravo есть в W22+W23 (стабильный,
+# flag_new_nick=0), но НЕ в реестре → должен быть «в Доблести», НЕ «ИИ-ник».
+db.create_acceptance(game_nick="Alpha", title="", accepted_date="2026-06-01",
+                     note="", actor=ACTOR)
+bcmp = {m["nick"]: m for m in db.valor_compare_data("2026-W23")["members"]}
+check("Alpha в реестре → in_registry=True",
+      bcmp.get("Alpha", {}).get("in_registry") is True)
+check("Bravo постоянный, не в реестре → in_registry=False",
+      bcmp.get("Bravo", {}).get("in_registry") is False)
+check("Bravo НЕ помечен как новый (flag_new_nick falsy) → бейдж «в Доблести», не «ИИ-ник»",
+      not bcmp.get("Bravo", {}).get("flag_new_nick"))
+check("compare отдаёт флаг flag_new_nick для каждой строки (для бейджа)",
+      all("flag_new_nick" in m for m in bcmp.values()))
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)
