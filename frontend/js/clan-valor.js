@@ -1767,10 +1767,11 @@
       return `<tr>
         <td class="dh-kind">${esc(KIND_RU[it.kind] || it.kind)}</td>
         <td>${what}</td>
+        <td class="dh-reason">${it.reason ? esc(it.reason) : "<span class='dh-norsn'>—</span>"}</td>
         <td>${esc(it.created_by || "—")}</td>
         <td class="dh-dt">${fmtDT(it.created_at)}</td>
       </tr>`;
-    }).join("") : `<tr><td colspan="4" class="dh-empty">Снятых предупреждений нет</td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="dh-empty">Снятых предупреждений нет</td></tr>`;
     const ov = document.createElement("div");
     ov.className = "vedit-overlay";
     ov.innerHTML =
@@ -1781,7 +1782,7 @@
         </div>
         <div class="dh-scroll">
           <table class="dh-table">
-            <thead><tr><th>Тип</th><th>Что было</th><th>Кто снял</th><th>Когда сняли</th></tr></thead>
+            <thead><tr><th>Тип</th><th>Что было</th><th>Причина</th><th>Кто снял</th><th>Когда сняли</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1958,11 +1959,12 @@
       ev.stopPropagation();
       const kind = disB.dataset.kind;
       const msg = kind === "title"
-        ? "Снять предупреждение из титула у этого игрока?"
-        : "Снять ВСЕ текущие предупреждения по нормативу у этого игрока?";
-      if (!confirm(msg)) return;
+        ? "Снять предупреждение из титула у этого игрока?\n\nПричина снятия (необязательно):"
+        : "Снять ВСЕ текущие предупреждения по нормативу у этого игрока?\n\nПричина снятия (необязательно):";
+      const reason = prompt(msg, "");
+      if (reason === null) return;   // отмена
       try {
-        await API.valorWarningDismiss(disB.dataset.canon, kind);
+        await API.valorWarningDismiss(disB.dataset.canon, kind, reason.trim());
         await load();
       } catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); }
       return;

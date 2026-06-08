@@ -190,7 +190,7 @@
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),
     valorMemberVerify: (id) => request("POST", "/valor/verify/" + id),
     valorSnapshotMeta: (body) => request("PATCH", "/valor/snapshot-meta", body),
-    valorWarningDismiss: (canon, kind) => request("POST", "/valor/warning/dismiss", { canon, kind }),
+    valorWarningDismiss: (canon, kind, reason) => request("POST", "/valor/warning/dismiss", { canon, kind, reason: reason || "" }),
     valorWarningRestore: (canon) => request("POST", "/valor/warning/restore", { canon }),
     valorDismissedHistory: (canon) => request("GET", "/valor/warning/dismissed?canon=" + encodeURIComponent(canon)),
     valorWeights:    () => request("GET", "/valor/weights"),

@@ -3443,6 +3443,8 @@ body.guest-mode .warn-dismiss-btn { display: none !important; }
 .dh-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f3e8d2; vertical-align: top; }
 .dh-kind { font-weight: 700; white-space: nowrap; }
 .dh-dt { white-space: nowrap; color: #cdb892; }
+.dh-reason { color: #f3e8d2; max-width: 240px; }
+.dh-norsn { color: #8a7a5e; }
 .dh-empty { text-align: center; color: #cdb892; padding: 14px; }
 .dh-foot { margin-top: 12px; text-align: right; }
 /* Поповер добавления предупреждения */

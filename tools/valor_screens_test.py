@@ -332,12 +332,15 @@ else:
 db.valor_save_snapshot(week="2026-W73", valor_norm=14,
                        members=[{**mk("Histo", 50, title="5")}])
 hc = next(m for m in db.valor_get_current()["members"] if m["nick"] == "Histo")
-db.valor_dismiss_warnings(hc["nick_canon"], "title", ACTOR)
+db.valor_dismiss_warnings(hc["nick_canon"], "title", ACTOR,
+                          reason="был в отпуске, предупредил заранее")
 hist = db.valor_dismissed_history(hc["nick_canon"])
 check("история прощений: 1 запись", len(hist) == 1)
 check("история: тип title + кто простил + деталь с цифрой 5",
       hist and hist[0]["kind"] == "title" and hist[0]["created_by"] == "Тест"
       and hist[0]["detail"].get("value") == 5)
+check("история: сохранён комментарий-причина прощения",
+      hist[0]["reason"] == "был в отпуске, предупредил заранее")
 hc2 = next(m for m in db.valor_get_current()["members"] if m["nick"] == "Histo")
 check("dismissed_count=1 у члена (для кнопки истории)", hc2.get("dismissed_count") == 1)
 db.valor_restore_warnings(hc["nick_canon"], ACTOR)

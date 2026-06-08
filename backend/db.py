@@ -356,6 +356,7 @@ CREATE TABLE IF NOT EXISTS valor_warn_dismiss (
     kind        TEXT    NOT NULL,
     ref         TEXT    NOT NULL DEFAULT '',
     detail      TEXT    NOT NULL DEFAULT '',   -- JSON: что было на момент выставления
+    reason      TEXT    NOT NULL DEFAULT '',   -- комментарий: почему простили
     created_at  TEXT    NOT NULL DEFAULT '',
     created_by  TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (nick_canon, kind, ref)
@@ -548,6 +549,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # 2026-06-08: детали прощённого предупреждения (для истории прощений).
     try:
         conn.execute("ALTER TABLE valor_warn_dismiss ADD COLUMN detail TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    # 2026-06-08: комментарий-причина прощения.
+    try:
+        conn.execute("ALTER TABLE valor_warn_dismiss ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -4380,7 +4386,8 @@ def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
     return out
 
 
-def valor_dismiss_warnings(canon: str, kind: str, actor: dict) -> dict:
+def valor_dismiss_warnings(canon: str, kind: str, actor: dict,
+                           reason: str = "") -> dict:
     """«Простить» вычисляемое предупреждение (офицер/админ):
       kind='norm'  — все текущие авто-штрафы за невыполнение норматива;
       kind='title' — штраф из числового титула (текущая цифра).
@@ -4416,14 +4423,15 @@ def valor_dismiss_warnings(canon: str, kind: str, actor: dict) -> dict:
         return {"ok": False, "reason": "bad_kind"}
     if not refs:
         return {"ok": True, "dismissed": 0}
+    reason = (reason or "").strip()[:500]
     with connection() as conn:
         for ref in refs:
             det = json.dumps(details.get(ref, {}), ensure_ascii=False)
             conn.execute(
                 "INSERT OR IGNORE INTO valor_warn_dismiss "
-                "(nick_canon, kind, ref, detail, created_at, created_by) "
-                "VALUES (?,?,?,?,?,?)",
-                (canon, kind, str(ref), det, now, by))
+                "(nick_canon, kind, ref, detail, reason, created_at, created_by) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (canon, kind, str(ref), det, reason, now, by))
     return {"ok": True, "dismissed": len(refs)}
 
 
@@ -4436,7 +4444,7 @@ def valor_dismissed_history(canon: str) -> list[dict]:
         return out
     with connection() as conn:
         for r in conn.execute(
-                "SELECT kind, ref, detail, created_at, created_by "
+                "SELECT kind, ref, detail, reason, created_at, created_by "
                 "FROM valor_warn_dismiss WHERE nick_canon = ? ORDER BY created_at",
                 (canon,)):
             try:
@@ -4444,6 +4452,7 @@ def valor_dismissed_history(canon: str) -> list[dict]:
             except Exception:
                 det = {}
             out.append({"kind": r["kind"], "ref": r["ref"], "detail": det,
+                        "reason": r["reason"] or "",
                         "created_at": r["created_at"], "created_by": r["created_by"]})
     return out
 
