@@ -3841,6 +3841,62 @@ def valor_fill_class_from_history(week: str) -> dict:
     return {"ok": True, "filled": filled, "cleared": cleared}
 
 
+def valor_smooth_frames(week: str) -> dict:
+    """Сглаживает номера кадров (frame) недели. Строки идут в порядке скринов
+    (по id = чтение сверху вниз), значит кадр должен НЕ убывать. Бэкфилл через
+    батчи Gemini иногда давал одиночные выбросы (ник помечен поздним кадром
+    из-за перекрытия) — напр. сосед-кадры 18/19, а у строки 35.
+
+    1) Пустые кадры заполняем линейной интерполяцией между ближайшими.
+    2) Медиана-3 убивает одиночные выбросы (median(18,35,19)=19), монотонные
+       последовательности не трогает.
+    Возвращает {ok, fixed}."""
+    week = (week or "").strip()
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        rows = conn.execute(
+            "SELECT id, frame FROM valor_members WHERE snapshot_id = ? ORDER BY id",
+            (snap["id"],)).fetchall()
+        n = len(rows)
+        frames = [r["frame"] for r in rows]
+        if not any(isinstance(f, int) for f in frames):
+            return {"ok": True, "fixed": 0}   # кадров вообще нет
+
+        # 1) Заполнить null интерполяцией между ближайшими известными.
+        filled = list(frames)
+        for i in range(n):
+            if isinstance(filled[i], int):
+                continue
+            prev = next((j for j in range(i - 1, -1, -1)
+                         if isinstance(filled[j], int)), None)
+            nxt = next((j for j in range(i + 1, n)
+                        if isinstance(filled[j], int)), None)
+            if prev is not None and nxt is not None:
+                filled[i] = round(frames[prev] + (frames[nxt] - frames[prev])
+                                  * (i - prev) / (nxt - prev))
+            elif prev is not None:
+                filled[i] = frames[prev]
+            elif nxt is not None:
+                filled[i] = frames[nxt]
+
+        # 2) Медиана-3 — убирает одиночные выбросы, монотонность сохраняет.
+        smooth = list(filled)
+        for i in range(1, n - 1):
+            trio = [filled[i - 1], filled[i], filled[i + 1]]
+            smooth[i] = sorted(trio)[1]
+
+        fixed = 0
+        for r, old, new in zip(rows, frames, smooth):
+            if isinstance(new, int) and new != old:
+                conn.execute("UPDATE valor_members SET frame = ? WHERE id = ?",
+                             (int(new), r["id"]))
+                fixed += 1
+    return {"ok": True, "fixed": fixed}
+
+
 def valor_save_snapshot(
     *,
     week: str,

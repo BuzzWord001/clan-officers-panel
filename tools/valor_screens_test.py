@@ -285,6 +285,24 @@ check("правка меты обновила actual_members (200→198)",
 check("правка меты несущ. недели → no_snapshot",
       db.valor_update_snapshot_meta("2026-W99", {"actual_members": 1}).get("reason") == "no_snapshot")
 
+# ── 17) Сглаживание выбросов кадров (median-3 + интерполяция null) ──
+db.valor_save_snapshot(week="2026-W60", valor_norm=14, members=[
+    {**mk("Fa", 90), "frame": 5},
+    {**mk("Fb", 80), "frame": 5},
+    {**mk("Fc", 70), "frame": 35},   # выброс — соседи 5 и 6
+    {**mk("Fd", 60), "frame": 6},
+    {**mk("Fe", 50)},                # null → интерполяция
+    {**mk("Ff", 40), "frame": 7},
+])
+db.valor_smooth_frames("2026-W60")
+fr = {m["nick"]: m["frame"] for m in db.valor_compare_data("2026-W60")["members"]}
+check("выброс кадра сглажен (Fc: 35→6 по медиане)", fr["Fc"] == 6)
+check("пустой кадр заполнен интерполяцией (Fe в 6..7)",
+      isinstance(fr["Fe"], int) and 6 <= fr["Fe"] <= 7)
+check("монотонные кадры не тронуты (Fa=5, Fb=5)", fr["Fa"] == 5 and fr["Fb"] == 5)
+check("smooth несущ. недели → no_snapshot",
+      db.valor_smooth_frames("2026-W99").get("reason") == "no_snapshot")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)
