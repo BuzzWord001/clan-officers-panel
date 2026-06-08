@@ -26,12 +26,17 @@
     tr.classList.add("m-row-focus");
     if (!FOCUS_SCROLLED) {
       FOCUS_SCROLLED = true;
-      // rAF — чтобы скролл сработал после раскладки таблицы.
-      requestAnimationFrame(() => {
-        tr.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Докручиваем несколько раз: после первого скролла ниже подгружаются
+      // timeline/архив и сдвигают раскладку — повторные докрутки возвращают
+      // строку в центр, когда страница оседает.
+      const doScroll = () => tr.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(doScroll);
+      setTimeout(doScroll, 350);
+      setTimeout(() => {
+        doScroll();
         tr.classList.add("m-row-flash");
         setTimeout(() => tr.classList.remove("m-row-flash"), 1600);
-      });
+      }, 800);
     }
   }
 
