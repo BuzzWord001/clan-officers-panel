@@ -147,8 +147,22 @@ app.include_router(api_valor.router)
 _FRONTEND_DIR = os.environ.get("FRONTEND_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend"
 )
+class _RevalidateHTMLStatic(StaticFiles):
+    """StaticFiles, но HTML отдаёт с Cache-Control: no-cache — браузер всегда
+    ревалидирует страницу по ETag (дешёвый 304, если не менялась; свежая
+    версия, если менялась). Иначе браузеры эвристически кэшируют HTML без
+    Cache-Control и показывают устаревшее меню/разметку до ручного Ctrl+F5.
+    Версионные js/css (?v=) не трогаем — их кэш инвалидируется параметром."""
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        ct = resp.headers.get("content-type", "")
+        if ct.startswith("text/html"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 if os.path.isdir(_FRONTEND_DIR):
-    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+    app.mount("/", _RevalidateHTMLStatic(directory=_FRONTEND_DIR, html=True), name="frontend")
     log.info("Frontend static mounted from %s", _FRONTEND_DIR)
 else:
     log.warning("Frontend dir not found (%s) — статика не смонтирована", _FRONTEND_DIR)
