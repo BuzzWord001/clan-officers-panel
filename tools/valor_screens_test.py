@@ -247,6 +247,27 @@ w37e = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
 check("реальная смена ника снимает сомнение по нику",
       w37e.get("NewbieZ", {}).get("flag_new_nick") is False)
 
+# ── 15) Класс из истории: пустой/сомнительный класс берём из прошлого сбора ──
+db.valor_save_snapshot(week="2026-W40", valor_norm=14, members=[
+    {**mk("Magix", 50), "class_": "Маг"},     # класс известен в прошлом сборе
+    {**mk("Doubter", 48), "class_": "Маг"},
+])
+db.valor_save_snapshot(week="2026-W41", valor_norm=14, members=[
+    {**mk("Magix", 55)},                                              # класс пустой
+    {**mk("Doubter", 47), "class_": "Mar", "flag_ocr_suspect": True}, # сомнительный, история есть
+    {**mk("Warry", 40), "class_": "Воен", "flag_ocr_suspect": True},  # сомнительный, истории НЕТ
+])
+pre = {m["nick"]: m for m in db.valor_compare_data("2026-W41")["members"]}
+check("до заполнения: класс Magix пустой", (pre["Magix"]["class"] or "") == "")
+db.valor_fill_class_from_history("2026-W41")
+post = {m["nick"]: m for m in db.valor_compare_data("2026-W41")["members"]}
+check("пустой класс заполнен из прошлого сбора (Magix → Маг)",
+      post["Magix"]["class"] == "Маг")
+check("сомнительный класс взят из истории (Doubter Mar → Маг) + сомнение снято",
+      post["Doubter"]["class"] == "Маг" and post["Doubter"]["flag_ocr_suspect"] is False)
+check("нет истории класса → не трогаем, сомнение остаётся (Warry)",
+      post["Warry"]["flag_ocr_suspect"] is True and post["Warry"]["class"] == "Воен")
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

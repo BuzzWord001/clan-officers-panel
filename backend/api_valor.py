@@ -71,6 +71,14 @@ def valor_snapshot(payload: ValorSnapshotIn,
         screens_count=payload.screens_count,
         notes=payload.notes,
     )
+    # Класс не меняется — пустой/сомнительный класс заполняем из прошлых сборов
+    # и снимаем сомнение. Делается ПОСЛЕ коммита снапшота (отдельная транзакция).
+    try:
+        cf = db.valor_fill_class_from_history(payload.week)
+        res["class_filled"] = cf.get("filled", 0)
+        res["class_cleared"] = cf.get("cleared", 0)
+    except Exception as e:
+        log.warning("class fill from history failed: %s", e)
     log.info("valor snapshot saved: week=%s members=%d history_added=%d",
              payload.week, res["members"], res["history_added"])
     return res

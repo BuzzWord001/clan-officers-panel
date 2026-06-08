@@ -3784,6 +3784,55 @@ def _enrich_true_names_from_clan_members(members: list[dict]) -> int:
     return filled
 
 
+def _class_from_history(conn, canon: str, exclude_snapshot_id: int) -> str:
+    """Последний известный НЕпустой класс игрока из ДРУГИХ снимков. Класс в
+    игре не меняется → прошлое значение надёжно. '' если нигде не встречался."""
+    r = conn.execute(
+        "SELECT m.class_ FROM valor_members m "
+        "JOIN valor_snapshots s ON m.snapshot_id = s.id "
+        "WHERE m.nick_canon = ? AND m.snapshot_id != ? AND TRIM(m.class_) != '' "
+        "ORDER BY s.week DESC LIMIT 1",
+        (canon, exclude_snapshot_id)).fetchone()
+    return (r["class_"] if r else "") or ""
+
+
+def valor_fill_class_from_history(week: str) -> dict:
+    """Заполнить пустой/сомнительный класс из ранее известного класса игрока
+    (прежние сборы). Класс не меняется, поэтому прошлое значение надёжнее
+    текущего OCR. Снимаем flag_ocr_suspect, если класс взят/подтверждён
+    историей. Возвращает {ok, filled, cleared}."""
+    week = (week or "").strip()
+    filled = 0
+    cleared = 0
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        sid = snap["id"]
+        rows = conn.execute(
+            "SELECT id, nick_canon, class_, flag_ocr_suspect "
+            "FROM valor_members WHERE snapshot_id = ?", (sid,)).fetchall()
+        for r in rows:
+            cls = (r["class_"] or "").strip()
+            suspect = bool(r["flag_ocr_suspect"])
+            if cls and not suspect:
+                continue   # класс есть и сомнений нет — не трогаем
+            hist = _class_from_history(conn, r["nick_canon"], sid)
+            if not hist:
+                continue   # негде взять — оставляем как есть (сомнение остаётся)
+            sets, vals = [], []
+            if hist != cls:
+                sets.append("class_ = ?"); vals.append(hist); filled += 1
+            if suspect:
+                sets.append("flag_ocr_suspect = ?"); vals.append(0); cleared += 1
+            if sets:
+                conn.execute(
+                    f"UPDATE valor_members SET {', '.join(sets)} WHERE id = ?",
+                    (*vals, r["id"]))
+    return {"ok": True, "filled": filled, "cleared": cleared}
+
+
 def valor_save_snapshot(
     *,
     week: str,
