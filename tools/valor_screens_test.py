@@ -182,6 +182,28 @@ check("правка класса сняла flag_ocr_suspect", c32c["Suspekt2"][
 check("verify несуществующего → not_found",
       db.valor_verify_member(999999, ACTOR).get("reason") == "not_found")
 
+# ── 12) Ник в реестре → нет сомнения по нику (flag_new_nick подавлён) ──
+# Кейс ЮКО: ник пометился новым ДО внесения в реестр; теперь он в реестре,
+# написание авторитетно — сомнений быть не должно, даже если флаг «устарел».
+db.create_acceptance(game_nick="RegNew", title="", accepted_date="2026-06-01",
+                     note="", actor=ACTOR)
+db.valor_save_snapshot(week="2026-W33", valor_norm=14, members=[
+    {**mk("RegNew", 40), "flag_new_nick": True},   # стора флаг «новый», но в реестре
+])
+c33 = {m["nick"]: m for m in db.valor_compare_data("2026-W33")["members"]}
+check("ник в реестре → in_registry True", c33["RegNew"]["in_registry"] is True)
+check("ник в реестре → flag_new_nick подавлён (нет сомнения по нику)",
+      c33["RegNew"]["flag_new_nick"] is False)
+# И на странице Доблести: 🤖 (ai_nick) тоже подавлён для реестровых.
+with db.connection() as conn:
+    conn.execute(
+        "INSERT OR IGNORE INTO valor_first_seen "
+        "(nick_canon, first_nick, first_week, first_date, verified) VALUES (?,?,?,?,0)",
+        (db._valor_canon("RegNew"), "RegNew", "2026-W33", "2026-06-01"))
+rn = next((m for m in db.valor_get_current()["members"] if m["nick"] == "RegNew"), None)
+check("в реестре + first_seen verified=0 → ai_nick False (страница Доблести)",
+      rn is not None and rn["ai_nick"] is False)
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

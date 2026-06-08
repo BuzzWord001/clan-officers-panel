@@ -663,7 +663,11 @@ def valor_compare_data(week: str) -> dict:
         members = [{
             "id": r["id"], "nick": r["nick"], "nick_canon": r["nick_canon"],
             "in_registry": r["nick_canon"] in reg,
-            "flag_new_nick": bool(r["flag_new_nick"]),
+            # Если ник есть в реестре приёма — написание авторитетно (Лир
+            # копирует ник из игры), сомнений по нику быть не должно. Поэтому
+            # flag_new_nick подавляется для тех, кто уже в реестре (флаг мог
+            # «устареть»: ник пометился новым ДО добавления в реестр).
+            "flag_new_nick": bool(r["flag_new_nick"]) and (r["nick_canon"] not in reg),
             "flag_ocr_suspect": bool(r["flag_ocr_suspect"]),
             "true_name": r["true_name"], "rank": r["rank"], "title": r["title"],
             "level": r["level"], "class": r["class_"], "valor": r["valor"],
@@ -4606,6 +4610,15 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             r["nick_canon"] for r in conn.execute(
                 "SELECT nick_canon FROM valor_first_seen WHERE verified = 0")
         }
+        # Канон ников из реестра приёма (написание авторитетно — Лир копирует
+        # из игры). Кто в реестре — не помечаем «распознан ИИ» (нет сомнений).
+        ai_registered: set[str] = set()
+        for rr in conn.execute(
+                "SELECT DISTINCT game_nick FROM acceptances WHERE COALESCE(archived,0)=0"):
+            for piece in (rr["game_nick"] or "").split(","):
+                c = _valor_canon(piece)
+                if c:
+                    ai_registered.add(c)
         # Ручной кик (force_archived) — этих в основном списке не показываем.
         force_archived: set[str] = {
             r["nick_canon"] for r in conn.execute(
@@ -4687,7 +4700,7 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             ov = nick_override.get(cn)
             if ov:
                 m["nick"] = ov
-            m["ai_nick"] = (cn in ai_nick_canons) and not ov
+            m["ai_nick"] = (cn in ai_nick_canons) and not ov and (cn not in ai_registered)
             # Примечание из реестра (только если запрошено — т.е. не гость).
             if with_reg_notes:
                 m["reg_note"] = note_by_canon.get(cn, "")
