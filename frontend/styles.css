@@ -2870,6 +2870,10 @@ body.show-valor .valor-col { display: table-cell; }
 
 /* Админ-кнопки в строке управления сравнением */
 .cmp-admin-actions { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+/* hidden обязан прятать блок: display:inline-flex иначе перебивает атрибут и
+   кнопки (в т.ч. «Журнал правок») видны не-админам. Показывается только JS
+   (if IS_ADMIN → hidden=false). */
+.cmp-admin-actions[hidden] { display: none !important; }
 .cmp-add-btn { background: rgba(224,162,74,0.12); color: #9fe9b6; border: 1px solid rgba(224,162,74,0.4);
   border-radius: 7px; cursor: pointer; padding: 6px 11px; font-size: 12.5px; font-weight: 700; }
 .cmp-add-btn:hover { background: rgba(224,162,74,0.22); }
