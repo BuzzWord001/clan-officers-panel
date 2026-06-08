@@ -653,7 +653,11 @@ def valor_compare_data(week: str) -> dict:
             "SELECT id, nick, nick_canon, true_name, rank, title, level, "
             "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect, frame "
             "FROM valor_members WHERE snapshot_id = ? "
-            "ORDER BY COALESCE(valor, -1) DESC, nick", (snap["id"],)).fetchall()
+            # Порядок как на скринах: доблесть по убыванию, при равной доблести
+            # — по номеру кадра (раньше кадр = выше в игровом списке), затем ник.
+            # frame IS NULL → строки без кадра в конце группы равной доблести.
+            "ORDER BY COALESCE(valor, -1) DESC, frame IS NULL, frame ASC, nick",
+            (snap["id"],)).fetchall()
         members = [{
             "id": r["id"], "nick": r["nick"], "nick_canon": r["nick_canon"],
             "in_registry": r["nick_canon"] in reg,

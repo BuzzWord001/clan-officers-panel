@@ -19,24 +19,33 @@
   function applyFocus() {
     if (!FOCUS_CANON) return;
     const tb = $("valor-tbody");
-    const tr = [...tb.querySelectorAll("tr.m-row")]
-      .find(x => x.dataset.canon === FOCUS_CANON);
+    // ВАЖНО: каждый раз ищем строку ЗАНОВО — apply() вызывается несколько раз
+    // (после load() и loadMe()), и ре-рендер заменяет <tr>. Старая ссылка
+    // становится detached, и scrollIntoView по ней не работает.
+    const findRow = () =>
+      [...tb.querySelectorAll("tr.m-row")].find(x => x.dataset.canon === FOCUS_CANON);
+    const tr = findRow();
     if (!tr) return;
     tb.querySelectorAll(".m-row-focus").forEach(x => x.classList.remove("m-row-focus"));
     tr.classList.add("m-row-focus");
     if (!FOCUS_SCROLLED) {
       FOCUS_SCROLLED = true;
-      // Докручиваем несколько раз: после первого скролла ниже подгружаются
-      // timeline/архив и сдвигают раскладку — повторные докрутки возвращают
-      // строку в центр, когда страница оседает.
-      const doScroll = () => tr.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Докручиваем несколько раз (ниже подгружаются timeline/архив и сдвигают
+      // раскладку), КАЖДЫЙ раз беря живую строку по canon.
+      const doScroll = () => {
+        const r = findRow();
+        if (r) r.scrollIntoView({ behavior: "smooth", block: "center" });
+      };
       requestAnimationFrame(doScroll);
-      setTimeout(doScroll, 350);
+      setTimeout(doScroll, 400);
       setTimeout(() => {
-        doScroll();
-        tr.classList.add("m-row-flash");
-        setTimeout(() => tr.classList.remove("m-row-flash"), 1600);
-      }, 800);
+        const r = findRow();
+        if (r) {
+          r.scrollIntoView({ behavior: "smooth", block: "center" });
+          r.classList.add("m-row-focus", "m-row-flash");
+          setTimeout(() => r.classList.remove("m-row-flash"), 1600);
+        }
+      }, 900);
     }
   }
 

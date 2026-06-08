@@ -150,6 +150,19 @@ check("Sam не тронут бэкфиллом (=3)", fcmp2.get("Sam", {}).get(
 check("set_frames в несуществующую неделю → no_snapshot",
       db.valor_set_frames("2026-W99", []).get("reason") == "no_snapshot")
 
+# ── 10) Порядок compare: равная доблесть → ранний кадр выше (как на скринах) ──
+# Кейс Silhead/Silhair: ник по алфавиту дал бы обратный порядок, но кадр
+# (физическая позиция в списке) должен победить.
+db.valor_save_snapshot(week="2026-W31", valor_norm=14, members=[
+    {**mk("Alpha", 62), "frame": 1},   # алфавитно первый, но кадр 1 (ниже)
+    {**mk("Bravo", 62), "frame": 0},   # алфавитно второй, но кадр 0 (выше)
+    {**mk("Top", 90), "frame": 0},     # высшая доблесть — всегда первый
+])
+order = [m["nick"] for m in db.valor_compare_data("2026-W31")["members"]]
+check("высшая доблесть первой (Top)", order[0] == "Top")
+check("равная доблесть: ранний кадр выше, даже против алфавита (Bravo f0 > Alpha f1)",
+      order.index("Bravo") < order.index("Alpha"))
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)
