@@ -1755,9 +1755,14 @@
       const d = it.detail || {};
       let what = "";
       if (it.kind === "norm") {
-        what = `неделя ${esc(d.week || it.ref)}` +
-          (d.valor != null ? ` · набрано ${esc(d.valor)} из ${esc(d.norm)} (${esc(d.pct)}%)` : "") +
-          (d.grace ? " · после иммунитета" : "");
+        what = `неделя ${esc(d.week || it.ref)}`;
+        if (d.valor != null) what += ` · набрано ${esc(d.valor)} из ${esc(d.norm)} (${esc(d.pct)}%)`;
+        if (d.grace) {
+          what += ` · <span class="dh-grace">норматив снижен (иммунитет спал среди недели`;
+          if (d.full_norm != null && d.full_norm !== d.norm)
+            what += `: полный ${esc(d.full_norm)} → ${esc(d.norm)}`;
+          what += `)</span>`;
+        }
       } else if (it.kind === "title") {
         what = `цифра в титуле: ${esc(d.value != null ? d.value : it.ref)}` +
           (d.title ? ` (титул «${esc(d.title)}»)` : "");

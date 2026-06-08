@@ -3461,6 +3461,7 @@ body.guest-mode .warn-dismiss-btn { display: none !important; }
 .dh-dt { white-space: nowrap; color: #cdb892; }
 .dh-reason { color: #f3e8d2; max-width: 240px; }
 .dh-norsn { color: #8a7a5e; }
+.dh-grace { color: #ecc587; }
 .dh-empty { text-align: center; color: #cdb892; padding: 14px; }
 .dh-foot { margin-top: 12px; text-align: right; }
 /* Поповер добавления предупреждения */

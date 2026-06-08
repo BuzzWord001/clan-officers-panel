@@ -3593,13 +3593,16 @@ def valor_active_warnings() -> dict[str, list[dict]]:
                 continue  # иммунная неделя целиком — не оцениваем
             if r["is_afk"] or r["valor"] is None or r["norm_met"] is None:
                 continue
-            norm = r["norm"] or 1
+            full_norm = r["norm"] or 1        # полный норматив недели
+            norm = full_norm
             is_grace = bool(imm and imm["status"] == "grace")
+            factor = 1.0
             if is_grace:
                 # У grace-недели норматив СНИЖЕН пропорционально дням без
                 # иммунитета — поэтому и «жёсткость» (pct) считаем от сниженной
                 # нормы, а не от полной (иначе 4/6 выглядит как суровое 29%).
-                norm = max(1, round(norm * imm["effective_norm_factor"]))
+                factor = imm["effective_norm_factor"]
+                norm = max(1, round(full_norm * factor))
             if r["norm_met"]:
                 if active:
                     idx = min(range(len(active)),
@@ -3608,7 +3611,9 @@ def valor_active_warnings() -> dict[str, list[dict]]:
             else:
                 pct = round(min(r["valor"] / norm, 1.0) * 100, 1)
                 active.append({"week": r["week"], "valor": r["valor"],
-                               "norm": norm, "pct": pct, "grace": is_grace})
+                               "norm": norm, "full_norm": full_norm,
+                               "grace_factor": round(factor, 3),
+                               "pct": pct, "grace": is_grace})
         # Убираем недели, которые офицер «простил» (сняты вручную).
         dn = dismissed_norm.get(cn)
         if dn:
@@ -4425,8 +4430,11 @@ def valor_dismiss_warnings(canon: str, kind: str, actor: dict,
         for a in active:
             details[a["week"]] = {
                 "week": a["week"], "valor": a.get("valor"),
-                "norm": a.get("norm"), "pct": a.get("pct"),
-                "grace": bool(a.get("grace")),
+                "norm": a.get("norm"),                 # норматив (для grace — сниженный)
+                "full_norm": a.get("full_norm"),       # полный норматив недели
+                "grace_factor": a.get("grace_factor"), # доля (дней без иммунитета)
+                "pct": a.get("pct"),
+                "grace": bool(a.get("grace")),         # иммунитет спал среди недели
             }
     elif kind == "title":
         with connection() as conn:

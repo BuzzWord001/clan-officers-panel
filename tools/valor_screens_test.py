@@ -385,6 +385,22 @@ check("после undo-by-actor у «Тест» нет активных прав
 caf = next(m for m in db.valor_compare_data("2026-W80")["members"] if m["nick"] == "LogA")
 check("после отмены всех правок класс вернулся к Маг", caf["class"] == "Маг")
 
+# ── 21) В активных авто-предупреждениях есть full_norm/grace (для истории) ──
+awx = db.valor_active_warnings()
+anyw = next((ws[0] for ws in awx.values() if ws), None)
+if anyw:
+    check("активное предупреждение содержит full_norm/grace/grace_factor",
+          "full_norm" in anyw and "grace" in anyw and "grace_factor" in anyw)
+    # прощаем и проверяем, что детали несут эти поля
+    cnx = next(c for c, ws in awx.items() if ws)
+    db.valor_dismiss_warnings(cnx, "norm", ACTOR, reason="проверка деталей")
+    h = [x for x in db.valor_dismissed_history(cnx) if x["kind"] == "norm"]
+    check("детали прощения нормы содержат full_norm и grace",
+          h and "full_norm" in h[0]["detail"] and "grace" in h[0]["detail"])
+    db.valor_restore_warnings(cnx, ACTOR)
+else:
+    check("(нет авто-предупреждений — проверка full_norm пропущена)", True)
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)
