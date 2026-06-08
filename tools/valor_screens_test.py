@@ -218,6 +218,35 @@ am = next((m for m in db.valor_get_current()["members"]
            if m["nick_canon"] == acanon), None)
 check("Доблесть: ник из реестра (Ананасик`)", am and am["nick"] == "Ананасик`")
 
+# ── 14) Сомнение спадает ТОЛЬКО при правке нужного поля ──
+db.valor_save_snapshot(week="2026-W37", valor_norm=14, members=[
+    {**mk("KeepSusp", 25), "class_": "Маг", "flag_ocr_suspect": True},
+    {**mk("NewbieY", 20)},   # новичок → flag_new_nick=1, не в реестре
+])
+w37 = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
+ks_id = w37["KeepSusp"]["id"]
+ny_id = w37["NewbieY"]["id"]
+# Правим ДРУГОЕ поле (класс не меняется «Маг»→«Маг», меняем доблесть):
+db.valor_update_member(ks_id, {"class": "Маг", "valor": 30}, ACTOR)
+w37b = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
+check("правка другого поля (класс не менялся) НЕ снимает сомнение по классу",
+      w37b["KeepSusp"]["flag_ocr_suspect"] is True)
+# Реальная смена класса — снимает:
+db.valor_update_member(ks_id, {"class": "Воин"}, ACTOR)
+w37c = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
+check("реальная смена класса снимает сомнение по классу",
+      w37c["KeepSusp"]["flag_ocr_suspect"] is False)
+# Ник: правка другого поля (ник тот же) НЕ снимает сомнение по нику:
+db.valor_update_member(ny_id, {"nick": "NewbieY", "valor": 22}, ACTOR)
+w37d = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
+check("правка другого поля (ник тот же) НЕ снимает сомнение по нику",
+      w37d.get("NewbieY", {}).get("flag_new_nick") is True)
+# Реальная смена ника — снимает:
+db.valor_update_member(ny_id, {"nick": "NewbieZ"}, ACTOR)
+w37e = {m["nick"]: m for m in db.valor_compare_data("2026-W37")["members"]}
+check("реальная смена ника снимает сомнение по нику",
+      w37e.get("NewbieZ", {}).get("flag_new_nick") is False)
+
 print("\n=== ИТОГО:", "ВСЁ ОК" if ok else "ЕСТЬ ПРОВАЛЫ", "===")
 os.remove(os.environ["DB_PATH"])
 sys.exit(0 if ok else 1)

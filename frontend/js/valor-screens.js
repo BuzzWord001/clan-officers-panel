@@ -198,10 +198,12 @@
 
   // ── Подтвердить, что строка распознана верно (снять сомнение) ──
   async function verifyMember(id) {
+    const cur = (DATA.members || []).find(x => x.id === id);
+    const canon = cur && cur.nick_canon;
     try {
       await API.valorMemberVerify(id);
       toast("Отмечено как верное");
-      await loadWeek(openWeek, activeFolder());
+      await reloadKeepScroll(canon);
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
 
@@ -220,6 +222,33 @@
     selectRow(tr);
   }
 
+  // Перечитать данные недели и перерисовать ТОЛЬКО правую таблицу, СОХРАНИВ
+  // прокрутку (скрины не трогаем, чтобы не дёргалось). После правки/verify
+  // это держит пользователя на том же месте и подсвечивает строку.
+  async function reloadKeepScroll(focusCanon) {
+    const box = $("cmp-rows");
+    const prevTop = box ? box.scrollTop : 0;
+    try {
+      DATA = await API.valorCompare(openWeek);
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); return; }
+    const sn = DATA.snapshot || {};
+    $("cmp-meta").innerHTML = `<b>${esc(openWeek)}</b> · норма ${sn.valor_norm ?? "?"} · ` +
+      `${DATA.members.length} строк · ${DATA.screenshots.length} кадров`;
+    renderRows();                                   // выставит _i + полную таблицу
+    const q = ($("cmp-filter").value || "").trim();
+    if (q || $("cmp-suspect").checked) applyFilter(); // если фильтр активен
+    if (box) box.scrollTop = prevTop;               // вернуть позицию
+    if (focusCanon && box) {
+      const tr = [...box.querySelectorAll(".cmp-row")].find(x => x.dataset.canon === focusCanon);
+      if (tr) {
+        tr.classList.add("cmp-row-on");
+        const rt = tr.offsetTop, rb = rt + tr.offsetHeight;
+        if (rt < box.scrollTop || rb > box.scrollTop + box.clientHeight)
+          box.scrollTop = Math.max(0, rt - box.clientHeight / 2);
+      }
+    }
+  }
+
   // ── Удаление строки (админ): фантом OCR / дубль ──
   async function delMember(id, nick) {
     if (!confirm(`Удалить строку «${nick}» из недели ${openWeek}?\n` +
@@ -227,7 +256,7 @@
     try {
       await API.valorMemberDelete(id);
       toast("Удалено: " + nick);
-      await loadWeek(openWeek, activeFolder());
+      await reloadKeepScroll();   // строки больше нет — просто держим позицию
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
 
@@ -352,19 +381,14 @@
       });
       const msg = ov.querySelector("#ce-msg"); msg.textContent = "Сохранение…";
       try {
-        await API.valorMemberEdit(id, fields);
-        // обновим локальные данные и таблицу
-        Object.assign(m, {
-          nick: fields.nick, true_name: fields.true_name, rank: fields.rank,
-          title: fields.title, level: fields.level, class: fields.class,
-          valor: fields.valor, is_afk: fields.is_afk,
-        });
+        const res = await API.valorMemberEdit(id, fields);
         ov.hidden = true;
-        toast("Сохранено: " + m.nick);
-        // Перечитываем неделю: бэкенд мог снять флаги сомнений (правка класса
-        // → flag_ocr_suspect=0, правка ника → flag_new_nick=0), плюс ушла
-        // подсветка пустых доблести/уровня, если их вписали.
-        await loadWeek(openWeek, activeFolder());
+        toast("Сохранено: " + (fields.nick || m.nick));
+        // Перечитываем данные (бэкенд мог снять флаги сомнений у изменённого
+        // поля, переписать ник из реестра и т.п.), но БЕЗ прыжка вверх:
+        // сохраняем прокрутку и подсвечиваем отредактированную строку.
+        // canon мог мигрировать при смене ника — берём из ответа.
+        await reloadKeepScroll((res && res.nick_canon) || m.nick_canon);
       } catch (e) {
         msg.textContent = "Ошибка: " + (e.detail || e.message);
       }

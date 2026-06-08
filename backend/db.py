@@ -5083,9 +5083,12 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             sets.append("is_afk = ?")
             vals.append(1 if fields["is_afk"] else 0)
 
-        # Правка класса = человек проверил распознавание → снимаем «сомнение
-        # OCR» (flag_ocr_suspect сейчас означает автоправку класса).
-        if "class" in fields and fields["class"] is not None:
+        # Снимаем «сомнение OCR» (по классу) ТОЛЬКО если класс реально
+        # ИЗМЕНИЛИ — форма правки шлёт все поля сразу, поэтому проверяем
+        # фактическое изменение значения, а не само наличие поля. Правка
+        # другого поля не должна гасить сомнение по классу.
+        if ("class" in fields and fields["class"] is not None
+                and str(fields["class"]).strip() != (row["class_"] or "")):
             sets.append("flag_ocr_suspect = ?")
             vals.append(0)
 
@@ -5104,11 +5107,15 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             else:
                 conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
 
-        # Ник: правим отображаемый ник строки + флаг.
+        # Ник: правим отображаемый ник строки. Флаг «распознан ИИ» снимаем
+        # ТОЛЬКО если ник реально изменили (форма шлёт ник всегда; правка
+        # другого поля не должна гасить сомнение по нику).
         new_nick = fields.get("nick")
         nn = str(new_nick).strip() if (new_nick is not None) else ""
+        nick_changed = bool(nn) and nn != (row["nick"] or "")
         if nn:
             sets.append("nick = ?"); vals.append(nn)
+        if nick_changed:
             sets.append("flag_new_nick = ?"); vals.append(0)
 
         if sets:
@@ -5117,8 +5124,9 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
                 (*vals, member_id),
             )
         # Двусторонняя синхронизация ника: Доблесть ↔ Реестр (override +
-        # game_nick по canon, с миграцией canon если он сменился).
-        if nn:
+        # game_nick по canon, с миграцией canon если он сменился). Только при
+        # реальной смене ника.
+        if nick_changed:
             # member_id строки не меняется (мигрируется только nick_canon).
             _sync_nick_in_conn(conn, canon, nn, now, by)
         out_row = conn.execute(
