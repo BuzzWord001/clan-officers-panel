@@ -395,16 +395,45 @@
     };
   }
 
-  // ── Папки недель ──
+  // ── Папки недель (объединённый «Архив скринов доблести») ──
   try {
-    const weeks = await API.valorScreenshotWeeks();
+    // Все сборы (snapshots = master-список недель) + где есть скрины (кадры).
+    const [weeks, sessions] = await Promise.all([
+      API.valorScreenshotWeeks().catch(() => []),
+      API.valorSessions().catch(() => []),
+    ]);
     $("vs-loading").hidden = true;
-    if (!weeks.length) { $("vs-empty").hidden = false; return; }
-    $("vs-weeks").innerHTML = weeks.map(w =>
-      `<button class="vs-folder" data-week="${esc(w.week)}">
+    const shotsByWeek = {};
+    (weeks || []).forEach(w => { shotsByWeek[w.week] = w.count; });
+    // Список недель: все снимки (с метаданными); если их нет — fallback на
+    // недели со скринами.
+    let list = (sessions && sessions.length)
+      ? sessions.slice()
+      : (weeks || []).map(w => ({ week: w.week, screens_count: w.count }));
+    if (!list.length) { $("vs-empty").hidden = false; return; }
+    // сводка-журнал (как было в «Архиве доблести»)
+    const totalMembers = list.reduce((a, s) => a + (s.members_count || 0), 0);
+    $("vs-summary").innerHTML =
+      `<span>сборов: <b>${list.length}</b></span>` +
+      `<span>всего записей: <b>${totalMembers}</b></span>`;
+    $("vs-weeks").innerHTML = list.map(s => {
+      const shots = (shotsByWeek[s.week] != null) ? shotsByWeek[s.week] : (s.screens_count || 0);
+      const dt = (s.captured_at || "").replace("T", " ").slice(0, 16);
+      const meta = [
+        `${shots} кадр.`,
+        (s.members_count != null) ? `${s.members_count} уч.` : null,
+        (s.valor_norm != null) ? `норма ${s.valor_norm}` : null,
+      ].filter(Boolean).join(" · ");
+      return `<button class="vs-folder" data-week="${esc(s.week)}">
          <span class="vs-folder-ic">📁</span>
-         <span class="vs-folder-w">${esc(w.week)}</span>
-         <span class="vs-folder-c">${w.count} кадр.</span></button>`).join("");
+         <span class="vs-folder-txt">
+           <span class="vs-folder-w">${esc(s.week)}</span>
+           <span class="vs-folder-c">${esc(meta)}</span>
+           ${dt ? `<span class="vs-folder-d">собрано ${esc(dt)} UTC</span>` : ""}
+           ${s.notes ? `<span class="vs-folder-n" title="${esc(s.notes)}">✎ ${esc(s.notes)}</span>` : ""}
+         </span>
+       </button>`;
+    }).join("");
     $("vs-weeks").querySelectorAll(".vs-folder").forEach(el =>
       el.addEventListener("click", () => loadWeek(el.dataset.week, el)));
     $("cmp-filter").addEventListener("input", applyFilter);

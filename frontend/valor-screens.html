@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
-  <title>SanTDeviL — Скрины сбора</title>
-  <link rel="stylesheet" href="styles.css?v=1788000000">
+  <title>SanTDeviL — Архив скринов доблести</title>
+  <link rel="stylesheet" href="styles.css?v=1788100000">
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
@@ -29,7 +29,7 @@
 
     <section class="title-block">
       <div class="glitch">S a n T D e v i L</div>
-      <div class="subtitle">Скрины сбора доблести</div>
+      <div class="subtitle">Архив скринов доблести</div>
     </section>
 
     <main>
@@ -54,8 +54,7 @@
           <span class="tabs-group-label">клан</span>
           <div class="tabs-group-links">
             <a href="clan-valor.html">Доблесть</a>
-            <a href="clan-archive.html">Архив доблести</a>
-            <a href="valor-screens.html" class="active">Скрины сбора</a>
+            <a href="valor-screens.html" class="active">Архив скринов доблести</a>
           </div>
         </div>
         <div class="tabs-sep admin-only" aria-hidden="true"></div>
@@ -68,16 +67,17 @@
       </div>
 
       <div class="panel">
-        <h2>Скрины сбора ↔ распознанные данные</h2>
+        <h2>Архив сборов доблести — недели, скрины и проверка</h2>
         <p class="hint" style="margin-bottom:10px">
-          Слева — скриншоты сбора (по убыванию доблести), справа — как база
-          распознала и внесла данные. <b>Одиночный клик по нику</b> — подсветить
-          кадр слева, с которого он распознан; <b>двойной клик по нику</b> —
-          перейти к этому игроку в таблице «Доблесть». Оба списка по доблести,
-          поэтому идут рядом. Значения можно копировать кликом; админ правит (✎)
-          там, где распознано неверно.
+          Все недельные сборы доблести. Выбери неделю (дата · участники ·
+          норматив · кадры) — откроются <b>скриншоты сбора</b> слева и
+          <b>распознанные данные</b> справа. <b>Одиночный клик по нику</b> —
+          подсветить кадр, с которого он распознан; <b>двойной клик</b> — перейти
+          к игроку в таблице «Доблесть». Значения копируются кликом; админ правит
+          (✎) там, где распознано неверно.
         </p>
         <div id="vs-loading" class="chat-loading">Загрузка…</div>
+        <div id="vs-summary" class="members-stats" style="margin:2px 0 10px"></div>
         <div id="vs-weeks" class="vs-weeks"></div>
         <div id="vs-empty" class="empty" hidden>Скринов пока нет — появятся после следующего сбора.</div>
 
@@ -122,6 +122,6 @@
   <script src="config.js?v=1786000000"></script>
   <script src="js/matrix.js?v=1780000000"></script>
   <script src="js/api.js?v=1787000000"></script>
-  <script src="js/valor-screens.js?v=1787100000"></script>
+  <script src="js/valor-screens.js?v=1788100000"></script>
 </body>
 </html>
