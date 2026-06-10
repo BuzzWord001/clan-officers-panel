@@ -3001,6 +3001,20 @@ body.show-valor .valor-col { display: table-cell; }
 #valor-table tr.row-afk td:nth-child(1),
 #valor-table tr.row-afk td:nth-child(2)   { background: #0d0a05; }
 
+/* Подсветка выбранного/сфокусированного игрока должна доходить и до sticky-
+   столбцов «#» и «Ник» — иначе их сплошной #000-фон перекрывает янтарь строки
+   (баг: вся строка жёлтая, кроме колонки «Ник»). Фон непрозрачный — sticky
+   столбцы обязаны быть непрозрачными, чтобы под ними не просвечивал контент
+   при горизонтальном скролле. #342d17 ≈ rgba(255,210,74,0.16) поверх тёмного. */
+#valor-table tr.m-row.m-row-focus td:nth-child(1),
+#valor-table tr.m-row.m-row-focus td:nth-child(2) { background: #342d17 !important; }
+#valor-table tr.m-row.m-row-flash td:nth-child(1),
+#valor-table tr.m-row.m-row-flash td:nth-child(2) { animation: mRowFlashSticky 1.6s ease-out; }
+@keyframes mRowFlashSticky {
+  0%, 30% { background: #7a6628 !important; }
+  100%    { background: #342d17 !important; }
+}
+
 /* ── Modal совмещённой статистики (Доблесть + Чаты + Соцсети + Ветеран) ── */
 .combined-overlay {
   position: fixed; inset: 0;

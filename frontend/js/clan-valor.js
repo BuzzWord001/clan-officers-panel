@@ -1816,6 +1816,21 @@
     location.href = "valor-screens.html?focus=" + encodeURIComponent(tr.dataset.canon);
   });
 
+  // Одинарный клик по строке игрока → подсветить её (выделение). Доступно всем:
+  // помогает не потерять строку глазами в длинной таблице. Повторный клик по той
+  // же строке снимает выделение. Не мешаем кнопкам/ссылкам/инпутам/чипам/иконкам.
+  $("valor-tbody").addEventListener("click", (ev) => {
+    if (ev.target.closest(
+      "button, input, a, .tag-chip, .ach-btn, .dhist-btn, .tag-add-btn")) return;
+    const tr = ev.target.closest("tr.m-row");
+    if (!tr) return;
+    const tb = $("valor-tbody");
+    const already = tr.classList.contains("m-row-focus");
+    tb.querySelectorAll(".m-row-focus").forEach(
+      x => x.classList.remove("m-row-focus", "m-row-flash"));
+    if (!already) tr.classList.add("m-row-focus");
+  });
+
   $("valor-filter").addEventListener("input", () => {
     // Сбрасываем горизонтальную прокрутку влево, чтобы при поиске колонка
     // «Имя» не оставалась спрятанной под sticky-колонкой «Ник».
