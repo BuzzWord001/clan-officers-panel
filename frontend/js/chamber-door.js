@@ -120,9 +120,19 @@
   var CSS =
   /* НИЖЕ верхних надписей (top:66) и ЛЕВЕЕ края (right:34) */
   '.cos-door{position:fixed;top:66px;right:34px;width:60px;height:90px;z-index:1100;' +
-    'cursor:pointer;border:0;background:none;padding:0;' +
+    'cursor:pointer;border:0;background:transparent;box-shadow:none;outline:none;padding:0;' +
     'filter:drop-shadow(0 5px 12px rgba(0,0,0,.6));transition:transform .25s ease;' +
     '-webkit-tap-highlight-color:transparent}' +
+  /* гасим глобальную зелёную подсветку кнопок сайта (styles.css button:hover) */
+  '.cos-door:hover,.cos-door:focus,.cos-door:focus-visible,.cos-door:active{' +
+    'background:transparent!important;box-shadow:none!important;outline:none!important}' +
+  /* красивый тёплый свет, льющийся из-за двери при наведении (мягкий овал, не рамка) */
+  '.cos-door::before{content:"";position:absolute;left:50%;top:54%;width:170%;height:128%;' +
+    'transform:translate(-50%,-50%) scale(.55);border-radius:50%;pointer-events:none;z-index:-1;' +
+    'background:radial-gradient(ellipse at center,rgba(255,216,142,.62),' +
+    'rgba(245,182,92,.3) 44%,rgba(245,182,92,0) 72%);filter:blur(7px);' +
+    'opacity:0;transition:opacity .45s ease,transform .45s ease}' +
+  '.cos-door:hover::before{opacity:1;transform:translate(-50%,-50%) scale(1.05)}' +
   '.cos-door:hover{transform:scale(1.07) translateY(-1px)}' +
   '.cos-door:active{transform:scale(.97)}' +
   '.cos-door svg{width:100%;height:100%;display:block;overflow:visible;' +
