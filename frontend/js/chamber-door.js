@@ -118,8 +118,10 @@
 
   // ── Стили ────────────────────────────────────────────────────────────
   var CSS =
-  /* НИЖЕ верхних надписей (top:66) и ЛЕВЕЕ края (right:34) */
-  '.cos-door{position:fixed;top:66px;right:34px;width:60px;height:90px;z-index:1100;' +
+  /* ВВЕРХУ страницы рядом с кнопками (top:66, right:34). position:absolute —
+     дверь закреплена у верха СТРАНИЦЫ и уезжает вместе со скроллом (как
+     кнопки Выйти), а не висит постоянно на экране (это был бы fixed). */
+  '.cos-door{position:absolute;top:66px;right:34px;width:60px;height:90px;z-index:1100;' +
     'cursor:pointer;border:0;background:transparent;box-shadow:none;outline:none;padding:0;' +
     'filter:drop-shadow(0 5px 12px rgba(0,0,0,.6));transition:transform .25s ease;' +
     '-webkit-tap-highlight-color:transparent}' +
@@ -148,7 +150,7 @@
   '@keyframes cosSeam{0%,100%{opacity:.5}50%{opacity:1}}' +
   '@keyframes cosSpark{0%,100%{opacity:0;transform:scale(.4)}' +
     '8%{opacity:1;transform:scale(1)}22%{opacity:0;transform:scale(.4)}}' +
-  '.cos-label{position:fixed;top:160px;right:24px;z-index:1100;pointer-events:none;' +
+  '.cos-label{position:absolute;top:160px;right:24px;z-index:1100;pointer-events:none;' +
     'font:600 11px/1 system-ui,sans-serif;letter-spacing:.05em;color:#f3e4c2;' +
     'background:rgba(28,18,8,.88);border:1px solid rgba(224,162,74,.45);' +
     'padding:5px 9px;border-radius:7px;opacity:0;transform:translateY(-4px);' +
