@@ -18,7 +18,12 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  height: 100%;
+  /* min-height (а НЕ height:100%): body должен РАСТИ с контентом, иначе он
+     высотой в один экран — и при прокрутке (а) фикс-фон market.jpg покрывает
+     только первый экран, дальше тёмный фон; (б) скролл уходит внутрь body и
+     ломает position:fixed (дверь). С min-height body высокий → фон покрывает
+     всё, страница скроллится на окне, fixed приклеен. */
+  min-height: 100vh;
   background: var(--bg);
   color: var(--text);
   font-family: "Cascadia Code", "Consolas", "Courier New", monospace,
@@ -95,7 +100,7 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
 .shell {
   position: relative;
   z-index: 2;
-  min-height: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding-left: var(--content-shift, 0px);
