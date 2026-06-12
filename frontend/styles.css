@@ -28,13 +28,13 @@ html, body {
      Chrome/Edge/Firefox (символы типа ❤️/⭐ иначе могут рисоваться
      чёрно-белым text-presentation на Linux/старых системах). */
   font-variant-emoji: emoji;
-  overflow-x: hidden;
+  /* clip (а НЕ hidden) для html И body: overflow-x:hidden форсит
+     overflow-y:auto → html/body становятся scroll-контейнерами, и
+     position:fixed (дверь Тайной комнаты) уезжает при прокрутке в
+     Chrome/Safari. clip клипает горизонталь, совместим с overflow-y:visible
+     и НЕ создаёт контейнер → прокрутка обычная (на окне), fixed приклеен. */
+  overflow-x: clip;
 }
-/* html НЕ должен быть scroll-контейнером: overflow-x:hidden на корне делает
-   его таковым, и position:fixed (дверь Тайной комнаты) уезжает при прокрутке
-   в Chrome/Safari. overflow-x:clip клипает горизонталь, НЕ создавая контейнер,
-   → fixed держится. body оставляем с hidden как защиту от гориз. прокрутки. */
-html { overflow-x: clip; }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-shadow: 0 0 6px var(--accent); }
