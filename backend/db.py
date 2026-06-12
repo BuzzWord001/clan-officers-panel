@@ -604,6 +604,56 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-06-12: «Тайная комната» → «Курсы волшебства» — трекер обучения
+    # (admin-only). Список курсов сидируется из chamber_courses.json (порт
+    # десктопного Learning Tracker). magic_courses держит метаданные курса
+    # (+ поля под будущий VK-трекинг), magic_progress — прогресс просмотра,
+    # magic_daily — посуточный журнал для расчёта темпа, magic_settings —
+    # дневная норма и дата старта.
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS magic_courses (
+                id           TEXT PRIMARY KEY,
+                phase_id     INTEGER NOT NULL DEFAULT 0,
+                phase_name   TEXT NOT NULL DEFAULT '',
+                category     TEXT NOT NULL DEFAULT '',
+                name         TEXT NOT NULL DEFAULT '',
+                type         TEXT NOT NULL DEFAULT 'must',
+                alt_for      TEXT,
+                hours        REAL NOT NULL DEFAULT 0,
+                why          TEXT NOT NULL DEFAULT '',
+                sort         INTEGER NOT NULL DEFAULT 0,
+                vk_owner_id  INTEGER,
+                vk_video_id  INTEGER,
+                duration_sec INTEGER
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS magic_progress (
+                course_id   TEXT PRIMARY KEY,
+                watched_sec INTEGER NOT NULL DEFAULT 0,
+                completed   INTEGER NOT NULL DEFAULT 0,
+                updated_at  TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS magic_daily (
+                day         TEXT PRIMARY KEY,
+                watched_sec INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS magic_settings (
+                id             INTEGER PRIMARY KEY CHECK (id = 1),
+                daily_target_h REAL NOT NULL DEFAULT 4,
+                start_date     TEXT
+            )
+        """)
+        conn.execute("INSERT OR IGNORE INTO magic_settings (id, daily_target_h) "
+                     "VALUES (1, 4)")
+    except sqlite3.OperationalError:
+        pass
+
 
 def init_db() -> None:
     db_path = Path(settings.db_path)
@@ -611,6 +661,7 @@ def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
+        magic_seed_courses(conn)
 
 
 @contextmanager
@@ -6081,3 +6132,257 @@ def valor_timeline(weeks: int = 12) -> dict[str, Any]:
             "series":  series,
             "overall": overall,
         }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# «Тайная комната» → «Курсы волшебства» (трекер обучения, admin-only)
+# Порт десктопного Learning Tracker: курсы с плановыми часами, прогресс
+# просмотра, дневная норма, расчёт темпа и прогноза завершения.
+# ════════════════════════════════════════════════════════════════════════
+
+from datetime import timezone as _timezone
+
+_MSK_TZ = _timezone(timedelta(hours=3))
+_CHAMBER_SEED = Path(__file__).parent / "chamber_courses.json"
+
+
+def _msk_today() -> date:
+    return datetime.now(_MSK_TZ).date()
+
+
+def magic_seed_courses(conn: sqlite3.Connection | None = None) -> int:
+    """Сидирование/обновление метаданных курсов из chamber_courses.json.
+    Прогресс (magic_progress) НЕ трогается — апсертим только метаданные."""
+    if not _CHAMBER_SEED.exists():
+        return 0
+    try:
+        seed = json.loads(_CHAMBER_SEED.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+
+    def _do(c):
+        n = 0
+        for course in seed:
+            c.execute(
+                """INSERT INTO magic_courses
+                   (id, phase_id, phase_name, category, name, type, alt_for,
+                    hours, why, sort)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     phase_id=excluded.phase_id, phase_name=excluded.phase_name,
+                     category=excluded.category, name=excluded.name,
+                     type=excluded.type, alt_for=excluded.alt_for,
+                     hours=excluded.hours, why=excluded.why, sort=excluded.sort""",
+                (course["id"], course.get("phase_id", 0),
+                 course.get("phase_name", ""), course.get("category", ""),
+                 course.get("name", ""), course.get("type", "must"),
+                 course.get("alt_for"), float(course.get("hours") or 0),
+                 course.get("why", ""), course.get("sort", 0)),
+            )
+            n += 1
+        return n
+
+    if conn is not None:
+        return _do(conn)
+    with connection() as c:
+        return _do(c)
+
+
+def _magic_dur_h(row) -> float:
+    """Длительность курса в часах: реальная (duration_sec) или плановая (hours)."""
+    dsec = row["duration_sec"] if "duration_sec" in row.keys() else None
+    if dsec:
+        return dsec / 3600.0
+    return float(row["hours"] or 0)
+
+
+def magic_get_state() -> dict[str, Any]:
+    """Полное состояние трекера: курсы + прогресс + посуточный журнал +
+    настройки + расчётная статистика (часы/дни/темп/прогноз)."""
+    with connection() as conn:
+        courses = conn.execute(
+            "SELECT * FROM magic_courses ORDER BY sort, id").fetchall()
+        prog = {r["course_id"]: r for r in conn.execute(
+            "SELECT * FROM magic_progress").fetchall()}
+        st = conn.execute("SELECT * FROM magic_settings WHERE id=1").fetchone()
+        daily = conn.execute(
+            "SELECT day, watched_sec FROM magic_daily ORDER BY day").fetchall()
+
+    daily_target = float(st["daily_target_h"]) if st else 4.0
+    start_date_set = st["start_date"] if st else None
+
+    out_courses = []
+    phases: dict[int, dict] = {}
+    total_h = done_h = 0.0
+    done_courses = 0
+    for row in courses:
+        dur_h = _magic_dur_h(row)
+        p = prog.get(row["id"])
+        watched_sec = p["watched_sec"] if p else 0
+        completed = bool(p["completed"]) if p else False
+        watched_h = dur_h if completed else min(watched_sec / 3600.0, dur_h)
+        pct = (watched_h / dur_h * 100.0) if dur_h else (100.0 if completed else 0.0)
+        is_done = completed or (dur_h and watched_h >= dur_h * 0.99)
+        total_h += dur_h
+        done_h += watched_h
+        if is_done:
+            done_courses += 1
+
+        out_courses.append({
+            "id": row["id"], "phase_id": row["phase_id"],
+            "phase_name": row["phase_name"], "category": row["category"],
+            "name": row["name"], "type": row["type"], "alt_for": row["alt_for"],
+            "hours": float(row["hours"] or 0), "why": row["why"],
+            "duration_sec": row["duration_sec"] if "duration_sec" in row.keys() else None,
+            "vk_owner_id": row["vk_owner_id"] if "vk_owner_id" in row.keys() else None,
+            "vk_video_id": row["vk_video_id"] if "vk_video_id" in row.keys() else None,
+            "watched_sec": watched_sec, "completed": completed,
+            "watched_h": round(watched_h, 3), "dur_h": round(dur_h, 3),
+            "pct": round(pct, 1), "done": is_done,
+        })
+        ph = phases.setdefault(row["phase_id"], {
+            "id": row["phase_id"], "name": row["phase_name"],
+            "total_h": 0.0, "done_h": 0.0, "total": 0, "done": 0})
+        ph["total_h"] += dur_h
+        ph["done_h"] += watched_h
+        ph["total"] += 1
+        ph["done"] += 1 if is_done else 0
+
+    for ph in phases.values():
+        ph["pct"] = round(ph["done_h"] / ph["total_h"] * 100.0, 1) if ph["total_h"] else 0.0
+        ph["total_h"] = round(ph["total_h"], 1)
+        ph["done_h"] = round(ph["done_h"], 1)
+
+    # ── Расчёты темпа и прогноза ──
+    today = _msk_today()
+    days = [{"day": r["day"], "watched_h": round(r["watched_sec"] / 3600.0, 2)}
+            for r in daily]
+    if start_date_set:
+        try:
+            start = date.fromisoformat(start_date_set)
+        except ValueError:
+            start = date.fromisoformat(daily[0]["day"]) if daily else today
+    elif daily:
+        start = date.fromisoformat(daily[0]["day"])
+    else:
+        start = today
+    days_elapsed = max(1, (today - start).days + 1)
+
+    remaining_h = max(0.0, total_h - done_h)
+    pct = (done_h / total_h * 100.0) if total_h else 0.0
+    actual_pace = done_h / days_elapsed  # ч/день в среднем с начала
+    today_watched_h = next(
+        (d["watched_h"] for d in days if d["day"] == today.isoformat()), 0.0)
+
+    days_left_plan = math.ceil(remaining_h / daily_target) if daily_target > 0 else None
+    finish_plan = (today + timedelta(days=days_left_plan)).isoformat() \
+        if days_left_plan is not None else None
+    if actual_pace > 0.01 and remaining_h > 0:
+        days_left_actual = math.ceil(remaining_h / actual_pace)
+        finish_actual = (today + timedelta(days=days_left_actual)).isoformat()
+    elif remaining_h <= 0:
+        days_left_actual, finish_actual = 0, today.isoformat()
+    else:
+        days_left_actual, finish_actual = None, None
+    ahead_days = (days_left_plan - days_left_actual) \
+        if (days_left_plan is not None and days_left_actual is not None) else None
+
+    stats = {
+        "total_h": round(total_h, 1), "done_h": round(done_h, 1),
+        "remaining_h": round(remaining_h, 1), "pct": round(pct, 1),
+        "total_courses": len(out_courses), "done_courses": done_courses,
+        "daily_target_h": round(daily_target, 2),
+        "today": today.isoformat(), "start_date": start.isoformat(),
+        "days_elapsed": days_elapsed,
+        "actual_pace_h": round(actual_pace, 2),
+        "today_watched_h": round(today_watched_h, 2),
+        "on_track": actual_pace >= daily_target,
+        "days_left_plan": days_left_plan, "finish_plan": finish_plan,
+        "days_left_actual": days_left_actual, "finish_actual": finish_actual,
+        "ahead_days": ahead_days,
+        # перевод часов в дни/месяцы как в Learning Tracker (4ч/день, 80ч/мес)
+        "done_days": round(done_h / 4.0, 1), "total_days": round(total_h / 4.0, 1),
+        "done_months": round(done_h / 80.0, 2), "total_months": round(total_h / 80.0, 2),
+    }
+
+    return {
+        "courses": out_courses,
+        "phases": sorted(phases.values(), key=lambda p: p["id"]),
+        "settings": {"daily_target_h": round(daily_target, 2),
+                     "start_date": start.isoformat()},
+        "stats": stats,
+        "daily": days[-60:],
+    }
+
+
+def _magic_bump_daily(conn: sqlite3.Connection, delta_sec: int) -> None:
+    if delta_sec <= 0:
+        return
+    day = _msk_today().isoformat()
+    conn.execute(
+        """INSERT INTO magic_daily (day, watched_sec) VALUES (?, ?)
+           ON CONFLICT(day) DO UPDATE SET watched_sec = watched_sec + ?""",
+        (day, delta_sec, delta_sec))
+
+
+def magic_set_progress(course_id: str, *, watched_sec: int | None = None,
+                       completed: bool | None = None) -> None:
+    """Установить абсолютный прогресс курса. Прирост watched_sec идёт в
+    посуточный журнал для расчёта темпа."""
+    now = datetime.now(_MSK_TZ).isoformat(timespec="seconds")
+    with connection() as conn:
+        cur = conn.execute(
+            "SELECT watched_sec, completed FROM magic_progress WHERE course_id=?",
+            (course_id,)).fetchone()
+        old_w = cur["watched_sec"] if cur else 0
+        old_c = bool(cur["completed"]) if cur else False
+        new_w = old_w if watched_sec is None else max(0, int(watched_sec))
+        new_c = old_c if completed is None else bool(completed)
+        conn.execute(
+            """INSERT INTO magic_progress (course_id, watched_sec, completed, updated_at)
+               VALUES (?,?,?,?)
+               ON CONFLICT(course_id) DO UPDATE SET
+                 watched_sec=excluded.watched_sec, completed=excluded.completed,
+                 updated_at=excluded.updated_at""",
+            (course_id, new_w, 1 if new_c else 0, now))
+        if new_w > old_w:
+            _magic_bump_daily(conn, new_w - old_w)
+
+
+def magic_add_watch(course_id: str, delta_sec: int) -> None:
+    """Инкремент просмотренного времени (для heartbeat встроенного плеера VK)."""
+    delta_sec = int(delta_sec)
+    if delta_sec <= 0:
+        return
+    now = datetime.now(_MSK_TZ).isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO magic_progress (course_id, watched_sec, completed, updated_at)
+               VALUES (?,?,0,?)
+               ON CONFLICT(course_id) DO UPDATE SET
+                 watched_sec = watched_sec + ?, updated_at = excluded.updated_at""",
+            (course_id, delta_sec, now, delta_sec))
+        _magic_bump_daily(conn, delta_sec)
+
+
+def magic_set_settings(*, daily_target_h: float | None = None,
+                       start_date: str | None = None) -> None:
+    with connection() as conn:
+        if daily_target_h is not None:
+            conn.execute("UPDATE magic_settings SET daily_target_h=? WHERE id=1",
+                         (max(0.1, float(daily_target_h)),))
+        if start_date is not None:
+            sd = start_date or None
+            if sd:
+                date.fromisoformat(sd)  # валидация
+            conn.execute("UPDATE magic_settings SET start_date=? WHERE id=1", (sd,))
+
+
+def magic_reset(course_id: str | None = None) -> None:
+    """Сбросить прогресс одного курса или всего (course_id=None)."""
+    with connection() as conn:
+        if course_id:
+            conn.execute("DELETE FROM magic_progress WHERE course_id=?", (course_id,))
+        else:
+            conn.execute("DELETE FROM magic_progress")
+            conn.execute("DELETE FROM magic_daily")

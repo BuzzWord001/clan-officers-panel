@@ -207,5 +207,15 @@
       if (field) qs += "&field=" + encodeURIComponent(field);
       return request("GET", "/valor/history?" + qs);
     },
+
+    // ── Тайная комната → Курсы волшебства (admin) ──
+    chamberCourses:  () => request("GET",  "/chamber/courses"),
+    chamberProgress: (course_id, p) => request("POST", "/chamber/progress",
+                       Object.assign({ course_id }, p)),
+    chamberWatch:    (course_id, delta_sec) => request("POST", "/chamber/watch",
+                       { course_id, delta_sec }),
+    chamberSettings: (s) => request("PUT", "/chamber/settings", s),
+    chamberReset:    (course_id) => request("POST", "/chamber/reset",
+                       { course_id: course_id || null }),
   };
 })();

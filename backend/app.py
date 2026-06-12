@@ -133,6 +133,8 @@ app.include_router(api_admin_logs.telemetry_router)
 app.include_router(api_chat.router)
 import api_valor
 app.include_router(api_valor.router)
+import api_chamber
+app.include_router(api_chamber.router)
 
 
 # --- Frontend (single-origin) --------------------------------------------
