@@ -1,6 +1,7 @@
-/* Тайная комната — дверь в правом верхнем углу.
+/* Тайная комната — дверь Выручай-комнаты в правом верхнем углу.
  *
- * Видна ВСЕМ ролям (гость/офицер/админ). Клик:
+ * Видна ВСЕМ ролям (гость/офицер/админ), посажена НИЖЕ верхних надписей и
+ * чуть левее правого края, чтобы их не перекрывать. Клик:
  *   admin  → переход в раздел «Курсы волшебства» (magic-courses.html)
  *   иначе  → мистическая всплывашка «Вход только для администрации».
  *
@@ -13,155 +14,175 @@
   window.__cosDoorInit = true;
 
   var TARGET = "magic-courses.html";
-  var N_SNAKES = 8;
 
-  // ── SVG двери (оригинальная графика, без копирайта) ──────────────────
-  function snakeBolts() {
-    var g = "";
-    for (var i = 0; i < N_SNAKES; i++) {
-      var ang = (360 / N_SNAKES) * i;
-      // змея-засов: S-образное тело от обода к центру + голова у центра
-      g += '<g transform="rotate(' + ang + ' 50 50)">' +
-        '<path class="cos-snake" d="M50 12 C46 22 56 28 50 38 C45 46 53 50 50 50" ' +
-        'fill="none" stroke="url(#cosBrass)" stroke-width="4.6" ' +
-        'stroke-linecap="round"/>' +
-        '<path d="M50 12 C46 22 56 28 50 38 C45 46 53 50 50 50" fill="none" ' +
-        'stroke="#1c130a" stroke-width="5.6" stroke-linecap="round" opacity=".35"/>' +
-        '<path class="cos-snake" d="M50 12 C46 22 56 28 50 38 C45 46 53 50 50 50" ' +
-        'fill="none" stroke="url(#cosBrass)" stroke-width="3.4" ' +
-        'stroke-linecap="round"/>' +
-        '<circle cx="50" cy="11" r="3.1" fill="url(#cosBrass)" ' +
-        'stroke="#1c130a" stroke-width=".7"/>' +
-        '<circle cx="48.7" cy="10.3" r=".7" fill="#0c3b2a"/>' +
-        '</g>';
+  // ── SVG двери Выручай-комнаты (оригинальная графика, без копирайта) ───
+  function woodPlanks() {
+    var xs = [22, 28, 34, 50, 56, 62], s = "";
+    for (var i = 0; i < xs.length; i++)
+      s += '<line x1="' + xs[i] + '" y1="44" x2="' + xs[i] + '" y2="107" ' +
+        'stroke="#1b1006" stroke-width="0.7" opacity=".55"/>';
+    return s;
+  }
+
+  function ironStraps() {
+    var ys = [52, 72, 92], s = "";
+    for (var i = 0; i < ys.length; i++) {
+      var y = ys[i];
+      s += '<rect x="15" y="' + (y - 3) + '" width="54" height="6" rx="1.6" ' +
+        'fill="url(#cosIron)" stroke="#0a0c10" stroke-width=".6"/>' +
+        '<circle cx="17.5" cy="' + y + '" r="2.6" fill="url(#cosIron)" stroke="#0a0c10" stroke-width=".5"/>' +
+        '<circle cx="66.5" cy="' + y + '" r="2.6" fill="url(#cosIron)" stroke="#0a0c10" stroke-width=".5"/>' +
+        '<circle cx="22" cy="' + y + '" r=".85" fill="#0a0c10"/>' +
+        '<circle cx="62" cy="' + y + '" r=".85" fill="#0a0c10"/>';
     }
-    return g;
+    return s;
   }
 
   function sparks() {
-    var pts = [[24,22],[78,30],[70,74],[30,72],[18,52],[82,55],[50,16],[50,84]];
+    var pts = [[20,30],[64,34],[14,68],[70,74],[42,7],[26,102],[58,102],[42,58]];
     var s = "";
-    for (var i = 0; i < pts.length; i++) {
+    for (var i = 0; i < pts.length; i++)
       s += '<circle class="cos-spark" cx="' + pts[i][0] + '" cy="' + pts[i][1] +
-        '" r="1.05" fill="#bff7e0" style="animation-delay:' +
-        (i * 0.5).toFixed(2) + 's"/>';
-    }
+        '" r="1" fill="#ffe6ad" style="animation-delay:' + (i * 0.45).toFixed(2) + 's"/>';
     return s;
   }
 
   function doorSVG() {
     return '' +
-'<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+'<svg viewBox="0 0 84 118" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
   '<defs>' +
-    '<radialGradient id="cosStone" cx="42%" cy="38%" r="68%">' +
-      '<stop offset="0%" stop-color="#4a5360"/>' +
-      '<stop offset="55%" stop-color="#2b313c"/>' +
-      '<stop offset="100%" stop-color="#11151c"/>' +
+    '<radialGradient id="cosGlow" cx="50%" cy="55%" r="60%">' +
+      '<stop offset="0%" stop-color="#ffcf7a" stop-opacity=".9"/>' +
+      '<stop offset="55%" stop-color="#c8821f" stop-opacity=".35"/>' +
+      '<stop offset="100%" stop-color="#c8821f" stop-opacity="0"/>' +
     '</radialGradient>' +
-    '<radialGradient id="cosCore" cx="50%" cy="45%" r="60%">' +
-      '<stop offset="0%" stop-color="#1a5b44"/>' +
-      '<stop offset="60%" stop-color="#0c3526"/>' +
-      '<stop offset="100%" stop-color="#06150f"/>' +
+    '<radialGradient id="cosStone" cx="42%" cy="32%" r="80%">' +
+      '<stop offset="0%" stop-color="#525a66"/>' +
+      '<stop offset="60%" stop-color="#363c47"/>' +
+      '<stop offset="100%" stop-color="#181c24"/>' +
     '</radialGradient>' +
+    '<linearGradient id="cosWoodL" x1="0" y1="0" x2="1" y2="0">' +
+      '<stop offset="0%" stop-color="#23150a"/>' +
+      '<stop offset="55%" stop-color="#5a3a1f"/>' +
+      '<stop offset="100%" stop-color="#3a2412"/>' +
+    '</linearGradient>' +
+    '<linearGradient id="cosWoodR" x1="1" y1="0" x2="0" y2="0">' +
+      '<stop offset="0%" stop-color="#23150a"/>' +
+      '<stop offset="55%" stop-color="#5a3a1f"/>' +
+      '<stop offset="100%" stop-color="#3a2412"/>' +
+    '</linearGradient>' +
+    '<linearGradient id="cosIron" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="#5c636e"/>' +
+      '<stop offset="50%" stop-color="#2b2f37"/>' +
+      '<stop offset="100%" stop-color="#13161c"/>' +
+    '</linearGradient>' +
     '<linearGradient id="cosBrass" x1="0" y1="0" x2="1" y2="1">' +
-      '<stop offset="0%" stop-color="#f4e2a8"/>' +
-      '<stop offset="45%" stop-color="#c79a4e"/>' +
+      '<stop offset="0%" stop-color="#f6e3a6"/>' +
+      '<stop offset="50%" stop-color="#caa052"/>' +
       '<stop offset="100%" stop-color="#7c5a22"/>' +
     '</linearGradient>' +
   '</defs>' +
-  // каменный обод
-  '<circle cx="50" cy="50" r="48" fill="url(#cosStone)" stroke="#0a0d12" stroke-width="2"/>' +
-  '<circle cx="50" cy="50" r="44" fill="none" stroke="#5b6675" stroke-width="1.1" opacity=".5"/>' +
-  '<circle cx="50" cy="50" r="40.5" fill="none" stroke="#0a0d12" stroke-width="1.4" opacity=".7"/>' +
-  // заклёпки по ободу
-  riveTs() +
-  // вращающееся кольцо змей-засовов
-  '<g class="cos-bolts">' + snakeBolts() + '</g>' +
-  // центральный медальон со свернувшейся змеёй
-  '<circle cx="50" cy="50" r="15.5" fill="url(#cosCore)" stroke="url(#cosBrass)" stroke-width="1.6"/>' +
-  '<path class="cos-coil" d="M50 41 a9 9 0 1 1 -8.6 11.6 a6 6 0 1 1 11-2.4 a3 3 0 1 1 -4.2 2.1" ' +
-    'fill="none" stroke="#3df5b0" stroke-width="1.7" stroke-linecap="round"/>' +
-  '<circle cx="50" cy="41" r="1.7" fill="#3df5b0"/>' +
-  // искры + мерцающий блик
+  // тёплое магическое свечение-ореол
+  '<ellipse class="cos-aura" cx="42" cy="64" rx="42" ry="56" fill="url(#cosGlow)"/>' +
+  // каменная арка-рама
+  '<path d="M8,114 L8,40 A34,34 0 0 1 76,40 L76,114 Z" fill="url(#cosStone)" ' +
+    'stroke="#0a0d12" stroke-width="2"/>' +
+  '<path d="M8,40 A34,34 0 0 1 76,40" fill="none" stroke="#5b6675" stroke-width="1" opacity=".4"/>' +
+  // тёмная ниша
+  '<path d="M15,110 L15,40 A27,27 0 0 1 69,40 L69,110 Z" fill="#150c06"/>' +
+  // две деревянные створки
+  '<path d="M15,110 L15,40 A27,27 0 0 1 42,13 L42,110 Z" fill="url(#cosWoodL)"/>' +
+  '<path d="M42,110 L42,13 A27,27 0 0 1 69,40 L69,110 Z" fill="url(#cosWoodR)"/>' +
+  woodPlanks() +
+  // резной арочный кант
+  '<path d="M15,40 A27,27 0 0 1 69,40" fill="none" stroke="#1b1006" stroke-width="1.3" opacity=".6"/>' +
+  '<path d="M19,40 A23,23 0 0 1 65,40" fill="none" stroke="url(#cosBrass)" stroke-width=".8" opacity=".55"/>' +
+  // кованые полосы
+  ironStraps() +
+  // центральный шов + накладка
+  '<rect x="40.4" y="13" width="3.2" height="97" fill="url(#cosIron)" stroke="#0a0c10" stroke-width=".4"/>' +
+  // светящаяся щель — магия из комнаты
+  '<rect class="cos-seam" x="41.3" y="15" width="1.4" height="93" fill="#ffd98a"/>' +
+  // кольца-ручки
+  '<circle cx="36.5" cy="74" r="3.3" fill="none" stroke="url(#cosBrass)" stroke-width="1.5"/>' +
+  '<circle cx="47.5" cy="74" r="3.3" fill="none" stroke="url(#cosBrass)" stroke-width="1.5"/>' +
+  '<circle cx="36.5" cy="70.6" r=".9" fill="url(#cosBrass)"/>' +
+  '<circle cx="47.5" cy="70.6" r=".9" fill="url(#cosBrass)"/>' +
+  // замковый камень с руной-звездой
+  '<circle cx="42" cy="22" r="5" fill="#241a12" stroke="url(#cosBrass)" stroke-width="1.2"/>' +
+  '<path class="cos-rune" d="M42 18 v8 M38 22 h8 M39.2 19.2 l5.6 5.6 M44.8 19.2 l-5.6 5.6" ' +
+    'stroke="#ffe6ad" stroke-width="1" stroke-linecap="round"/>' +
   sparks() +
-  '<circle class="cos-sheen" cx="50" cy="50" r="48"/>' +
 '</svg>';
-  }
-
-  function riveTs() {
-    var s = "", n = 16;
-    for (var i = 0; i < n; i++) {
-      var a = (Math.PI * 2 / n) * i;
-      var x = 50 + Math.cos(a) * 45.5, y = 50 + Math.sin(a) * 45.5;
-      s += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) +
-        '" r="1.15" fill="#7d8796"/>';
-    }
-    return s;
   }
 
   // ── Стили ────────────────────────────────────────────────────────────
   var CSS =
-  '.cos-door{position:fixed;top:14px;right:14px;width:74px;height:74px;z-index:1200;' +
-    'cursor:pointer;border:0;background:none;padding:0;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6));' +
-    'transition:transform .25s ease;-webkit-tap-highlight-color:transparent}' +
-  '.cos-door:hover{transform:scale(1.09) rotate(-2deg)}' +
+  /* НИЖЕ верхних надписей (top:66) и ЛЕВЕЕ края (right:34) */
+  '.cos-door{position:fixed;top:66px;right:34px;width:60px;height:90px;z-index:1100;' +
+    'cursor:pointer;border:0;background:none;padding:0;' +
+    'filter:drop-shadow(0 5px 12px rgba(0,0,0,.6));transition:transform .25s ease;' +
+    '-webkit-tap-highlight-color:transparent}' +
+  '.cos-door:hover{transform:scale(1.07) translateY(-1px)}' +
   '.cos-door:active{transform:scale(.97)}' +
-  '.cos-door svg{width:100%;height:100%;display:block;animation:cosGlow 4.5s ease-in-out infinite}' +
-  '.cos-door:hover svg{animation-duration:2.2s}' +
-  '.cos-bolts{transform-origin:50px 50px;animation:cosSpin 60s linear infinite}' +
-  '.cos-door:hover .cos-bolts{animation-duration:14s}' +
-  '.cos-coil{filter:drop-shadow(0 0 2px #3df5b0)}' +
-  '.cos-sheen{fill:none;stroke:rgba(191,247,224,.0);stroke-width:0;' +
-    'transform-origin:50px 50px}' +
-  '.cos-door svg{overflow:visible}' +
-  '.cos-spark{opacity:0;animation:cosSpark 3.2s ease-in-out infinite}' +
-  '@keyframes cosGlow{0%,100%{filter:drop-shadow(0 0 2px rgba(61,245,176,.35))}' +
-    '50%{filter:drop-shadow(0 0 9px rgba(61,245,176,.85)) drop-shadow(0 0 2px #bff7e0)}}' +
-  '@keyframes cosSpin{to{transform:rotate(360deg)}}' +
+  '.cos-door svg{width:100%;height:100%;display:block;overflow:visible;' +
+    'animation:cosGlow 5s ease-in-out infinite}' +
+  '.cos-door:hover svg{animation-duration:2.4s}' +
+  '.cos-aura{opacity:.55;transform-origin:42px 64px;animation:cosAura 5s ease-in-out infinite}' +
+  '.cos-seam{filter:drop-shadow(0 0 2px #ffd98a);animation:cosSeam 3.4s ease-in-out infinite}' +
+  '.cos-rune{filter:drop-shadow(0 0 2px #ffe6ad)}' +
+  '.cos-spark{opacity:0;animation:cosSpark 3.4s ease-in-out infinite}' +
+  '@keyframes cosGlow{0%,100%{filter:drop-shadow(0 0 2px rgba(245,200,120,.35))}' +
+    '50%{filter:drop-shadow(0 0 10px rgba(245,200,120,.8)) drop-shadow(0 0 3px #ffe6ad)}}' +
+  '@keyframes cosAura{0%,100%{opacity:.4;transform:scale(.97)}50%{opacity:.7;transform:scale(1.04)}}' +
+  '@keyframes cosSeam{0%,100%{opacity:.5}50%{opacity:1}}' +
   '@keyframes cosSpark{0%,100%{opacity:0;transform:scale(.4)}' +
-    '8%{opacity:1;transform:scale(1)}20%{opacity:0;transform:scale(.4)}}' +
-  '.cos-label{position:fixed;top:92px;right:10px;z-index:1200;pointer-events:none;' +
-    'font:600 11px/1 system-ui,sans-serif;letter-spacing:.06em;color:#cdeede;' +
-    'background:rgba(8,18,14,.86);border:1px solid rgba(61,245,176,.4);' +
+    '8%{opacity:1;transform:scale(1)}22%{opacity:0;transform:scale(.4)}}' +
+  '.cos-label{position:fixed;top:160px;right:24px;z-index:1100;pointer-events:none;' +
+    'font:600 11px/1 system-ui,sans-serif;letter-spacing:.05em;color:#f3e4c2;' +
+    'background:rgba(28,18,8,.88);border:1px solid rgba(224,162,74,.45);' +
     'padding:5px 9px;border-radius:7px;opacity:0;transform:translateY(-4px);' +
-    'transition:opacity .2s,transform .2s;white-space:nowrap;text-shadow:0 0 6px rgba(61,245,176,.6)}' +
+    'transition:opacity .2s,transform .2s;white-space:nowrap;' +
+    'text-shadow:0 0 6px rgba(245,200,120,.6)}' +
   '.cos-door:hover + .cos-label{opacity:1;transform:translateY(0)}' +
   /* мистическая всплывашка для не-админа */
   '.cos-deny{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;' +
     'justify-content:center;background:radial-gradient(circle at 50% 40%,' +
-    'rgba(6,21,15,.72),rgba(0,0,0,.88));backdrop-filter:blur(3px);' +
+    'rgba(28,18,8,.7),rgba(0,0,0,.88));backdrop-filter:blur(3px);' +
     'animation:cosFade .35s ease both}' +
   '.cos-deny[hidden]{display:none}' +
-  '.cos-deny-box{position:relative;max-width:340px;margin:0 24px;padding:26px 26px 22px;' +
-    'text-align:center;color:#e6f6ee;background:linear-gradient(180deg,#16241d,#0b1611);' +
-    'border:1px solid rgba(61,245,176,.45);border-radius:14px;' +
-    'box-shadow:0 0 40px rgba(61,245,176,.25),inset 0 0 30px rgba(0,0,0,.5);' +
+  '.cos-deny-box{position:relative;max-width:350px;margin:0 24px;padding:26px 26px 22px;' +
+    'text-align:center;color:#f3e8d6;background:linear-gradient(180deg,#2a1d0f,#160d06);' +
+    'border:1px solid rgba(224,162,74,.5);border-radius:14px;' +
+    'box-shadow:0 0 40px rgba(245,200,120,.22),inset 0 0 30px rgba(0,0,0,.5);' +
     'animation:cosRise .4s cubic-bezier(.2,.9,.3,1.2) both}' +
-  '.cos-deny-ico{width:60px;height:60px;margin:0 auto 10px;filter:drop-shadow(0 0 8px rgba(61,245,176,.6))}' +
+  '.cos-deny-ico{width:58px;height:58px;margin:0 auto 10px;display:block;' +
+    'filter:drop-shadow(0 0 8px rgba(245,200,120,.6))}' +
   '.cos-deny-t{font:700 18px/1.3 Georgia,serif;letter-spacing:.02em;margin:0 0 6px;' +
-    'color:#9ff0cf;text-shadow:0 0 10px rgba(61,245,176,.55)}' +
-  '.cos-deny-s{font:400 13px/1.5 system-ui,sans-serif;color:#bcd6c9;opacity:.92;margin:0 0 16px}' +
-  '.cos-deny-btn{font:600 13px system-ui,sans-serif;color:#06150f;cursor:pointer;' +
-    'background:linear-gradient(180deg,#5ff0c0,#23b487);border:0;border-radius:8px;' +
-    'padding:8px 22px;box-shadow:0 3px 12px rgba(61,245,176,.4)}' +
-  '.cos-deny-btn:hover{filter:brightness(1.08)}' +
+    'color:#f0c878;text-shadow:0 0 10px rgba(245,200,120,.5)}' +
+  '.cos-deny-s{font:400 13px/1.5 system-ui,sans-serif;color:#dcc9ad;opacity:.92;margin:0 0 16px}' +
+  '.cos-deny-btn{font:600 13px system-ui,sans-serif;color:#1b1006;cursor:pointer;' +
+    'background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:8px;' +
+    'padding:8px 22px;box-shadow:0 3px 12px rgba(245,200,120,.4)}' +
+  '.cos-deny-btn:hover{filter:brightness(1.07)}' +
   '@keyframes cosFade{from{opacity:0}to{opacity:1}}' +
-  '@keyframes cosRise{from{opacity:0;transform:translateY(14px) scale(.94)}' +
-    'to{opacity:1;transform:none}}' +
-  '@media(max-width:560px){.cos-door{width:58px;height:58px;top:10px;right:10px}' +
+  '@keyframes cosRise{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}' +
+  '@media(max-width:560px){.cos-door{width:46px;height:70px;top:56px;right:16px}' +
     '.cos-label{display:none}}' +
-  '@media(prefers-reduced-motion:reduce){.cos-door svg,.cos-bolts,.cos-spark{animation:none}}';
+  '@media(prefers-reduced-motion:reduce){.cos-door svg,.cos-aura,.cos-seam,.cos-spark{animation:none}}';
 
-  var SERPENT_ICON =
-'<svg class="cos-deny-ico" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M50 18 a14 14 0 1 1 -13 19 a9 9 0 1 1 17-4 a5 5 0 1 1 -7 3" fill="none" ' +
-  'stroke="#3df5b0" stroke-width="3.2" stroke-linecap="round"/>' +
-  '<circle cx="50" cy="18" r="3" fill="#3df5b0"/></svg>';
+  // иконка для всплывашки — арочная дверь, светящаяся янтарём
+  var DOOR_ICON =
+'<svg class="cos-deny-ico" viewBox="0 0 60 64" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M12,58 L12,26 A18,18 0 0 1 48,26 L48,58 Z" fill="none" stroke="#f0c878" ' +
+  'stroke-width="3" stroke-linejoin="round"/>' +
+  '<line x1="30" y1="9" x2="30" y2="58" stroke="#f0c878" stroke-width="2"/>' +
+  '<circle cx="24" cy="36" r="2.2" fill="none" stroke="#f0c878" stroke-width="1.6"/>' +
+  '<circle cx="36" cy="36" r="2.2" fill="none" stroke="#f0c878" stroke-width="1.6"/></svg>';
 
   // ── Логика роли + всплывашка ─────────────────────────────────────────
   var _meCache = null;
   function getRole() {
-    // сначала из data-role (если страница уже определила), иначе спросим API
     var dr = document.body && document.body.getAttribute("data-role");
     if (dr) return Promise.resolve(dr);
     if (_meCache) return _meCache;
@@ -176,7 +197,7 @@
     ov.className = "cos-deny";
     ov.innerHTML =
       '<div class="cos-deny-box" role="alertdialog" aria-live="assertive">' +
-        SERPENT_ICON +
+        DOOR_ICON +
         '<div class="cos-deny-t">Вход только для администрации</div>' +
         '<div class="cos-deny-s">Тайная комната запечатана. Открыть её ' +
         'может лишь хранитель ключа.</div>' +
@@ -193,11 +214,8 @@
 
   function onDoorClick() {
     getRole().then(function (role) {
-      if (role === "admin") {
-        window.location.href = TARGET;
-      } else {
-        showDeny();
-      }
+      if (role === "admin") window.location.href = TARGET;
+      else showDeny();
     });
   }
 
@@ -248,9 +266,7 @@
     document.body.appendChild(label);
   }
 
-  if (document.readyState === "loading") {
+  if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  else init();
 })();
