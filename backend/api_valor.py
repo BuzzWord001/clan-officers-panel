@@ -155,6 +155,32 @@ def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     return db.valor_list_sessions()
 
 
+@router.get("/missing-weeks")
+def valor_missing_weeks(_: dict = Depends(require_officer)) -> list[dict]:
+    """Недели без снимка (кандидаты на пометку «не собрано»)."""
+    return db.valor_missing_weeks()
+
+
+class SkipWeekIn(BaseModel):
+    week: str
+    skipped: bool = True
+    norm: int | None = Field(default=None, ge=0)
+
+
+@router.post("/skip-week")
+def valor_skip_week(payload: SkipWeekIn,
+                    actor: dict = Depends(require_officer)) -> dict:
+    """Пометить неделю как «данные не собирались» (или снять пометку)."""
+    res = db.valor_skip_week(payload.week, skipped=payload.skipped,
+                             norm=payload.norm, actor=actor)
+    if not res.get("ok"):
+        reason = res.get("reason", "failed")
+        code = (status.HTTP_404_NOT_FOUND if reason == "no_snapshot"
+                else status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(code, reason)
+    return res
+
+
 @router.get("/departed")
 def valor_departed(_: dict = Depends(require_viewer)) -> list[dict]:
     """Ушедшие из клана с последними известными данными."""

@@ -527,6 +527,85 @@
     };
   }
 
+  // ── Пометка «неделя не собрана» ──
+  (function injectSkipStyles() {
+    if (document.getElementById("skip-styles")) return;
+    const st = document.createElement("style");
+    st.id = "skip-styles";
+    st.textContent = `
+      .btn-mini{cursor:pointer;border:1px solid var(--line,#8a6a3a);background:rgba(60,40,20,.5);
+        color:var(--fg,#f3e8d2);border-radius:7px;padding:3px 10px;font:inherit;font-size:.85em;margin-left:8px}
+      .btn-mini:hover{background:rgba(90,60,30,.7)}
+      .vs-folder-skip{opacity:.85}
+      .vs-folder-skip .vs-folder-ic{filter:grayscale(.3)}
+      .vs-folder-skip .vs-folder-c{color:#c9a06a;font-style:italic}
+      .vs-unskip{margin-left:auto;padding:0 8px;font-size:1.1em;opacity:.7}
+      .vs-unskip:hover{opacity:1}
+      .skip-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
+        align-items:center;justify-content:center;z-index:10002}
+      .skip-modal{background:#2a1d12;border:1px solid #8a6a3a;border-radius:12px;
+        padding:18px 20px;max-width:440px;width:92%;max-height:80vh;overflow:auto;color:#f3e8d2}
+      .skip-modal h3{margin:0 0 6px}
+      .skip-hint{font-size:.85em;opacity:.8;margin:0 0 12px}
+      .skip-row{display:flex;align-items:center;justify-content:space-between;
+        padding:6px 8px;border-bottom:1px solid rgba(138,106,58,.3)}
+      .skip-row small{opacity:.7}
+      .skip-empty{opacity:.7;font-size:.9em;padding:6px 0}
+      .skip-manual{display:flex;gap:6px;margin-top:14px}
+      .skip-manual input{flex:1;background:rgba(20,14,8,.6);border:1px solid #8a6a3a;
+        border-radius:7px;color:#f3e8d2;padding:5px 8px;font:inherit}
+      .skip-foot{margin-top:14px;text-align:right}`;
+    document.head.appendChild(st);
+  })();
+
+  async function unskipWeek(week) {
+    if (!confirm(`Снять пометку «не собрано» с ${week}?`)) return;
+    try { await API.valorSkipWeek({ week, skipped: false }); location.reload(); }
+    catch (e) { alert("Не удалось: " + (e.detail || e.message)); }
+  }
+
+  async function openSkipPicker() {
+    let missing = [];
+    try { missing = await API.valorMissingWeeks(); } catch (_) {}
+    const ov = document.createElement("div");
+    ov.className = "skip-overlay";
+    const rows = missing.length
+      ? missing.map(m => {
+          const sd = (m.sunday || "").split("-").reverse().join(".");
+          return `<div class="skip-row"><span>${esc(m.week)} <small>(вс ${esc(sd)})</small></span>`
+            + `<button class="btn-mini skip-pick" data-week="${esc(m.week)}">Отметить</button></div>`;
+        }).join("")
+      : `<div class="skip-empty">Пропусков между сборами не найдено — укажи неделю вручную ниже.</div>`;
+    ov.innerHTML = `<div class="skip-modal">
+        <h3>📭 Неделя без сбора</h3>
+        <p class="skip-hint">Помеченная неделя покажется в архиве как «не собрано» и НЕ повлияет на статистику игроков (никого не штрафует).</p>
+        <div class="skip-list">${rows}</div>
+        <div class="skip-manual">
+          <input id="skip-manual-w" placeholder="напр. 2026-W24" />
+          <button id="skip-manual-go" class="btn-mini">Отметить</button>
+        </div>
+        <div class="skip-foot"><button id="skip-close" class="btn-mini">Закрыть</button></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener("click", e => { if (e.target === ov) close(); });
+    ov.querySelector("#skip-close").addEventListener("click", close);
+    async function mark(week) {
+      week = (week || "").trim();
+      if (!week) return;
+      try { await API.valorSkipWeek({ week, skipped: true }); location.reload(); }
+      catch (e) {
+        alert(e.detail === "has_data"
+          ? "За эту неделю уже есть собранные данные — пометить нельзя."
+          : "Не удалось: " + (e.detail || e.message));
+      }
+    }
+    ov.querySelectorAll(".skip-pick").forEach(b =>
+      b.addEventListener("click", () => mark(b.dataset.week)));
+    ov.querySelector("#skip-manual-go").addEventListener("click", () =>
+      mark(ov.querySelector("#skip-manual-w").value));
+  }
+
   // ── Папки недель (объединённый «Архив скринов доблести») ──
   try {
     // Все сборы (snapshots = master-список недель) + где есть скрины (кадры).
@@ -544,11 +623,25 @@
       : (weeks || []).map(w => ({ week: w.week, screens_count: w.count }));
     if (!list.length) { $("vs-empty").hidden = false; return; }
     // сводка-журнал (как было в «Архиве доблести»)
+    const collected = list.filter(s => !s.skipped);
+    const skippedN = list.length - collected.length;
     const totalMembers = list.reduce((a, s) => a + (s.members_count || 0), 0);
     $("vs-summary").innerHTML =
-      `<span>сборов: <b>${list.length}</b></span>` +
-      `<span>всего записей: <b>${totalMembers}</b></span>`;
+      `<span>сборов: <b>${collected.length}</b></span>` +
+      `<span>всего записей: <b>${totalMembers}</b></span>` +
+      (skippedN ? `<span>не собрано недель: <b>${skippedN}</b></span>` : "") +
+      ` <button id="vs-skip-btn" class="btn-mini" title="Отметить неделю, за которую данные не собирались">📭 Неделя не собрана</button>`;
     $("vs-weeks").innerHTML = list.map(s => {
+      if (s.skipped) {
+        return `<button class="vs-folder vs-folder-skip" data-week="${esc(s.week)}" data-skipped="1">
+           <span class="vs-folder-ic">📭</span>
+           <span class="vs-folder-txt">
+             <span class="vs-folder-w">${esc(s.week)}</span>
+             <span class="vs-folder-c">данные не собирались</span>
+           </span>
+           <span class="vs-unskip" data-week="${esc(s.week)}" title="Снять пометку (если данные всё же есть)">↩</span>
+         </button>`;
+      }
       const shots = (shotsByWeek[s.week] != null) ? shotsByWeek[s.week] : (s.screens_count || 0);
       const dt = (s.captured_at || "").replace("T", " ").slice(0, 16);
       const people = (s.actual_members != null)
@@ -572,7 +665,20 @@
        </button>`;
     }).join("");
     $("vs-weeks").querySelectorAll(".vs-folder").forEach(el =>
-      el.addEventListener("click", () => loadWeek(el.dataset.week, el)));
+      el.addEventListener("click", (ev) => {
+        if (ev.target.closest(".vs-unskip")) {
+          ev.stopPropagation();
+          unskipWeek(ev.target.closest(".vs-unskip").dataset.week);
+          return;
+        }
+        if (el.dataset.skipped === "1") {
+          el.classList.add("vs-folder-on");
+          return;   // у пропущенной недели нет данных для показа
+        }
+        loadWeek(el.dataset.week, el);
+      }));
+    const skipBtn = document.getElementById("vs-skip-btn");
+    if (skipBtn) skipBtn.addEventListener("click", openSkipPicker);
     $("cmp-filter").addEventListener("input", applyFilter);
     $("cmp-suspect").addEventListener("change", applyFilter);
     // Двойной клик по строке справа → к этому нику в таблице Доблести.

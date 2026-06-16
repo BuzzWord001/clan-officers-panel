@@ -565,6 +565,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-06-16: неделя помечена как «данные не собирались» (пропущена).
+    # Такой снимок не содержит участников (members_count=0) и не штрафует
+    # игроков — просто честно показывает пробел в архиве.
+    try:
+        conn.execute("ALTER TABLE valor_snapshots ADD COLUMN "
+                     "skipped INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-08: детали прощённого предупреждения (для истории прощений).
     try:
         conn.execute("ALTER TABLE valor_warn_dismiss ADD COLUMN detail TEXT NOT NULL DEFAULT ''")
@@ -5846,6 +5855,108 @@ def valor_list_sessions() -> list[dict[str, Any]]:
             "SELECT * FROM valor_snapshots ORDER BY week DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def _valor_week_label(d: date) -> str:
+    """Метка недели `YYYY-Www` — 1-в-1 как в десктопе pw-valor-tracker
+    (неделя начинается с воскресенья, номер — ISO от этого воскресенья)."""
+    days_since_sunday = (d.weekday() + 1) % 7      # Sun→0, Mon→1, ... Sat→6
+    sunday = d - timedelta(days=days_since_sunday)
+    iso_year, iso_week, _ = sunday.isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
+
+
+def _sunday_of(d: date) -> date:
+    return d - timedelta(days=(d.weekday() + 1) % 7)
+
+
+def valor_missing_weeks() -> list[dict]:
+    """Недели между первым снимком и текущей, для которых НЕТ снимка вообще
+    (не собирали и не помечали). Кандидаты на пометку «не собрано».
+    Возвращает [{week, sunday}] от новых к старым."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT week, captured_at FROM valor_snapshots").fetchall()
+    if not rows:
+        return []
+    existing = {r["week"] for r in rows}
+    # самая ранняя дата сбора → её воскресенье
+    earliest = None
+    for r in rows:
+        try:
+            dt = datetime.fromisoformat(str(r["captured_at"]).replace("Z", "")).date()
+        except Exception:
+            continue
+        if earliest is None or dt < earliest:
+            earliest = dt
+    if earliest is None:
+        return []
+    start = _sunday_of(earliest)
+    today_sunday = _sunday_of(date.today())
+    out, cur = [], start
+    while cur <= today_sunday:
+        wk = _valor_week_label(cur)
+        if wk not in existing:
+            out.append({"week": wk, "sunday": cur.isoformat()})
+        cur += timedelta(days=7)
+    out.reverse()  # новые сверху
+    return out
+
+
+def valor_skip_week(week: str, skipped: bool = True,
+                    norm: int | None = None, actor: dict | None = None) -> dict:
+    """Пометить неделю как «данные не собирались» (или снять пометку).
+
+    skipped=True: если снимка нет — создаём пустой (members_count=0, skipped=1);
+      если снимок есть и БЕЗ участников — ставим skipped=1; если в нём есть
+      реальные данные (members_count>0) — отказ (нельзя затирать сбор).
+    skipped=False: пустой пропущенный снимок удаляем (неделя снова «нет данных»);
+      если в снимке есть данные — просто снимаем флаг."""
+    week = (week or "").strip()
+    if not week:
+        return {"ok": False, "reason": "no_week"}
+    now = datetime.now().isoformat(timespec="seconds")
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT * FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if skipped:
+            if snap:
+                if (snap["members_count"] or 0) > 0:
+                    return {"ok": False, "reason": "has_data"}
+                conn.execute(
+                    "UPDATE valor_snapshots SET skipped = 1, notes = ? WHERE week = ?",
+                    ("не собрано", week))
+            else:
+                if norm is None:
+                    last = conn.execute(
+                        "SELECT valor_norm FROM valor_snapshots "
+                        "WHERE valor_norm > 0 ORDER BY week DESC LIMIT 1").fetchone()
+                    norm = last["valor_norm"] if last else 0
+                conn.execute(
+                    "INSERT INTO valor_snapshots "
+                    "(week, captured_at, valor_norm, screens_count, "
+                    " members_count, skipped, notes) "
+                    "VALUES (?, ?, ?, 0, 0, 1, ?)",
+                    (week, now, int(norm or 0), "не собрано"))
+            action = "skip_week"
+        else:
+            if not snap:
+                return {"ok": False, "reason": "no_snapshot"}
+            if (snap["members_count"] or 0) > 0:
+                conn.execute(
+                    "UPDATE valor_snapshots SET skipped = 0 WHERE week = ?", (week,))
+            else:
+                conn.execute(
+                    "DELETE FROM valor_snapshots WHERE week = ?", (week,))
+            action = "unskip_week"
+        try:
+            _log_valor_edit(conn, week=week, action="meta", member_id=None,
+                            nick="(неделя не собрана)" if skipped else "(снята пометка)",
+                            canon="", before={"skipped": bool(snap and snap["skipped"])},
+                            after={"skipped": skipped}, actor=actor or {})
+        except Exception:
+            pass
+    return {"ok": True, "week": week, "skipped": skipped}
 
 
 _SNAP_META_FIELDS = ("actual_members", "valor_norm", "notes")
