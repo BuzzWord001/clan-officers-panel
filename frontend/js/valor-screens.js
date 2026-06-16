@@ -539,8 +539,7 @@
       .vs-folder-skip{opacity:.85}
       .vs-folder-skip .vs-folder-ic{filter:grayscale(.3)}
       .vs-folder-skip .vs-folder-c{color:#c9a06a;font-style:italic}
-      .vs-unskip{margin-left:auto;padding:0 8px;font-size:1.1em;opacity:.7}
-      .vs-unskip:hover{opacity:1}
+      .skip-note{padding:18px;color:#d8c7a8;line-height:1.55}
       .skip-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;
         align-items:center;justify-content:center;z-index:10002}
       .skip-modal{background:#2a1d12;border:1px solid #8a6a3a;border-radius:12px;
@@ -562,6 +561,25 @@
     if (!confirm(`Снять пометку «не собрано» с ${week}?`)) return;
     try { await API.valorSkipWeek({ week, skipped: false }); location.reload(); }
     catch (e) { alert("Не удалось: " + (e.detail || e.message)); }
+  }
+
+  function showSkippedView(week, el) {
+    document.querySelectorAll(".vs-folder").forEach(e => e.classList.remove("vs-folder-on"));
+    el.classList.add("vs-folder-on");
+    const meta = document.getElementById("cmp-meta");
+    if (meta) meta.textContent = week + " — данные не собирались";
+    const shots = document.getElementById("cmp-shots");
+    if (shots) shots.innerHTML = "";
+    const rows = document.getElementById("cmp-rows");
+    if (rows) {
+      rows.innerHTML =
+        `<div class="skip-note">📭 За неделю <b>${esc(week)}</b> статистика доблести `
+        + `не собиралась. Эта неделя не учитывается в оценке игроков.`
+        + `<div style="margin-top:12px"><button class="btn-mini" id="skip-note-unskip">`
+        + `↩ Снять пометку «не собрано»</button></div></div>`;
+      const b = document.getElementById("skip-note-unskip");
+      if (b) b.addEventListener("click", () => unskipWeek(week));
+    }
   }
 
   async function openSkipPicker() {
@@ -639,7 +657,6 @@
              <span class="vs-folder-w">${esc(s.week)}</span>
              <span class="vs-folder-c">данные не собирались</span>
            </span>
-           <span class="vs-unskip" data-week="${esc(s.week)}" title="Снять пометку (если данные всё же есть)">↩</span>
          </button>`;
       }
       const shots = (shotsByWeek[s.week] != null) ? shotsByWeek[s.week] : (s.screens_count || 0);
@@ -665,15 +682,10 @@
        </button>`;
     }).join("");
     $("vs-weeks").querySelectorAll(".vs-folder").forEach(el =>
-      el.addEventListener("click", (ev) => {
-        if (ev.target.closest(".vs-unskip")) {
-          ev.stopPropagation();
-          unskipWeek(ev.target.closest(".vs-unskip").dataset.week);
-          return;
-        }
+      el.addEventListener("click", () => {
         if (el.dataset.skipped === "1") {
-          el.classList.add("vs-folder-on");
-          return;   // у пропущенной недели нет данных для показа
+          showSkippedView(el.dataset.week, el);
+          return;
         }
         loadWeek(el.dataset.week, el);
       }));
