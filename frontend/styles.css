@@ -152,6 +152,41 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   margin-right: 0;
 }
 
+/* Ряд ссылок на площадки клана в шапке (вставляется js/social-bar.js) */
+.topbar-social {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tsoc {
+  --brand: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid rgba(224, 162, 74, 0.28);
+  background: rgba(224, 162, 74, 0.06);
+  color: var(--brand);
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease,
+              box-shadow 0.15s ease, background 0.15s ease;
+}
+.tsoc svg { width: 19px; height: 19px; display: block; }
+.tsoc:hover,
+.tsoc:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--brand);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 6px 16px -6px var(--brand), inset 0 0 0 1px var(--brand);
+  outline: none;
+}
+.tsoc:active { transform: translateY(0); }
+@media (max-width: 720px) {
+  .topbar-social { display: none; }
+}
+
 .brand {
   display: flex;
   align-items: center;
