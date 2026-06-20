@@ -6,8 +6,21 @@
   <meta name="theme-color" content="#000000">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Реестр приёма в клан</title>
-  <link rel="stylesheet" href="styles.css?v=1789600000">
+  <link rel="stylesheet" href="styles.css?v=1790400000">
   <link rel="icon" type="image/png" href="assets/logo.png">
+  <style>
+    .dup-note { margin-top:5px; font-size:12px; line-height:1.35; color:#ffcc66;
+                background:rgba(255,170,40,.08); border-left:2px solid #ffaa28;
+                padding:4px 8px; border-radius:3px; }
+    .reg-search-wrap { margin:4px 0 12px; display:flex; gap:10px; align-items:center; }
+    .reg-search { flex:1; min-width:0; padding:7px 10px; font-family:inherit; font-size:13px;
+                  background:var(--panel,#111); color:var(--text,#cfcfcf);
+                  border:1px solid #2a2a2a; border-radius:4px; }
+    .reg-search:focus { outline:none; border-color:#ff9090; }
+    .reg-search-count { font-size:12px; color:var(--text-dim,#888); white-space:nowrap; }
+    .vet-chk, .ed-vet-lbl { font-size:12px; color:#ffd24a; cursor:pointer; white-space:nowrap; user-select:none; }
+    .ed-vet-lbl { margin-right:8px; }
+  </style>
 </head>
 <body>
 
@@ -85,6 +98,7 @@
           <div class="ff required">
             <label for="f-nick">Ник в игре<span class="req">*</span></label>
             <input type="text" id="f-nick" name="nick" placeholder="например, Мелодька" required maxlength="64">
+            <div id="nick-dup-note" class="dup-note" hidden></div>
           </div>
           <div class="ff optional">
             <label for="f-title">Титул</label>
@@ -98,6 +112,10 @@
             <label for="f-note">Примечание</label>
             <input type="text" id="f-note" name="note" placeholder="необязательно" maxlength="200">
           </div>
+          <div class="ff optional">
+            <label for="f-veteran" title="Твин/возвращенец старичка клана — сразу выдать роль Ветеран в Доблести">Роль</label>
+            <label class="vet-chk"><input type="checkbox" id="f-veteran"> ★ Сразу Ветеран</label>
+          </div>
           <div class="ff">
             <button type="submit">Добавить</button>
           </div>
@@ -108,6 +126,11 @@
 
       <div class="panel">
         <h2>Принятые в клан</h2>
+        <div class="reg-search-wrap">
+          <input type="text" id="reg-search" class="reg-search"
+                 placeholder="Поиск по нику, титулу, примечанию, дате, кто принял…" autocomplete="off">
+          <span id="reg-search-count" class="reg-search-count"></span>
+        </div>
         <div class="table-scroll">
           <table id="acceptances-table" data-help="acceptances">
             <thead>
@@ -164,7 +187,7 @@
   <script src="js/api.js?v=1788600000"></script>
   <script src="js/dateutil.js?v=1779743290"></script>
   <script src="js/help-tips.js?v=1780600000"></script>
-  <script src="js/app.js?v=1786002400"></script>
+  <script src="js/app.js?v=1790100000"></script>
   <script src="js/tooltips.js?v=1786000400"></script>
   <script src="js/chamber-door.js?v=1789600000"></script>
 </body>

@@ -34,6 +34,31 @@
   DateRu.bindDateInput($("f-date"));
   $("f-date").value = DateRu.today();
 
+  // ── Ники из таблицы Доблести — для уведомления о дубле при регистрации ──
+  const normNick = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "");
+  let valorNickSet = new Set();
+  try {
+    const v = await API.valorCurrent();
+    const members = (v && (v.members || v.rows || v.list)) || [];
+    members.forEach((m) => { const n = m.nick || m.game_nick; if (n) valorNickSet.add(normNick(n)); });
+  } catch (_) {}
+  function checkNickDup() {
+    const note = $("nick-dup-note");
+    if (!note) return;
+    const n = normNick($("f-nick").value);
+    if (n && valorNickSet.has(n)) {
+      note.hidden = false;
+      note.textContent = "Этот ник уже есть в таблице Доблести — при регистрации запись объединится с ним. Зарегистрировать всё равно можно.";
+    } else {
+      note.hidden = true;
+      note.textContent = "";
+    }
+  }
+  $("f-nick").addEventListener("input", checkNickDup);
+
+  // ── Поиск по реестру ──
+  if ($("reg-search")) $("reg-search").addEventListener("input", applyFilter);
+
   // ── Add form ──
   $("add-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -41,6 +66,7 @@
     const title = $("f-title").value.trim();
     const rusDate = $("f-date").value.trim();
     const note = $("f-note").value.trim();
+    const veteran = $("f-veteran") ? $("f-veteran").checked : false;
 
     const iso = DateRu.parseRus(rusDate);
     if (!nick) return;
@@ -51,12 +77,14 @@
 
     setStatus("Добавляю…");
     try {
-      await API.create({ game_nick: nick, title, accepted_date: iso, note });
+      await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran });
       $("f-nick").value = "";
       $("f-title").value = "";
       $("f-note").value = "";
       $("f-date").value = DateRu.today();
-      setStatus(`✓ Добавлен: ${nick}`);
+      if ($("f-veteran")) $("f-veteran").checked = false;
+      if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
+      setStatus(`✓ Добавлен: ${nick}${veteran ? " (★ Ветеран)" : ""}`);
       await reload();
     } catch (e) {
       setStatus(`✗ Ошибка: ${e.detail || e.message}`);
@@ -167,10 +195,26 @@
     });
   })();
 
+  let allRows = [];
+  function applyFilter() {
+    const box = $("reg-search");
+    const q = (box ? box.value : "").trim().toLowerCase();
+    let rows = allRows;
+    if (q) {
+      rows = allRows.filter((r) =>
+        [r.game_nick, r.title, r.note, r.created_by_name,
+         DateRu.fmtRus(r.accepted_date)]
+          .join(" ").toLowerCase().includes(q));
+    }
+    renderTable(rows);
+    const c = $("reg-search-count");
+    if (c) c.textContent = q ? `найдено ${rows.length} из ${allRows.length}` : "";
+  }
+
   async function reload() {
     try {
-      const data = await API.list();
-      renderTable(data);
+      allRows = await API.list();
+      applyFilter();
     } catch (e) {
       setStatus(`✗ Не удалось загрузить: ${e.message}`);
     }
@@ -203,7 +247,10 @@
     titleCell.innerHTML = `<input type="text" value="${esc(r.title || "")}" placeholder="титул" style="width:100%">`;
     dateCell.innerHTML  = `<input type="text" value="${DateRu.fmtRus(r.accepted_date)}" placeholder="ДД.ММ.ГГГГ" style="width:100%">`;
     noteCell.innerHTML  = `<input type="text" value="${esc(r.note || "")}" style="width:100%">`;
-    actions.innerHTML = `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
+    actions.innerHTML =
+      `<label class="ed-vet-lbl" title="Роль Ветеран в Доблести">`
+      + `<input type="checkbox" class="ed-vet" ${r.veteran ? "checked" : ""}> ★Вет</label>`
+      + `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
 
     DateRu.bindDateInput(dateCell.querySelector("input"));
 
@@ -236,11 +283,13 @@
         alert("Неверная дата — ожидаю ДД.ММ.ГГГГ");
         return;
       }
+      const vetBox = actions.querySelector(".ed-vet");
       const payload = {
         game_nick:     nickCell.querySelector("input").value.trim(),
         title:         titleCell.querySelector("input").value.trim(),
         accepted_date: iso,
         note:          noteCell.querySelector("input").value.trim(),
+        veteran:       vetBox ? vetBox.checked : undefined,
       };
       try {
         await API.update(r.id, payload);

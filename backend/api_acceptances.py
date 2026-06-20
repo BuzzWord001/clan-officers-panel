@@ -36,6 +36,7 @@ def create(payload: AcceptanceIn, actor: dict = Depends(current_actor)) -> dict:
         title=payload.title,
         accepted_date=payload.accepted_date.isoformat(),
         note=payload.note,
+        veteran=payload.veteran,
         actor=actor,
     )
 
@@ -48,6 +49,7 @@ def update(acc_id: int, payload: AcceptanceUpdate, actor: dict = Depends(current
         title=payload.title,
         accepted_date=payload.accepted_date.isoformat() if payload.accepted_date else None,
         note=payload.note,
+        veteran=payload.veteran,
         actor=actor,
     )
     if not res:

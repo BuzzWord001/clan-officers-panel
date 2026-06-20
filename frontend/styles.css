@@ -2,6 +2,27 @@
    SanTDeviL Officer Panel — Matrix theme
    ============================================================ */
 
+/* Самохостируемый моноширинный шрифт. Браузер скачивает его и рисует им
+   текст/цифры В ОБХОД системных шрифтов и битого кэша DirectWrite — поэтому
+   цифры не падают в эмодзи-«клавиши» на сбойных машинах. Имя совпадает с
+   тем, что уже стоит первым во всех font-family ("Cascadia Code"). */
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("assets/cascadia-mono.ttf?v=1790200000") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ЛЕЧЕНИЕ «цифр в синих keycap-рамках»: на некоторых машинах Chrome даёт
+   голым цифрам 0-9 (и #, *) эмодзи-презентацию и рисует их как 0️⃣-эмодзи,
+   перебивая CSS-шрифт. font-variant-emoji:text принудительно рисует такие
+   символы ТЕКСТОМ. Свойство наследуется — ставим на html, покрывает всё.
+   text-rendering для совместимости со старыми Chrome. */
+html {
+  font-variant-emoji: text;
+}
+
 :root {
   /* Тёплая «рыночная» тема под арт SanTDeviL (уютный аниме-городок). */
   --bg:        #140d07;
@@ -29,10 +50,11 @@ html, body {
   font-family: "Cascadia Code", "Consolas", "Courier New", monospace,
                "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji",
                "Twemoji Mozilla", "Segoe UI Symbol";
-  /* font-variant-emoji: emoji форсирует цветной рендер на современных
-     Chrome/Edge/Firefox (символы типа ❤️/⭐ иначе могут рисоваться
-     чёрно-белым text-presentation на Linux/старых системах). */
-  font-variant-emoji: emoji;
+  /* НЕ ставить здесь font-variant-emoji: emoji — на Chrome 131+ это форсирует
+     эмодзи-презентацию у ГОЛЫХ цифр 0-9 (они базы keycap-эмодзи 0️⃣) и они
+     рисуются синими «клавишами», перебивая шрифт. Нужен text — рисуем цифры
+     как текст. Цветной рендер конкретных эмодзи (если надо) — точечно классом. */
+  font-variant-emoji: text;
   /* clip (а НЕ hidden) для html И body: overflow-x:hidden форсит
      overflow-y:auto → html/body становятся scroll-контейнерами, и
      position:fixed (дверь Тайной комнаты) уезжает при прокрутке в

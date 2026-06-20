@@ -723,7 +723,15 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
         rows = conn.execute(
             f"SELECT * FROM acceptances {where} ORDER BY accepted_date ASC, id ASC"
         ).fetchall()
-        return [_row_to_acceptance(r) for r in rows]
+        # Признак «Ветеран» по тегу в Доблести (для отображения и редактирования).
+        vet = {r["nick_canon"] for r in conn.execute(
+            "SELECT nick_canon FROM valor_tags WHERE tag = 'veteran'")}
+        out = []
+        for r in rows:
+            d = _row_to_acceptance(r)
+            d["veteran"] = _valor_canon(d["game_nick"]) in vet
+            out.append(d)
+        return out
 
 
 def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = None) -> dict:
@@ -927,6 +935,7 @@ def create_acceptance(
     title: str,
     accepted_date: str,
     note: str,
+    veteran: bool = False,
     actor: dict[str, str],
 ) -> dict[str, Any]:
     now = datetime.utcnow().isoformat(timespec="seconds")
@@ -949,6 +958,22 @@ def create_acceptance(
             ),
         )
         acc_id = cur.lastrowid
+        # Слияние с Доблестью: если этот человек уже есть в таблице доблести
+        # (тот же canon — напр. твин старичка уже светился на скрине), привязываем
+        # запись реестра к нему: эталонное написание ника, снятие «ИИ/новичок»-флага,
+        # миграция canon при расхождении написания. Тот же механизм, что при
+        # переименовании (update_acceptance). Если в доблести его ещё нет — безвредно.
+        canon = _valor_canon(game_nick)
+        if canon:
+            _by = actor.get("name") or actor.get("role") or ""
+            _sync_nick_in_conn(conn, canon, game_nick.strip(), now, _by)
+            # Роль «Ветеран» сразу при добавлении (твины старичков клана).
+            if veteran:
+                conn.execute(
+                    "INSERT OR IGNORE INTO valor_tags "
+                    "(nick_canon, tag, source, added_at) VALUES (?, 'veteran', 'registry', ?)",
+                    (canon, now),
+                )
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)
         ).fetchone()
@@ -964,6 +989,7 @@ def update_acceptance(
     title: str | None,
     accepted_date: str | None,
     note: str | None,
+    veteran: bool | None = None,
     actor: dict[str, str],
 ) -> dict[str, Any] | None:
     with connection() as conn:
@@ -995,6 +1021,19 @@ def update_acceptance(
         if new_nick != old_nick:
             _by = actor.get("name") or actor.get("role") or ""
             _sync_nick_in_conn(conn, _valor_canon(old_nick), new_nick, now, _by)
+        # Роль «Ветеран» при редактировании: ставим/снимаем тег в Доблести.
+        if veteran is not None:
+            canon = _valor_canon(new_nick)
+            if canon:
+                if veteran:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO valor_tags "
+                        "(nick_canon, tag, source, added_at) VALUES (?, 'veteran', 'registry', ?)",
+                        (canon, now))
+                else:
+                    conn.execute(
+                        "DELETE FROM valor_tags WHERE nick_canon = ? AND tag = 'veteran'",
+                        (canon,))
         _write_audit(conn, "update", acc_id, new_nick, dict(before), dict(after), actor)
         _mark_dirty(conn)
         return _row_to_acceptance(after)

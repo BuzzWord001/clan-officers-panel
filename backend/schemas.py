@@ -9,6 +9,7 @@ class AcceptanceIn(BaseModel):
     title: str = Field(default="", max_length=100)
     accepted_date: date
     note: str = Field(default="", max_length=200)
+    veteran: bool = False   # сразу пометить ролью «Ветеран» (твин старичка)
 
 
 class AcceptanceUpdate(BaseModel):
@@ -16,6 +17,7 @@ class AcceptanceUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=100)
     accepted_date: date | None = None
     note: str | None = Field(default=None, max_length=200)
+    veteran: bool | None = None   # None=не менять, True/False=поставить/снять роль
 
 
 class AcceptanceOut(BaseModel):
@@ -32,6 +34,7 @@ class AcceptanceOut(BaseModel):
     created_by_id: str
     created_by_name: str
     archived: bool = False
+    veteran: bool = False
     archived_at: str = ""
     archived_by: str = ""
     archived_reason: str = ""
