@@ -1076,6 +1076,9 @@
     return items;
   }
 
+  // Один раз при первом успешном рендере таблицы прокручиваем её вправо.
+  let _firstScrollRight = true;
+
   function apply() {
     if (!DATA.snapshot) return;   // данные ещё не загружены
     const items = applyFilterSort();
@@ -1131,9 +1134,9 @@
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>
-          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
-          <td class="m-cell-num">${compLabel}</td>
           <td class="m-cell-warn">${warnCell}</td>
+          <td class="m-cell-num">${compLabel}</td>
+          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
           <td class="m-cell-num">${trendCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
           <td class="tags-cell">${renderTagsAll(m)}</td>
@@ -1149,6 +1152,17 @@
         th.classList.add(SORT.dir === "asc" ? "sort-asc" : "sort-desc");
     });
     applyFocus();   // подсветить ник, на который пришли со «Скринов сбора»
+
+    // При ПЕРВОМ открытии страницы прокручиваем таблицу максимально вправо,
+    // чтобы человек сразу видел колонки «Ценность за неделю / за всё время».
+    // Только один раз — дальше не мешаем ручной прокрутке/сортировке/фильтру.
+    if (_firstScrollRight) {
+      _firstScrollRight = false;
+      requestAnimationFrame(() => {
+        const wrap = document.querySelector(".members-table-wrap");
+        if (wrap) wrap.scrollLeft = wrap.scrollWidth;
+      });
+    }
   }
 
   // ───────────────── Админ-редактор строки доблести ─────────────────
