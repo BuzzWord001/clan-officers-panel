@@ -152,6 +152,7 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
      распределяет три группы по краям и центру). */
   width: 100%;
   margin: 0;
+  position: relative;   /* база для абсолютного центрирования соцсетей */
 }
 
 /* Ряд ссылок на площадки клана в шапке (вставляется js/social-bar.js) */
@@ -159,6 +160,11 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Абсолютно по центру шапки — не зависит от ширины бренда/user-bar,
+     поэтому ровно посередине страницы (space-between центрировал неточно). */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .tsoc {
   --brand: var(--accent);
