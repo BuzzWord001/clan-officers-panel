@@ -4749,7 +4749,8 @@ def valor_get_departed() -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
-def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
+def valor_get_current(with_reg_notes: bool = False,
+                      with_socials: bool = True) -> dict[str, Any]:
     """Самый свежий снапшот + все его участники + тренд vs предыдущий
     снапшот (если есть).
 
@@ -5404,6 +5405,11 @@ def valor_get_current(with_reg_notes: bool = False) -> dict[str, Any]:
             m["manual_warnings"] = manual_warn_map.get(cn, [])
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
+            # Данные VK/Telegram (профили) — только офицерам/админу. Гостю
+            # отдаём None. Соц-баллы (score.socials, теги vk/tg) уже посчитаны
+            # выше на полных данных, поэтому зануление дисплея их не ломает.
+            if not with_socials:
+                m["socials"] = None
             members.append(m)
         # Карта недель → дата/время сбора (для расшифровки «W22» в UI).
         weeks_meta = {}

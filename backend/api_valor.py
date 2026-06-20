@@ -91,8 +91,11 @@ def valor_snapshot(payload: ValorSnapshotIn,
 @router.get("/current")
 def valor_current(s: dict = Depends(require_viewer)) -> dict:
     """Самый свежий снимок + все участники. Примечание из реестра (reg_note)
-    добавляется только офицерам/админу — гость его не получает."""
-    return db.valor_get_current(with_reg_notes=(s.get("role") != "guest"))
+    и данные VK/Telegram (socials) — только офицерам/админу, гость их не
+    получает (ни в UI, ни в ответе API)."""
+    is_officer = s.get("role") in ("officer", "admin")
+    return db.valor_get_current(with_reg_notes=is_officer,
+                                with_socials=is_officer)
 
 
 @router.get("/known-nicks")

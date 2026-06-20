@@ -3003,6 +3003,14 @@ body.show-valor .valor-col { display: table-cell; }
 #valor-table thead th:nth-child(1),
 #valor-table thead th:nth-child(2) { z-index: 3; }
 
+/* Столбец «Данные VK / Telegram» — виден только офицеру/админу.
+   data-role на body ставит loadMe() (clan-valor.js). Пока роль неизвестна
+   (до loadMe) столбец скрыт — безопасный дефолт, без мелькания данных у гостя. */
+body:not([data-role="officer"]):not([data-role="admin"]) #valor-table th.col-socials,
+body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.socials-cell {
+  display: none;
+}
+
 #valor-table td:nth-child(1),
 #valor-table td:nth-child(2) { background: #000; }
 #valor-table thead th:nth-child(1),
