@@ -1134,8 +1134,8 @@
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-num m-cell-total">${valorCell}</td>
-          <td class="m-cell-num">${trendCell}</td>
           <td class="m-cell-num">${compLabel}</td>
+          <td class="m-cell-num">${trendCell}</td>
           <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
           <td class="m-cell-warn">${warnCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
