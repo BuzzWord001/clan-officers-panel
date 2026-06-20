@@ -882,6 +882,82 @@ body.guest-mode .col-note { display: none !important; }
   text-shadow: 0 0 6px var(--accent);
 }
 
+/* ── Площадки клана на экране входа (VK / Telegram / TeamSpeak) ── */
+.auth-social {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(224, 162, 74, 0.25);
+}
+.auth-social-title {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+  margin-bottom: 14px;
+}
+.auth-social-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.soc-btn {
+  --brand: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(224, 162, 74, 0.06);
+  border: 1px solid rgba(224, 162, 74, 0.28);
+  border-radius: 12px;
+  color: #ecdfc6;
+  text-decoration: none;
+  transition: transform 0.16s ease, border-color 0.16s ease,
+              box-shadow 0.16s ease, background 0.16s ease;
+}
+.soc-btn:hover,
+.soc-btn:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--brand);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 8px 20px -8px var(--brand), inset 0 0 0 1px var(--brand);
+  outline: none;
+}
+.soc-btn:active { transform: translateY(0); }
+.soc-ic {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  color: var(--brand);
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.soc-btn:hover .soc-ic {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 7px var(--brand));
+}
+.soc-tx {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.soc-tx b {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f5ecda;
+}
+.soc-tx small {
+  font-size: 10px;
+  color: var(--accent-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 360px) {
+  .auth-social-grid { grid-template-columns: 1fr; }
+}
+
 /* Вводный текст под табами */
 .intro p {
   margin: 0;
