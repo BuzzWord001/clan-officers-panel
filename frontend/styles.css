@@ -672,6 +672,11 @@ input:-webkit-autofill:active {
 
 .auth-shell {
   min-height: 100vh;
+  /* Перебиваем общий main{max-width/margin}: экран ВХОДА — во всю ширину и
+     БЕЗ верхнего отступа (правка main{margin:80px} для панели давала здесь
+     лишнюю горизонтальную полосу фона сверху). */
+  max-width: none;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
