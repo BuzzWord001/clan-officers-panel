@@ -84,10 +84,25 @@
         showNetBanner(true);
         return;
       }
-      // Реальные 401/403 — сессии нет/протухла → на вход.
-      location.href = "login.html";
+      // Нет сессии (401/403) → АВТОМАТИЧЕСКИ входим гостем и остаёмся на
+      // Доблести (отдельного окна логина в основном потоке нет; офицер/админ
+      // заходят через дверцу «Офицерский вход»). Защита от зацикливания: если
+      // после гостевого входа сессия всё равно не встала (браузер режет
+      // cookie И localStorage) — один раз пробуем, потом фолбэк на login.html.
+      try {
+        if (sessionStorage.getItem("__autoguest")) {
+          location.href = "login.html";
+          return;
+        }
+        sessionStorage.setItem("__autoguest", "1");
+        await API.loginGuest();
+        location.reload();
+      } catch (_) {
+        location.href = "login.html";
+      }
       return;
     }
+    try { sessionStorage.removeItem("__autoguest"); } catch (_) {}
     if (me?.role === "guest") {
       IS_GUEST = true;
       document.body.classList.add("guest-mode");
@@ -115,7 +130,9 @@
 
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    location.href = "login.html";
+    // После выхода офицер/админ снова становится гостем на Доблести.
+    try { sessionStorage.removeItem("__autoguest"); } catch (_) {}
+    location.reload();
   });
 
   async function load() {

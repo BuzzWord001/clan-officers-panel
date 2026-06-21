@@ -7,7 +7,10 @@
   try {
     me = await API.me();
   } catch (e) {
-    window.location.href = "login.html";
+    // Нет сессии → на Доблесть (там автоматически создаётся гостевая
+    // сессия). Отдельного окна логина в основном потоке больше нет —
+    // офицер/админ входят через дверцу «Офицерский вход».
+    window.location.href = "clan-valor.html";
     return;
   }
   // Гость допущен только к таблице Доблести. На офицерских страницах данные
@@ -27,7 +30,8 @@
   document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    window.location.href = "login.html";
+    // После выхода — обратно на Доблесть гостем (авто-гость там сработает).
+    window.location.href = "clan-valor.html";
   });
 
   // ── Date input ──
