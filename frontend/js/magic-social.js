@@ -72,6 +72,8 @@
       ".ms-flow{fill:none;stroke:#fff6da;stroke-width:3;stroke-linecap:round;" +
         "filter:url(#msGlowS);stroke-dasharray:2 24;animation:msFlow 2.4s linear infinite}" +
       ".ms-node{fill:#ffe39a;filter:url(#msGlowS);animation:msPulse 2.8s ease-in-out infinite}" +
+      ".ms-orb{filter:url(#msGlow);animation:msPulse 2.6s ease-in-out infinite}" +
+      ".ms-orb-core{fill:#fff6e0;filter:url(#msGlowS)}" +
       ".ms-spark{fill:url(#msSpark);filter:url(#msGlowS)}" +
       "@keyframes msFlow{to{stroke-dashoffset:-39}}" +
       "@keyframes msFlicker{0%,100%{opacity:.5}40%{opacity:.95}52%{opacity:.45}68%{opacity:.85}}" +
@@ -235,13 +237,13 @@
     var pts = [
       // ---- художественный хвост: от правого края заголовок ПОД надписью
       //      сметается влево к центру и заканчивается завитком внизу ----
-      rnd(cx + 22,  B + 58),   // кончик-завиток (центр-право, ниже подзаголовка)
-      rnd(cx - 2,   B + 46),   // крючок завитка (влево-вверх)
-      rnd(cx + 42,  B + 40),   // петелька на кончике
-      rnd(cx + 130, B + 46),   // волна вниз под надписью
-      rnd(cx + 214, B + 34),   // поднимается
-      rnd(cx + 300, B + 18),   // ближе к правому краю
-      rnd(R + 14,   B - 2),    // стык с правым боком (под правым краем)
+      rnd(cx + 16,  B + 46),   // кончик-завиток (тут светящийся шар)
+      rnd(cx + 2,   B + 58),   // вниз-влево
+      rnd(cx + 24,  B + 67),   // низ петельки
+      rnd(cx + 58,  B + 58),   // выход из завитка вверх-вправо
+      rnd(cx + 142, B + 46),   // волна вправо под надписью
+      rnd(cx + 238, B + 33),   // поднимается
+      rnd(R + 12,   B - 2),    // стык с правым боком (под правым краем)
       // ---- правый бок и корона над заголовком ----
       rnd(R + 20, cy),             // правый бок
       rnd(R + 4,  T - 10),         // правый верхний угол
@@ -252,33 +254,6 @@
       rnd(anchorX, cy)             // левая база — переходит в цепочку
     ];
     return { pts: pts, apex: rnd(cx, apexY), tip: pts[0], anchor: rnd(anchorX, cy) };
-  }
-
-  // сужающаяся лента вдоль центральной линии pts (ширина 0 у кончика pts[0]
-  // → maxW у последней точки-стыка). Возвращает d заполненного полигона.
-  function taperRibbon(svg, pts, maxW) {
-    var tmp = el("path", { d: smooth(pts), fill: "none", stroke: "none" });
-    svg.appendChild(tmp);
-    var len = tmp.getTotalLength();
-    if (!len) { svg.removeChild(tmp); return ""; }
-    var N = 28, left = [], right = [];
-    for (var i = 0; i <= N; i++) {
-      var s = i / N, l = s * len;
-      var p  = tmp.getPointAtLength(l);
-      var pa = tmp.getPointAtLength(Math.max(0, l - 1.2));
-      var pb = tmp.getPointAtLength(Math.min(len, l + 1.2));
-      var tx = pb.x - pa.x, ty = pb.y - pa.y, tl = Math.hypot(tx, ty) || 1;
-      var nx = -ty / tl, ny = tx / tl;
-      // плавное сужение к кончику (ease), круглый «носик» у самого конца
-      var hw = (maxW * Math.pow(s, 0.7)) / 2;
-      left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
-      right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
-    }
-    svg.removeChild(tmp);
-    var d = "M" + left[0].x.toFixed(1) + " " + left[0].y.toFixed(1);
-    for (var a = 1; a <= N; a++) d += " L" + left[a].x.toFixed(1) + " " + left[a].y.toFixed(1);
-    for (var b = N; b >= 0; b--) d += " L" + right[b].x.toFixed(1) + " " + right[b].y.toFixed(1);
-    return d + " Z";
   }
 
   function layout() {
@@ -314,21 +289,14 @@
     // линия обвивает заголовок SanTDeviL дугой-короной (если хватает места)
     var arch = titleArch(iconPts[0].x);
     var fullPts = arch ? arch.pts.concat(iconPts) : iconPts;
-    // хвост (кончик→стык, индексы 0..6) рисуется сужающейся лентой,
-    // остальная линия (стык→корона→цепочка) — обычной спиной
-    var TJOIN = 6;
-    var mainPts = arch ? arch.pts.slice(TJOIN).concat(iconPts) : iconPts;
-    var dMain = smooth(mainPts);
-    root._aura.setAttribute("d", dMain);
-    root._spine.setAttribute("d", dMain);
-    root._core.setAttribute("d", dMain);
-    root._flow.setAttribute("d", smooth(fullPts));     // поток энергии — через хвост тоже
-    root._motion.setAttribute("d", smooth(fullPts));   // путь для бегущих искр
-    if (arch) {
-      root._tail.setAttribute("d", taperRibbon(root._svg, arch.pts.slice(0, TJOIN + 1), 6.5));
-    } else {
-      root._tail.setAttribute("d", "");
-    }
+    // равномерная толщина по всей линии (включая хвост)
+    var dFull = smooth(fullPts);
+    root._aura.setAttribute("d", dFull);
+    root._spine.setAttribute("d", dFull);
+    root._core.setAttribute("d", dFull);
+    root._flow.setAttribute("d", dFull);
+    root._motion.setAttribute("d", dFull);
+    root._tail.setAttribute("d", "");
 
     // плетёная молния — ТОЛЬКО по цепочке иконок (над заголовком чисто)
     var boltPts = arch ? [arch.anchor].concat(iconPts) : iconPts;
@@ -352,14 +320,22 @@
     root._nodes.forEach(function (nd) { nd.remove(); });
     root._nodes = [];
     var nodePts = iconPts.slice();
-    if (arch) { nodePts.push(arch.apex); nodePts.push(arch.tip); }
+    if (arch) { nodePts.push(arch.apex); }
     nodePts.forEach(function (p, idx) {
-      var big = arch && (p === arch.apex || p === arch.tip);
+      var big = arch && p === arch.apex;
       var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: big ? 3.6 : 3 });
       c.style.animationDelay = (idx * 0.5) + "s";
       root._svg.appendChild(c);
       root._nodes.push(c);
     });
+    // светящийся шар-бусина на самом кончике хвоста
+    if (arch) {
+      var orb = el("circle", { class: "ms-orb", cx: arch.tip.x, cy: arch.tip.y,
+                               r: 6.5, fill: "url(#msSpark)" });
+      var orbCore = el("circle", { class: "ms-orb-core", cx: arch.tip.x, cy: arch.tip.y, r: 2.4 });
+      root._svg.appendChild(orb); root._svg.appendChild(orbCore);
+      root._nodes.push(orb); root._nodes.push(orbCore);
+    }
   }
 
   function init() {
