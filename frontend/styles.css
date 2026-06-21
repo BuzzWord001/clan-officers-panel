@@ -4074,3 +4074,45 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
   content: "\273B"; color: #8fae5e; margin-right: 8px; font-size: 0.95em;
   text-shadow: 0 0 8px rgba(120,160,80,0.4);
 }
+
+
+/* ───────────────────────────────────────────────────────────
+   Тёплое «магическое» свечение — единый язык с линией соцсетей.
+   Связывает заголовок-источник с линией и пускает мягкий глоу-ритм
+   по странице. Данные таблиц НЕ трогаем (читаемость). 2026-06.
+   ─────────────────────────────────────────────────────────── */
+
+/* 1) Аура заголовка — магическая линия читается как энергия бренда */
+.title-block { position: relative; }
+.title-block::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(900px, 88%); height: 230px; pointer-events: none;
+  background: radial-gradient(ellipse 58% 60% at center,
+      rgba(224,162,74,.20), rgba(224,162,74,.07) 46%, transparent 72%);
+  filter: blur(4px);
+  animation: brandAura 6s ease-in-out infinite;
+}
+@keyframes brandAura { 0%,100%{opacity:.7} 50%{opacity:1} }
+
+/* 2) Светящийся разделитель под брендовой зоной (рамка контента) */
+.title-block::after {
+  content: ""; position: absolute; left: 50%; bottom: 4px;
+  transform: translateX(-50%);
+  width: min(440px, 62%); height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent,
+      rgba(224,162,74,.6) 22%, rgba(224,162,74,.6) 78%, transparent);
+  box-shadow: 0 0 10px rgba(224,162,74,.5);
+}
+
+/* 3) Заголовки секций — лёгкий глоу + светящийся акцент-брусок слева */
+.timeline-title, #dep-toggle b {
+  text-shadow: 0 0 10px rgba(224,162,74,.4);
+}
+.timeline-title { position: relative; padding-left: 14px; }
+.timeline-title::before {
+  content: ""; position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 4px; height: 15px; border-radius: 2px; background: var(--accent);
+  box-shadow: 0 0 8px var(--accent), 0 0 16px rgba(224,162,74,.5);
+}
