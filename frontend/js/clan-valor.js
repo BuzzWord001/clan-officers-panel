@@ -110,6 +110,10 @@
       // Красный «Только для офицеров» → зелёный «Гостевой просмотр».
       const badge = document.querySelector(".classified-badge");
       if (badge) { badge.textContent = "Гостевой просмотр"; badge.classList.add("guest"); }
+      // У гостя кнопка «Выйти» бессмысленна (выход → снова гость) — прячем.
+      // Войти офицером/админом гость может через дверцу «Офицерский вход».
+      const lo = $("logout-btn");
+      if (lo) lo.style.display = "none";
       // Гостю недоступны другие разделы — прячем навигацию целиком.
       document.querySelectorAll(".tabs, .admin-only").forEach(el =>
         el.style.display = "none");
