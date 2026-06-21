@@ -3,18 +3,18 @@
 // офицерский) работает во ВСЕХ браузерах — Safari, iOS, встроенные браузеры
 // Telegram/VK, Firefox с ETP — без зависимости от localStorage/Bearer.
 //
-// КАНОНИЧЕСКИЙ домен — panel.santdevil.com (за Cloudflare). Прямой
+// КАНОНИЧЕСКИЙ домен — santdevil.com (корень, за Cloudflare). Прямой
 // clan-officers-panel.fly.dev у части РФ-провайдеров блокируется (РКН режет
-// *.fly.dev), поэтому всех ведём на panel.santdevil.com — Cloudflare прячет
-// Fly за собой и обходит блокировку. Тот же Fly-бэкенд отдаёт фронт и на
-// fly.dev (запасной вход для незаблокированных), и на новом домене — оба
-// варианта same-origin, вход не ломается.
+// *.fly.dev), поэтому всех ведём на santdevil.com — Cloudflare прячет Fly за
+// собой и обходит блокировку. Тот же Fly-бэкенд отдаёт фронт и на корне, и на
+// panel.santdevil.com (старый адрес — продолжает работать), и на fly.dev
+// (запасной для незаблокированных) — все варианты same-origin, вход не ломается.
 //
-// Старые ссылки на GitHub Pages и на fly.dev переселяем на канонический домен,
-// чтобы закладки/закрепы у всех вели на рабочий незаблокированный адрес.
+// Старые ссылки на GitHub Pages переселяем на канонический домен, чтобы
+// закладки/закрепы вели на короткий рабочий адрес santdevil.com.
 (function () {
-  var CANON = "panel.santdevil.com";          // основной домен (Cloudflare → Fly)
-  var FLY = "clan-officers-panel.fly.dev";      // прямой Fly (запасной)
+  var CANON = "santdevil.com";                  // основной адрес (Cloudflare → Fly)
+  var FLY = "clan-officers-panel.fly.dev";       // прямой Fly (запасной)
   var host = location.hostname;
 
   // Сайт, открытый с github.io, переселяем на канонический домен.
@@ -27,9 +27,11 @@
   }
 
   // Хосты, с которых сайт отдаётся ТЕМ ЖЕ бэкендом → API по относительным
-  // путям (same-origin). Это канонический домен, прямой Fly и локалка.
+  // путям (same-origin): корень santdevil.com, ЛЮБОЙ его поддомен
+  // (panel.santdevil.com, www.santdevil.com…), прямой Fly и локалка.
   var SAME_ORIGIN = (
-    host === CANON || host === FLY ||
+    host === CANON || host.endsWith("." + CANON) ||
+    host === FLY ||
     host === "localhost" || host === "127.0.0.1"
   );
 
