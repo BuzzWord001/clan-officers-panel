@@ -1098,11 +1098,38 @@ body.guest-mode .col-note { display: none !important; }
   border: 1px solid rgba(224, 162, 74, 0.25);
   border-radius: 7px;
   padding: 4px 8px;
+  position: relative;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .soc2-url:hover { color: #f3d489; border-color: var(--accent); background: rgba(224, 162, 74, 0.14); }
 .soc2-url.copied { color: #8ff0a0; border-color: #8ff0a0; background: rgba(120, 252, 138, 0.12); }
+/* Полная ссылка во всплывающей подсказке при наведении (без сдвига вёрстки) */
+.soc2-url::after {
+  content: attr(data-full);
+  position: absolute;
+  left: 50%; bottom: calc(100% + 7px);
+  transform: translateX(-50%) translateY(4px);
+  width: max-content; max-width: 280px;
+  padding: 7px 10px;
+  font: 500 11px/1.45 ui-monospace, "Cascadia Mono", monospace;
+  color: #f6ecd8;
+  text-align: left;
+  white-space: normal; word-break: break-all;
+  background: #1b1108;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.65), 0 0 14px rgba(224, 162, 74, 0.25);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: 60;
+}
+.soc2-url:hover::after,
+.soc2-url:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.soc2-url.copied::after { display: none; }
 
 /* Вводный текст под табами */
 .intro p {

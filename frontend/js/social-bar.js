@@ -72,7 +72,10 @@
       url.type = "button";
       url.className = "soc2-url";
       url.textContent = l.copy;
-      url.title = "Нажми, чтобы скопировать ссылку";
+      // Полная ссылка показывается всплывающей подсказкой при наведении
+      // (data-full → CSS ::after), а клик копирует её в буфер.
+      url.setAttribute("data-full", l.copy);
+      url.setAttribute("aria-label", "Скопировать ссылку: " + l.copy);
       url.addEventListener("click", function () { copyText(l.copy, url); });
 
       card.appendChild(a);
