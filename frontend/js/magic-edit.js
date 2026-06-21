@@ -8,7 +8,7 @@
   var SVGNS = "http://www.w3.org/2000/svg";
   var on = false, pts = [], drag = -1, justDragged = false, els = null;
   // подложка-картинка
-  var img = { x: 0, y: 0, scale: 100, op: 45, shown: true, move: false, dragOff: null };
+  var img = { x: 0, y: 0, scale: 100, op: 45, shown: false, move: false, dragOff: null };
 
   function el(tag, a) { var e = document.createElementNS(SVGNS, tag); for (var k in a) e.setAttribute(k, a[k]); return e; }
 
@@ -91,7 +91,7 @@
       '(масштаб + перетаскивание). 2) Выключи «Двигать». 3) Кликай по красной линии — ' +
       'точки можно <b>тянуть</b>. 4) «Копировать» и пришли мне текст.</p>' +
       '<div class="row">' +
-        '<button id="medit-imgtog">Скрыть картинку</button>' +
+        '<button id="medit-imgtog">Показать картинку</button>' +
         '<button id="medit-move">🖐 Двигать картинку</button>' +
       '</div>' +
       '<label>Прозрачность подложки <span id="medit-opv">45%</span>' +
@@ -269,6 +269,13 @@
       build();
       els.root.style.display = ""; document.getElementById("medit-panel").style.display = "";
       render();
+      // автозагрузка точек текущей линии (ждём, пока magic-social отрисует и
+      // выставит window.__magicLine) — чтобы сразу можно было править
+      var tries = 0;
+      (function waitLine() {
+        if (window.__magicLine && window.__magicLine.pts && !pts.length) { loadCurrentLine(); return; }
+        if (++tries < 20) setTimeout(waitLine, 150);
+      })();
     } else if (els) {
       els.root.style.display = "none"; document.getElementById("medit-panel").style.display = "none";
     }
