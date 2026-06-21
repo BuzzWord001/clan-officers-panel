@@ -267,7 +267,8 @@
       rnd(L - 4,  T - 10),         // левый верхний угол
       rnd(anchorX, cy)             // левая база — переходит в цепочку
     ];
-    return { pts: pts, apex: rnd(cx, apexY), tip: pts[0], anchor: rnd(anchorX, cy) };
+    return { pts: pts, apex: rnd(cx, apexY), tip: pts[0], anchor: rnd(anchorX, cy),
+             R: R, B: B };
   }
 
   function layout() {
@@ -311,6 +312,17 @@
     root._flow.setAttribute("d", dFull);
     root._motion.setAttribute("d", dFull);
     root._tail.setAttribute("d", "");
+
+    // открываем точки линии для редактора (#magicedit): dx/dy относительно
+    // заголовка + тип (line — форма линии, icon — позиция иконки)
+    if (arch) {
+      var _nl = arch.pts.length;
+      window.__magicLine = { R: arch.R, B: arch.B,
+        pts: fullPts.map(function (p, i) {
+          return { dx: Math.round(p.x - arch.R), dy: Math.round(p.y - arch.B),
+                   kind: i < _nl ? "line" : "icon" };
+        }) };
+    }
 
     // плетёная молния — ТОЛЬКО по цепочке иконок (над заголовком чисто)
     var boltPts = arch ? [arch.anchor].concat(iconPts) : iconPts;

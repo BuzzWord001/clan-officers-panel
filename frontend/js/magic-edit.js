@@ -51,6 +51,10 @@
         "filter:drop-shadow(0 0 6px #ff8a1e);pointer-events:none;opacity:.95}" +
       "#medit .pt{fill:#fff1c4;stroke:#a4520c;stroke-width:2;cursor:grab;filter:drop-shadow(0 0 4px #ffb14d)}" +
       "#medit .pt.first{fill:#9fe0ff}" +
+      "#medit .pt.moved{fill:#7dff8a;stroke:#1a6b25}" +
+      "#medit .pt.icon{fill:#ffcaf0;stroke:#7a2a63}" +
+      "#medit .ghost{fill:none;stroke:#9fe0ff;stroke-width:1.5;opacity:.55}" +
+      "#medit .disp{stroke:#9fe0ff;stroke-width:1.2;opacity:.6;stroke-dasharray:3 3}" +
       "#medit .num{fill:#fff;font:700 11px sans-serif;pointer-events:none;text-anchor:middle}" +
       "#medit-panel{position:fixed;left:14px;bottom:14px;z-index:5100;width:330px;max-width:calc(100vw - 28px);" +
         "background:rgba(16,11,6,.97);border:1px solid rgba(224,140,40,.55);border-radius:12px;" +
@@ -97,6 +101,8 @@
       '<div class="row"><button id="medit-load" class="x">Своя картинка…</button>' +
         '<input type="file" id="medit-file" accept="image/*" style="display:none"></div>' +
       '<hr style="border:0;border-top:1px solid rgba(224,140,40,.25);margin:10px 0 8px">' +
+      '<div class="row"><button id="medit-loadline" class="act">↺ Загрузить точки текущей линии</button></div>' +
+      '<p style="margin:6px 0 0">Перетаскивай точки. Сдвинутые подсветятся, и снизу запишется «было → стало» по каждой.</p>' +
       '<textarea readonly id="medit-out"></textarea>' +
       '<div class="row">' +
         '<button id="medit-copy">Копировать</button>' +
@@ -119,7 +125,8 @@
     });
     window.addEventListener("pointermove", function (e) {
       if (drag < 0) return;
-      pts[drag] = { x: Math.round(e.clientX + window.scrollX), y: Math.round(e.clientY + window.scrollY) };
+      pts[drag].x = Math.round(e.clientX + window.scrollX);   // x/y на месте —
+      pts[drag].y = Math.round(e.clientY + window.scrollY);   // сохраняем orig/kind
       render();
     });
     window.addEventListener("pointerup", function () {
@@ -136,6 +143,7 @@
     panel.querySelector("#medit-undo").addEventListener("click", function () { pts.pop(); render(); });
     panel.querySelector("#medit-clear").addEventListener("click", function () { pts = []; render(); });
     panel.querySelector("#medit-close").addEventListener("click", function () { toggle(false); });
+    panel.querySelector("#medit-loadline").addEventListener("click", loadCurrentLine);
 
     // --- подложка ---
     panel.querySelector("#medit-imgtog").addEventListener("click", function () {
@@ -189,29 +197,70 @@
     p.style.width = (window.innerWidth * img.scale / 100) + "px";
   }
 
+  function loadCurrentLine() {
+    var ml = window.__magicLine;
+    if (!ml || !ml.pts || !ml.pts.length) {
+      els.out.value = "Линия не найдена. Открой страницу Доблести (#magicedit) — " +
+                      "линия должна быть видна, тогда её точки подгрузятся.";
+      return;
+    }
+    var tr = titleRect();
+    var R = tr ? tr.R : ml.R, B = tr ? tr.B : ml.B;
+    pts = ml.pts.map(function (p) {
+      return { x: R + p.dx, y: B + p.dy, orig: { dx: p.dx, dy: p.dy }, kind: p.kind };
+    });
+    render();
+  }
+
+  function fmt(dx, dy) {
+    return "R " + (dx >= 0 ? "+ " : "- ") + Math.abs(dx) +
+           ", B " + (dy >= 0 ? "+ " : "- ") + Math.abs(dy);
+  }
+
   function render() {
     var tr = titleRect();
-    // линия
+    var R = tr ? tr.R : 0, B = tr ? tr.B : 0;
     els.ln.setAttribute("d", smooth(pts));
-    // точки
-    Array.prototype.slice.call(els.svg.querySelectorAll(".pt,.num")).forEach(function (n) { n.remove(); });
+    Array.prototype.slice.call(
+      els.svg.querySelectorAll(".pt,.num,.ghost,.disp")).forEach(function (n) { n.remove(); });
+
     pts.forEach(function (p, i) {
-      var c = el("circle", { class: "pt" + (i === 0 ? " first" : ""), cx: p.x, cy: p.y, r: 8 });
+      var moved = p.orig && (Math.round(p.x - R) !== p.orig.dx || Math.round(p.y - B) !== p.orig.dy);
+      if (p.orig) {
+        var ox = R + p.orig.dx, oy = B + p.orig.dy;
+        if (moved) {                       // призрак старого места + пунктир сдвига
+          els.svg.appendChild(el("line", { class: "disp", x1: ox, y1: oy, x2: p.x, y2: p.y }));
+          els.svg.appendChild(el("circle", { class: "ghost", cx: ox, cy: oy, r: 6 }));
+        }
+      }
+      var cls = "pt";
+      if (p.kind === "icon") cls += " icon";
+      if (moved) cls += " moved";
+      else if (i === 0 && !p.orig) cls += " first";
+      var c = el("circle", { class: cls, cx: p.x, cy: p.y, r: 8 });
       c.addEventListener("pointerdown", function (e) { e.stopPropagation(); drag = i; });
       els.svg.appendChild(c);
       var t = el("text", { class: "num", x: p.x, y: p.y - 12 }); t.textContent = (i + 1);
       els.svg.appendChild(t);
     });
-    // вывод координат относительно заголовка
-    var lines = "// title: R=" + (tr ? tr.R : "?") + " B=" + (tr ? tr.B : "?") +
-                " cx=" + (tr ? tr.cx : "?") + " (точек: " + pts.length + ")\n";
-    pts.forEach(function (p) {
-      if (!tr) return;
-      var dx = p.x - tr.R, dy = p.y - tr.B;
-      lines += "rnd(R " + (dx >= 0 ? "+ " : "- ") + Math.abs(dx) +
-               ", B " + (dy >= 0 ? "+ " : "- ") + Math.abs(dy) + "),\n";
+
+    // вывод: карта «было → стало» + готовый список новых координат
+    var movedList = [], full = [], nMoved = 0;
+    pts.forEach(function (p, i) {
+      var dx = Math.round(p.x - R), dy = Math.round(p.y - B);
+      full.push("rnd(" + fmt(dx, dy) + "),   // #" + (i + 1) +
+                (p.kind === "icon" ? " [иконка]" : ""));
+      if (p.orig && (dx !== p.orig.dx || dy !== p.orig.dy)) {
+        nMoved++;
+        movedList.push("// #" + (i + 1) + (p.kind === "icon" ? " [иконка]" : "") +
+                       ":  было (" + fmt(p.orig.dx, p.orig.dy) + ")  ->  стало (" + fmt(dx, dy) + ")");
+      }
     });
-    els.out.value = lines;
+    var head = "// title R=" + R + " B=" + B + " | точек: " + pts.length + ", сдвинуто: " + nMoved + "\n";
+    var out = head;
+    if (movedList.length) out += "// === СДВИНУТЫЕ (было -> стало) ===\n" + movedList.join("\n") + "\n";
+    out += "// === ВСЕ точки сейчас ===\n" + full.join("\n") + "\n";
+    els.out.value = out;
   }
 
   function toggle(v) {
