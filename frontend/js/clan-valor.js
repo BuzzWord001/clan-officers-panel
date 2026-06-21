@@ -1147,10 +1147,12 @@
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
           <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
-          <td>${esc(m.true_name)}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
-          <td class="hist-cell" data-field="title">${renderTitle(m)}</td>
+          <td class="m-cell-titlename">
+            <span class="hist-cell tn-title" data-field="title" title="Клик — прошлые титулы">${renderTitle(m)}</span>
+            ${m.true_name ? `<span class="tn-name" title="Имя / ник мэйн-аккаунта">${esc(m.true_name)}</span>` : ""}
+          </td>
           <td class="col-note" title="${m.reg_note ? esc(m.reg_note) : ""}">${esc(m.reg_note || "")}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
