@@ -1,25 +1,31 @@
 /* magic-social.js — соцсети единой "магической" змейкой по левому краю.
-   Иконки position:absolute (как дверца "Офицерский вход") — при прокрутке
-   уезжают вверх и скрываются. Многослойная анимированная магическая линия:
-   аура + спина-градиент + горячее ядро + плетёная молния + поток энергии +
-   светящиеся узлы + бегущие искры. Видно когда слева есть свободное поле. */
+   - position:absolute (как дверца) → уезжает вверх при прокрутке.
+   - многослойная анимированная линия, продлённая к заголовку SanTDeviL
+     (визуальная связь логотипов со всем сайтом).
+   - наведение: свечение под ЦВЕТ логотипа + поповер со ссылкой и кнопкой
+     «Копировать». Видно когда слева есть свободное поле. */
 (function () {
   "use strict";
 
   // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak, Группа ВК
   var LINKS = [
-    { key: "tg",       label: "Telegram",  href: "https://t.me/+6U3XCSrrZgo1YTMy",                 title: "Telegram клана",   img: "assets/social/tg.png" },
-    { key: "vk-chat",  label: "Чат ВК",    href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", title: "Чат ВКонтакте", img: "assets/social/vk-chat.png" },
-    { key: "ts",       label: "TeamSpeak", href: "ts3server://melodybum.ts3.se",                   title: "TeamSpeak — melodybum.ts3.se", img: "assets/social/ts.png" },
-    { key: "vk-group", label: "Группа ВК", href: "https://vk.com/club38888207",                   title: "Группа ВКонтакте", img: "assets/social/vk-group.png" }
+    { key: "tg",       label: "Telegram",  glow: "#2aa6e4",
+      href: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy",
+      img: "assets/social/tg.png" },
+    { key: "vk-chat",  label: "Чат ВК",    glow: "#f56a24",
+      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+      disp: "vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+      img: "assets/social/vk-chat.png" },
+    { key: "ts",       label: "TeamSpeak", glow: "#ff5e1c",
+      href: "ts3server://melodybum.ts3.se", disp: "melodybum.ts3.se",
+      img: "assets/social/ts.png" },
+    { key: "vk-group", label: "Группа ВК", glow: "#f57a26",
+      href: "https://vk.com/club38888207", disp: "vk.com/club38888207",
+      img: "assets/social/vk-group.png" }
   ];
 
-  // X-центр каждой иконки — доля от ширины левого поля m (верхняя >1.0 тянется к центру)
   var XF = [1.70, 0.30, 0.85, 0.45];
-  var TOP_Y = 150;     // px от верха документа до первой иконки
-  var STEP_Y = 200;    // вертикальный шаг между иконками
-  var ICON = 58;
-  var MIN_MARGIN = 138;
+  var TOP_Y = 150, STEP_Y = 200, ICON = 58, MIN_MARGIN = 138;
   var SVGNS = "http://www.w3.org/2000/svg";
 
   function el(tag, attrs) {
@@ -28,12 +34,29 @@
     return e;
   }
 
+  function copyToClipboard(text, btn) {
+    function ok() {
+      var o = btn.textContent; btn.textContent = "Скопировано ✓"; btn.classList.add("ok");
+      setTimeout(function () { btn.textContent = o; btn.classList.remove("ok"); }, 1500);
+    }
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok, function () { fallback(); ok(); });
+    } else { fallback(); ok(); }
+  }
+
   function buildOnce() {
     if (document.getElementById("magic-social")) return;
 
     var style = document.createElement("style");
     style.textContent =
-      "#magic-social{position:absolute;top:0;left:0;width:100%;z-index:6;" +
+      "#magic-social{position:absolute;top:0;left:0;width:100%;z-index:40;" +
         "pointer-events:none;display:none}" +
       "#magic-social.on{display:block}" +
       "#magic-social svg{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible}" +
@@ -54,15 +77,30 @@
       "@keyframes msPulse{0%,100%{opacity:.45}50%{opacity:1}}" +
       ".ms-ico{position:absolute;width:" + ICON + "px;height:" + ICON + "px;pointer-events:auto;" +
         "border-radius:14px;display:block;transition:transform .18s ease,filter .18s ease;" +
-        "filter:drop-shadow(0 0 7px rgba(224,140,40,.6)) drop-shadow(0 3px 7px rgba(0,0,0,.6))}" +
+        "filter:drop-shadow(0 0 7px rgba(224,140,40,.5)) drop-shadow(0 3px 7px rgba(0,0,0,.6))}" +
       ".ms-ico img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-select:none}" +
       ".ms-ico:hover{transform:scale(1.15);" +
-        "filter:drop-shadow(0 0 16px rgba(255,170,60,.98)) drop-shadow(0 4px 9px rgba(0,0,0,.7))}" +
+        "filter:drop-shadow(0 0 18px var(--gc)) drop-shadow(0 0 7px var(--gc)) " +
+        "drop-shadow(0 4px 9px rgba(0,0,0,.65))}" +
       ".ms-lbl{position:absolute;pointer-events:none;transform:translateX(-50%);" +
         "white-space:nowrap;padding:2px 9px;border-radius:8px;" +
         "background:rgba(20,13,7,.8);border:1px solid rgba(224,140,40,.45);" +
         "color:#f4dcb0;font:700 11px/1.25 system-ui,sans-serif;letter-spacing:.3px;" +
-        "text-shadow:0 1px 2px #000;box-shadow:0 0 10px rgba(224,140,40,.25)}";
+        "text-shadow:0 1px 2px #000;box-shadow:0 0 10px rgba(224,140,40,.25)}" +
+      ".ms-pop{position:absolute;z-index:60;display:flex;align-items:center;gap:7px;" +
+        "padding:6px 7px 6px 11px;border-radius:10px;max-width:265px;" +
+        "background:rgba(18,12,7,.97);border:1px solid rgba(224,140,40,.5);" +
+        "box-shadow:0 6px 20px rgba(0,0,0,.55),0 0 14px rgba(224,140,40,.22);" +
+        "opacity:0;pointer-events:none;transform:translateY(-50%) translateX(-6px);" +
+        "transition:opacity .16s ease,transform .16s ease}" +
+      ".ms-pop.show{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0)}" +
+      ".ms-pop-url{font:600 11px/1.3 ui-monospace,Consolas,monospace;color:#f0d9af;" +
+        "word-break:break-all;max-width:188px}" +
+      ".ms-pop-copy{flex:none;cursor:pointer;border:1px solid rgba(224,140,40,.55);" +
+        "background:linear-gradient(180deg,#3a2a14,#241809);color:#f4dcb0;" +
+        "font:700 10px/1 system-ui,sans-serif;padding:7px 9px;border-radius:7px;white-space:nowrap}" +
+      ".ms-pop-copy:hover{filter:brightness(1.15)}" +
+      ".ms-pop-copy.ok{color:#cde8ac;border-color:#6fae5a}";
     document.head.appendChild(style);
 
     var root = document.createElement("div");
@@ -93,19 +131,16 @@
     var flow  = el("path", { class: "ms-flow" });
     [aura, spine, core, bolt, flow].forEach(function (p) { svg.appendChild(p); });
 
-    // бегущие искры вдоль спины (SMIL animateMotion по пути спины)
-    var sparks = [];
     for (var s = 0; s < 2; s++) {
       var c = el("circle", { class: "ms-spark", r: 3.4, cx: 0, cy: 0, opacity: "0" });
       var mo = el("animateMotion", { dur: (4.6 + s * 0.8) + "s", repeatCount: "indefinite",
-                                     begin: (s * 2.0) + "s", rotate: "auto", keyPoints: "0;1",
-                                     keyTimes: "0;1", calcMode: "linear" });
+                                     begin: (s * 2.0) + "s", rotate: "auto" });
       mo.appendChild(el("mpath", { href: "#ms-spine-path" }));
       var op = el("animate", { attributeName: "opacity", dur: (4.6 + s * 0.8) + "s",
                                repeatCount: "indefinite", begin: (s * 2.0) + "s",
                                values: "0;1;1;0", keyTimes: "0;.12;.88;1" });
       c.appendChild(mo); c.appendChild(op);
-      svg.appendChild(c); sparks.push(c);
+      svg.appendChild(c);
     }
 
     root.appendChild(svg);
@@ -116,14 +151,37 @@
     LINKS.forEach(function (L) {
       var a = document.createElement("a");
       a.className = "ms-ico";
-      a.href = L.href; a.title = L.title;
-      a.target = "_blank"; a.rel = "noopener";
+      a.href = L.href;
+      a.setAttribute("aria-label", L.label);
+      a.style.setProperty("--gc", L.glow);
+      if (L.key !== "ts") { a.target = "_blank"; a.rel = "noopener"; }
       a.innerHTML = '<img src="' + L.img + '?v=1792700000" alt="' + L.label + '">';
       root.appendChild(a);
+
       var lbl = document.createElement("div");
       lbl.className = "ms-lbl"; lbl.textContent = L.label;
       root.appendChild(lbl);
-      icons.push({ a: a, lbl: lbl });
+
+      var pop = document.createElement("div");
+      pop.className = "ms-pop";
+      var url = document.createElement("span");
+      url.className = "ms-pop-url"; url.textContent = L.disp;
+      var btn = document.createElement("button");
+      btn.className = "ms-pop-copy"; btn.type = "button"; btn.textContent = "Копировать";
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault(); ev.stopPropagation(); copyToClipboard(L.href, btn);
+      });
+      pop.appendChild(url); pop.appendChild(btn);
+      root.appendChild(pop);
+
+      // показ поповера при наведении на иконку ИЛИ сам поповер
+      var timer;
+      function show() { clearTimeout(timer); pop.classList.add("show"); }
+      function hide() { timer = setTimeout(function () { pop.classList.remove("show"); }, 150); }
+      a.addEventListener("mouseenter", show); a.addEventListener("mouseleave", hide);
+      pop.addEventListener("mouseenter", show); pop.addEventListener("mouseleave", hide);
+
+      icons.push({ a: a, lbl: lbl, pop: pop });
     });
     root._icons = icons;
 
@@ -141,7 +199,6 @@
     return f;
   }
 
-  // гладкая кривая через точки (Catmull-Rom -> Bezier), без острых углов
   function smooth(pts) {
     if (pts.length < 2) return "";
     var d = "M" + pts[0].x + " " + pts[0].y;
@@ -154,6 +211,20 @@
     return d;
   }
 
+  // якорь у заголовка SanTDeviL — точные границы ТЕКСТА (а не блока)
+  function titleAnchor(tgX) {
+    var g = document.querySelector(".glitch");
+    if (!g) return null;
+    var range = document.createRange();
+    range.selectNodeContents(g);
+    var r = range.getBoundingClientRect();
+    if (!r.width) return null;
+    var x = r.left + window.scrollX - 18;            // чуть левее текста, не перекрывая
+    var y = r.top + window.scrollY + r.height / 2;
+    if (x <= tgX + 24) return null;                  // только если правее верхней иконки
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
   function layout() {
     var root = document.getElementById("magic-social");
     if (!root) return;
@@ -164,52 +235,58 @@
     if (m < MIN_MARGIN) { root.classList.remove("on"); return; }
     root.classList.add("on");
 
-    var half = ICON / 2;
-    var n = root._icons.length;
-    var pts = [];
+    var half = ICON / 2, n = root._icons.length;
+    var iconPts = [];
     for (var i = 0; i < n; i++) {
       var x = (i === 0) ? Math.min(m * XF[0], vw * 0.27)
                         : Math.min(m * XF[i], m - half - 6);
       x = Math.round(Math.max(x, half + 6));
-      pts.push({ x: x, y: TOP_Y + STEP_Y * i });
+      iconPts.push({ x: x, y: TOP_Y + STEP_Y * i });
     }
-    root.style.height = (pts[n - 1].y + 140) + "px";
+    root.style.height = (iconPts[n - 1].y + 140) + "px";
 
     root._icons.forEach(function (it, i) {
-      it.a.style.left = (pts[i].x - half) + "px";
-      it.a.style.top  = (pts[i].y - half) + "px";
-      it.lbl.style.left = pts[i].x + "px";
-      it.lbl.style.top  = (pts[i].y + half + 6) + "px";
+      var p = iconPts[i];
+      it.a.style.left = (p.x - half) + "px";
+      it.a.style.top  = (p.y - half) + "px";
+      it.lbl.style.left = p.x + "px";
+      it.lbl.style.top  = (p.y + half + 6) + "px";
+      it.pop.style.left = (p.x + half + 12) + "px";
+      it.pop.style.top  = p.y + "px";
     });
 
-    var dSpine = smooth(pts);
+    // линия продлевается к заголовку SanTDeviL (если хватает места)
+    var anchor = titleAnchor(iconPts[0].x);
+    var linePts = anchor ? [anchor].concat(iconPts) : iconPts;
+
+    var dSpine = smooth(linePts);
     root._aura.setAttribute("d", dSpine);
     root._spine.setAttribute("d", dSpine);
     root._core.setAttribute("d", dSpine);
     root._flow.setAttribute("d", dSpine);
 
-    // плетёная молния: доп. точки-выгибы между иконками, попеременно по сторонам
+    // плетёная молния
     var bolt = [];
-    for (var k = 0; k < n; k++) {
-      bolt.push(pts[k]);
-      if (k < n - 1) {
-        var a = pts[k], b = pts[k + 1], sgn = (k % 2 === 0) ? 1 : -1;
+    for (var k = 0; k < linePts.length; k++) {
+      bolt.push(linePts[k]);
+      if (k < linePts.length - 1) {
+        var a = linePts[k], b = linePts[k + 1], sgn = (k % 2 === 0) ? 1 : -1;
         var off = Math.min(22, m * 0.17);
-        var w = [[0.78, 1], [0.50, -1], [0.22, 1]];
-        for (var j = 0; j < w.length; j++) {
-          var t = w[j][0];
-          bolt.push({ x: a.x * t + b.x * (1 - t) + sgn * w[j][1] * off,
+        var wv = [[0.78, 1], [0.50, -1], [0.22, 1]];
+        for (var j = 0; j < wv.length; j++) {
+          var t = wv[j][0];
+          bolt.push({ x: a.x * t + b.x * (1 - t) + sgn * wv[j][1] * off,
                       y: a.y * t + b.y * (1 - t) });
         }
       }
     }
     root._bolt.setAttribute("d", smooth(bolt));
 
-    // светящиеся узлы на иконках
+    // светящиеся узлы (включая точку связи у заголовка)
     root._nodes.forEach(function (nd) { nd.remove(); });
     root._nodes = [];
-    pts.forEach(function (p, idx) {
-      var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: 3 });
+    linePts.forEach(function (p, idx) {
+      var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: idx === 0 && anchor ? 3.6 : 3 });
       c.style.animationDelay = (idx * 0.5) + "s";
       root._svg.appendChild(c);
       root._nodes.push(c);
