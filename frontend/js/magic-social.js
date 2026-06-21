@@ -211,18 +211,33 @@
     return d;
   }
 
-  // якорь у заголовка SanTDeviL — точные границы ТЕКСТА (а не блока)
-  function titleAnchor(tgX) {
+  // дуга-корона вокруг заголовка SanTDeviL — по точным границам ТЕКСТА.
+  // изящно обвивает заголовок сверху, концы спускаются по бокам ниже центра.
+  function titleArch(tgX) {
     var g = document.querySelector(".glitch");
     if (!g) return null;
     var range = document.createRange();
     range.selectNodeContents(g);
     var r = range.getBoundingClientRect();
     if (!r.width) return null;
-    var x = r.left + window.scrollX - 18;            // чуть левее текста, не перекрывая
-    var y = r.top + window.scrollY + r.height / 2;
-    if (x <= tgX + 24) return null;                  // только если правее верхней иконки
-    return { x: Math.round(x), y: Math.round(y) };
+    var sx = window.scrollX, sy = window.scrollY;
+    var L = r.left + sx, R = r.right + sx, T = r.top + sy;
+    var w = r.width, cx = L + w / 2, cy = T + r.height / 2;
+    var anchorX = Math.round(L - 16);
+    if (anchorX <= tgX + 24) return null;            // нужно место правее верхней иконки
+    var apexY = Math.max(Math.round(T - 22), 82);    // в зазоре между топбаром и текстом
+    var rnd = function (x, y) { return { x: Math.round(x), y: Math.round(y) }; };
+    var pts = [
+      rnd(R + 16, cy + 9),         // правый конец (флёр, ниже центра — обхват)
+      rnd(R + 4,  T - 10),         // правый верхний угол
+      rnd(cx + w * 0.24, apexY),
+      rnd(cx,            apexY),   // вершина короны
+      rnd(cx - w * 0.24, apexY),
+      rnd(L - 4,  T - 10),         // левый верхний угол
+      rnd(anchorX, cy)             // левая база — переходит в цепочку
+    ];
+    return { pts: pts, apex: rnd(cx, apexY), rightEnd: rnd(R + 16, cy + 9),
+             anchor: rnd(anchorX, cy) };
   }
 
   function layout() {
@@ -255,22 +270,23 @@
       it.pop.style.top  = p.y + "px";
     });
 
-    // линия продлевается к заголовку SanTDeviL (если хватает места)
-    var anchor = titleAnchor(iconPts[0].x);
-    var linePts = anchor ? [anchor].concat(iconPts) : iconPts;
-
+    // линия обвивает заголовок SanTDeviL дугой-короной (если хватает места)
+    var arch = titleArch(iconPts[0].x);
+    // спина/ядро/аура/поток — по всей линии (корона + цепочка)
+    var linePts = arch ? arch.pts.concat(iconPts) : iconPts;
     var dSpine = smooth(linePts);
     root._aura.setAttribute("d", dSpine);
     root._spine.setAttribute("d", dSpine);
     root._core.setAttribute("d", dSpine);
     root._flow.setAttribute("d", dSpine);
 
-    // плетёная молния
+    // плетёная молния — ТОЛЬКО по цепочке иконок (над заголовком чисто)
+    var boltPts = arch ? [arch.anchor].concat(iconPts) : iconPts;
     var bolt = [];
-    for (var k = 0; k < linePts.length; k++) {
-      bolt.push(linePts[k]);
-      if (k < linePts.length - 1) {
-        var a = linePts[k], b = linePts[k + 1], sgn = (k % 2 === 0) ? 1 : -1;
+    for (var k = 0; k < boltPts.length; k++) {
+      bolt.push(boltPts[k]);
+      if (k < boltPts.length - 1) {
+        var a = boltPts[k], b = boltPts[k + 1], sgn = (k % 2 === 0) ? 1 : -1;
         var off = Math.min(22, m * 0.17);
         var wv = [[0.78, 1], [0.50, -1], [0.22, 1]];
         for (var j = 0; j < wv.length; j++) {
@@ -282,11 +298,14 @@
     }
     root._bolt.setAttribute("d", smooth(bolt));
 
-    // светящиеся узлы (включая точку связи у заголовка)
+    // светящиеся узлы: иконки + вершина короны + флёр-конец справа
     root._nodes.forEach(function (nd) { nd.remove(); });
     root._nodes = [];
-    linePts.forEach(function (p, idx) {
-      var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: idx === 0 && anchor ? 3.6 : 3 });
+    var nodePts = iconPts.slice();
+    if (arch) { nodePts.push(arch.apex); nodePts.push(arch.rightEnd); }
+    nodePts.forEach(function (p, idx) {
+      var big = arch && (p === arch.apex || p === arch.rightEnd);
+      var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: big ? 3.6 : 3 });
       c.style.animationDelay = (idx * 0.5) + "s";
       root._svg.appendChild(c);
       root._nodes.push(c);
