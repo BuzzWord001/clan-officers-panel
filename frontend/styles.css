@@ -1023,6 +1023,87 @@ body.guest-mode .col-note { display: none !important; }
   .auth-social-grid { grid-template-columns: 1fr; }
 }
 
+/* ── Секция «Наш клан на связи»: крупные логотипы (js/social-bar.js) ── */
+.soc2-wrap { width: 100%; }
+.soc2-title {
+  text-align: center;
+  font: 600 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+  margin: 0 0 16px;
+}
+.soc2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 18px 10px;
+  justify-items: center;
+  align-items: start;
+}
+.soc2 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 160px;
+  --g: var(--accent);
+}
+.soc2-ic {
+  position: relative;
+  display: inline-flex;
+  text-decoration: none;
+  isolation: isolate;
+}
+/* свечение в тон логотипа под иконкой */
+.soc2-ic::before {
+  content: "";
+  position: absolute; left: 50%; top: 50%;
+  width: 88%; height: 88%; z-index: -1;
+  transform: translate(-50%, -50%);
+  background: var(--g);
+  border-radius: 26%;
+  filter: blur(17px);
+  opacity: 0.32;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.soc2-ic img {
+  width: 80px; height: 80px; display: block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.soc2-ic:hover img,
+.soc2-ic:focus-visible img {
+  transform: translateY(-3px) scale(1.07);
+  filter: drop-shadow(0 0 13px var(--g)) drop-shadow(0 7px 13px rgba(0, 0, 0, 0.6));
+  outline: none;
+}
+.soc2-ic:hover::before,
+.soc2-ic:focus-visible::before {
+  opacity: 0.6;
+  transform: translate(-50%, -50%) scale(1.14);
+}
+.soc2-name {
+  font: 700 13.5px/1 Georgia, serif;
+  color: #f3e8d2;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+}
+.soc2-url {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 500 10.5px/1.2 ui-monospace, "Cascadia Mono", monospace;
+  color: var(--accent-dim);
+  background: rgba(224, 162, 74, 0.08);
+  border: 1px solid rgba(224, 162, 74, 0.25);
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.soc2-url:hover { color: #f3d489; border-color: var(--accent); background: rgba(224, 162, 74, 0.14); }
+.soc2-url.copied { color: #8ff0a0; border-color: #8ff0a0; background: rgba(120, 252, 138, 0.12); }
+
 /* Вводный текст под табами */
 .intro p {
   margin: 0;
