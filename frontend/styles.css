@@ -192,7 +192,19 @@ a:hover { text-shadow: 0 0 6px var(--accent); }
 }
 .tsoc:active { transform: translateY(0); }
 @media (max-width: 720px) {
-  .topbar-social { display: none; }
+  /* На мобильных шапка переносится в 2 строки: бренд + кнопка сверху,
+     ссылки соцсетей — отдельной строкой ПО ЦЕНТРУ (НЕ прячем, видны всегда). */
+  .topbar { flex-wrap: wrap; }
+  .topbar .brand { order: 1; }
+  .topbar .user-bar { order: 2; }
+  .topbar-social {
+    position: static;
+    transform: none;
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin-top: 4px;
+  }
 }
 
 .brand {
@@ -1195,7 +1207,9 @@ body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
   .title-block .subtitle { font-size: 12px; letter-spacing: 3px; }
 
   /* Контент чуть уже по краям, панели тоньше */
-  main { padding: 16px 12px 40px; }
+  /* На мобильных верхний отступ маленький: фон обрезается по высоте (cover),
+     лицо девушки не в кадре — незачем тратить 80px сверху. */
+  main { padding: 16px 12px 40px; margin-top: 16px; }
   .panel { padding: 16px 14px; }
   .intro p { font-size: 13px; line-height: 1.5; }
 
