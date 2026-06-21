@@ -1,7 +1,8 @@
 /* magic-social.js — соцсети единой "магической" змейкой по левому краю.
-   Иконки ЗАКРЕПЛЕНЫ (position:fixed) — не скроллятся. Между соседними —
-   одна толстая плавная линия, переплетённая плавной "молнией" (без острых
-   углов). Иконки разбросаны змейкой. Видно только когда слева есть поле. */
+   Иконки position:absolute (как дверца "Офицерский вход") — при прокрутке
+   уезжают вверх и скрываются. Многослойная анимированная магическая линия:
+   аура + спина-градиент + горячее ядро + плетёная молния + поток энергии +
+   светящиеся узлы + бегущие искры. Видно когда слева есть свободное поле. */
 (function () {
   "use strict";
 
@@ -13,11 +14,10 @@
     { key: "vk-group", label: "Группа ВК", href: "https://vk.com/club38888207",                   title: "Группа ВКонтакте", img: "assets/social/vk-group.png" }
   ];
 
-  // центр каждой иконки по X — доля от ширины левого поля m.
-  // верхняя (Telegram) > 1.0: тянется вправо к центру/надписи SanTDeviL.
+  // X-центр каждой иконки — доля от ширины левого поля m (верхняя >1.0 тянется к центру)
   var XF = [1.70, 0.30, 0.85, 0.45];
-  var YFRAC = [0.16, 0.40, 0.63, 0.86];
-
+  var TOP_Y = 150;     // px от верха документа до первой иконки
+  var STEP_Y = 200;    // вертикальный шаг между иконками
   var ICON = 58;
   var MIN_MARGIN = 138;
   var SVGNS = "http://www.w3.org/2000/svg";
@@ -33,19 +33,31 @@
 
     var style = document.createElement("style");
     style.textContent =
-      "#magic-social{position:fixed;inset:0;z-index:6;pointer-events:none;overflow:hidden;display:none}" +
+      "#magic-social{position:absolute;top:0;left:0;width:100%;z-index:6;" +
+        "pointer-events:none;display:none}" +
       "#magic-social.on{display:block}" +
-      "#magic-social svg{position:absolute;inset:0;width:100%;height:100%}" +
-      ".ms-spine{fill:none;stroke:url(#msGrad);stroke-width:6;stroke-linecap:round;" +
-        "stroke-linejoin:round;filter:url(#msGlow);opacity:.95}" +
-      ".ms-bolt{fill:none;stroke:#fff0c8;stroke-width:2.5;stroke-linecap:round;" +
-        "stroke-linejoin:round;filter:url(#msBolt);opacity:.9}" +
+      "#magic-social svg{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible}" +
+      ".ms-aura{fill:none;stroke:#ff9a2e;stroke-width:13;stroke-linecap:round;" +
+        "stroke-linejoin:round;filter:url(#msAura);opacity:.32}" +
+      ".ms-spine{fill:none;stroke:url(#msGrad);stroke-width:5.5;stroke-linecap:round;" +
+        "stroke-linejoin:round;filter:url(#msGlow);opacity:.97}" +
+      ".ms-core{fill:none;stroke:#fff3d2;stroke-width:1.6;stroke-linecap:round;" +
+        "stroke-linejoin:round;opacity:.85}" +
+      ".ms-bolt{fill:none;stroke:#ffe7b0;stroke-width:1.9;stroke-linecap:round;" +
+        "stroke-linejoin:round;filter:url(#msGlowS);animation:msFlicker 3.4s ease-in-out infinite}" +
+      ".ms-flow{fill:none;stroke:#fff6da;stroke-width:3;stroke-linecap:round;" +
+        "filter:url(#msGlowS);stroke-dasharray:2 24;animation:msFlow 2.4s linear infinite}" +
+      ".ms-node{fill:#ffe39a;filter:url(#msGlowS);animation:msPulse 2.8s ease-in-out infinite}" +
+      ".ms-spark{fill:url(#msSpark);filter:url(#msGlowS)}" +
+      "@keyframes msFlow{to{stroke-dashoffset:-39}}" +
+      "@keyframes msFlicker{0%,100%{opacity:.5}40%{opacity:.95}52%{opacity:.45}68%{opacity:.85}}" +
+      "@keyframes msPulse{0%,100%{opacity:.45}50%{opacity:1}}" +
       ".ms-ico{position:absolute;width:" + ICON + "px;height:" + ICON + "px;pointer-events:auto;" +
         "border-radius:14px;display:block;transition:transform .18s ease,filter .18s ease;" +
         "filter:drop-shadow(0 0 7px rgba(224,140,40,.6)) drop-shadow(0 3px 7px rgba(0,0,0,.6))}" +
       ".ms-ico img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-select:none}" +
-      ".ms-ico:hover{transform:scale(1.14);" +
-        "filter:drop-shadow(0 0 15px rgba(255,170,60,.95)) drop-shadow(0 4px 9px rgba(0,0,0,.7))}" +
+      ".ms-ico:hover{transform:scale(1.15);" +
+        "filter:drop-shadow(0 0 16px rgba(255,170,60,.98)) drop-shadow(0 4px 9px rgba(0,0,0,.7))}" +
       ".ms-lbl{position:absolute;pointer-events:none;transform:translateX(-50%);" +
         "white-space:nowrap;padding:2px 9px;border-radius:8px;" +
         "background:rgba(20,13,7,.8);border:1px solid rgba(224,140,40,.45);" +
@@ -59,20 +71,46 @@
     var svg = el("svg", { preserveAspectRatio: "none" });
     var defs = el("defs", {});
     var grad = el("linearGradient", { id: "msGrad", x1: "0", y1: "0", x2: "0", y2: "1" });
-    grad.appendChild(el("stop", { offset: "0",  "stop-color": "#ffcf78" }));
-    grad.appendChild(el("stop", { offset: ".5", "stop-color": "#ef8420" }));
-    grad.appendChild(el("stop", { offset: "1",  "stop-color": "#ff6410" }));
+    grad.appendChild(el("stop", { offset: "0",  "stop-color": "#ffe6a0" }));
+    grad.appendChild(el("stop", { offset: ".35", "stop-color": "#ffae3a" }));
+    grad.appendChild(el("stop", { offset: ".7", "stop-color": "#ef7c1e" }));
+    grad.appendChild(el("stop", { offset: "1",  "stop-color": "#ff5e0f" }));
     defs.appendChild(grad);
-    defs.appendChild(glow("msGlow", 3.2));
-    defs.appendChild(glow("msBolt", 1.8));
+    var sp = el("radialGradient", { id: "msSpark" });
+    sp.appendChild(el("stop", { offset: "0", "stop-color": "#fffdf2" }));
+    sp.appendChild(el("stop", { offset: ".5", "stop-color": "#ffd98a" }));
+    sp.appendChild(el("stop", { offset: "1", "stop-color": "#ff8a1e", "stop-opacity": "0" }));
+    defs.appendChild(sp);
+    defs.appendChild(glow("msAura", 6));
+    defs.appendChild(glow("msGlow", 2.6));
+    defs.appendChild(glow("msGlowS", 1.5));
     svg.appendChild(defs);
 
-    var spine = el("path", { class: "ms-spine" });
-    var bolt = el("path", { class: "ms-bolt" });
-    svg.appendChild(spine);
-    svg.appendChild(bolt);
+    var aura  = el("path", { class: "ms-aura" });
+    var spine = el("path", { class: "ms-spine", id: "ms-spine-path" });
+    var core  = el("path", { class: "ms-core" });
+    var bolt  = el("path", { class: "ms-bolt" });
+    var flow  = el("path", { class: "ms-flow" });
+    [aura, spine, core, bolt, flow].forEach(function (p) { svg.appendChild(p); });
+
+    // бегущие искры вдоль спины (SMIL animateMotion по пути спины)
+    var sparks = [];
+    for (var s = 0; s < 2; s++) {
+      var c = el("circle", { class: "ms-spark", r: 3.4, cx: 0, cy: 0, opacity: "0" });
+      var mo = el("animateMotion", { dur: (4.6 + s * 0.8) + "s", repeatCount: "indefinite",
+                                     begin: (s * 2.0) + "s", rotate: "auto", keyPoints: "0;1",
+                                     keyTimes: "0;1", calcMode: "linear" });
+      mo.appendChild(el("mpath", { href: "#ms-spine-path" }));
+      var op = el("animate", { attributeName: "opacity", dur: (4.6 + s * 0.8) + "s",
+                               repeatCount: "indefinite", begin: (s * 2.0) + "s",
+                               values: "0;1;1;0", keyTimes: "0;.12;.88;1" });
+      c.appendChild(mo); c.appendChild(op);
+      svg.appendChild(c); sparks.push(c);
+    }
+
     root.appendChild(svg);
-    root._svg = svg; root._spine = spine; root._bolt = bolt;
+    root._svg = svg; root._aura = aura; root._spine = spine; root._core = core;
+    root._bolt = bolt; root._flow = flow; root._nodes = [];
 
     var icons = [];
     LINKS.forEach(function (L) {
@@ -80,7 +118,7 @@
       a.className = "ms-ico";
       a.href = L.href; a.title = L.title;
       a.target = "_blank"; a.rel = "noopener";
-      a.innerHTML = '<img src="' + L.img + '" alt="' + L.label + '">';
+      a.innerHTML = '<img src="' + L.img + '?v=1792700000" alt="' + L.label + '">';
       root.appendChild(a);
       var lbl = document.createElement("div");
       lbl.className = "ms-lbl"; lbl.textContent = L.label;
@@ -94,7 +132,7 @@
   }
 
   function glow(id, dev) {
-    var f = el("filter", { id: id, x: "-80%", y: "-80%", width: "260%", height: "260%" });
+    var f = el("filter", { id: id, x: "-90%", y: "-90%", width: "280%", height: "280%" });
     f.appendChild(el("feGaussianBlur", { stdDeviation: dev, result: "b" }));
     var m = el("feMerge", {});
     m.appendChild(el("feMergeNode", { in: "b" }));
@@ -109,9 +147,9 @@
     var d = "M" + pts[0].x + " " + pts[0].y;
     for (var i = 0; i < pts.length - 1; i++) {
       var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || pts[i + 1];
-      var c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-      var c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
-      d += " C" + c1x + " " + c1y + " " + c2x + " " + c2y + " " + p2.x + " " + p2.y;
+      d += " C" + (p1.x + (p2.x - p0.x) / 6) + " " + (p1.y + (p2.y - p0.y) / 6) +
+           " "  + (p2.x - (p3.x - p1.x) / 6) + " " + (p2.y - (p3.y - p1.y) / 6) +
+           " "  + p2.x + " " + p2.y;
     }
     return d;
   }
@@ -119,7 +157,7 @@
   function layout() {
     var root = document.getElementById("magic-social");
     if (!root) return;
-    var vw = window.innerWidth, vh = window.innerHeight;
+    var vw = window.innerWidth;
     var contentW = Math.min(1360, vw * 0.95);
     var m = (vw - contentW) / 2;
 
@@ -130,18 +168,12 @@
     var n = root._icons.length;
     var pts = [];
     for (var i = 0; i < n; i++) {
-      var x;
-      if (i === 0) {
-        // верхняя иконка тянется к центру (в свободную зону сбоку от заголовка)
-        x = Math.min(m * XF[0], vw * 0.27);
-      } else {
-        // остальные держим в левом поле (правый край < начала контента)
-        x = Math.min(m * XF[i], m - half - 6);
-      }
+      var x = (i === 0) ? Math.min(m * XF[0], vw * 0.27)
+                        : Math.min(m * XF[i], m - half - 6);
       x = Math.round(Math.max(x, half + 6));
-      var y = Math.round(Math.min(vh - 64, Math.max(96, vh * YFRAC[i])));
-      pts.push({ x: x, y: y });
+      pts.push({ x: x, y: TOP_Y + STEP_Y * i });
     }
+    root.style.height = (pts[n - 1].y + 140) + "px";
 
     root._icons.forEach(function (it, i) {
       it.a.style.left = (pts[i].x - half) + "px";
@@ -150,20 +182,19 @@
       it.lbl.style.top  = (pts[i].y + half + 6) + "px";
     });
 
-    // СПИНА: одна плавная линия через центры (точки чуть отступают от иконок)
-    root._spine.setAttribute("d", smooth(pts));
+    var dSpine = smooth(pts);
+    root._aura.setAttribute("d", dSpine);
+    root._spine.setAttribute("d", dSpine);
+    root._core.setAttribute("d", dSpine);
+    root._flow.setAttribute("d", dSpine);
 
-    // МОЛНИЯ: та же линия, но с доп. точками-выгибами между иконками,
-    // переплетается вокруг спины — плавно (без острых углов)
+    // плетёная молния: доп. точки-выгибы между иконками, попеременно по сторонам
     var bolt = [];
     for (var k = 0; k < n; k++) {
       bolt.push(pts[k]);
       if (k < n - 1) {
-        var a = pts[k], b = pts[k + 1];
-        var sgn = (k % 2 === 0) ? 1 : -1;
-        var off = Math.min(24, m * 0.18);
-        // три точки внутри сегмента, попеременно по сторонам спины —
-        // переплетается вокруг неё (плавно, без острых углов)
+        var a = pts[k], b = pts[k + 1], sgn = (k % 2 === 0) ? 1 : -1;
+        var off = Math.min(22, m * 0.17);
         var w = [[0.78, 1], [0.50, -1], [0.22, 1]];
         for (var j = 0; j < w.length; j++) {
           var t = w[j][0];
@@ -173,6 +204,16 @@
       }
     }
     root._bolt.setAttribute("d", smooth(bolt));
+
+    // светящиеся узлы на иконках
+    root._nodes.forEach(function (nd) { nd.remove(); });
+    root._nodes = [];
+    pts.forEach(function (p, idx) {
+      var c = el("circle", { class: "ms-node", cx: p.x, cy: p.y, r: 3 });
+      c.style.animationDelay = (idx * 0.5) + "s";
+      root._svg.appendChild(c);
+      root._nodes.push(c);
+    });
   }
 
   function init() {
