@@ -7,6 +7,8 @@
   "use strict";
   var SVGNS = "http://www.w3.org/2000/svg";
   var on = false, pts = [], drag = -1, justDragged = false, els = null;
+  // подложка-картинка
+  var img = { x: 0, y: 0, scale: 100, op: 45, shown: true, move: false, dragOff: null };
 
   function el(tag, a) { var e = document.createElementNS(SVGNS, tag); for (var k in a) e.setAttribute(k, a[k]); return e; }
 
@@ -38,6 +40,12 @@
     var st = document.createElement("style");
     st.textContent =
       "#medit{position:absolute;top:0;left:0;width:100%;height:1500px;z-index:5000}" +
+      "#medit-img{position:absolute;top:0;left:0;z-index:4990;pointer-events:none;" +
+        "max-width:none;user-select:none}" +
+      "#medit-img.move{outline:2px dashed rgba(90,180,255,.8)}" +
+      "#medit-panel input[type=range]{width:100%;margin:2px 0 0}" +
+      "#medit-panel label{display:block;font-size:11px;color:#d8c4a0;margin-top:7px}" +
+      "#medit-panel button.act{background:linear-gradient(180deg,#1d4a6e,#0e2c44);border-color:#5aa0d8}" +
       "#medit .cap{position:absolute;top:0;left:0;width:100%;height:100%;fill:rgba(0,0,0,.01);cursor:crosshair}" +
       "#medit .ln{fill:none;stroke:#ff8a1e;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;" +
         "filter:drop-shadow(0 0 6px #ff8a1e);pointer-events:none;opacity:.95}" +
@@ -62,6 +70,10 @@
     document.head.appendChild(st);
 
     var root = document.createElement("div"); root.id = "medit";
+    var pic = document.createElement("img"); pic.id = "medit-img";
+    pic.src = "assets/trace.jpg?v=1793700000";
+    pic.onerror = function () { pic.style.display = "none"; };
+    root.appendChild(pic);
     var svg = el("svg", { width: "100%", height: "100%", style: "position:absolute;inset:0;overflow:visible" });
     var cap = el("rect", { class: "cap", x: 0, y: 0, width: "100%", height: "100%" });
     var ln = el("path", { class: "ln" });
@@ -71,8 +83,20 @@
     var panel = document.createElement("div"); panel.id = "medit-panel";
     panel.innerHTML =
       '<h4>✏️ Редактор магической линии</h4>' +
-      '<p>Кликай по странице — ставит точки по порядку. Точки можно <b>тянуть</b> мышкой. ' +
-      'Поставь как должна идти линия, нажми «Копировать» и пришли мне текст.</p>' +
+      '<p>1) Включи «Двигать картинку», подгони <b>заголовок на подложке</b> к настоящему ' +
+      '(масштаб + перетаскивание). 2) Выключи «Двигать». 3) Кликай по красной линии — ' +
+      'точки можно <b>тянуть</b>. 4) «Копировать» и пришли мне текст.</p>' +
+      '<div class="row">' +
+        '<button id="medit-imgtog">Скрыть картинку</button>' +
+        '<button id="medit-move">🖐 Двигать картинку</button>' +
+      '</div>' +
+      '<label>Прозрачность подложки <span id="medit-opv">45%</span>' +
+        '<input type="range" id="medit-op" min="8" max="90" value="45"></label>' +
+      '<label>Масштаб подложки <span id="medit-scv">100%</span>' +
+        '<input type="range" id="medit-sc" min="40" max="180" value="100"></label>' +
+      '<div class="row"><button id="medit-load" class="x">Своя картинка…</button>' +
+        '<input type="file" id="medit-file" accept="image/*" style="display:none"></div>' +
+      '<hr style="border:0;border-top:1px solid rgba(224,140,40,.25);margin:10px 0 8px">' +
       '<textarea readonly id="medit-out"></textarea>' +
       '<div class="row">' +
         '<button id="medit-copy">Копировать</button>' +
@@ -84,7 +108,9 @@
     document.body.appendChild(root);
     document.body.appendChild(panel);
 
-    els = { root: root, svg: svg, cap: cap, ln: ln, out: panel.querySelector("#medit-out") };
+    els = { root: root, svg: svg, cap: cap, ln: ln, pic: pic, panel: panel,
+            out: panel.querySelector("#medit-out") };
+    applyImg();
 
     cap.addEventListener("click", function (e) {
       if (justDragged) { justDragged = false; return; }
@@ -110,6 +136,57 @@
     panel.querySelector("#medit-undo").addEventListener("click", function () { pts.pop(); render(); });
     panel.querySelector("#medit-clear").addEventListener("click", function () { pts = []; render(); });
     panel.querySelector("#medit-close").addEventListener("click", function () { toggle(false); });
+
+    // --- подложка ---
+    panel.querySelector("#medit-imgtog").addEventListener("click", function () {
+      img.shown = !img.shown; this.textContent = img.shown ? "Скрыть картинку" : "Показать картинку";
+      applyImg();
+    });
+    var moveBtn = panel.querySelector("#medit-move");
+    moveBtn.addEventListener("click", function () {
+      img.move = !img.move;
+      this.classList.toggle("act", img.move);
+      els.cap.style.pointerEvents = img.move ? "none" : "";
+      els.pic.classList.toggle("move", img.move);
+    });
+    panel.querySelector("#medit-op").addEventListener("input", function () {
+      img.op = +this.value; panel.querySelector("#medit-opv").textContent = img.op + "%"; applyImg();
+    });
+    panel.querySelector("#medit-sc").addEventListener("input", function () {
+      img.scale = +this.value; panel.querySelector("#medit-scv").textContent = img.scale + "%"; applyImg();
+    });
+    var fileInp = panel.querySelector("#medit-file");
+    panel.querySelector("#medit-load").addEventListener("click", function () { fileInp.click(); });
+    fileInp.addEventListener("change", function () {
+      var f = this.files && this.files[0]; if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function (ev) { els.pic.style.display = ""; els.pic.src = ev.target.result; applyImg(); };
+      rd.readAsDataURL(f);
+    });
+
+    // перетаскивание подложки (в режиме "Двигать картинку")
+    window.addEventListener("pointerdown", function (e) {
+      if (!on || !img.move) return;
+      if (els.panel.contains(e.target)) return;
+      img.dragOff = { x: e.clientX + window.scrollX - img.x, y: e.clientY + window.scrollY - img.y };
+    });
+    window.addEventListener("pointermove", function (e) {
+      if (!img.dragOff) return;
+      img.x = Math.round(e.clientX + window.scrollX - img.dragOff.x);
+      img.y = Math.round(e.clientY + window.scrollY - img.dragOff.y);
+      applyImg();
+    });
+    window.addEventListener("pointerup", function () { img.dragOff = null; });
+  }
+
+  function applyImg() {
+    if (!els || !els.pic) return;
+    var p = els.pic;
+    p.style.display = img.shown ? "" : "none";
+    p.style.left = img.x + "px";
+    p.style.top = img.y + "px";
+    p.style.opacity = (img.op / 100);
+    p.style.width = (window.innerWidth * img.scale / 100) + "px";
   }
 
   function render() {
