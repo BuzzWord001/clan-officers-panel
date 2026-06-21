@@ -4087,22 +4087,22 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 .title-block::before {
   content: ""; position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: min(900px, 88%); height: 230px; pointer-events: none;
-  background: radial-gradient(ellipse 58% 60% at center,
-      rgba(224,162,74,.20), rgba(224,162,74,.07) 46%, transparent 72%);
-  filter: blur(4px);
-  animation: brandAura 6s ease-in-out infinite;
+  width: min(960px, 92%); height: 260px; pointer-events: none;
+  background: radial-gradient(ellipse 60% 62% at center,
+      rgba(230,168,80,.34), rgba(228,150,60,.13) 46%, transparent 73%);
+  filter: blur(3px);
+  animation: brandAura 5s ease-in-out infinite;
 }
-@keyframes brandAura { 0%,100%{opacity:.7} 50%{opacity:1} }
+@keyframes brandAura { 0%,100%{opacity:.78} 50%{opacity:1} }
 
 /* 2) Светящийся разделитель под брендовой зоной (рамка контента) */
 .title-block::after {
-  content: ""; position: absolute; left: 50%; bottom: 4px;
+  content: ""; position: absolute; left: 50%; bottom: 2px;
   transform: translateX(-50%);
-  width: min(440px, 62%); height: 1px; pointer-events: none;
+  width: min(480px, 66%); height: 2px; pointer-events: none; border-radius: 2px;
   background: linear-gradient(90deg, transparent,
-      rgba(224,162,74,.6) 22%, rgba(224,162,74,.6) 78%, transparent);
-  box-shadow: 0 0 10px rgba(224,162,74,.5);
+      rgba(232,168,80,.85) 20%, rgba(232,168,80,.85) 80%, transparent);
+  box-shadow: 0 0 14px rgba(232,168,80,.7);
 }
 
 /* 3) Заголовки секций — лёгкий глоу + светящийся акцент-брусок слева */
