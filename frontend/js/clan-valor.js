@@ -226,9 +226,17 @@
       return m.score ? (m.score.total_all_time ?? 0) : -1;
     }
     if (key === "norm") {
-      // Сортируем по % выполнения текущей недели; АФК в середине
-      if (m.is_afk) return 50;
-      return m.norm_pct == null ? -1 : m.norm_pct;
+      // Сортируем ВСЕХ по % выполнения нормы (АФК/иммун/новички — тоже).
+      let pct = m.norm_pct;
+      if (pct == null) {
+        const n = m.effective_norm || (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
+        pct = n ? Math.min(100, Math.round((m.valor || 0) / n * 100)) : -1;
+      }
+      // При РАВНОМ % новички с иммунитетом стоят выше обычных (+0.5 — ломает
+      // только ничью, не перекрывает реальную разницу в %).
+      const imm = m.immunity;
+      const isImmune = imm && ["active", "extended", "grace"].indexOf(imm.status) >= 0;
+      return pct + (isImmune ? 0.5 : 0);
     }
     if (key === "compliance") {
       return m.compliance ? m.compliance.avg_pct : -1;
@@ -731,6 +739,16 @@
   }
 
   function renderNorm(m, norm) {
+    // % выполнения нормы показываем ВСЕМ (АФК/иммун/новичкам тоже), их приписки
+    // (АФК · N нед., 🛡 …) сохраняются. Сортировка норм-столбца — по этому %.
+    const _en = m.effective_norm || norm;
+    const _v = m.valor != null ? m.valor : 0;
+    const _pct = m.norm_pct != null ? m.norm_pct
+               : (_en ? Math.min(100, Math.round(_v / _en * 100)) : null);
+    const _pctHtml = _pct != null
+      ? `<span class="norm-pct">${_pct}%</span> <span class="norm-frac">${_v}/${_en}</span>`
+      : "";
+    const _sep = _pct != null ? " · " : "";
     if (m.is_afk) {
       const a = m.afk_info;
       const note = m.afk_note || "";
@@ -754,10 +772,10 @@
           }
         }
         return `<span class="norm-cell norm-afk" title="${esc(tip + noteTip)}"
-          >АФК · ${a.weeks} нед.${gainHtml}${noteMark}</span>`;
+          >${_pctHtml}<small class="norm-note">${_sep}АФК · ${a.weeks} нед.${gainHtml}${noteMark}</small></span>`;
       }
       return `<span class="norm-cell norm-afk"
-        title="${esc("АФК — норматив не оценивается" + noteTip)}">АФК${noteMark}</span>`;
+        title="${esc("АФК — норматив не оценивается" + noteTip)}">${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
     }
     // ── Иммунитет имеет приоритет над обычной оценкой ──
     const imm = m.immunity;
@@ -768,7 +786,7 @@
         `На время иммунитета норматив не оценивается.`;
       return `<span class="norm-cell norm-immune norm-immune-active"
         title="${esc(tip)}"
-        ><span class="shield">🛡</span> Иммун до ${until}</span>`;
+        ><span class="shield">🛡</span> ${_pctHtml}<small class="norm-note">${_sep}Иммун до ${until}</small></span>`;
     }
     if (imm && imm.status === "extended") {
       const dowName = DOW_NAMES_FULL[imm.ended_dow] || "?";
@@ -778,7 +796,7 @@
       const dowL = DOW_LABELS[imm.ended_dow] || "?";
       return `<span class="norm-cell norm-immune norm-immune-extended norm-immune-d${imm.ended_dow}"
         title="${esc(tip)}"
-        ><span class="shield">🛡</span> Продлён · окон. ${dowL}</span>`;
+        ><span class="shield">🛡</span> ${_pctHtml}<small class="norm-note">${_sep}Продлён · окон. ${dowL}</small></span>`;
     }
     const wc = m.warning_count || 0;
     const pct = m.norm_pct;

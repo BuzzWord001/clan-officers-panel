@@ -4181,3 +4181,6 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
   font-size: 10px; font-weight: 600; opacity: .6; margin-left: 5px;
   font-variant-numeric: tabular-nums; vertical-align: middle;
 }
+
+/* Приписка статуса в Нормативе (АФК · N нед., Иммун до …) рядом с % */
+.norm-note { font-size: 10px; font-weight: 600; opacity: .82; vertical-align: middle; }
