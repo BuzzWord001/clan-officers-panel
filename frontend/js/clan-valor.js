@@ -794,7 +794,9 @@
       const baseTip = `Иммунитет закончился в ${dowN} (скидка ${imm.credit_pct}%). ` +
         `Эффективный норматив этой недели: ${effN} вместо ${norm}. ` +
         `Набрано: ${valor}.`;
-      const headTxt = ok ? `✓ ${main}` : `${main} · ${pct ?? 0}%`;
+      const headTxt = ok
+        ? `✓ <span class="norm-pct">${pct ?? 100}%</span> <span class="norm-frac">${main}</span>`
+        : `<span class="norm-pct">${pct ?? 0}%</span> <span class="norm-frac">${main}</span>`;
       return `<span class="norm-cell norm-immune norm-immune-grace norm-immune-d${imm.ended_dow} norm-${cls}"
         title="${esc(baseTip)}"
         ><span class="shield">🛡</span> ${headTxt}
@@ -805,7 +807,7 @@
     const main = `${valor}/${norm}`;
     if (m.norm_met === true) {
       return `<span class="norm-cell norm-good"
-        title="норматив выполнен полностью">✓ ${main}</span>`;
+        title="норматив выполнен полностью">✓ <span class="norm-pct">${pct != null ? pct : 100}%</span> <span class="norm-frac">${main}</span></span>`;
     }
     if (pct == null) {
       return `<span class="norm-cell norm-unknown" title="нет данных">?</span>`;
@@ -813,9 +815,9 @@
     // Не выполнен — только пилюля % выполнения. Предупреждения отображаются
     // отдельно, в колонке «Предупреждения».
     const cls = pctClass(pct);
-    const tip = `${pct}% от норматива`;
+    const tip = `${pct}% от норматива (${main})`;
     return `<span class="norm-cell norm-${cls}" title="${esc(tip)}"
-      >${main} · ${pct}%</span>`;
+      ><span class="norm-pct">${pct}%</span> <span class="norm-frac">${main}</span></span>`;
   }
 
   function renderCompliance(c) {

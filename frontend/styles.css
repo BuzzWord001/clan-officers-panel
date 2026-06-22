@@ -4166,3 +4166,18 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
   filter: drop-shadow(0 0 3px rgba(255,180,80,.75));
 }
 @keyframes msSpinBorder { to { --msang: 360deg; } }
+
+
+/* Норматив — % как ГЛАВНОЕ число: оформление уровня «Ценности» (жирный,
+   крупный, со свечением), но в статус-цвете (смысл несёт цвет, не золото).
+   Шрифт тот же, что у Ценности (Cascadia Code) — наследуется. Дробь
+   valor/норма — мелкая вторичная. */
+.norm-pct {
+  font-weight: 800; font-size: 15px; letter-spacing: .3px;
+  text-shadow: 0 0 7px currentColor, 0 0 2px currentColor;
+  font-variant-numeric: tabular-nums; vertical-align: middle;
+}
+.norm-frac {
+  font-size: 10px; font-weight: 600; opacity: .6; margin-left: 5px;
+  font-variant-numeric: tabular-nums; vertical-align: middle;
+}
