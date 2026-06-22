@@ -74,6 +74,8 @@
       ".ms-node{fill:#ffe39a;filter:url(#msGlowS);animation:msPulse 2.8s ease-in-out infinite}" +
       ".ms-orb{filter:url(#msGlow);animation:msPulse 2.6s ease-in-out infinite}" +
       ".ms-orb-core{fill:#fff6e0;filter:url(#msGlowS)}" +
+      ".ms-girl{position:absolute;pointer-events:none;display:none;height:auto;" +
+        "filter:drop-shadow(0 5px 14px rgba(0,0,0,.5));z-index:0}" +
       ".ms-spark{fill:url(#msSpark);filter:url(#msGlowS)}" +
       "@keyframes msFlow{to{stroke-dashoffset:-39}}" +
       "@keyframes msFlicker{0%,100%{opacity:.5}40%{opacity:.95}52%{opacity:.45}68%{opacity:.85}}" +
@@ -108,6 +110,15 @@
 
     var root = document.createElement("div");
     root.id = "magic-social";
+
+    // девочка тянется к кончику линии (искра на пальце = конец линии).
+    // первой в DOM → рисуется ПОЗАДИ линии, бусина ложится на её палец.
+    var girl = document.createElement("img");
+    girl.className = "ms-girl";
+    girl.alt = "";
+    girl.src = "assets/girl.png?v=1794600000";
+    root.appendChild(girl);
+    root._girl = girl;
 
     var svg = el("svg", { preserveAspectRatio: "none" });
     var defs = el("defs", {});
@@ -362,6 +373,24 @@
       var orbCore = el("circle", { class: "ms-orb-core", cx: arch.tip.x, cy: arch.tip.y, r: 2.4 });
       root._svg.appendChild(orb); root._svg.appendChild(orbCore);
       root._nodes.push(orb); root._nodes.push(orbCore);
+    }
+
+    // девочка тянется пальцем к кончику линии (искра пальца = бусина).
+    // girl.png 343x760, искра на доле (0.111, 0.047). Масштаб — под свободное
+    // правое поле; прячем если места мало.
+    var girl = root._girl;
+    if (girl) {
+      if (arch && m >= 200 && arch.tip) {
+        var tx = arch.tip.x, ty = arch.tip.y;
+        var GW = Math.min(232, (window.innerWidth - tx - 12) / 0.9);
+        if (GW >= 120) {
+          var GH = GW * (760 / 343);
+          girl.style.width = GW + "px";
+          girl.style.left = (tx - 0.111 * GW) + "px";
+          girl.style.top  = (ty - 0.047 * GH) + "px";
+          girl.style.display = "block";
+        } else { girl.style.display = "none"; }
+      } else { girl.style.display = "none"; }
     }
   }
 
