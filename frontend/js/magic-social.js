@@ -300,59 +300,86 @@
     var sx = window.scrollX, sy = window.scrollY, vw = window.innerWidth;
     var L = r.left + sx, R = r.right + sx, T = r.top + sy, B = T + r.height;
     var w = r.width, cx = L + w / 2, half = ICON / 2;
-    var apexY = Math.max(Math.round(T - 18), 56);     // вершина короны над текстом
+    var tbEl = document.querySelector(".topbar");
+    var topbarH = tbEl ? Math.round(tbEl.getBoundingClientRect().bottom) : 72;
+    // вершина короны — максимально высоко в зазоре между топбаром и заголовком
+    var apexY = Math.max(T - 30, topbarH + 6);
 
-    // ── вертикальная цепочка иконок слева (компактно, чтобы не лезть в таблицу)
-    var n = root._icons.length;
-    var colX = 14;                                    // левый отступ колонки
-    var iconCx = colX + half;
-    var step = 64;                                    // компактный шаг (на ПК 200)
-    var colTop = Math.max(Math.round(T - 6), 78);     // старт ~уровень заголовка
-    var iconCY = [];
-    for (var i = 0; i < n; i++) iconCY.push(colTop + i * step + half);
-
-    // ── девочка справа: размер и точка-бусина, к которой она тянется
-    var GH = Math.min(206, Math.max(124, Math.round(vw * 0.40)));
+    // ── девочка справа у края (как на ПК), тянется пальцем к концу хвоста
+    var GH = Math.min(248, Math.max(168, Math.round(vw * 0.165)));
     var GW = Math.round(GH * (343 / 760));
-    var sideRoom = vw - R - 12;
-    var tipX = R + Math.max(Math.min(w * 0.34, sideRoom - GW * 0.5), 16);
-    tipX = Math.min(tipX, vw - 22);
-    var tipY = B + 26;
+    var gx = Math.min(vw - 14 - GW, R + 70);          // у правого края, но не на заголовке
+    var girlTop = B + 22;
+    var tipX = gx + 0.111 * GW;                        // искра на пальце
+    var tipY = girlTop + 0.047 * GH;
 
-    // ── линия: бусина(справа) → корона над заголовком → вниз-влево к цепочке иконок
+    var n = root._icons.length;
+    var compact = vw < 600;     // телефон → ряд под короной; ноут/планшет → колонка слева
+
+    // ── КОРОНА вокруг заголовка: хвост(палец девочки) → правая база(низ заголовка)
+    //    → плечи → вершина → левая база. Дальше ветвимся: к колонке или к завитку.
     var pts = [
-      { x: tipX,          y: tipY },                  // правый кончик-бусина (палец)
-      { x: R + 6,         y: T - 4 },                 // правый верхний угол заголовка
-      { x: cx + w * 0.22, y: apexY },
-      { x: cx,            y: apexY },                 // вершина короны
-      { x: cx - w * 0.22, y: apexY },
-      { x: L - 6,         y: T - 4 }                  // левый верхний угол заголовка
+      { x: tipX,                  y: tipY },           // кончик у пальца девочки
+      { x: R + (tipX - R) * 0.45, y: B + 14 },         // хвост ныряет вниз-вправо
+      { x: R + 14,                y: B - 12 },          // правая база (низ заголовка)
+      { x: R - w * 0.04,          y: T - 8 },           // правое плечо над заголовком
+      { x: cx + w * 0.20,         y: apexY },
+      { x: cx,                    y: apexY },           // вершина короны
+      { x: cx - w * 0.20,         y: apexY },
+      { x: L + w * 0.04,          y: T - 8 },           // левое плечо над заголовком
+      { x: L - 14,                y: B - 12 }           // левая база (низ заголовка)
     ];
-    for (var j = 0; j < n; j++) pts.push({ x: iconCx, y: iconCY[j] });  // спуск по иконкам
+
+    var iconNodes = [], bottomRef;
+    if (!compact) {
+      // ── ноут/планшет: вертикальная колонка слева, линия спускается по ней
+      var colX = 18, iconCx = colX + half, step = 62, colTop = Math.round(B + 4);
+      var iconCY = [];
+      for (var i = 0; i < n; i++) iconCY.push(colTop + i * step + half);
+      for (var j = 0; j < n; j++) pts.push({ x: iconCx, y: iconCY[j] });
+      root._icons.forEach(function (it, i) {
+        var cy = iconCY[i];
+        it.a.style.width = ""; it.a.style.height = "";
+        it.a.style.left = colX + "px"; it.a.style.top = (cy - half) + "px";
+        it.lbl.style.left = (colX + ICON + 8) + "px"; it.lbl.style.top = cy + "px";
+        it.lbl.style.transform = "translateY(-50%)";
+        it.pop.style.left = (colX + ICON + 8) + "px"; it.pop.style.top = cy + "px";
+        it.pop.style.transform = "translateY(-50%)";
+        iconNodes.push({ cx: iconCx, cy: cy });
+      });
+      bottomRef = iconCY[n - 1] + half + 22;
+    } else {
+      // ── телефон: короткий завиток влево-вниз + ряд иконок по центру под короной
+      pts.push({ x: L - 24, y: B + 24 });
+      var isz = 46, ihf = isz / 2, gap = 14, rowY = Math.round(B + 38);
+      var totalW = n * isz + (n - 1) * gap;
+      if (totalW > vw - 18) { gap = Math.max(7, (vw - 18 - n * isz) / (n - 1)); totalW = n * isz + (n - 1) * gap; }
+      var sx0 = Math.round(cx - totalW / 2);
+      sx0 = Math.max(9, Math.min(sx0, vw - totalW - 9));
+      root._icons.forEach(function (it, i) {
+        var x = sx0 + i * (isz + gap), ccx = x + ihf;
+        it.a.style.width = isz + "px"; it.a.style.height = isz + "px";
+        it.a.style.left = x + "px"; it.a.style.top = rowY + "px";
+        it.lbl.style.left = ccx + "px"; it.lbl.style.top = (rowY + isz + 5) + "px";
+        it.lbl.style.transform = "translateX(-50%)";
+        it.pop.style.left = ccx + "px"; it.pop.style.top = (rowY - 10) + "px";
+        it.pop.style.transform = "translate(-50%,-100%)";
+        iconNodes.push({ cx: ccx, cy: rowY + ihf });
+      });
+      bottomRef = rowY + isz + 22;
+    }
+
     var d = smooth(pts);
     root._aura.setAttribute("d", d); root._spine.setAttribute("d", d);
     root._core.setAttribute("d", d); root._flow.setAttribute("d", d);
     root._motion.setAttribute("d", d);
     root._bolt.setAttribute("d", ""); root._tail.setAttribute("d", "");
 
-    // расставляем иконки + подписи СПРАВА от них (как на ПК)
-    root._icons.forEach(function (it, i) {
-      var cy = iconCY[i];
-      it.a.style.left = colX + "px";
-      it.a.style.top  = (cy - half) + "px";
-      it.lbl.style.left = (colX + ICON + 8) + "px";
-      it.lbl.style.top  = cy + "px";
-      it.lbl.style.transform = "translateY(-50%)";
-      it.pop.style.left = (colX + ICON + 8) + "px";
-      it.pop.style.top  = cy + "px";
-      it.pop.style.transform = "translateY(-50%)";
-    });
-
     // светящиеся узлы: на иконках + вершина короны + бусина на кончике
     root._nodes.forEach(function (nd) { nd.remove(); });
     root._nodes = [];
-    iconCY.forEach(function (cy, i) {
-      var c = el("circle", { class: "ms-node", cx: iconCx, cy: cy, r: 3 });
+    iconNodes.forEach(function (p, i) {
+      var c = el("circle", { class: "ms-node", cx: p.cx, cy: p.cy, r: 3 });
       c.style.animationDelay = (i * 0.4) + "s";
       root._svg.appendChild(c); root._nodes.push(c);
     });
@@ -362,19 +389,15 @@
     root._svg.appendChild(apex); root._svg.appendChild(orb); root._svg.appendChild(orbCore);
     root._nodes.push(apex, orb, orbCore);
 
-    // девочка тянется пальцем к бусине (искра на пальце = доля 0.111/0.047)
     var girl = root._girl;
     if (girl) {
-      var gx = tipX - 0.111 * GW;
-      if (gx + GW > vw - 2) gx = vw - 2 - GW;
       girl.style.display = "block";
       girl.style.width = GW + "px";
       girl.style.left = Math.round(gx) + "px";
-      girl.style.top  = Math.round(tipY - 0.047 * GH) + "px";
+      girl.style.top  = Math.round(girlTop) + "px";
     }
 
-    var bottom = Math.max(iconCY[n - 1] + half + 22, tipY + GH * 0.95);
-    root.style.height = Math.round(bottom) + "px";
+    root.style.height = Math.round(Math.max(bottomRef, girlTop + GH * 0.9)) + "px";
   }
 
   function layout() {
@@ -402,12 +425,15 @@
 
     root._icons.forEach(function (it, i) {
       var p = iconPts[i];
+      it.a.style.width = ""; it.a.style.height = "";          // сброс компактного размера
       it.a.style.left = (p.x - half) + "px";
       it.a.style.top  = (p.y - half) + "px";
       it.lbl.style.left = p.x + "px";
       it.lbl.style.top  = (p.y + half + 6) + "px";
+      it.lbl.style.transform = "";                           // вернуть CSS (translateX(-50%))
       it.pop.style.left = (p.x + half + 12) + "px";
       it.pop.style.top  = p.y + "px";
+      it.pop.style.transform = "";                           // вернуть CSS-анимацию поповера
     });
 
     // линия обвивает заголовок SanTDeviL дугой-короной (если хватает места)
