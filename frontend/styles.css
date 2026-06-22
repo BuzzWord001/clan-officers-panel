@@ -4184,3 +4184,7 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 
 /* Приписка статуса в Нормативе (АФК · N нед., Иммун до …) рядом с % */
 .norm-note { font-size: 10px; font-weight: 600; opacity: .82; vertical-align: middle; }
+
+/* Тренд: стабильно, но НЕ выполняет норматив — негатив (а не похвала) */
+.trend-stale-bad { color: #ff9a5a; background: rgba(255,140,60,0.10);
+  border-color: rgba(255,140,60,0.40); font-weight: 600; }

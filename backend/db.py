@@ -3591,16 +3591,19 @@ def _compute_immunity(accepted_date: date,
     # Иммун заканчивается в этой неделе → grace или extended
     dow = immune_until.weekday()  # Пн=0..Вс=6
     extended = dow >= 5  # Сб (5) или Вс (6)
-    # Дней в неделе БЕЗ иммунитета = 7 - (dow + 1)
-    # т.к. сам день immune_until ещё считаем иммунным до вечера.
-    # Для простоты: credit_pct = (dow + 1) / 7 * 100
+    # immune_until — день, С КОТОРОГО игрок уже играет (exclusive конец иммуна).
+    # Доступно дней в неделе = 7 - dow:
+    #   dow=0 (Пн): 7/7 — целая неделя → 0% скидки, полный норматив
+    #   dow=1 (Вт): 6/7 → 14% скидки;  dow=2 (Ср): 5/7 → 29%
+    #   dow=3 (Чт): 4/7 → 43%;          dow=4 (Пт): 3/7 → 57%
+    #   dow>=5 (Сб/Вс): слишком мало времени → продлеваем иммун (extended)
     if extended:
         credit_pct = 100
         norm_factor = 0.0
         status = "extended"
     else:
-        credit_pct = round((dow + 1) / 7.0 * 100)
-        norm_factor = round((6 - dow) / 7.0, 3)
+        credit_pct = round(dow / 7.0 * 100)
+        norm_factor = round((7 - dow) / 7.0, 3)
         status = "grace"
     return {
         "status":        status,

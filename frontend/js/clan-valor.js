@@ -1030,7 +1030,7 @@
     return esc(m.title);
   }
 
-  function renderTrend(t) {
+  function renderTrend(t, m) {
     if (!t) {
       return `<span class="trend trend-none" title="нет данных предыдущей недели">—</span>`;
     }
@@ -1041,8 +1041,16 @@
     if (t.kind === "lost") {
       return `<span class="trend trend-dead" title="нет данных доблести сейчас">✕</span>`;
     }
-    // Стабильно — позитивная оценка «держится ровно», не упрёк.
     if (t.kind === "flat") {
+      // Если стабильно НЕ выполняет норматив (вкл. «всегда 0») — это негатив,
+      // а не похвала: отдельный статус «стабильно низко». АФК/иммун (норматив
+      // не оценивается, norm_met != false) сюда не попадают.
+      if (m && m.norm_met === false) {
+        const tipB = `Стабильно НЕ выполняет норматив — держится на низком ` +
+          `уровне (без улучшения к прошлой неделе).`;
+        return `<span class="trend trend-stale-bad" title="${esc(tipB)}">▾ Стабильно низко</span>`;
+      }
+      // Стабильно (норматив выполняется) — позитивная оценка «держится ровно».
       const dSign = t.delta > 0 ? "+" : "";
       const tipS = t.pct_delta != null
         ? `Держится стабильно (Δ ${t.pct_delta > 0 ? "+" : ""}${t.pct_delta} п.п.)`
@@ -1072,7 +1080,7 @@
   function statusTier(m) {
     if (m.is_afk) return 2;
     const im = m.immunity;
-    if (im && (im.status === "active" || im.status === "extended")) return 1;
+    if (im && (im.status === "active" || im.status === "extended" || im.status === "grace")) return 1;
     return 0;
   }
   function immuneDaysLeft(m) {
@@ -1106,8 +1114,10 @@
       const vb = getSortVal(b, SORT.key);
       if (va < vb) return SORT.dir === "asc" ? -1 : 1;
       if (va > vb) return SORT.dir === "asc" ?  1 : -1;
-      // При равной ценности — АФК выше, затем иммунные (по дням), затем 0.
-      if (SORT.key === "score") return statusTieBreak(a, b);
+      // При РАВНОМ значении (напр. оба 0) — АФК/иммун выше «просто 0 без
+      // уважительной причины». Для всех метрик: норматив, ценность, доблесть.
+      if (["score", "score_all", "norm", "valor", "compliance"].indexOf(SORT.key) >= 0)
+        return statusTieBreak(a, b);
       return 0;
     });
     return items;
@@ -1152,7 +1162,7 @@
       const normLabel    = renderNorm(m, norm);
       const compLabel    = renderCompliance(m.compliance);
       const warnCell     = renderWarnings(m);
-      const trendCell    = renderTrend(m.trend);
+      const trendCell    = renderTrend(m.trend, m);
       const socialCell   = renderSocials(m.socials);
       const aiMark = m.ai_nick
         ? ` <span class="ai-nick" title="Ник распознан ИИ-зрением — проверьте и при необходимости исправьте вручную (только админ)">🤖</span>`
