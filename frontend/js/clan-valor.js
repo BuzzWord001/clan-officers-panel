@@ -8,7 +8,7 @@
   }[c]));
 
   let DATA = { snapshot: null, members: [] };
-  let SORT = { key: "score", dir: "desc" };
+  let SORT = { key: "norm", dir: "desc" };
   let IS_GUEST = false;   // гость — только просмотр, без правок
   let IS_ADMIN = false;   // админ — правка ников и данных в таблице
   let IS_OFFICER = false; // офицер ИЛИ админ — предупреждения и статус АФК
@@ -1106,16 +1106,18 @@
     const norm = DATA.snapshot.valor_norm;
     // место по доблести (для кубков топ-30) — по ПОЛНОМУ списку, независимо
     // от текущей сортировки/фильтра. Ординальное место 1..N; null-доблесть вниз.
+    // место для кубков топ-30 — по НОРМАТИВУ (как столбец сортировки), по
+    // полному списку, независимо от текущей сортировки/фильтра.
     const _vrank = new Map();
     DATA.members.slice()
-      .sort((a, b) => (b.valor == null ? -1 : b.valor) - (a.valor == null ? -1 : a.valor))
+      .sort((a, b) => getSortVal(b, "norm") - getSortVal(a, "norm"))
       .forEach((mm, idx) => _vrank.set(mm.id, idx + 1));
     const rows = items.map((m, i) => {
       const cls = m.class_ || "";
       const vr = _vrank.get(m.id);
       const cup = vr <= 10 ? "gold" : vr <= 20 ? "silver" : vr <= 30 ? "bronze" : "";
       const cupHtml = cup
-        ? `<img class="nick-cup nick-cup-${cup}" src="assets/cup-${cup}.png?v=1794700000" alt="" title="${vr} место по доблести">`
+        ? `<img class="nick-cup nick-cup-${cup}" src="assets/cup-${cup}.png?v=1794800000" alt="" title="${vr} место по нормативу">`
         : "";
       // подсветка строки
       let rowCls = "m-row";
@@ -1171,11 +1173,10 @@
           <td class="m-cell-num m-cell-total">${valorCell}</td>
           <td class="m-cell-num">${compLabel}</td>
           <td class="m-cell-num">${trendCell}</td>
-          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
           <td class="m-cell-warn">${warnCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
           <td class="tags-cell">${renderTagsAll(m)}</td>
-          <td class="m-cell-num">${renderScore(m.score)}</td>
+          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
           <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
     }).join("");

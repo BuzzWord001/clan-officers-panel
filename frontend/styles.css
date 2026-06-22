@@ -4118,30 +4118,51 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 }
 
 
-/* ── Кубки топ-30 по доблести в столбце Ник + мягкая подсветка строк ── */
+/* ── Кубки топ-30 (по нормативу) в столбце Ник + контур-подсветка строк ── */
 .nick-cup {
-  height: 21px; width: auto; vertical-align: -5px; margin-right: 6px;
+  height: 30px; width: auto; vertical-align: middle; margin: -2px 9px -2px 0;
   -webkit-user-drag: none; user-select: none;
 }
-.nick-cup-gold   { filter: drop-shadow(0 0 5px rgba(255,205,80,.92)); }
-.nick-cup-silver { filter: drop-shadow(0 0 5px rgba(208,222,242,.85)); }
-.nick-cup-bronze { filter: drop-shadow(0 0 5px rgba(220,148,82,.85)); }
+.nick-cup-gold   { filter: drop-shadow(0 0 6px rgba(255,205,80,.95)); }
+.nick-cup-silver { filter: drop-shadow(0 0 6px rgba(212,226,246,.9)); }
+.nick-cup-bronze { filter: drop-shadow(0 0 6px rgba(222,150,84,.9)); }
 
-/* мягкая подсветка строки в цвет кубка (приоритет над статусом для топ-30) */
-#valor-table tr.m-row.row-cup-gold   { background: rgba(255,200,80,.055); }
-#valor-table tr.m-row.row-cup-silver { background: rgba(208,222,242,.05); }
-#valor-table tr.m-row.row-cup-bronze { background: rgba(220,148,82,.05); }
-/* липкие столбцы #/Ник — тон чуть заметнее, светящаяся левая грань */
-#valor-table tr.row-cup-gold   td:nth-child(1),
-#valor-table tr.row-cup-gold   td:nth-child(2)   { background:#1b1405; }
-#valor-table tr.row-cup-silver td:nth-child(1),
-#valor-table tr.row-cup-silver td:nth-child(2)   { background:#141821; }
-#valor-table tr.row-cup-bronze td:nth-child(1),
-#valor-table tr.row-cup-bronze td:nth-child(2)   { background:#170f07; }
-#valor-table tr.row-cup-gold   td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(255,205,90,.7); }
-#valor-table tr.row-cup-silver td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(208,222,242,.65); }
-#valor-table tr.row-cup-bronze td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(220,148,82,.65); }
-/* hover — сохранить отклик на кубковых строках */
-#valor-table tr.m-row.row-cup-gold:hover   { background: rgba(255,200,80,.1); }
-#valor-table tr.m-row.row-cup-silver:hover { background: rgba(208,222,242,.09); }
-#valor-table tr.m-row.row-cup-bronze:hover { background: rgba(220,148,82,.09); }
+/* Тонкая светящаяся контур-линия строки в цвет кубка (фон НЕ красим) */
+#valor-table tr.row-cup-gold   { --cc: 255,206,92; }
+#valor-table tr.row-cup-silver { --cc: 212,226,246; }
+#valor-table tr.row-cup-bronze { --cc: 222,150,84; }
+#valor-table tr.row-cup-gold td,
+#valor-table tr.row-cup-silver td,
+#valor-table tr.row-cup-bronze td {
+  box-shadow: inset 0 1px 0 rgba(var(--cc),.85), inset 0 -1px 0 rgba(var(--cc),.85);
+}
+#valor-table tr.row-cup-gold td:first-child,
+#valor-table tr.row-cup-silver td:first-child,
+#valor-table tr.row-cup-bronze td:first-child {
+  box-shadow: inset 0 1px 0 rgba(var(--cc),.85), inset 0 -1px 0 rgba(var(--cc),.85),
+              inset 2px 0 0 rgba(var(--cc),.9);
+}
+#valor-table tr.row-cup-gold td:last-child,
+#valor-table tr.row-cup-silver td:last-child,
+#valor-table tr.row-cup-bronze td:last-child {
+  box-shadow: inset 0 1px 0 rgba(var(--cc),.85), inset 0 -1px 0 rgba(var(--cc),.85),
+              inset -2px 0 0 rgba(var(--cc),.9);
+}
+
+/* ── Активный столбец сортировки: тонкая «бегущая» светящаяся линия по контуру ── */
+@property --msang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+#valor-table th.sort-asc, #valor-table th.sort-desc { position: relative; }
+#valor-table th.sort-asc::before, #valor-table th.sort-desc::before {
+  content: ""; position: absolute; inset: 3px; border-radius: 7px; padding: 1.6px;
+  pointer-events: none; z-index: 4;
+  background: conic-gradient(from var(--msang),
+     rgba(255,212,120,0) 0deg, rgba(255,212,120,0) 232deg,
+     rgba(255,212,120,.95) 300deg, rgba(255,150,40,.98) 333deg, rgba(255,212,120,0) 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: msSpinBorder 3s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(255,180,80,.75));
+}
+@keyframes msSpinBorder { to { --msang: 360deg; } }
