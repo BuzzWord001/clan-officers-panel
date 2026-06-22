@@ -226,17 +226,13 @@
       return m.score ? (m.score.total_all_time ?? 0) : -1;
     }
     if (key === "norm") {
-      // Сортируем ВСЕХ по % выполнения нормы (АФК/иммун/новички — тоже).
-      let pct = m.norm_pct;
-      if (pct == null) {
-        const n = m.effective_norm || (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
-        pct = n ? Math.min(100, Math.round((m.valor || 0) / n * 100)) : -1;
-      }
-      // При РАВНОМ % новички с иммунитетом стоят выше обычных (+0.5 — ломает
-      // только ничью, не перекрывает реальную разницу в %).
-      const imm = m.immunity;
-      const isImmune = imm && ["active", "extended", "grace"].indexOf(imm.status) >= 0;
-      return pct + (isImmune ? 0.5 : 0);
+      // ВСЕ категории (АФК/иммун/новички/grace/обычные) считаются ОДИНАКОВО:
+      // доблесть / СТАНДАРТНАЯ норма клана (не effective_norm!), без капа и без
+      // бонусов. Так 143/18 выше 125/15 и 80/18 — никаких скидок/надбавок за
+      // иммунитет/АФК, место строго по набранной доблести относительно нормы.
+      const n = (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
+      if (m.valor == null) return -1;
+      return n ? (m.valor / n) * 100 : m.valor;
     }
     if (key === "compliance") {
       return m.compliance ? m.compliance.avg_pct : -1;
