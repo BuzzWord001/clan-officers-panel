@@ -1092,9 +1092,28 @@
     today.setHours(0, 0, 0, 0);
     return Math.round((d - today) / 86400000);
   }
+  // Суровость предупреждений: лёгкое=1, среднее=2, суровое=3 (учитывает и
+  // количество, и степень). Норматив-grace смягчается на ступень.
+  function warningScore(m) {
+    const W = { light: 1, mid: 2, severe: 3 };
+    const SOFT = { severe: "mid", mid: "light", light: "light" };
+    let s = 0;
+    (m.warnings || []).forEach((w) => {
+      const sv = w.grace ? SOFT[sev3(w.pct)] : sev3(w.pct);
+      s += W[sv] || 1;
+    });
+    if (m.title_warn) s += W.severe;
+    (m.manual_warnings || []).forEach((w) => {
+      s += W[MSEV[w.severity] || "mid"] || 2;
+    });
+    return s;
+  }
   function statusTieBreak(a, b) {
     const ta = statusTier(a), tb = statusTier(b);
-    if (ta !== tb) return tb - ta;                 // выше tier → выше в списке
+    if (ta !== tb) return tb - ta;                 // АФК/иммун выше обычных
+    // при равном статусе: больше/суровее предупреждений → НИЖЕ в списке
+    const wa = warningScore(a), wb = warningScore(b);
+    if (wa !== wb) return wa - wb;
     if (ta === 1) return immuneDaysLeft(b) - immuneDaysLeft(a); // больше дней → выше
     return 0;
   }
