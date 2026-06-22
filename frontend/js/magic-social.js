@@ -206,6 +206,135 @@
     layout();
   }
 
+  // ---- мобильная версия: на узких экранах боковых полей нет, поэтому
+  //      рисуем компактный блок ПОД заголовком: волнистая светящаяся линия →
+  //      девочка тянется пальцем к её концу + ряд иконок соцсетей (tap-to-copy).
+  function buildMobileOnce() {
+    if (document.getElementById("magic-social-mobile")) return;
+    var anchor = document.querySelector(".title-block");
+    if (!anchor) return;
+
+    var style = document.createElement("style");
+    style.textContent =
+      "#magic-social-mobile{position:relative;width:100%;margin:2px 0 8px;display:none;" +
+        "z-index:5;isolation:isolate}" +
+      "#magic-social-mobile.on{display:block}" +
+      "#magic-social-mobile svg{position:absolute;top:0;left:0;width:100%;height:62px;" +
+        "overflow:visible;pointer-events:none;z-index:1}" +
+      ".msm-aura{fill:none;stroke:#ff9a2e;stroke-width:10;stroke-linecap:round;" +
+        "filter:url(#msmAura);opacity:.3}" +
+      ".msm-spine{fill:none;stroke:url(#msmGrad);stroke-width:4;stroke-linecap:round;" +
+        "filter:url(#msmGlow);opacity:.97}" +
+      ".msm-core{fill:none;stroke:#fff3d2;stroke-width:1.3;stroke-linecap:round;opacity:.8}" +
+      ".msm-flow{fill:none;stroke:#fff6da;stroke-width:2.4;stroke-linecap:round;" +
+        "filter:url(#msmGlowS);stroke-dasharray:2 22;animation:msFlow 2.4s linear infinite}" +
+      ".msm-orb{filter:url(#msmGlow);animation:msPulse 2.6s ease-in-out infinite}" +
+      ".msm-girl{position:absolute;top:0;pointer-events:none;height:auto;" +
+        "filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));z-index:0}" +
+      ".msm-row{position:relative;z-index:2;display:flex;justify-content:center;" +
+        "flex-wrap:wrap;gap:8px 14px;padding-top:62px}" +
+      ".msm-item{display:flex;flex-direction:column;align-items:center;gap:5px;width:62px}" +
+      ".msm-ic{width:46px;height:46px;display:block;border-radius:12px;pointer-events:auto;" +
+        "transition:transform .15s ease;" +
+        "filter:drop-shadow(0 0 7px var(--gc)) drop-shadow(0 2px 5px rgba(0,0,0,.6))}" +
+      ".msm-ic img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-select:none}" +
+      ".msm-ic:active{transform:scale(1.12)}" +
+      ".msm-name{cursor:pointer;pointer-events:auto;border:1px solid rgba(224,140,40,.4);" +
+        "background:rgba(20,13,7,.72);color:#f4dcb0;font:700 9.5px/1.2 system-ui,sans-serif;" +
+        "padding:3px 6px;border-radius:7px;white-space:nowrap;text-shadow:0 1px 2px #000}" +
+      ".msm-name.ok{color:#cde8ac;border-color:#6fae5a}";
+    document.head.appendChild(style);
+
+    var box = document.createElement("div");
+    box.id = "magic-social-mobile";
+
+    var girl = document.createElement("img");
+    girl.className = "msm-girl"; girl.alt = "";
+    girl.src = "assets/girl.png?v=1794600000";
+    box.appendChild(girl);
+    box._girl = girl;
+
+    var svg = el("svg", { preserveAspectRatio: "none" });
+    var defs = el("defs", {});
+    var grad = el("linearGradient", { id: "msmGrad", x1: "0", y1: "0", x2: "1", y2: "0" });
+    grad.appendChild(el("stop", { offset: "0",  "stop-color": "#ffe6a0" }));
+    grad.appendChild(el("stop", { offset: ".4", "stop-color": "#ffae3a" }));
+    grad.appendChild(el("stop", { offset: ".75","stop-color": "#ef7c1e" }));
+    grad.appendChild(el("stop", { offset: "1",  "stop-color": "#ff5e0f" }));
+    defs.appendChild(grad);
+    defs.appendChild(glow("msmAura", 5));
+    defs.appendChild(glow("msmGlow", 2.4));
+    defs.appendChild(glow("msmGlowS", 1.4));
+    svg.appendChild(defs);
+    var aura = el("path", { class: "msm-aura" }), spine = el("path", { class: "msm-spine" });
+    var core = el("path", { class: "msm-core" }), flow = el("path", { class: "msm-flow" });
+    [aura, spine, core, flow].forEach(function (p) { svg.appendChild(p); });
+    box.appendChild(svg);
+    box._svg = svg; box._aura = aura; box._spine = spine; box._core = core;
+    box._flow = flow; box._nodes = [];
+
+    var row = document.createElement("div");
+    row.className = "msm-row";
+    LINKS.forEach(function (L) {
+      var item = document.createElement("div");
+      item.className = "msm-item";
+      var a = document.createElement("a");
+      a.className = "msm-ic";
+      a.href = L.href;
+      a.style.setProperty("--gc", L.glow);
+      a.setAttribute("aria-label", L.label);
+      if (L.key !== "ts") { a.target = "_blank"; a.rel = "noopener"; }
+      a.innerHTML = '<img src="' + L.img + '?v=1792700000" alt="' + L.label + '">';
+      var nm = document.createElement("button");
+      nm.type = "button"; nm.className = "msm-name"; nm.textContent = L.label;
+      nm.addEventListener("click", function () { copyToClipboard(L.href, nm); });
+      item.appendChild(a); item.appendChild(nm);
+      row.appendChild(item);
+    });
+    box.appendChild(row);
+    box._row = row;
+
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+  }
+
+  function layoutMobile() {
+    var box = document.getElementById("magic-social-mobile");
+    if (!box) { buildMobileOnce(); box = document.getElementById("magic-social-mobile"); }
+    if (!box) return;
+    box.classList.add("on");
+    var W = box.clientWidth || window.innerWidth;
+
+    // девочка у правого края, тянется пальцем к концу линии (искра 0.111/0.047)
+    var GH = 190, GW = Math.round(GH * (343 / 760));   // ~86px
+    var gx = W - GW - 4;
+    box._girl.style.width = GW + "px";
+    box._girl.style.left = gx + "px";
+    box._girl.style.top = "0px";
+    box.style.minHeight = (GH + 6) + "px";
+    // иконки центрируем в левой зоне (правый отступ под девочку)
+    box._row.style.marginRight = (GW + 12) + "px";
+
+    var tipX = gx + 0.111 * GW, tipY = 0.047 * GH;
+    var baseY = 34;
+    var pts = [
+      { x: 14,        y: baseY + 12 },
+      { x: W * 0.27,  y: baseY - 9 },
+      { x: W * 0.47,  y: baseY + 10 },
+      { x: W * 0.63,  y: baseY - 4 },
+      { x: tipX,      y: tipY }
+    ];
+    var d = smooth(pts);
+    box._aura.setAttribute("d", d); box._spine.setAttribute("d", d);
+    box._core.setAttribute("d", d); box._flow.setAttribute("d", d);
+
+    box._nodes.forEach(function (n) { n.remove(); });
+    box._nodes = [];
+    var orb = el("circle", { class: "msm-orb", cx: tipX, cy: tipY, r: 5.5, fill: "url(#msmGrad)" });
+    var orbCore = el("circle", { class: "ms-orb-core", cx: tipX, cy: tipY, r: 1.9 });
+    box._svg.appendChild(orb); box._svg.appendChild(orbCore);
+    box._nodes.push(orb, orbCore);
+  }
+
   function glow(id, dev) {
     var f = el("filter", { id: id, x: "-90%", y: "-90%", width: "280%", height: "280%" });
     f.appendChild(el("feGaussianBlur", { stdDeviation: dev, result: "b" }));
@@ -290,7 +419,13 @@
     var contentW = Math.min(1360, vw * 0.95);
     var m = (vw - contentW) / 2;
 
-    if (m < MIN_MARGIN) { root.classList.remove("on"); return; }
+    if (m < MIN_MARGIN) {
+      root.classList.remove("on");
+      layoutMobile();                 // узкий экран → компактная мобильная версия
+      return;
+    }
+    var mb = document.getElementById("magic-social-mobile");
+    if (mb) mb.classList.remove("on");
     root.classList.add("on");
 
     var half = ICON / 2, n = root._icons.length;
@@ -396,6 +531,7 @@
 
   function init() {
     buildOnce();
+    buildMobileOnce();
     var t;
     window.addEventListener("resize", function () {
       clearTimeout(t); t = setTimeout(layout, 120);
