@@ -1104,8 +1104,19 @@
     if (!DATA.snapshot) return;   // данные ещё не загружены
     const items = applyFilterSort();
     const norm = DATA.snapshot.valor_norm;
+    // место по доблести (для кубков топ-30) — по ПОЛНОМУ списку, независимо
+    // от текущей сортировки/фильтра. Ординальное место 1..N; null-доблесть вниз.
+    const _vrank = new Map();
+    DATA.members.slice()
+      .sort((a, b) => (b.valor == null ? -1 : b.valor) - (a.valor == null ? -1 : a.valor))
+      .forEach((mm, idx) => _vrank.set(mm.id, idx + 1));
     const rows = items.map((m, i) => {
       const cls = m.class_ || "";
+      const vr = _vrank.get(m.id);
+      const cup = vr <= 10 ? "gold" : vr <= 20 ? "silver" : vr <= 30 ? "bronze" : "";
+      const cupHtml = cup
+        ? `<img class="nick-cup nick-cup-${cup}" src="assets/cup-${cup}.png?v=1794700000" alt="" title="${vr} место по доблести">`
+        : "";
       // подсветка строки
       let rowCls = "m-row";
       const im = m.immunity;
@@ -1116,6 +1127,7 @@
         rowCls += " row-immune-grace";
       else if (m.norm_met === false) rowCls += " row-bad";
       else if (m.norm_met === true)  rowCls += " row-good";
+      if (cup) rowCls += " row-cup-" + cup;
       const valorCell = m.valor == null
         ? `<span class="hist-cell" data-field="valor" style="color:#888">—</span>`
         : `<span class="hist-cell" data-field="valor">${esc(m.valor)}</span>`;
@@ -1146,7 +1158,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name"><b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">

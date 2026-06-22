@@ -4116,3 +4116,32 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
   width: 4px; height: 15px; border-radius: 2px; background: var(--accent);
   box-shadow: 0 0 8px var(--accent), 0 0 16px rgba(224,162,74,.5);
 }
+
+
+/* ── Кубки топ-30 по доблести в столбце Ник + мягкая подсветка строк ── */
+.nick-cup {
+  height: 21px; width: auto; vertical-align: -5px; margin-right: 6px;
+  -webkit-user-drag: none; user-select: none;
+}
+.nick-cup-gold   { filter: drop-shadow(0 0 5px rgba(255,205,80,.92)); }
+.nick-cup-silver { filter: drop-shadow(0 0 5px rgba(208,222,242,.85)); }
+.nick-cup-bronze { filter: drop-shadow(0 0 5px rgba(220,148,82,.85)); }
+
+/* мягкая подсветка строки в цвет кубка (приоритет над статусом для топ-30) */
+#valor-table tr.m-row.row-cup-gold   { background: rgba(255,200,80,.055); }
+#valor-table tr.m-row.row-cup-silver { background: rgba(208,222,242,.05); }
+#valor-table tr.m-row.row-cup-bronze { background: rgba(220,148,82,.05); }
+/* липкие столбцы #/Ник — тон чуть заметнее, светящаяся левая грань */
+#valor-table tr.row-cup-gold   td:nth-child(1),
+#valor-table tr.row-cup-gold   td:nth-child(2)   { background:#1b1405; }
+#valor-table tr.row-cup-silver td:nth-child(1),
+#valor-table tr.row-cup-silver td:nth-child(2)   { background:#141821; }
+#valor-table tr.row-cup-bronze td:nth-child(1),
+#valor-table tr.row-cup-bronze td:nth-child(2)   { background:#170f07; }
+#valor-table tr.row-cup-gold   td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(255,205,90,.7); }
+#valor-table tr.row-cup-silver td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(208,222,242,.65); }
+#valor-table tr.row-cup-bronze td:nth-child(1) { box-shadow: inset 3px 0 0 rgba(220,148,82,.65); }
+/* hover — сохранить отклик на кубковых строках */
+#valor-table tr.m-row.row-cup-gold:hover   { background: rgba(255,200,80,.1); }
+#valor-table tr.m-row.row-cup-silver:hover { background: rgba(208,222,242,.09); }
+#valor-table tr.m-row.row-cup-bronze:hover { background: rgba(220,148,82,.09); }
