@@ -206,135 +206,6 @@
     layout();
   }
 
-  // ---- мобильная версия: на узких экранах боковых полей нет, поэтому
-  //      рисуем компактный блок ПОД заголовком: волнистая светящаяся линия →
-  //      девочка тянется пальцем к её концу + ряд иконок соцсетей (tap-to-copy).
-  function buildMobileOnce() {
-    if (document.getElementById("magic-social-mobile")) return;
-    var anchor = document.querySelector(".title-block");
-    if (!anchor) return;
-
-    var style = document.createElement("style");
-    style.textContent =
-      "#magic-social-mobile{position:relative;width:100%;margin:2px 0 8px;display:none;" +
-        "z-index:5;isolation:isolate}" +
-      "#magic-social-mobile.on{display:block}" +
-      "#magic-social-mobile svg{position:absolute;top:0;left:0;width:100%;height:62px;" +
-        "overflow:visible;pointer-events:none;z-index:1}" +
-      ".msm-aura{fill:none;stroke:#ff9a2e;stroke-width:10;stroke-linecap:round;" +
-        "filter:url(#msmAura);opacity:.3}" +
-      ".msm-spine{fill:none;stroke:url(#msmGrad);stroke-width:4;stroke-linecap:round;" +
-        "filter:url(#msmGlow);opacity:.97}" +
-      ".msm-core{fill:none;stroke:#fff3d2;stroke-width:1.3;stroke-linecap:round;opacity:.8}" +
-      ".msm-flow{fill:none;stroke:#fff6da;stroke-width:2.4;stroke-linecap:round;" +
-        "filter:url(#msmGlowS);stroke-dasharray:2 22;animation:msFlow 2.4s linear infinite}" +
-      ".msm-orb{filter:url(#msmGlow);animation:msPulse 2.6s ease-in-out infinite}" +
-      ".msm-girl{position:absolute;top:0;pointer-events:none;height:auto;" +
-        "filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));z-index:0}" +
-      ".msm-row{position:relative;z-index:2;display:flex;justify-content:center;" +
-        "flex-wrap:wrap;gap:8px 14px;padding-top:62px}" +
-      ".msm-item{display:flex;flex-direction:column;align-items:center;gap:5px;width:62px}" +
-      ".msm-ic{width:46px;height:46px;display:block;border-radius:12px;pointer-events:auto;" +
-        "transition:transform .15s ease;" +
-        "filter:drop-shadow(0 0 7px var(--gc)) drop-shadow(0 2px 5px rgba(0,0,0,.6))}" +
-      ".msm-ic img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-select:none}" +
-      ".msm-ic:active{transform:scale(1.12)}" +
-      ".msm-name{cursor:pointer;pointer-events:auto;border:1px solid rgba(224,140,40,.4);" +
-        "background:rgba(20,13,7,.72);color:#f4dcb0;font:700 9.5px/1.2 system-ui,sans-serif;" +
-        "padding:3px 6px;border-radius:7px;white-space:nowrap;text-shadow:0 1px 2px #000}" +
-      ".msm-name.ok{color:#cde8ac;border-color:#6fae5a}";
-    document.head.appendChild(style);
-
-    var box = document.createElement("div");
-    box.id = "magic-social-mobile";
-
-    var girl = document.createElement("img");
-    girl.className = "msm-girl"; girl.alt = "";
-    girl.src = "assets/girl.png?v=1794600000";
-    box.appendChild(girl);
-    box._girl = girl;
-
-    var svg = el("svg", { preserveAspectRatio: "none" });
-    var defs = el("defs", {});
-    var grad = el("linearGradient", { id: "msmGrad", x1: "0", y1: "0", x2: "1", y2: "0" });
-    grad.appendChild(el("stop", { offset: "0",  "stop-color": "#ffe6a0" }));
-    grad.appendChild(el("stop", { offset: ".4", "stop-color": "#ffae3a" }));
-    grad.appendChild(el("stop", { offset: ".75","stop-color": "#ef7c1e" }));
-    grad.appendChild(el("stop", { offset: "1",  "stop-color": "#ff5e0f" }));
-    defs.appendChild(grad);
-    defs.appendChild(glow("msmAura", 5));
-    defs.appendChild(glow("msmGlow", 2.4));
-    defs.appendChild(glow("msmGlowS", 1.4));
-    svg.appendChild(defs);
-    var aura = el("path", { class: "msm-aura" }), spine = el("path", { class: "msm-spine" });
-    var core = el("path", { class: "msm-core" }), flow = el("path", { class: "msm-flow" });
-    [aura, spine, core, flow].forEach(function (p) { svg.appendChild(p); });
-    box.appendChild(svg);
-    box._svg = svg; box._aura = aura; box._spine = spine; box._core = core;
-    box._flow = flow; box._nodes = [];
-
-    var row = document.createElement("div");
-    row.className = "msm-row";
-    LINKS.forEach(function (L) {
-      var item = document.createElement("div");
-      item.className = "msm-item";
-      var a = document.createElement("a");
-      a.className = "msm-ic";
-      a.href = L.href;
-      a.style.setProperty("--gc", L.glow);
-      a.setAttribute("aria-label", L.label);
-      if (L.key !== "ts") { a.target = "_blank"; a.rel = "noopener"; }
-      a.innerHTML = '<img src="' + L.img + '?v=1792700000" alt="' + L.label + '">';
-      var nm = document.createElement("button");
-      nm.type = "button"; nm.className = "msm-name"; nm.textContent = L.label;
-      nm.addEventListener("click", function () { copyToClipboard(L.href, nm); });
-      item.appendChild(a); item.appendChild(nm);
-      row.appendChild(item);
-    });
-    box.appendChild(row);
-    box._row = row;
-
-    anchor.parentNode.insertBefore(box, anchor.nextSibling);
-  }
-
-  function layoutMobile() {
-    var box = document.getElementById("magic-social-mobile");
-    if (!box) { buildMobileOnce(); box = document.getElementById("magic-social-mobile"); }
-    if (!box) return;
-    box.classList.add("on");
-    var W = box.clientWidth || window.innerWidth;
-
-    // девочка у правого края, тянется пальцем к концу линии (искра 0.111/0.047)
-    var GH = 190, GW = Math.round(GH * (343 / 760));   // ~86px
-    var gx = W - GW - 4;
-    box._girl.style.width = GW + "px";
-    box._girl.style.left = gx + "px";
-    box._girl.style.top = "0px";
-    box.style.minHeight = (GH + 6) + "px";
-    // иконки центрируем в левой зоне (правый отступ под девочку)
-    box._row.style.marginRight = (GW + 12) + "px";
-
-    var tipX = gx + 0.111 * GW, tipY = 0.047 * GH;
-    var baseY = 34;
-    var pts = [
-      { x: 14,        y: baseY + 12 },
-      { x: W * 0.27,  y: baseY - 9 },
-      { x: W * 0.47,  y: baseY + 10 },
-      { x: W * 0.63,  y: baseY - 4 },
-      { x: tipX,      y: tipY }
-    ];
-    var d = smooth(pts);
-    box._aura.setAttribute("d", d); box._spine.setAttribute("d", d);
-    box._core.setAttribute("d", d); box._flow.setAttribute("d", d);
-
-    box._nodes.forEach(function (n) { n.remove(); });
-    box._nodes = [];
-    var orb = el("circle", { class: "msm-orb", cx: tipX, cy: tipY, r: 5.5, fill: "url(#msmGrad)" });
-    var orbCore = el("circle", { class: "ms-orb-core", cx: tipX, cy: tipY, r: 1.9 });
-    box._svg.appendChild(orb); box._svg.appendChild(orbCore);
-    box._nodes.push(orb, orbCore);
-  }
-
   function glow(id, dev) {
     var f = el("filter", { id: id, x: "-90%", y: "-90%", width: "280%", height: "280%" });
     f.appendChild(el("feGaussianBlur", { stdDeviation: dev, result: "b" }));
@@ -412,6 +283,101 @@
              R: R, B: B };
   }
 
+  // ── Узкие экраны (ноут/планшет/телефон): на десктопе линия идёт сбоку, а тут
+  //    бокового поля нет. Рисуем АДАПТИВНУЮ дугу-корону, которая так же обвивает
+  //    заголовок SanTDeviL (как на ПК), но геометрия считается от ширины экрана —
+  //    хвост не уезжает за край. Иконки — ряд по центру под заголовком, девочка
+  //    тянется пальцем к правому кончику линии. Используем тот же абсолютный
+  //    оверлей #magic-social (он покрывает страницу и может рисовать НАД текстом).
+  function layoutNarrow(root) {
+    root.classList.add("on");
+    var g = document.querySelector(".glitch");
+    if (!g) return;
+    var range = document.createRange();
+    range.selectNodeContents(g);
+    var r = range.getBoundingClientRect();
+    if (!r.width) return;
+    var sx = window.scrollX, sy = window.scrollY, vw = window.innerWidth;
+    var L = r.left + sx, R = r.right + sx, T = r.top + sy, B = T + r.height;
+    var w = r.width, cx = L + w / 2;
+    var apexY = Math.max(Math.round(T - 20), 60);     // вершина короны над текстом
+
+    // девочка справа — её размер и место кончика, к которому она тянется
+    var GH = Math.min(204, Math.max(122, Math.round(vw * 0.42)));
+    var GW = Math.round(GH * (343 / 760));
+    var sideRoom = vw - R - 12;                        // место справа от заголовка
+    var tipX = R + Math.max(Math.min(w * 0.30, sideRoom - GW * 0.55), 18);
+    tipX = Math.min(tipX, vw - 24);
+    var tipY = B + 28;
+    var spread = Math.min(w * 0.5, Math.max(L - 16, 22));   // вынос концов за бока
+
+    var pts = [
+      { x: Math.max(L - spread, 10), y: B + 20 },     // левый конец, завиток книзу
+      { x: L - 4,         y: T - 6 },                  // левый верхний угол
+      { x: cx - w * 0.24, y: apexY },
+      { x: cx,            y: apexY },                  // вершина короны
+      { x: cx + w * 0.24, y: apexY },
+      { x: R + 4,         y: T - 6 },                  // правый верхний угол
+      { x: tipX,          y: tipY }                    // правый кончик-бусина
+    ];
+    var d = smooth(pts);
+    root._aura.setAttribute("d", d); root._spine.setAttribute("d", d);
+    root._core.setAttribute("d", d); root._flow.setAttribute("d", d);
+    root._motion.setAttribute("d", d);
+    root._bolt.setAttribute("d", ""); root._tail.setAttribute("d", "");
+
+    // ── ряд иконок по центру под заголовком (резервируем правое поле под девочку)
+    var n = root._icons.length, half = ICON / 2;
+    var gap = vw < 470 ? 12 : 22;
+    var zoneL = 12, zoneR = vw - GW - 14;
+    var totalW = n * ICON + (n - 1) * gap;
+    if (totalW > zoneR - zoneL) {                     // не влезает — ужать промежуток
+      gap = Math.max(6, (zoneR - zoneL - n * ICON) / (n - 1));
+      totalW = n * ICON + (n - 1) * gap;
+    }
+    var startX = Math.round((zoneL + zoneR) / 2 - totalW / 2);
+    startX = Math.max(startX, zoneL);
+    var rowY = B + 60;
+    root._icons.forEach(function (it, i) {
+      var x = startX + i * (ICON + gap);
+      it.a.style.left = x + "px";
+      it.a.style.top  = rowY + "px";
+      it.lbl.style.left = (x + half) + "px";
+      it.lbl.style.top  = (rowY + ICON + 6) + "px";
+      it.pop.style.left = (x + half) + "px";
+      it.pop.style.top  = (rowY - 12) + "px";
+      it.pop.style.transform = "translate(-50%,-100%)";
+    });
+
+    // светящиеся узлы: иконки + вершина короны + бусина на кончике
+    root._nodes.forEach(function (nd) { nd.remove(); });
+    root._nodes = [];
+    root._icons.forEach(function (it, i) {
+      var c = el("circle", { class: "ms-node", r: 3,
+        cx: startX + i * (ICON + gap) + half, cy: rowY + half });
+      c.style.animationDelay = (i * 0.4) + "s";
+      root._svg.appendChild(c); root._nodes.push(c);
+    });
+    var apex = el("circle", { class: "ms-node", cx: cx, cy: apexY, r: 3.4 });
+    var orb = el("circle", { class: "ms-orb", cx: tipX, cy: tipY, r: 6, fill: "url(#msSpark)" });
+    var orbCore = el("circle", { class: "ms-orb-core", cx: tipX, cy: tipY, r: 2.2 });
+    root._svg.appendChild(apex); root._svg.appendChild(orb); root._svg.appendChild(orbCore);
+    root._nodes.push(apex, orb, orbCore);
+
+    // девочка тянется пальцем к бусине (искра на пальце = доля 0.111/0.047)
+    var girl = root._girl;
+    if (girl) {
+      var gx = tipX - 0.111 * GW;
+      if (gx + GW > vw - 2) gx = vw - 2 - GW;
+      girl.style.display = "block";
+      girl.style.width = GW + "px";
+      girl.style.left = Math.round(gx) + "px";
+      girl.style.top  = Math.round(tipY - 0.047 * GH) + "px";
+    }
+
+    root.style.height = Math.round(Math.max(rowY + ICON + 28, tipY + GH * 0.95)) + "px";
+  }
+
   function layout() {
     var root = document.getElementById("magic-social");
     if (!root) return;
@@ -420,12 +386,9 @@
     var m = (vw - contentW) / 2;
 
     if (m < MIN_MARGIN) {
-      root.classList.remove("on");
-      layoutMobile();                 // узкий экран → компактная мобильная версия
-      return;
+      layoutNarrow(root);             // ноут/планшет/телефон: дуга обвивает заголовок,
+      return;                         // иконки рядом по центру под ним, девочка справа
     }
-    var mb = document.getElementById("magic-social-mobile");
-    if (mb) mb.classList.remove("on");
     root.classList.add("on");
 
     var half = ICON / 2, n = root._icons.length;
@@ -531,7 +494,6 @@
 
   function init() {
     buildOnce();
-    buildMobileOnce();
     var t;
     window.addEventListener("resize", function () {
       clearTimeout(t); t = setTimeout(layout, 120);
