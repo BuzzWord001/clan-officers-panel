@@ -310,31 +310,44 @@
     // от топбара (ноут подтвердил: +12px от топбара читается лучше, чем впритык)
     var apexY = Math.max(T - 24 * kw, topbarH + 12);
 
-    // ── девочка справа у края (как на ПК), тянется пальцем к концу хвоста
-    var GH = Math.min(248, Math.max(168, Math.round(vw * 0.165)));
-    var GW = Math.round(GH * (343 / 760));
-    var gx = Math.min(vw - 14 - GW, R + 70);          // у правого края, но не на заголовке
-    var girlTop = B + 22;
-    var tipX = gx + 0.111 * GW;                        // искра на пальце
-    var tipY = girlTop + 0.047 * GH;
-
     var n = root._icons.length;
-    var compact = vw < 600;     // телефон → ряд под короной; ноут/планшет → колонка слева
+    var compact = vw < 600;     // телефон → ряд под короной БЕЗ девочки; иначе колонка + девочка
 
-    // ── КОРОНА вокруг заголовка: хвост(палец девочки) → правая база(низ заголовка)
-    //    → плечи → вершина → левая база. Дальше ветвимся: к колонке или к завитку.
-    var pts = [
-      { x: tipX,                  y: tipY },               // кончик у пальца девочки
-      { x: R + (tipX - R) * 0.60, y: B + 28 * kw },        // хвост ныряет глубже вниз-вправо
-      { x: R + (tipX - R) * 0.26, y: B + 16 * kw },        // плавно поднимается обратно к базе
-      { x: R + 14 * kw,           y: B - 12 * kw },         // правая база (низ заголовка)
-      { x: R - w * 0.04,          y: T - 8 * kw },          // правое плечо над заголовком
-      { x: cx + w * 0.20,         y: apexY },
-      { x: cx,                    y: apexY },               // вершина короны
-      { x: cx - w * 0.20,         y: apexY },
-      { x: L + w * 0.04,          y: T - 8 * kw },          // левое плечо над заголовком
-      { x: L - 14 * kw,           y: B - 12 * kw }          // левая база (низ заголовка)
+    // средняя часть короны (плечи → вершина → плечи) — общая для всех ширин
+    var crownMid = [
+      { x: R - w * 0.04, y: T - 8 * kw },   // правое плечо над заголовком
+      { x: cx + w * 0.20, y: apexY },
+      { x: cx,            y: apexY },        // вершина короны
+      { x: cx - w * 0.20, y: apexY },
+      { x: L + w * 0.04, y: T - 8 * kw }     // левое плечо над заголовком
     ];
+
+    var pts, tipX, tipY, showGirl, GH = 0, GW = 0, gx = 0, girlTop = 0;
+    if (!compact) {
+      // ── ноут/планшет: девочка справа + длинный хвост-завиток к её пальцу
+      showGirl = true;
+      GH = Math.min(248, Math.max(168, Math.round(vw * 0.165)));
+      GW = Math.round(GH * (343 / 760));
+      gx = Math.min(vw - 14 - GW, R + 70);            // у правого края, но не на заголовке
+      girlTop = B + 22 * kw;
+      tipX = gx + 0.111 * GW;                          // искра на пальце
+      tipY = girlTop + 0.047 * GH;
+      pts = [
+        { x: tipX,                  y: tipY },              // кончик у пальца девочки
+        { x: R + (tipX - R) * 0.60, y: B + 28 * kw },       // хвост ныряет глубже вниз-вправо
+        { x: R + (tipX - R) * 0.26, y: B + 16 * kw },       // плавно поднимается к базе
+        { x: R + 14 * kw,           y: B - 12 * kw }        // правая база (низ заголовка)
+      ].concat(crownMid, [{ x: L - 14 * kw, y: B - 12 * kw }]);  // + левая база
+    } else {
+      // ── телефон: девочки НЕТ (на узком экране налезала на стат-блок под
+      //    заголовком). Хвост завершается светящейся бусиной у правого плеча короны.
+      showGirl = false;
+      tipX = Math.min(R + 22 * kw, vw - 12);
+      tipY = T - 10 * kw;
+      pts = [
+        { x: tipX, y: tipY }                                // бусина-кончик справа сверху
+      ].concat(crownMid, [{ x: L - 20 * kw, y: B + 18 * kw }]);  // + короткий левый завиток
+    }
 
     var iconNodes = [], bottomRef;
     if (!compact) {
@@ -355,8 +368,7 @@
       });
       bottomRef = iconCY[n - 1] + half + 22;
     } else {
-      // ── телефон: короткий завиток влево-вниз + ряд иконок по центру под короной
-      pts.push({ x: L - 24, y: B + 24 });
+      // ── телефон: ряд иконок по центру под короной (завиток линии уже в pts)
       var isz = 46, ihf = isz / 2, gap = 14, rowY = Math.round(B + 38);
       var totalW = n * isz + (n - 1) * gap;
       if (totalW > vw - 18) { gap = Math.max(7, (vw - 18 - n * isz) / (n - 1)); totalW = n * isz + (n - 1) * gap; }
@@ -397,25 +409,33 @@
 
     var girl = root._girl;
     if (girl) {
-      girl.style.display = "block";
-      girl.style.width = GW + "px";
-      girl.style.left = Math.round(gx) + "px";
-      girl.style.top  = Math.round(girlTop) + "px";
+      if (showGirl) {
+        girl.style.display = "block";
+        girl.style.width = GW + "px";
+        girl.style.left = Math.round(gx) + "px";
+        girl.style.top  = Math.round(girlTop) + "px";
+      } else {
+        girl.style.display = "none";                  // телефон — без девочки
+      }
     }
 
-    root.style.height = Math.round(Math.max(bottomRef, girlTop + GH * 0.9)) + "px";
+    var girlBottom = showGirl ? girlTop + GH * 0.9 : 0;
+    root.style.height = Math.round(Math.max(bottomRef, girlBottom)) + "px";
 
     // ── ДИАГНОСТИКА: точные координаты всех точек для сверки (Claude@laptop читает
     //    window.__magicNarrow). Имена точек короны соответствуют массиву pts.
-    var crownNames = ["tip(finger)", "tailDip1", "tailDip2", "rightBase", "rightShoulder",
-                      "apexR", "apexC(вершина)", "apexL", "leftShoulder", "leftBase"];
+    var crownNames = compact
+      ? ["tip(bead)", "rightShoulder", "apexR", "apexC(вершина)", "apexL", "leftShoulder", "leftCurl"]
+      : ["tip(finger)", "tailDip1", "tailDip2", "rightBase", "rightShoulder",
+         "apexR", "apexC(вершина)", "apexL", "leftShoulder", "leftBase"];
     window.__magicNarrow = {
       mode: compact ? "phone-row" : "laptop-column",
+      girlShown: showGirl,
       viewport: { innerW: vw, innerH: window.innerHeight, dpr: window.devicePixelRatio },
       title: { L: Math.round(L), R: Math.round(R), T: Math.round(T), B: Math.round(B),
                W: Math.round(w), cx: Math.round(cx) },
       topbarH: topbarH, apexY: apexY,
-      crown: pts.slice(0, 10).map(function (p, i) {
+      crown: pts.slice(0, crownNames.length).map(function (p, i) {
         return { name: crownNames[i], x: Math.round(p.x), y: Math.round(p.y) }; }),
       iconNodes: iconNodes.map(function (p, i) {
         return { i: i, label: root._icons[i] ? root._icons[i].lbl.textContent : "",
