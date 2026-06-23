@@ -302,8 +302,9 @@
     var w = r.width, cx = L + w / 2, half = ICON / 2;
     var tbEl = document.querySelector(".topbar");
     var topbarH = tbEl ? Math.round(tbEl.getBoundingClientRect().bottom) : 72;
-    // вершина короны — максимально высоко в зазоре между топбаром и заголовком
-    var apexY = Math.max(T - 30, topbarH + 6);
+    // вершина короны — высоко в зазоре между топбаром и заголовком, но с воздухом
+    // от топбара (ноут подтвердил: +12px от топбара читается лучше, чем впритык)
+    var apexY = Math.max(T - 24, topbarH + 12);
 
     // ── девочка справа у края (как на ПК), тянется пальцем к концу хвоста
     var GH = Math.min(248, Math.max(168, Math.round(vw * 0.165)));
@@ -320,7 +321,8 @@
     //    → плечи → вершина → левая база. Дальше ветвимся: к колонке или к завитку.
     var pts = [
       { x: tipX,                  y: tipY },           // кончик у пальца девочки
-      { x: R + (tipX - R) * 0.45, y: B + 14 },         // хвост ныряет вниз-вправо
+      { x: R + (tipX - R) * 0.60, y: B + 28 },         // хвост ныряет глубже вниз-вправо
+      { x: R + (tipX - R) * 0.26, y: B + 16 },         // плавно поднимается обратно к базе
       { x: R + 14,                y: B - 12 },          // правая база (низ заголовка)
       { x: R - w * 0.04,          y: T - 8 },           // правое плечо над заголовком
       { x: cx + w * 0.20,         y: apexY },
@@ -401,7 +403,7 @@
 
     // ── ДИАГНОСТИКА: точные координаты всех точек для сверки (Claude@laptop читает
     //    window.__magicNarrow). Имена точек короны соответствуют массиву pts.
-    var crownNames = ["tip(finger)", "tailDip", "rightBase", "rightShoulder",
+    var crownNames = ["tip(finger)", "tailDip1", "tailDip2", "rightBase", "rightShoulder",
                       "apexR", "apexC(вершина)", "apexL", "leftShoulder", "leftBase"];
     window.__magicNarrow = {
       mode: compact ? "phone-row" : "laptop-column",
@@ -409,7 +411,7 @@
       title: { L: Math.round(L), R: Math.round(R), T: Math.round(T), B: Math.round(B),
                W: Math.round(w), cx: Math.round(cx) },
       topbarH: topbarH, apexY: apexY,
-      crown: pts.slice(0, 9).map(function (p, i) {
+      crown: pts.slice(0, 10).map(function (p, i) {
         return { name: crownNames[i], x: Math.round(p.x), y: Math.round(p.y) }; }),
       iconNodes: iconNodes.map(function (p, i) {
         return { i: i, label: root._icons[i] ? root._icons[i].lbl.textContent : "",
