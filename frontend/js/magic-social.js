@@ -398,6 +398,26 @@
     }
 
     root.style.height = Math.round(Math.max(bottomRef, girlTop + GH * 0.9)) + "px";
+
+    // ── ДИАГНОСТИКА: точные координаты всех точек для сверки (Claude@laptop читает
+    //    window.__magicNarrow). Имена точек короны соответствуют массиву pts.
+    var crownNames = ["tip(finger)", "tailDip", "rightBase", "rightShoulder",
+                      "apexR", "apexC(вершина)", "apexL", "leftShoulder", "leftBase"];
+    window.__magicNarrow = {
+      mode: compact ? "phone-row" : "laptop-column",
+      viewport: { innerW: vw, innerH: window.innerHeight, dpr: window.devicePixelRatio },
+      title: { L: Math.round(L), R: Math.round(R), T: Math.round(T), B: Math.round(B),
+               W: Math.round(w), cx: Math.round(cx) },
+      topbarH: topbarH, apexY: apexY,
+      crown: pts.slice(0, 9).map(function (p, i) {
+        return { name: crownNames[i], x: Math.round(p.x), y: Math.round(p.y) }; }),
+      iconNodes: iconNodes.map(function (p, i) {
+        return { i: i, label: root._icons[i] ? root._icons[i].lbl.textContent : "",
+                 x: Math.round(p.cx), y: Math.round(p.cy) }; }),
+      girl: { x: Math.round(gx), y: Math.round(girlTop), w: GW, h: GH,
+              tipX: Math.round(tipX), tipY: Math.round(tipY) },
+      spine_d: d
+    };
   }
 
   function layout() {
