@@ -1,17 +1,18 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="booting">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — вход</title>
   <link rel="stylesheet" href="styles.css?v=1795920000">
+  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .auth-shell{visibility:hidden}</style>
+  <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 
-  <canvas id="matrix-canvas"></canvas>
 
   <main class="auth-shell">
     <form class="auth-card" id="login-form" autocomplete="on" novalidate>
@@ -73,10 +74,9 @@
   </main>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/matrix.js?v=1783100000"></script>
-  <script src="js/api.js?v=1788600000"></script>
-  <script src="js/password_toggle.js?v=1783100000"></script>
-  <script src="js/login.js?v=1786000000"></script>
+  <script src="js/api.js?v=1795930000"></script>
+  <script src="js/password_toggle.js?v=1795930000"></script>
+  <script src="js/login.js?v=1795930000"></script>
   <script src="js/tooltips.js?v=1786000400"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
 </body>

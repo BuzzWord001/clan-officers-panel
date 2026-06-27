@@ -3,12 +3,18 @@
   const $ = (id) => document.getElementById(id);
   const NICK_KEY = "officers.last_nick";
 
-  // Если уже залогинены — сразу на главную (гостя — на таблицу Доблести,
-  // т.к. index.html ему недоступен и был бы цикл редиректов).
+  // Форма входа скрыта классом html.booting, пока не проверим текущую сессию —
+  // чтобы уже залогиненному человеку НЕ мелькало старое окно входа (это была
+  // одна из жалоб). Если сессия есть — сразу редирект (форма не показывается);
+  // если нет — показываем форму.
+  const reveal = () => document.documentElement.classList.remove("booting");
   API.me().then((me) => {
-    window.location.href = me && me.role === "guest"
-      ? "clan-valor.html" : "index.html";
-  }).catch(() => {});
+    if (me && (me.role === "guest" || me.role === "officer" || me.role === "admin")) {
+      window.location.replace(me.role === "guest" ? "clan-valor.html" : "index.html");
+    } else {
+      reveal();
+    }
+  }).catch(() => { reveal(); });
 
   // Подставить последний ник из localStorage, чтобы не вбивать каждый раз.
   const lastNick = localStorage.getItem(NICK_KEY);

@@ -10,7 +10,7 @@ primary_region = "ams"   # Amsterdam — ближе всего к РФ из free
 
 [env]
   # Origin GitHub Pages — для CORS.
-  FRONTEND_URL = "https://buzzword001.github.io"
+  FRONTEND_URL = "https://santdevil.com"
   EXTRA_ORIGINS = ""
   HOST = "0.0.0.0"
   PORT = "8765"

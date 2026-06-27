@@ -84,25 +84,21 @@
         showNetBanner(true);
         return;
       }
-      // Нет сессии (401/403) → АВТОМАТИЧЕСКИ входим гостем и остаёмся на
-      // Доблести (отдельного окна логина в основном потоке нет; офицер/админ
-      // заходят через дверцу «Офицерский вход»). Защита от зацикливания: если
-      // после гостевого входа сессия всё равно не встала (браузер режет
-      // cookie И localStorage) — один раз пробуем, потом фолбэк на login.html.
+      // Нет сессии (401/403) → АВТОМАТИЧЕСКИ входим гостем и проверяем НА МЕСТЕ
+      // (БЕЗ location.reload() и БЕЗ sessionStorage — это убирает лишнюю
+      // перезагрузку и риск петли в встроенных браузерах TG/VK, где
+      // sessionStorage не переживает reload). Если сессия так и не встала
+      // (браузер режет и cookie, и localStorage) — фолбэк на login.html.
       try {
-        if (sessionStorage.getItem("__autoguest")) {
-          location.href = "login.html";
-          return;
-        }
-        sessionStorage.setItem("__autoguest", "1");
         await API.loginGuest();
-        location.reload();
+        me = await API.me();          // подтверждаем сессию в этом же загрузе
+        showNetBanner(false);
       } catch (_) {
         location.href = "login.html";
+        return;
       }
-      return;
+      if (!me || !me.role) { location.href = "login.html"; return; }
     }
-    try { sessionStorage.removeItem("__autoguest"); } catch (_) {}
     if (me?.role === "guest") {
       IS_GUEST = true;
       document.body.classList.add("guest-mode");
@@ -2489,10 +2485,10 @@
     load().then(() => { loadTimeline(); loadDeparted(); });
   });
 
+  // Сначала устанавливаем сессию (гость/офицер), ПОТОМ грузим данные — иначе
+  // первый valorCurrent() уходит без сессии, 401 и мелькает «Ошибка загрузки».
   loadMe().then(() => {
     if (IS_ADMIN) injectAdminHelp();
-    apply();          // перерисовать с учётом роли (no-op если данные не готовы)
-    loadDeparted();   // обновить архив с кнопками «вернуть»
-  });
-  load().then(() => { apply(); loadTimeline(); loadDeparted(); });
+    return load();
+  }).then(() => { apply(); loadTimeline(); loadDeparted(); });
 })();
