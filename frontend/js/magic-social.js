@@ -252,7 +252,7 @@
   //               колонка иконок в левом жёлобе (как на ПК).
   //      LOOP   — ноут/планшет/телефон: петля (корона сверху + дуга-иконки под
   //               заголовком), девочка справа если есть место, иначе бусина.
-  function buildSpine(tr, vw, topbarH) {
+  function buildSpine(tr, vw, topbarH, phone) {
     var L = tr.L, R = tr.R, T = tr.T, B = tr.B, cx = tr.cx, cy = tr.cy, W = tr.W;
     var kw = W / REF_W;                       // масштаб формы под размер заголовка
     var apexY = Math.max(T - 22 * kw, topbarH + 10);
@@ -303,7 +303,8 @@
     }
 
     var n = LINKS.length;
-    var GUTTER = gutterR >= ICON + 20;        // хватает места на колонку слева?
+    // на телефоне (любая ориентация) — всегда LOOP без жёлоба и без девочки
+    var GUTTER = !phone && gutterR >= ICON + 20;   // хватает места на колонку слева?
 
     if (GUTTER) {
       var g = placeGirl();
@@ -323,7 +324,7 @@
     }
 
     // ── LOOP: иконки на дуге ПОД заголовком (не налезают на контент по бокам)
-    var girl = mr >= 160 ? placeGirl() : null;
+    var girl = (!phone && mr >= 160) ? placeGirl() : null;
     var head, tip;
     if (girl) {
       head = tail(girl.tipX, girl.tipY); tip = { x: girl.tipX, y: girl.tipY };
@@ -331,11 +332,15 @@
       var beadX = Math.min(R + 22 * kw, vw - 12), beadY = T - 8 * kw;
       head = [{ x: beadX, y: beadY }]; tip = { x: beadX, y: beadY };
     }
-    // дуга под заголовком: иконки слева-направо, провисает к центру
-    var archY = B + clamp(54 * kw, 40, 72);
-    var sag = clamp(20 * kw, 12, 30);
+    // дуга под заголовком: иконки слева-направо, провисает к центру.
+    // На ТЕЛЕФОНЕ: ряд гарантированно влезает по ширине (spread ≤ vw-isz-16) и
+    // опущен НИЖЕ подзаголовка (archY с учётом размера иконки), чтобы не наезжал.
+    var isz = phone ? 42 : ICON;
+    var archY = B + (phone ? clamp(54 * kw, isz / 2 + 34, 86) : clamp(54 * kw, 40, 72));
+    var sag = phone ? clamp(16 * kw, 8, 16) : clamp(20 * kw, 12, 30);
+    var spread = phone ? clamp(W * 0.66, 168, vw - isz - 16)
+                       : Math.min(W * 0.66, vw * 0.40);   // ширина веера иконок
     var iconPts2 = [];
-    var spread = Math.min(W * 0.66, vw * 0.40);   // ширина веера иконок
     for (var j = 0; j < n; j++) {
       var rel = (n === 1) ? 0 : (j / (n - 1)) * 2 - 1;   // -1..1
       iconPts2.push({ x: cx + rel * spread / 2, y: archY + sag * (1 - rel * rel) });
@@ -354,12 +359,15 @@
     if (!tr) { root.classList.remove("on"); return; }
     root.classList.add("on");
 
-    var vw = window.innerWidth;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    // ТЕЛЕФОН = меньшая сторона ≤ 600 (ловит И портрет, И ландшафт телефона —
+    // ландшафт широкий, но низкий; по одной ширине его не отличить от ноута).
+    var phone = Math.min(vw, vh) <= 600;
     var tbEl = document.querySelector(".topbar");
     var topbarH = tbEl ? Math.round(tbEl.getBoundingClientRect().bottom + window.scrollY) : 72;
 
-    var sp = buildSpine(tr, vw, topbarH);
-    var compact = vw < 700;                          // мелкие иконки на телефоне
+    var sp = buildSpine(tr, vw, topbarH, phone);
+    var compact = phone;                             // мелкие иконки + подписи скрыты
     var d = smooth(sp.pts);
     root._aura.setAttribute("d", d);
     root._spine.setAttribute("d", d);
@@ -368,7 +376,7 @@
     root._motion.setAttribute("d", d);
 
     // ── ИКОНКИ — на узлах пути (smooth() проходит через них) → строго на линии.
-    var isz = compact ? 44 : ICON, half = isz / 2;
+    var isz = compact ? 42 : ICON, half = isz / 2;   // 42 совпадает с расчётом дуги в buildSpine
     var lblUnder = !!sp.loop;                        // в петле подпись под иконкой
     var hideLbl = compact;                           // на телефоне подписи мешают → прячем
     var iconNodes = [];
