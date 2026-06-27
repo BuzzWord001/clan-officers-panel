@@ -260,6 +260,27 @@
     var gutterR = (vw - mainW) / 2;           // ширина левого жёлоба (вне контента)
     var mr = vw - R;                          // свободное поле справа (под девочку)
 
+    // ── ТЕЛЕФОН (best practice): НИКАКОЙ короны/петли. Чистая панель соцсетей —
+    //    ровный ряд крупных иконок + ПРЯМАЯ светящаяся линия-акцент под ними.
+    //    Контент важнее декора, простая композиция, крупные тап-таргеты.
+    if (phone) {
+      var pn = LINKS.length, pisz = 44, phalf = pisz / 2;
+      // ряд ниже подзаголовка: отступ от низа заголовка с запасом под subtitle
+      var rowY = B + clamp(64 * kw, phalf + 40, 96);
+      // центр-в-центр размах: влезает по ширине, без наложения иконок
+      var span = clamp(W * 0.60, (pn - 1) * (pisz + 16), vw - pisz - 20);
+      var pIcons = [];
+      for (var pi = 0; pi < pn; pi++) {
+        var prel = (pn === 1) ? 0 : (pi / (pn - 1)) * 2 - 1;   // -1..1
+        pIcons.push({ x: Math.round(cx + prel * span / 2), y: rowY });
+      }
+      var pext = Math.min(34, span * 0.10);
+      var pPts = [{ x: pIcons[0].x - pext, y: rowY }]
+                   .concat(pIcons, [{ x: pIcons[pn - 1].x + pext, y: rowY }]);
+      return { pts: pPts, iconPts: pIcons, apex: pPts[0], tip: pPts[pPts.length - 1],
+               girl: null, kw: kw, loop: true, flat: true };
+    }
+
     // средняя часть короны (правое плечо → вершина → левое плечо) — общая
     var crown = [
       { x: R + 24 * kw, y: B - 46 * kw },     // правый бок/стык
@@ -376,7 +397,7 @@
     root._motion.setAttribute("d", d);
 
     // ── ИКОНКИ — на узлах пути (smooth() проходит через них) → строго на линии.
-    var isz = compact ? 42 : ICON, half = isz / 2;   // 42 совпадает с расчётом дуги в buildSpine
+    var isz = compact ? 44 : ICON, half = isz / 2;   // 44 = размер иконки в телефонной панели
     var lblUnder = !!sp.loop;                        // в петле подпись под иконкой
     var hideLbl = compact;                           // на телефоне подписи мешают → прячем
     var iconNodes = [];
@@ -427,11 +448,14 @@
       c.style.animationDelay = (i * 0.4) + "s";
       root._svg.appendChild(c); root._nodes.push(c);
     });
-    var apex = el("circle", { class: "ms-node", cx: sp.apex.x, cy: sp.apex.y, r: 3.4 });
-    var orb = el("circle", { class: "ms-orb", cx: sp.tip.x, cy: sp.tip.y, r: 6, fill: "url(#msSpark)" });
-    var orbCore = el("circle", { class: "ms-orb-core", cx: sp.tip.x, cy: sp.tip.y, r: 2.2 });
-    root._svg.appendChild(apex); root._svg.appendChild(orb); root._svg.appendChild(orbCore);
-    root._nodes.push(apex, orb, orbCore);
+    if (!sp.flat) {
+      // корона/хвост: вершина + светящаяся бусина на кончике (девочкин палец)
+      var apex = el("circle", { class: "ms-node", cx: sp.apex.x, cy: sp.apex.y, r: 3.4 });
+      var orb = el("circle", { class: "ms-orb", cx: sp.tip.x, cy: sp.tip.y, r: 6, fill: "url(#msSpark)" });
+      var orbCore = el("circle", { class: "ms-orb-core", cx: sp.tip.x, cy: sp.tip.y, r: 2.2 });
+      root._svg.appendChild(apex); root._svg.appendChild(orb); root._svg.appendChild(orbCore);
+      root._nodes.push(apex, orb, orbCore);
+    }
 
     // высота оверлея = ниже самой нижней иконки и/или девочки
     var lowestIcon = iconNodes.length ? Math.max.apply(null, iconNodes.map(function (p) { return p.cy; })) : tr.B;

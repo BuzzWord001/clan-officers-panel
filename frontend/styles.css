@@ -3056,6 +3056,14 @@ body.show-valor .valor-col { display: table-cell; }
 /* Фикс обрезания таблицы: гарантируем что table-wrap скроллится */
 .members-table-wrap { overflow-x: auto; }
 
+/* Best-practice мобильный горизонтальный скролл таблиц: инерция (iOS) +
+   overscroll-behavior, чтобы прокрутка таблицы вправо не дёргала всю страницу
+   и не запускала «назад» жестом. Безвредно на десктопе. */
+.members-table-wrap, .table-scroll, .cmp-rows {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
 /* ── Архив скринов сбора (папки по неделям) ── */
 .vs-weeks { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 14px; }
 .vs-folder {
