@@ -115,10 +115,11 @@
       ".ms-node{fill:#ffe39a;filter:url(#msGlowS);animation:msPulse 2.8s ease-in-out infinite}" +
       ".ms-orb{filter:url(#msGlow);animation:msPulse 2.6s ease-in-out infinite}" +
       ".ms-orb-core{fill:#fff6e0;filter:url(#msGlowS)}" +
-      // девочка живёт ОТДЕЛЬНО от оверлея, z-index:1 < .shell(2) → контент
-      // (таблица/панели) рисуется ПОВЕРХ неё; в шапке (палец/бусина) видна.
+      // девочка на ПЕРЕДНЕМ плане (в оверлее z-40, позади линии — бусина на пальце).
+      // На узких экранах НЕ прижимается к краю: уходит за правый край и обрезается
+      // (html overflow-x:clip) — расположение 1-в-1 как на ПК (Лир 2026-06-27).
       ".ms-girl{position:absolute;pointer-events:none;display:none;height:auto;" +
-        "filter:drop-shadow(0 5px 14px rgba(0,0,0,.5));z-index:1}" +
+        "filter:drop-shadow(0 5px 14px rgba(0,0,0,.5));z-index:0}" +
       ".ms-spark{fill:url(#msSpark);filter:url(#msGlowS)}" +
       "@keyframes msFlow{to{stroke-dashoffset:-39}}" +
       "@keyframes msPulse{0%,100%{opacity:.45}50%{opacity:1}}" +
@@ -153,13 +154,13 @@
     var root = document.createElement("div");
     root.id = "magic-social";
 
-    // девочка — отдельным элементом в body (НЕ в оверлее), чтобы её можно было
-    // увести ЗА контент (z-index:1). Бусина линии (z-40) ложится на её палец сверху.
+    // девочка — в оверлее (передний план), первой в DOM → позади линии, бусина
+    // ложится на её палец сверху. Как на ПК.
     var girl = document.createElement("img");
     girl.className = "ms-girl";
     girl.alt = "";
     girl.src = "assets/girl.png?v=1794600000";
-    document.body.appendChild(girl);
+    root.appendChild(girl);
     root._girl = girl;
 
     var svg = el("svg", { preserveAspectRatio: "none" });
@@ -278,11 +279,9 @@
       var GH = Math.round(GW * GIRL_AR);
       var reach = clamp(mr * 0.58, 150, 430);
       var tipX = R + reach;
+      // НЕ прижимаем к краю: пусть девочка уходит за правый край и обрезается
+      // (как на ПК, расположение 1-в-1). Палец остаётся ровно на кончике линии.
       var gx = tipX - GIRL_TIPX * GW;
-      if (gx + GW > vw - 6) {                 // не влезает справа → прижать к краю
-        gx = vw - 6 - GW;
-        tipX = gx + GIRL_TIPX * GW;           // и сдвинуть кончик линии на палец
-      }
       var tipY = B + 86 * kw;
       var gy = tipY - GIRL_TIPY * GH;
       return { GW: GW, GH: GH, gx: gx, gy: gy, tipX: tipX, tipY: tipY, show: true };
