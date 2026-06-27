@@ -5408,6 +5408,16 @@ def valor_get_current(with_reg_notes: bool = False,
             m["manual_warnings"] = manual_warn_map.get(cn, [])
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
+            # АФК — снимаем ВСЕ предупреждения (по требованию Лира): пока человек
+            # в АФК, на сайте у него нет ни норматив-, ни титульных, ни ручных
+            # предупреждений. Вернётся из АФК — реальные провалы прошлых недель
+            # снова отобразятся (история не теряется).
+            if m["is_afk"]:
+                m["warnings"] = []
+                m["warning_count"] = 0
+                m["title_warn"] = None
+                m["title_warn_since"] = None
+                m["manual_warnings"] = []
             # Данные VK/Telegram (профили) — только офицерам/админу. Гостю
             # отдаём None. Соц-баллы (score.socials, теги vk/tg) уже посчитаны
             # выше на полных данных, поэтому зануление дисплея их не ломает.

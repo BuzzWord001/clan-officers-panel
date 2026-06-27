@@ -936,18 +936,24 @@
     if (ws.length) {
       const SOFTER = { severe: "mid", mid: "light", light: "light" };
       const effSev = (w) => (w.grace ? SOFTER[sev3(w.pct)] : sev3(w.pct));
-      const sorted = ws.slice().sort((a, b) => (a.week < b.week ? -1 : 1));
-      const detail = sorted.map((w) =>
-        `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%` +
-        (w.grace ? " (после иммунитета, неполная неделя)" : "")).join("\n");
-      // худшая эффективная суровость по всем неделям
-      const sev = ws.map(effSev).reduce(
-        (a, b) => (SEVRANK[b] > SEVRANK[a] ? b : a), "light");
+      // Раздельно по СУРОВОСТИ: отдельный чип на суровые / средние / лёгкие.
+      // Так 1 суровое + 1 лёгкое не схлопывается в один красный «2».
+      const bySev = { severe: [], mid: [], light: [] };
+      ws.forEach((w) => bySev[effSev(w)].push(w));
+      const order = ["severe", "mid", "light"].filter((s) => bySev[s].length);
       const ndel = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
         `data-canon="${esc(m.nick_canon)}" data-kind="norm" ` +
         `title="Снять все предупреждения по нормативу">✕</button>` : "";
-      chips.push(warnChip("wsev-" + sev, ws.length,
-        `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`, { extra: ndel }));
+      order.forEach((sev, i) => {
+        const group = bySev[sev].slice().sort((a, b) => (a.week < b.week ? -1 : 1));
+        const detail = group.map((w) =>
+          `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%` +
+          (w.grace ? " (после иммунитета, неполная неделя)" : "")).join("\n");
+        // Кнопку «снять все по нормативу» вешаем только на последний чип.
+        chips.push(warnChip("wsev-" + sev, group.length,
+          `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`,
+          { extra: (i === order.length - 1) ? ndel : "" }));
+      });
     }
     // Титул — строгий цвет; в тултипе — неделя проставления с датой
     if (tw) {
