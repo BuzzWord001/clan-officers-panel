@@ -774,12 +774,9 @@ def valor_compare_data(week: str) -> dict:
         for rr in conn.execute(
                 "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0 "
                 "ORDER BY accepted_date"):
-            for piece in (rr["game_nick"] or "").split(","):
-                p = piece.strip()
-                c = _valor_canon(p)
-                if c:
-                    reg.add(c)
-                    reg_nick[c] = p
+            for c, p in _acceptance_nicks(rr["game_nick"]):
+                reg.add(c)
+                reg_nick[c] = p
         rows = conn.execute(
             "SELECT id, nick, nick_canon, true_name, rank, title, level, "
             "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect, frame "
@@ -3022,6 +3019,29 @@ def _valor_canon(nick: str) -> str:
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
 
 
+def _acceptance_nicks(raw: str) -> list[tuple[str, str]]:
+    """Разбор поля game_nick реестра приёма в [(canon, написание), ...].
+
+    Запятая — разделитель нескольких ников ОДНОЙ записи («Main,Alt»). НО если
+    в записи ник один, сохраняем исходное написание ЦЕЛИКОМ — вместе с
+    возможной хвостовой запятой в самом нике (напр. «Рэйни,»), иначе split
+    съедал бы её как разделитель."""
+    raw = raw or ""
+    nonempty = [p.strip() for p in raw.split(",") if p.strip()]
+    out: list[tuple[str, str]] = []
+    if len(nonempty) == 1:
+        disp = raw.strip()
+        c = _valor_canon(disp)
+        if c:
+            out.append((c, disp))
+        return out
+    for p in nonempty:
+        c = _valor_canon(p)
+        if c:
+            out.append((c, p))
+    return out
+
+
 def _alias_map(conn) -> dict:
     """alias_canon → target_canon из valor_alias."""
     return {r["alias_canon"]: r["target_canon"]
@@ -4997,12 +5017,9 @@ def valor_get_current(with_reg_notes: bool = False,
         for rr in conn.execute(
                 "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0 "
                 "ORDER BY accepted_date"):
-            for piece in (rr["game_nick"] or "").split(","):
-                p = piece.strip()
-                c = _valor_canon(p)
-                if c:
-                    ai_registered.add(c)
-                    reg_nick[c] = p
+            for c, p in _acceptance_nicks(rr["game_nick"]):
+                ai_registered.add(c)
+                reg_nick[c] = p
         # Ручной кик (force_archived) — этих в основном списке не показываем.
         force_archived: set[str] = {
             r["nick_canon"] for r in conn.execute(
