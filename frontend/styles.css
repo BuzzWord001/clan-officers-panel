@@ -3743,7 +3743,7 @@ body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.col-not
 .m-cell-warn { text-align: center; }
 .warn-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;       /* чипы в столбик — все одной ширины */
   gap: 3px;
   justify-content: center;
   align-items: center;
@@ -3753,13 +3753,15 @@ body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.col-not
    по % нормы). Титул — отдельный строгий цвет (фиолетовый). Ручное — цвет
    суровости + значок ✎. Пояснение — в красивом окошке при наведении. */
 .wchip {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   padding: 1px 9px;
   border: 1px solid; border-radius: 11px;
   font-size: 10px; font-weight: 600; line-height: 16px;
   white-space: nowrap; vertical-align: middle;
   cursor: help;
 }
+/* В колонке «Предупреждения» все чипы одной ширины (в попапе выбора — нет). */
+.warn-list .wchip { min-width: 140px; box-sizing: border-box; }
 .wchip .tri  { font-size: 10px; line-height: 1; }
 .wchip .wk-tag {              /* мелкая пометка недели/даты выдачи */
   font-size: 8px; font-weight: 700; letter-spacing: .3px;
