@@ -936,23 +936,21 @@
     if (ws.length) {
       const SOFTER = { severe: "mid", mid: "light", light: "light" };
       const effSev = (w) => (w.grace ? SOFTER[sev3(w.pct)] : sev3(w.pct));
-      // Раздельно по СУРОВОСТИ: отдельный чип на суровые / средние / лёгкие.
-      // Так 1 суровое + 1 лёгкое не схлопывается в один красный «2».
-      const bySev = { severe: [], mid: [], light: [] };
-      ws.forEach((w) => bySev[effSev(w)].push(w));
-      const order = ["severe", "mid", "light"].filter((s) => bySev[s].length);
-      const ndel = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
-        `data-canon="${esc(m.nick_canon)}" data-kind="norm" ` +
-        `title="Снять все предупреждения по нормативу">✕</button>` : "";
-      order.forEach((sev, i) => {
-        const group = bySev[sev].slice().sort((a, b) => (a.week < b.week ? -1 : 1));
-        const detail = group.map((w) =>
-          `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%` +
-          (w.grace ? " (после иммунитета, неполная неделя)" : "")).join("\n");
-        // Кнопку «снять все по нормативу» вешаем только на последний чип.
-        chips.push(warnChip("wsev-" + sev, group.length,
-          `${sevTitle(sev)}\nНорматив не выполнен\n${detail}`,
-          { extra: (i === order.length - 1) ? ndel : "" }));
+      // ОТДЕЛЬНЫЙ чип на КАЖДУЮ неделю: цвет = суровость этой недели, на чипе —
+      // ярлык недели, свой ✕ снимает ИМЕННО это предупреждение (по одному).
+      const sorted = ws.slice().sort((a, b) =>
+        (SEVRANK[effSev(b)] - SEVRANK[effSev(a)]) || (a.week < b.week ? -1 : 1));
+      sorted.forEach((w) => {
+        const sev = effSev(w);
+        const tip = `${sevTitle(sev)}\nНорматив не выполнен\n${weekFull(w.week)}` +
+          `\n  ${w.valor}/${w.norm} = ${w.pct}%` +
+          (w.grace ? " (после иммунитета, неполная неделя)" : "");
+        const del = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
+          `data-canon="${esc(m.nick_canon)}" data-kind="norm" ` +
+          `data-ref="${esc(w.week)}" ` +
+          `title="Снять это предупреждение (${esc(weekShort(w.week))})">✕</button>` : "";
+        chips.push(warnChip("wsev-" + sev, weekShort(w.week),
+          tip, { extra: del }));
       });
     }
     // Титул — строгий цвет; в тултипе — неделя проставления с датой
@@ -2078,13 +2076,17 @@
     if (disB) {
       ev.stopPropagation();
       const kind = disB.dataset.kind;
+      const ref = disB.dataset.ref || "";
       const msg = kind === "title"
         ? "Снять предупреждение из титула у этого игрока?\n\nПричина снятия (необязательно):"
-        : "Снять ВСЕ текущие предупреждения по нормативу у этого игрока?\n\nПричина снятия (необязательно):";
+        : ref
+          ? `Снять предупреждение за ${weekShort(ref)} у этого игрока?\n\nПричина снятия (необязательно):`
+          : "Снять ВСЕ текущие предупреждения по нормативу у этого игрока?\n\nПричина снятия (необязательно):";
       const reason = prompt(msg, "");
       if (reason === null) return;   // отмена
       try {
-        await API.valorWarningDismiss(disB.dataset.canon, kind, reason.trim());
+        await API.valorWarningDismiss(disB.dataset.canon, kind, reason.trim(),
+                                      ref || undefined);
         await load();
       } catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); }
       return;

@@ -193,7 +193,7 @@
     valorEditLog: (week) => request("GET", "/valor/editlog?week=" + encodeURIComponent(week)),
     valorEditUndo: (id) => request("POST", "/valor/editlog/undo", { id }),
     valorEditUndoActor: (week, actor) => request("POST", "/valor/editlog/undo-actor", { week, actor }),
-    valorWarningDismiss: (canon, kind, reason) => request("POST", "/valor/warning/dismiss", { canon, kind, reason: reason || "" }),
+    valorWarningDismiss: (canon, kind, reason, ref) => request("POST", "/valor/warning/dismiss", { canon, kind, reason: reason || "", ref: ref || null }),
     valorWarningRestore: (canon) => request("POST", "/valor/warning/restore", { canon }),
     valorDismissedHistory: (canon) => request("GET", "/valor/warning/dismissed?canon=" + encodeURIComponent(canon)),
     valorWeights:    () => request("GET", "/valor/weights"),

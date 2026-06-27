@@ -4517,9 +4517,10 @@ def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
 
 
 def valor_dismiss_warnings(canon: str, kind: str, actor: dict,
-                           reason: str = "") -> dict:
+                           reason: str = "", ref: str | None = None) -> dict:
     """«Простить» вычисляемое предупреждение (офицер/админ):
-      kind='norm'  — все текущие авто-штрафы за невыполнение норматива;
+      kind='norm'  — авто-штраф за невыполнение норматива. ref=неделя → снять
+                     ТОЛЬКО её (по одной); ref=None → все текущие недели.
       kind='title' — штраф из числового титула (текущая цифра).
     Запись переживает пересчёт; фильтруется в valor_active_warnings /
     valor_get_current. canon приходит с фронта (m.nick_canon) — совпадает с
@@ -4527,11 +4528,14 @@ def valor_dismiss_warnings(canon: str, kind: str, actor: dict,
     canon = (canon or "").strip()
     if not canon:
         return {"ok": False, "reason": "bad_canon"}
+    ref = (ref or "").strip() or None
     now = datetime.utcnow().isoformat(timespec="seconds")
     by = actor.get("name") or actor.get("role") or ""
     details: dict[str, dict] = {}   # ref → подробности на момент выставления
     if kind == "norm":
         active = valor_active_warnings().get(canon, [])
+        if ref:                       # снять только одну конкретную неделю
+            active = [a for a in active if a["week"] == ref]
         refs = [a["week"] for a in active]
         for a in active:
             details[a["week"]] = {

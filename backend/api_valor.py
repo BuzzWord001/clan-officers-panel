@@ -261,6 +261,7 @@ class WarnDismissIn(BaseModel):
     canon:  str = Field(..., min_length=1)
     kind:   str   # norm | title
     reason: str = ""   # комментарий: почему простили
+    ref:    str | None = None  # норматив: конкретная неделя (снять по одной); None = все
 
 
 class WarnCanonIn(BaseModel):
@@ -271,9 +272,10 @@ class WarnCanonIn(BaseModel):
 def valor_warning_dismiss(payload: WarnDismissIn,
                           _: dict = Depends(require_officer),
                           actor: dict = Depends(current_actor)) -> dict:
-    """«Простить» вычисляемое предупреждение: норматив (все текущие недели) или
-    титул (текущая цифра). Офицер/админ."""
-    res = db.valor_dismiss_warnings(payload.canon, payload.kind, actor, payload.reason)
+    """«Простить» вычисляемое предупреждение: норматив (конкретная неделя ref
+    или все текущие) либо титул (текущая цифра). Офицер/админ."""
+    res = db.valor_dismiss_warnings(payload.canon, payload.kind, actor,
+                                    payload.reason, ref=payload.ref)
     if not res.get("ok"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, res.get("reason", "failed"))
     return res
