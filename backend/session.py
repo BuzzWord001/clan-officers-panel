@@ -44,14 +44,19 @@ def set_session(response: Response, *, role: str, name: str) -> str:
         max_age=MAX_AGE_SEC,
         httponly=True,
         secure=True,
-        samesite="none",
+        # Сайт single-origin (фронт и API на одном домене santdevil.com) →
+        # cookie first-party, и правильный режим — Lax. Прежний "none" помечал
+        # cookie как cross-site: Safari ITP, Firefox ETP, встроенные браузеры
+        # Telegram/VK и приватные вкладки телефонов её РЕЗАЛИ → сессия не
+        # вставала → me()→401→петля на login.html («людей не пускает»).
+        samesite="lax",
         path="/",
     )
     return token
 
 
 def clear_session(response: Response) -> None:
-    response.delete_cookie(COOKIE_NAME, path="/", samesite="none", secure=True)
+    response.delete_cookie(COOKIE_NAME, path="/", samesite="lax", secure=True)
 
 
 def _token_from_request(request: Request) -> str | None:

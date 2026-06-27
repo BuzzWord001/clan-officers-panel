@@ -139,9 +139,9 @@ app.include_router(api_chamber.router)
 
 # --- Frontend (single-origin) --------------------------------------------
 # Отдаём статику фронта с того же домена, что и API. Тогда cookie сессии
-# становится first-party (Secure; SameSite=None) и доезжает во ВСЕХ браузерах
+# становится first-party (Secure; SameSite=Lax) и доезжает во ВСЕХ браузерах
 # — включая Safari/iOS и встроенные браузеры Telegram/VK, которые режут
-# cross-site cookie. Без этого «некоторых людей» выкидывало после входа.
+# cross-site (SameSite=None) cookie. Без этого «некоторых людей» выкидывало после входа.
 #
 # Монтируем ПОСЛЕДНИМ: явные API-роуты (/auth, /valor, /chat, /health, …)
 # зарегистрированы выше и матчатся раньше, статика ловит всё остальное.
