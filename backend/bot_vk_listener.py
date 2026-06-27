@@ -108,20 +108,11 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
                 peer = _event_peer_id(etype, raw)
                 if peer != target_peer:
                     continue
-                now = time.monotonic()
-                if now - last_repost < _REPOST_COOLDOWN_SEC:
-                    log.info("VK invite: cooldown skip (%.1fs)", now - last_repost)
-                    continue
-                last_repost = now
-                log.info("VK invite event in officer chat → force repost")
-                # Перекидываем корутину в основной event loop.
-                fut = asyncio.run_coroutine_threadsafe(
-                    publisher.publish_force_repost("vk", "vk_chat_invite"), loop,
-                )
-                try:
-                    fut.result(timeout=120)
-                except Exception:
-                    log.exception("VK force repost coroutine failed")
+                # Раньше тут пересоздавали закреп со списком новичков для
+                # нового участника. По требованию Лира список новых
+                # пользователей больше не рендерим — в закрепе просто скрин
+                # сайта, на join его не трогаем.
+                log.info("VK invite event — repost disabled (pin is a static site shot)")
 
         except Exception as exc:
             log.warning("VK longpoll error: %s; reconnect in %ss", exc, backoff)

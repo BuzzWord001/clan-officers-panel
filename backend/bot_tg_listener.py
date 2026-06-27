@@ -166,12 +166,8 @@ async def run() -> None:
             _write_offset(offset)
 
             if join_seen_in_batch:
-                now = asyncio.get_event_loop().time()
-                if now - last_repost < _REPOST_COOLDOWN_SEC:
-                    log.info("Skipping repost: cooldown (%.1fs)", now - last_repost)
-                    continue
-                last_repost = now
-                try:
-                    await publisher.publish_force_repost("tg", "tg_new_member")
-                except Exception:
-                    log.exception("force repost from TG join failed")
+                # Раньше тут пересоздавали закреп со списком новичков, чтобы
+                # новый участник увидел его в недавних. По требованию Лира
+                # список новых пользователей больше не рендерим и закреп на
+                # join не трогаем — в закрепе просто скрин сайта.
+                log.info("Join detected — repost disabled (pin is a static site shot)")
