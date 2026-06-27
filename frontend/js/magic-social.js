@@ -115,8 +115,10 @@
       ".ms-node{fill:#ffe39a;filter:url(#msGlowS);animation:msPulse 2.8s ease-in-out infinite}" +
       ".ms-orb{filter:url(#msGlow);animation:msPulse 2.6s ease-in-out infinite}" +
       ".ms-orb-core{fill:#fff6e0;filter:url(#msGlowS)}" +
+      // девочка живёт ОТДЕЛЬНО от оверлея, z-index:1 < .shell(2) → контент
+      // (таблица/панели) рисуется ПОВЕРХ неё; в шапке (палец/бусина) видна.
       ".ms-girl{position:absolute;pointer-events:none;display:none;height:auto;" +
-        "filter:drop-shadow(0 5px 14px rgba(0,0,0,.5));z-index:0}" +
+        "filter:drop-shadow(0 5px 14px rgba(0,0,0,.5));z-index:1}" +
       ".ms-spark{fill:url(#msSpark);filter:url(#msGlowS)}" +
       "@keyframes msFlow{to{stroke-dashoffset:-39}}" +
       "@keyframes msPulse{0%,100%{opacity:.45}50%{opacity:1}}" +
@@ -151,12 +153,13 @@
     var root = document.createElement("div");
     root.id = "magic-social";
 
-    // девочка — позади линии, бусина ложится на её палец
+    // девочка — отдельным элементом в body (НЕ в оверлее), чтобы её можно было
+    // увести ЗА контент (z-index:1). Бусина линии (z-40) ложится на её палец сверху.
     var girl = document.createElement("img");
     girl.className = "ms-girl";
     girl.alt = "";
     girl.src = "assets/girl.png?v=1794600000";
-    root.appendChild(girl);
+    document.body.appendChild(girl);
     root._girl = girl;
 
     var svg = el("svg", { preserveAspectRatio: "none" });
