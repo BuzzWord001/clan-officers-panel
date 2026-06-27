@@ -267,25 +267,42 @@
       { x: L - 16 * kw,  y: cy }              // левая база
     ];
 
-    // хвост к девочке (или бусина), длина подгоняется под поле справа
-    function tailToGirl() {
+    // ── РАЗМЕЩЕНИЕ ДЕВОЧКИ + КОНЧИК ЛИНИИ. КЛЮЧЕВОЕ: если девочку приходится
+    //    прижать к правому краю (не влезает), кончик линии (tip) пересчитываем
+    //    ПОД ФАКТИЧЕСКИЙ палец → бусина всегда ровно на пальце на любом экране.
+    function placeGirl() {
+      var GW = clamp(Math.round(mr * 0.62), 120, 248);
+      var GH = Math.round(GW * GIRL_AR);
       var reach = clamp(mr * 0.58, 150, 430);
-      var tipX = R + reach, tipY = B + 86 * kw;
-      return { pts: [
-        { x: tipX,             y: tipY },
-        { x: R + reach * 0.80, y: B + 52 * kw },
-        { x: R + reach * 0.52, y: B + 74 * kw },
-        { x: R + reach * 0.20, y: B + 52 * kw },
-        { x: R + reach * 0.02, y: B + 18 * kw },
-        { x: R + 14 * kw,      y: B - 6 * kw }
-      ], tip: { x: tipX, y: tipY } };
+      var tipX = R + reach;
+      var gx = tipX - GIRL_TIPX * GW;
+      if (gx + GW > vw - 6) {                 // не влезает справа → прижать к краю
+        gx = vw - 6 - GW;
+        tipX = gx + GIRL_TIPX * GW;           // и сдвинуть кончик линии на палец
+      }
+      var tipY = B + 86 * kw;
+      var gy = tipY - GIRL_TIPY * GH;
+      return { GW: GW, GH: GH, gx: gx, gy: gy, tipX: tipX, tipY: tipY, show: true };
+    }
+    // хвост-завиток от правой базы короны к кончику (пальцу девочки)
+    function tail(tipX, tipY) {
+      var dx = tipX - R;
+      return [
+        { x: tipX,            y: tipY },
+        { x: R + dx * 0.80,   y: B + 52 * kw },
+        { x: R + dx * 0.52,   y: B + 74 * kw },
+        { x: R + dx * 0.20,   y: B + 52 * kw },
+        { x: R + dx * 0.02,   y: B + 18 * kw },
+        { x: R + 14 * kw,     y: B - 6 * kw }
+      ];
     }
 
     var n = LINKS.length;
     var GUTTER = gutterR >= ICON + 20;        // хватает места на колонку слева?
 
     if (GUTTER) {
-      var tg = tailToGirl();
+      var g = placeGirl();
+      var tg = tail(g.tipX, g.tipY);
       // колонка иконок в жёлобе: первая — переход от заголовка вниз-влево,
       // остальные зигзагом в жёлобе (как на ПК: 462/82/231/122 при vw=1904)
       var dTop = T + 40 * kw, step = clamp(190 * kw, 150, 205);
@@ -295,16 +312,16 @@
         iconPts.push({ x: clamp(fx[i], ICON / 2 + 8, L - ICON / 2 - 6),
                        y: dTop + step * i });
       }
-      var pts = tg.pts.concat(crown, iconPts);
+      var pts = tg.concat(crown, iconPts);
       return { pts: pts, iconPts: iconPts, apex: { x: cx, y: apexY },
-               tip: tg.tip, hasGirl: true, kw: kw };
+               tip: { x: g.tipX, y: g.tipY }, girl: g, kw: kw };
     }
 
     // ── LOOP: иконки на дуге ПОД заголовком (не налезают на контент по бокам)
-    var hasGirl = mr >= 160;
+    var girl = mr >= 160 ? placeGirl() : null;
     var head, tip;
-    if (hasGirl) {
-      var tg2 = tailToGirl(); head = tg2.pts; tip = tg2.tip;
+    if (girl) {
+      head = tail(girl.tipX, girl.tipY); tip = { x: girl.tipX, y: girl.tipY };
     } else {
       var beadX = Math.min(R + 22 * kw, vw - 12), beadY = T - 8 * kw;
       head = [{ x: beadX, y: beadY }]; tip = { x: beadX, y: beadY };
@@ -322,7 +339,7 @@
     var rightStub = { x: R + 14 * kw, y: B + 20 * kw };          // правый хвостик
     var pts2 = head.concat(crown, [leftStub], iconPts2, [rightStub]);
     return { pts: pts2, iconPts: iconPts2, apex: { x: cx, y: apexY },
-             tip: tip, hasGirl: hasGirl, kw: kw, loop: true };
+             tip: tip, girl: girl, kw: kw, loop: true };
   }
 
   function layout() {
@@ -374,19 +391,12 @@
       iconNodes.push({ cx: p.x, cy: p.y });
     });
 
-    // ── ДЕВОЧКА: палец на кончике хвоста (искра = бусина). Размер под поле справа.
+    // ── ДЕВОЧКА: геометрия уже посчитана в buildSpine (sp.girl), палец ровно на
+    //    кончике линии (sp.tip). Просто применяем.
     var girl = root._girl, showGirl = false, GW = 0, GH = 0, gx = 0, gy = 0;
     if (girl) {
-      var mr = vw - tr.R;
-      if (sp.hasGirl && mr >= 150) {
-        GW = clamp(Math.round(mr * 0.62), 120, 248);
-        GH = Math.round(GW * GIRL_AR);
-        gx = sp.tip.x - GIRL_TIPX * GW;
-        gy = sp.tip.y - GIRL_TIPY * GH;
-        if (gx + GW > vw - 6) { gx = vw - 6 - GW; }
-        showGirl = GW >= 120;
-      }
-      if (showGirl) {
+      if (sp.girl && sp.girl.show) {
+        showGirl = true; GW = sp.girl.GW; GH = sp.girl.GH; gx = sp.girl.gx; gy = sp.girl.gy;
         girl.style.display = "block";
         girl.style.width = GW + "px";
         girl.style.left = Math.round(gx) + "px";
