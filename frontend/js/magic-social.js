@@ -277,11 +277,14 @@
     function placeGirl() {
       var GW = clamp(Math.round(mr * 0.62), 120, 248);
       var GH = Math.round(GW * GIRL_AR);
-      var reach = clamp(mr * 0.58, 150, 430);
-      var tipX = R + reach;
-      // НЕ прижимаем к краю: пусть девочка уходит за правый край и обрезается
-      // (как на ПК, расположение 1-в-1). Палец остаётся ровно на кончике линии.
-      var gx = tipX - GIRL_TIPX * GW;
+      // УНИВЕРСАЛЬНО: левый край девочки = правый край видимой таблицы
+      // (contentRight = vw - gutterR). Тело всегда ПРАВЕЕ таблицы и уходит за
+      // правый край экрана (html overflow-x:clip обрезает) → таблицу НИКОГДА не
+      // перекрывает, на любом ноуте/разрешении. Палец (и кончик линии) — у
+      // правого края контента. На ПК позиция почти не меняется (она и так там).
+      var contentRight = vw - gutterR;
+      var gx = contentRight;
+      var tipX = gx + GIRL_TIPX * GW;     // палец = кончик линии (бусина)
       var tipY = B + 86 * kw;
       var gy = tipY - GIRL_TIPY * GH;
       return { GW: GW, GH: GH, gx: gx, gy: gy, tipX: tipX, tipY: tipY, show: true };
