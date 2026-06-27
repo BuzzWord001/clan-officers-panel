@@ -1351,6 +1351,49 @@ body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
   .panel h2 { font-size: 14px; letter-spacing: 2px; }
 }
 
+/* ────────────────────────────────────────────────────────────
+   Таблица Доблести на ТЕЛЕФОНЕ (best practice: приоритетные столбцы).
+   16 столбцов в горизонт. скролл = видно 1-2 → неудобно. На узком экране
+   показываем только КЛЮЧЕВЫЕ: № · Ник · Доблесть · Норматив · Ценность —
+   влезают без горизонт. скролла. Детали скрытых столбцов (роли, достижения,
+   история титулов/доблести) остаются доступны ТАПОМ по Нику (🏆 и клик).
+   ПК/ноут не затронуты (правило только в этом media-блоке).
+   ──────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* прячем не-ключевые столбцы (и th, и td — порядок фиксирован) */
+  #valor-table th:nth-child(3),  #valor-table td:nth-child(3),    /* соцсети */
+  #valor-table th:nth-child(4),  #valor-table td:nth-child(4),    /* должность */
+  #valor-table th:nth-child(5),  #valor-table td:nth-child(5),    /* титул */
+  #valor-table th:nth-child(6),  #valor-table td:nth-child(6),    /* примечание */
+  #valor-table th:nth-child(7),  #valor-table td:nth-child(7),    /* уровень */
+  #valor-table th:nth-child(8),  #valor-table td:nth-child(8),    /* класс */
+  #valor-table th:nth-child(10), #valor-table td:nth-child(10),   /* оценка */
+  #valor-table th:nth-child(11), #valor-table td:nth-child(11),   /* тренд */
+  #valor-table th:nth-child(12), #valor-table td:nth-child(12),   /* предупреждения */
+  #valor-table th:nth-child(13), #valor-table td:nth-child(13),   /* роли за неделю */
+  #valor-table th:nth-child(14), #valor-table td:nth-child(14) {  /* роли за всё время */
+    display: none !important;
+  }
+  /* остаётся: 1(№) 2(Ник) 9(Доблесть) 15(Норматив) 16(Ценность) */
+  #valor-table { min-width: 0; width: 100%; table-layout: fixed; }
+  #valor-table th, #valor-table td { box-sizing: border-box; padding: 9px 4px; font-size: 11.5px; white-space: normal; word-break: break-word; overflow: hidden; }
+  /* подписи под заголовками («(клик — история)», «% выполнения»…) на телефоне
+     прячем — они раздувают ширину столбцов; смысл и так понятен. */
+  #valor-table thead small { display: none; }
+  #valor-table thead th br { display: none; }
+  #valor-table .m-cell-name b { font-size: 13px; }
+  /* снимаем десктопный min-width:200px со столбца Ник — он форсил overflow */
+  #valor-table .m-col-name, #valor-table .m-cell-name { min-width: 0; }
+  /* доли ширины: № узкий, Ник пошире, метрики поровну (сумма 100% с запасом) */
+  #valor-table th:nth-child(1)  { width: 8%; }
+  #valor-table th:nth-child(2)  { width: 30%; }
+  #valor-table th:nth-child(9)  { width: 20%; }
+  #valor-table th:nth-child(15) { width: 20%; }
+  #valor-table th:nth-child(16) { width: 22%; }
+  /* всё влезает — горизонтальная подсказка/скролл не нужны */
+  .members-panel .scroll-hint { display: none; }
+}
+
 /* ============== Chat Archive ============== */
 .chat-filter-panel { padding-bottom: 14px; }
 .chat-filters {
