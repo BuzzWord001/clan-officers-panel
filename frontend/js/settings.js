@@ -10,6 +10,8 @@
     return;
   }
   $("who").textContent = `АДМИНИСТРАТОР • ${me.name}`;
+  // роль админа подтверждена — показываем страницу (анти-вспышка booting)
+  document.documentElement.classList.remove("booting");
   // CSS-гейт админ-группы вкладок через body[data-role=admin].
   document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {

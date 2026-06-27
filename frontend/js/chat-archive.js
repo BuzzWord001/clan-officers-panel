@@ -19,6 +19,7 @@
     return;
   }
 
+  document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   const isAdmin = me.role === "admin";
   const roleLabel = isAdmin ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР"

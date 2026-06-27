@@ -154,12 +154,21 @@ class _RevalidateHTMLStatic(StaticFiles):
     ревалидирует страницу по ETag (дешёвый 304, если не менялась; свежая
     версия, если менялась). Иначе браузеры эвристически кэшируют HTML без
     Cache-Control и показывают устаревшее меню/разметку до ручного Ctrl+F5.
-    Версионные js/css (?v=) не трогаем — их кэш инвалидируется параметром."""
+    Версионные js/css/img (?v=) кэшируем НАВСЕГДА (immutable, год) — их URL
+    меняется при правке (bump ?v=), поэтому браузер вернувшегося юзера НЕ
+    перекачивает их (раньше Cloudflare ставил дефолт 4ч → клан качал ~всё
+    заново каждые 4 часа = «долго грузится»). Не-версионные статики — 1 день."""
     async def get_response(self, path, scope):
         resp = await super().get_response(path, scope)
         ct = resp.headers.get("content-type", "")
         if ct.startswith("text/html"):
             resp.headers["Cache-Control"] = "no-cache"
+        else:
+            qs = scope.get("query_string", b"") or b""
+            if b"v=" in qs:   # версионный ассет (?v=…) → кэш на год, immutable
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:             # не-версионный (logo.png, market.jpg…) → 1 день
+                resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
 
 

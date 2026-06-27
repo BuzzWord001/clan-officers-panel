@@ -16,6 +16,8 @@
   const roleLabel = me.role === "admin" ? "АДМИНИСТРАТОР"
                   : me.role === "officer" ? "ОФИЦЕР" : me.role.toUpperCase();
   $("who").textContent = `${roleLabel} • ${me.name}`;
+  // роль подтверждена (офицер/админ) — показываем страницу (анти-вспышка booting)
+  document.documentElement.classList.remove("booting");
   // CSS-гейт админ-группы вкладок через body[data-role].
   document.body.setAttribute("data-role", me.role);
   const isAdmin = me.role === "admin";

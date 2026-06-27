@@ -8,6 +8,7 @@
   let me, IS_ADMIN = false;
   try { me = await API.me(); } catch (_) { location.href = "login.html"; return; }
   if (!me || me.role === "guest") { location.href = "clan-valor.html"; return; }
+  document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   IS_ADMIN = me.role === "admin";
   $("who").textContent = (me.username || me.name || "") +
     (IS_ADMIN ? " · админ" : " · офицер");

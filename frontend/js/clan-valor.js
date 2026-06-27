@@ -99,6 +99,9 @@
       }
       if (!me || !me.role) { location.href = "login.html"; return; }
     }
+    // роль известна — снимаем booting (синхронно, ДО скрытия .tabs у гостя ниже,
+    // без перерисовки между). Анти-вспышка офицерских вкладок у гостя.
+    document.documentElement.classList.remove("booting");
     if (me?.role === "guest") {
       IS_GUEST = true;
       document.body.classList.add("guest-mode");

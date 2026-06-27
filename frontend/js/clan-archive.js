@@ -20,6 +20,7 @@
         location.href = "clan-valor.html";
         return;
       }
+      document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
       $("who").textContent = me?.role === "admin"
         ? `${esc(me.username)} · админ`
         : `${esc(me.username)} · офицер`;

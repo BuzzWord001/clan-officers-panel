@@ -29,6 +29,7 @@
     return;
   }
 
+  document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   const isAdmin = me.role === "admin";
   document.body.setAttribute("data-role", me.role);
   $("who").textContent =

@@ -45,6 +45,7 @@
       location.replace("clan-valor.html");
       return;
     }
+    document.documentElement.classList.remove("booting");   // админ ок — показать (анти-вспышка)
     var lo = document.getElementById("logout-btn");
     if (lo) lo.addEventListener("click", async function () {
       try { await API.logout(); } catch (e) {} location.href = "login.html"; });
