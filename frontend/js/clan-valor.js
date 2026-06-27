@@ -936,21 +936,27 @@
     if (ws.length) {
       const SOFTER = { severe: "mid", mid: "light", light: "light" };
       const effSev = (w) => (w.grace ? SOFTER[sev3(w.pct)] : sev3(w.pct));
-      // ОТДЕЛЬНЫЙ чип на КАЖДУЮ неделю: цвет = суровость этой недели, на чипе —
-      // ярлык недели, свой ✕ снимает ИМЕННО это предупреждение (по одному).
-      const sorted = ws.slice().sort((a, b) =>
-        (SEVRANK[effSev(b)] - SEVRANK[effSev(a)]) || (a.week < b.week ? -1 : 1));
-      sorted.forEach((w) => {
-        const sev = effSev(w);
-        const tip = `${sevTitle(sev)}\nНорматив не выполнен\n${weekFull(w.week)}` +
-          `\n  ${w.valor}/${w.norm} = ${w.pct}%` +
-          (w.grace ? " (после иммунитета, неполная неделя)" : "");
+      // Одинаковые по СУРОВОСТИ стакаем в ОДИН чип с циферкой-количеством
+      // (иначе в столбик их слишком много). Крестик ✕ снимает ПО ОДНОМУ за
+      // клик — за самую раннюю неделю группы (data-ref), счётчик уменьшается.
+      const bySev = { severe: [], mid: [], light: [] };
+      ws.forEach((w) => bySev[effSev(w)].push(w));
+      const order = ["severe", "mid", "light"].filter((s) => bySev[s].length);
+      order.forEach((sev) => {
+        const group = bySev[sev].slice().sort((a, b) => (a.week < b.week ? -1 : 1));
+        const detail = group.map((w) =>
+          `${weekFull(w.week)}\n  ${w.valor}/${w.norm} = ${w.pct}%` +
+          (w.grace ? " (после иммунитета, неполная неделя)" : "")).join("\n");
+        const firstWeek = group[0].week;   // ✕ снимет именно эту неделю
+        const hint = group.length > 1 ? "\n\n(✕ снимает по одному — за " +
+          weekShort(firstWeek) + ")" : "";
         const del = IS_OFFICER ? ` <button class="warn-dismiss-btn" ` +
           `data-canon="${esc(m.nick_canon)}" data-kind="norm" ` +
-          `data-ref="${esc(w.week)}" ` +
-          `title="Снять это предупреждение (${esc(weekShort(w.week))})">✕</button>` : "";
-        chips.push(warnChip("wsev-" + sev, weekShort(w.week),
-          tip, { extra: del }));
+          `data-ref="${esc(firstWeek)}" ` +
+          `title="Снять одно предупреждение (за ${esc(weekShort(firstWeek))})">✕</button>` : "";
+        chips.push(warnChip("wsev-" + sev, group.length,
+          `${sevTitle(sev)}\nНорматив не выполнен\n${detail}${hint}`,
+          { extra: del }));
       });
     }
     // Титул — строгий цвет; в тултипе — неделя проставления с датой
