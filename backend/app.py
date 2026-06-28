@@ -175,6 +175,14 @@ class _RevalidateHTMLStatic(StaticFiles):
             qs = scope.get("query_string", b"") or b""
             if b"v=" in qs:   # версионный ассет (?v=…) → кэш на год, immutable
                 resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif "assets/ts3/" in (path or ""):
+                # Иконки TS3 раздаём по СТАБИЛЬНОму имени (windows/macos/linux.png),
+                # содержимое меняем при замене иконок. Новый код всегда грузит их
+                # с ?v= (immutable выше). Но СТАРЫЙ закэшированный ts3.js просит
+                # голый URL — если бы он кэшировался на сутки, после замены клан
+                # видел бы старую иконку ~24ч до ручного Ctrl+F5. no-cache →
+                # браузер ревалидирует по ETag (дешёвый 304 / свежий 200).
+                resp.headers["Cache-Control"] = "no-cache"
             else:             # не-версионный (logo.png, market.jpg…) → 1 день
                 resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
