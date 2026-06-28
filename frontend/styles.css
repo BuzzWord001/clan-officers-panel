@@ -3287,9 +3287,10 @@ body.show-valor .valor-col { display: table-cell; }
 @media (min-width: 1600px) {
   .ts3-dl { margin-top: -104px; margin-bottom: 122px; }
 }
-/* Телефон: своя раскладка шапки — безопасный положительный отступ. */
+/* Телефон: соц-иконки шапки — абсолютный оверлей #magic-social (до y≈220).
+   Опускаем блок TS3 ниже него, чтобы заголовок не перекрывался иконками. */
 @media (max-width: 600px) {
-  .ts3-dl { margin: 6px auto 14px; }
+  .ts3-dl { margin: 56px auto 16px; }
 }
 .ts3-dl-title {
   font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase;
@@ -3305,21 +3306,30 @@ body.show-valor .valor-col { display: table-cell; }
 .ts3-cards {
   display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
 }
+/* Цвет свечения карточки = цвет самой иконки. Задаётся через --glow
+   (обычное состояние) и --glow-hi (ярче, для hover/иконки). Один источник
+   цвета на всю карточку — рамка/фон/тень/иконка берут его, без рассинхрона. */
 .ts3-card {
+  --glow: 224,162,74;   /* по умолчанию — янтарь бренда */
+  --glow-hi: 255,200,90;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   width: 108px; padding: 12px 8px 10px;
-  border: 1px solid rgba(224,162,74,0.55); border-radius: 12px;
-  background: linear-gradient(180deg, rgba(224,162,74,0.10), rgba(224,162,74,0.03));
+  border: 1px solid rgba(var(--glow),0.55); border-radius: 12px;
+  background: linear-gradient(180deg, rgba(var(--glow),0.10), rgba(var(--glow),0.03));
   color: var(--text); text-decoration: none;
-  /* Светящаяся обводка-квадрат — как линия бренда. */
-  box-shadow: 0 0 10px rgba(224,162,74,0.20), inset 0 0 9px rgba(224,162,74,0.07);
+  /* Светящаяся обводка-квадрат — в цвет иконки. */
+  box-shadow: 0 0 10px rgba(var(--glow),0.22), inset 0 0 9px rgba(var(--glow),0.07);
   transition: transform .14s, box-shadow .14s, border-color .14s, background .14s;
 }
+/* Windows — синий, macOS/Linux — оранжевый (как на самих иконках). */
+.ts3-card[data-plat="windows"] { --glow: 86,156,255;  --glow-hi: 130,190,255; }
+.ts3-card[data-plat="macos"]   { --glow: 232,150,58;  --glow-hi: 255,190,92; }
+.ts3-card[data-plat="linux"]   { --glow: 232,150,58;  --glow-hi: 255,190,92; }
 .ts3-card:hover {
   transform: translateY(-2px);
-  border-color: #ffd24a;
-  background: linear-gradient(180deg, rgba(224,162,74,0.20), rgba(224,162,74,0.06));
-  box-shadow: 0 0 20px rgba(255,200,90,0.45), inset 0 0 12px rgba(224,162,74,0.12);
+  border-color: rgba(var(--glow-hi),0.95);
+  background: linear-gradient(180deg, rgba(var(--glow),0.20), rgba(var(--glow),0.06));
+  box-shadow: 0 0 22px rgba(var(--glow-hi),0.48), inset 0 0 12px rgba(var(--glow),0.13);
 }
 /* Иконки-картинки одной высоты — баланс при разной форме логотипов. */
 .ts3-ic {
@@ -3328,15 +3338,16 @@ body.show-valor .valor-col { display: table-cell; }
   filter: drop-shadow(0 1px 3px rgba(0,0,0,0.55));
   transition: filter .14s;
 }
-.ts3-card:hover .ts3-ic { filter: drop-shadow(0 0 7px rgba(255,200,90,0.55)); }
+.ts3-card:hover .ts3-ic { filter: drop-shadow(0 0 8px rgba(var(--glow-hi),0.6)); }
 .ts3-name { font-size: 13px; font-weight: 700; color: var(--text); }
 .ts3-ver  { font-size: 10.5px; color: var(--text-dim); min-height: 13px; }
 .ts3-card.ts3-disabled {
   opacity: 0.5; cursor: default; pointer-events: auto;
 }
 .ts3-card.ts3-disabled:hover {
-  transform: none; box-shadow: none; border-color: var(--accent-dim);
-  background: linear-gradient(180deg, rgba(224,162,74,0.10), rgba(224,162,74,0.03));
+  transform: none; border-color: rgba(var(--glow),0.55);
+  background: linear-gradient(180deg, rgba(var(--glow),0.10), rgba(var(--glow),0.03));
+  box-shadow: 0 0 10px rgba(var(--glow),0.22), inset 0 0 9px rgba(var(--glow),0.07);
 }
 .ts3-official {
   display: inline-block; margin-top: 10px;
