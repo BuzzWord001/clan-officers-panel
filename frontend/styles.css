@@ -3325,11 +3325,13 @@ html.ms-mode-gutter .ts3-dl { margin-top: -96px; margin-bottom: 92px; }
 .ts3-cards {
   display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
 }
-/* Цвет свечения карточки = цвет самой иконки. Задаётся через --glow
-   (обычное состояние) и --glow-hi (ярче, для hover/иконки). Один источник
-   цвета на всю карточку — рамка/фон/тень/иконка берут его, без рассинхрона. */
+/* Все иконки — на одинаковой серебристо-металлической плитке, поэтому свечение
+   ЕДИНОЕ тёплое-янтарное (как у светящейся линии и заголовков сайта): тёплый
+   свет на холодном металле смотрится премиально и роднит блок с брендом.
+   Цвет задаётся через --glow (обычное) и --glow-hi (ярче, hover/иконка) — один
+   источник цвета на карточку: рамка/фон/тень/иконка берут его, без рассинхрона. */
 .ts3-card {
-  --glow: 224,162,74;   /* по умолчанию — янтарь бренда */
+  --glow: 224,162,74;   /* янтарь бренда */
   --glow-hi: 255,200,90;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   width: 108px; padding: 12px 8px 10px;
@@ -3340,10 +3342,6 @@ html.ms-mode-gutter .ts3-dl { margin-top: -96px; margin-bottom: 92px; }
   box-shadow: 0 0 10px rgba(var(--glow),0.22), inset 0 0 9px rgba(var(--glow),0.07);
   transition: transform .14s, box-shadow .14s, border-color .14s, background .14s;
 }
-/* Windows — синий, macOS/Linux — оранжевый (как на самих иконках). */
-.ts3-card[data-plat="windows"] { --glow: 86,156,255;  --glow-hi: 130,190,255; }
-.ts3-card[data-plat="macos"]   { --glow: 232,150,58;  --glow-hi: 255,190,92; }
-.ts3-card[data-plat="linux"]   { --glow: 232,150,58;  --glow-hi: 255,190,92; }
 .ts3-card:hover {
   transform: translateY(-2px);
   border-color: rgba(var(--glow-hi),0.95);
