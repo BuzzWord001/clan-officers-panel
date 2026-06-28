@@ -3270,6 +3270,15 @@ body.show-valor .valor-col { display: table-cell; }
 @media (max-width: 760px) { .cmp-split { grid-template-columns: 1fr; } .cmp-shots { max-height: 40vh; } }
 
 /* Заметная подсказка про горизонтальную прокрутку таблицы */
+.valor-update-note {
+  margin: 0 0 12px; padding: 8px 14px;
+  border: 1px solid var(--accent-dim);
+  border-left: 4px solid var(--accent);
+  border-radius: 9px;
+  background: rgba(224,162,74,0.07);
+  color: var(--text-dim);
+  font-size: 13px; line-height: 1.4; text-align: center;
+}
 .scroll-hint {
   display: flex; align-items: center; gap: 10px;
   margin: 4px 0 10px; padding: 9px 14px;
