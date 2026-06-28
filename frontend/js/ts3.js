@@ -45,7 +45,7 @@
       a.setAttribute("download", "");
       var img = document.createElement("img");
       img.className = "ts3-ic";
-      img.src = "assets/ts3/" + p.key + ".png?v=1796300000";
+      img.src = "assets/ts3/" + p.key + ".png?v=1796500000";
       img.alt = p.name; img.loading = "lazy";
       var nm = document.createElement("span");
       nm.className = "ts3-name"; nm.textContent = p.name;
