@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 import db
 import publisher
 import snapshots
+import ts3
 from config import settings
 
 log = logging.getLogger("officers.scheduler")
@@ -86,4 +87,8 @@ def make_scheduler() -> AsyncIOScheduler:
     # Размер БД ~50КБ × 120 retention ≈ 6МБ, volume 3ГБ выдержит.
     sched.add_job(_periodic_snapshot, CronTrigger(hour="0,6,12,18", minute=0),
                   id="periodic_snapshot", max_instances=1, coalesce=True)
+    # TS3-клиент: раз в сутки в 05:00 UTC (08:00 МСК) проверяем новую версию
+    # и докачиваем установщики. Сама refresh не качает, если версия та же.
+    sched.add_job(ts3.refresh, CronTrigger(hour=5, minute=0),
+                  id="ts3_refresh", max_instances=1, coalesce=True)
     return sched

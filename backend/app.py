@@ -64,6 +64,12 @@ async def lifespan(app: FastAPI):
     vk_task = asyncio.create_task(bot_vk_listener.run(), name="vk_listener")
     log.info("Member listeners started (TG + VK)")
 
+    # TS3-клиент: при старте докачиваем актуальные установщики в фоне (не
+    # блокируя запуск). Дальше — раз в сутки через scheduler.
+    import ts3
+    asyncio.create_task(asyncio.to_thread(ts3.refresh), name="ts3_initial")
+    log.info("TS3 initial refresh scheduled")
+
     try:
         yield
     finally:
@@ -135,6 +141,8 @@ import api_valor
 app.include_router(api_valor.router)
 import api_chamber
 app.include_router(api_chamber.router)
+import api_ts3
+app.include_router(api_ts3.router)
 
 
 # --- Frontend (single-origin) --------------------------------------------
