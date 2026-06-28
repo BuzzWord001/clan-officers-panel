@@ -470,6 +470,12 @@
       }) };
     // ── диагностика (как было) для сверки на узких экранах
     var mode = sp.loop ? (compact ? "compact" : "loop") : "gutter";
+    // ── режим линии → класс на <html>. Другие блоки (например панель TS3)
+    //    привязывают свою раскладку к ЭТОМУ же решению — пороги не рассинхронятся.
+    var de = document.documentElement;
+    de.classList.toggle("ms-mode-gutter", mode === "gutter");
+    de.classList.toggle("ms-mode-loop", mode === "loop");
+    de.classList.toggle("ms-mode-compact", mode === "compact");
     window.__magicNarrow = {
       mode: mode, girlShown: showGirl,
       viewport: { innerW: vw, innerH: window.innerHeight, dpr: window.devicePixelRatio },
