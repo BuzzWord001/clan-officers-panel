@@ -10,6 +10,9 @@
   <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .tabs{display:none!important}</style>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <link rel="icon" type="image/png" href="assets/logo.png">
+  <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
+       устаревшую вкладку из кэша (старые иконки/разметку). -->
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
 </head>
 <body>
 

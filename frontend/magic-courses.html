@@ -96,6 +96,9 @@
     .mc-loading{text-align:center;padding:50px;color:#8fc7b2;font:600 15px Georgia,serif}
     @media(max-width:560px){.mc-cprog{width:96px}.mc-course-meta{display:none}}
   </style>
+  <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
+       устаревшую вкладку из кэша (старые иконки/разметку). -->
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
 </head>
 <body>
 

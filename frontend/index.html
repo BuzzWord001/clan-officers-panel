@@ -23,6 +23,9 @@
     .vet-chk, .ed-vet-lbl { font-size:12px; color:#ffd24a; cursor:pointer; white-space:nowrap; user-select:none; }
     .ed-vet-lbl { margin-right:8px; }
   </style>
+  <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
+       устаревшую вкладку из кэша (старые иконки/разметку). -->
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
 </head>
 <body>
 
