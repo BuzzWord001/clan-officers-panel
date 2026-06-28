@@ -3277,24 +3277,35 @@ body.show-valor .valor-col { display: table-cell; }
    База безопасна для loop-режима (иконки по центру до y≈273). */
 .ts3-dl {
   position: relative; z-index: 6;
-  margin: 18px auto 0; max-width: 470px;
+  margin: 18px auto 0; max-width: 460px;
+  padding: 15px 22px 14px;
   text-align: center;
+  /* Стеклянная подложка — отделяет блок от фонового арта, иконки читаются
+     как единый UI-виджет, а не плавают поверх картины. */
+  background: linear-gradient(180deg, rgba(22,14,8,0.74), rgba(16,10,6,0.66));
+  border: 1px solid rgba(224,162,74,0.28);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,231,184,0.06);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
 }
 /* Широкие экраны (gutter-режим, центр шапки пуст) — подтягиваем блок к
    подзаголовку. margin-bottom компенсирует, чтобы вкладки/таблица НЕ двигались
    (иначе наедут на левую колонку соц-иконок). На ноутбуках (loop-режим, иконки
    по центру) оставляем базовый отступ — без тесноты. */
 @media (min-width: 1600px) {
-  .ts3-dl { margin-top: -104px; margin-bottom: 122px; }
+  .ts3-dl { margin-top: -96px; margin-bottom: 92px; }
 }
 /* Телефон: соц-иконки шапки — абсолютный оверлей #magic-social (до y≈220).
    Опускаем блок TS3 ниже него, чтобы заголовок не перекрывался иконками. */
 @media (max-width: 600px) {
-  .ts3-dl { margin: 56px auto 16px; }
+  .ts3-dl { margin: 56px auto 16px; padding: 14px 16px 12px; }
 }
 .ts3-dl-title {
   font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase;
-  margin-bottom: 11px;
+  margin: 0 auto 13px; padding-bottom: 10px; max-width: 320px;
+  /* Тонкий разделитель под заголовком — иерархия «заголовок → иконки». */
+  border-bottom: 1px solid rgba(224,162,74,0.18);
   font-family: "Georgia","PT Serif","Times New Roman",serif;
   /* Светящаяся надпись — как магическая линия бренда. */
   color: #ffe6b0;
@@ -3355,6 +3366,13 @@ body.show-valor .valor-col { display: table-cell; }
   opacity: 0.85; border-bottom: 1px dotted var(--accent-dim);
 }
 .ts3-official:hover { opacity: 1; }
+/* Узкие экраны: карточки делят ширину панели поровну, не вылезают за подложку. */
+@media (max-width: 480px) {
+  .ts3-cards { gap: 8px; }
+  .ts3-card { flex: 1 1 0; width: auto; min-width: 0; max-width: 130px;
+    padding: 12px 4px 10px; }
+  .ts3-ic { height: 48px; }
+}
 
 .valor-update-note {
   margin: 0 0 12px; padding: 8px 14px;
