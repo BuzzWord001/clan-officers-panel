@@ -3315,12 +3315,24 @@ html.ms-mode-gutter .ts3-dl { margin-top: -96px; margin-bottom: 92px; }
   /* Тонкий разделитель под заголовком — иерархия «заголовок → иконки». */
   border-bottom: 1px solid rgba(224,162,74,0.18);
   font-family: "Georgia","PT Serif","Times New Roman",serif;
+  /* Для Georgia Pro и шрифтов с lining-цифрами — ровные цифры по базовой
+     линии (бесплатный бонус; классическая Georgia это игнорирует — см. .ts3-fig). */
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
   /* Светящаяся надпись — как магическая линия бренда. */
   color: #ffe6b0;
   text-shadow:
     0 0 4px rgba(255,210,120,0.65),
     0 0 12px rgba(255,180,70,0.5),
     0 0 22px rgba(224,150,50,0.35);
+}
+/* У классической Georgia старостильные цифры: 3 свисает ниже заглавных букв.
+   Отрисовываем цифру в заголовке шрифтом с lining-цифрами (Times и его
+   метрические аналоги на macOS/Linux) — стоит ровно на базовой линии в
+   высоту капителей. Буквы остаются в Georgia. */
+.ts3-dl-title .ts3-fig {
+  font-family: "Times New Roman","Tinos","Liberation Serif",serif;
+  font-variant-numeric: lining-nums;
 }
 .ts3-cards {
   display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;

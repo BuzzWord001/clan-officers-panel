@@ -32,7 +32,9 @@
 
     var title = document.createElement("div");
     title.className = "ts3-dl-title";
-    title.textContent = "TeamSpeak 3 — скачать клиент";
+    // Цифру 3 — в span: у Georgia старостильная 3 свисает ниже букв,
+    // .ts3-fig рисует её lining-шрифтом ровно по базовой линии (см. styles.css).
+    title.innerHTML = 'TeamSpeak <span class="ts3-fig">3</span> — скачать клиент';
     box.appendChild(title);
 
     var cards = document.createElement("div");
