@@ -26,12 +26,12 @@
         : `${esc(me.username)} · офицер`;
       // CSS-гейт: body[data-role=admin] показывает вкладку «Настройки».
       document.body.setAttribute("data-role", me?.role || "");
-    } catch { location.href = "login.html"; }
+    } catch { location.href = "login.html?_=" + Date.now(); }
   }
 
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    location.href = "login.html";
+    location.href = "login.html?_=" + Date.now();
   });
 
   async function load() {

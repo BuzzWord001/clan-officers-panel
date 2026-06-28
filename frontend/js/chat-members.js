@@ -11,7 +11,7 @@
     // Не молча редиректим: если backend/конфиг отвалился, важно показать
     // явное состояние, иначе пользователь видит мигание окна логина.
     if (e && (e.status === 401 || e.status === 403)) {
-      window.location.href = "login.html";
+      window.location.href = "login.html?_=" + Date.now();
     } else {
       document.body.innerHTML =
         "<div style='padding:30px;color:#ff6;font-family:monospace'>"
@@ -40,7 +40,7 @@
   }
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    window.location.href = "login.html";
+    window.location.href = "login.html?_=" + Date.now();
   });
 
   function escapeHtml(s) {

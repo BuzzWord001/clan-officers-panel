@@ -94,10 +94,10 @@
         me = await API.me();          // подтверждаем сессию в этом же загрузе
         showNetBanner(false);
       } catch (_) {
-        location.href = "login.html";
+        location.href = "login.html?_=" + Date.now();
         return;
       }
-      if (!me || !me.role) { location.href = "login.html"; return; }
+      if (!me || !me.role) { location.href = "login.html?_=" + Date.now(); return; }
     }
     // роль известна — снимаем booting (синхронно, ДО скрытия .tabs у гостя ниже,
     // без перерисовки между). Анти-вспышка офицерских вкладок у гостя.

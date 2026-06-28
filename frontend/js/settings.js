@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
 
   let me;
-  try { me = await API.me(); } catch (_) { window.location.href = "admin_login.html"; return; }
+  try { me = await API.me(); } catch (_) { window.location.href = "admin_login.html?_=" + Date.now(); return; }
   if (me.role !== "admin") {
     alert("Эта страница доступна только администратору.");
     window.location.href = "index.html";
@@ -16,7 +16,7 @@
   document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    window.location.href = "admin_login.html";
+    window.location.href = "admin_login.html?_=" + Date.now();
   });
 
   function flash(el, text, ok) {
@@ -102,7 +102,7 @@
       $("a-new-pwd").value = "";
       flash(status, "✓ Креды администратора обновлены.", true);
       if (u) {
-        setTimeout(() => { window.location.href = "admin_login.html"; }, 1500);
+        setTimeout(() => { window.location.href = "admin_login.html?_=" + Date.now(); }, 1500);
       }
     } catch (e) {
       if (e.status === 401) flash(status, "Текущий пароль неверный.", false);

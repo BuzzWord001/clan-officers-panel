@@ -9,7 +9,7 @@
   try {
     me = await API.me();
   } catch (_) {
-    window.location.href = "login.html";
+    window.location.href = "login.html?_=" + Date.now();
     return;
   }
 
@@ -35,7 +35,7 @@
   }
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    window.location.href = "login.html";
+    window.location.href = "login.html?_=" + Date.now();
   });
 
   // Текущий стек загруженных сообщений (новые сверху).

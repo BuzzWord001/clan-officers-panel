@@ -6,7 +6,7 @@
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   let me, IS_ADMIN = false;
-  try { me = await API.me(); } catch (_) { location.href = "login.html"; return; }
+  try { me = await API.me(); } catch (_) { location.href = "login.html?_=" + Date.now(); return; }
   if (!me || me.role === "guest") { location.href = "clan-valor.html"; return; }
   document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   IS_ADMIN = me.role === "admin";
@@ -15,7 +15,7 @@
   document.body.setAttribute("data-role", me.role || "");
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    location.href = "login.html";
+    location.href = "login.html?_=" + Date.now();
   });
 
   // ── Лайтбокс ──
