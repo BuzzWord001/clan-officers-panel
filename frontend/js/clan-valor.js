@@ -1207,7 +1207,7 @@
         : "";
       // Кнопка «в архив» доступна и офицеру, и админу (с пометкой-причиной).
       const archiveBtn = IS_OFFICER
-        ? ` <button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Убрать в архив — переместить игрока в «Покинули клан», даже если он ещё есть в снимке. Можно добавить пометку (причину). Вернуть можно там же.">🗄</button>`
+        ? ` <button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Кикнуть в архив — переместить игрока в «Покинули клан», даже если он ещё есть в снимке. Можно добавить пометку (причину). Вернуть можно там же.">🗄</button>`
         : "";
       const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
       // Кнопка истории снятых (прощённых) предупреждений — только если они есть.

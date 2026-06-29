@@ -5,11 +5,12 @@
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  let me, IS_ADMIN = false;
+  let me, IS_ADMIN = false, IS_OFFICER = false;
   try { me = await API.me(); } catch (_) { location.href = "login.html?_=" + Date.now(); return; }
   if (!me || me.role === "guest") { location.href = "clan-valor.html"; return; }
   document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   IS_ADMIN = me.role === "admin";
+  IS_OFFICER = (me.role === "officer" || me.role === "admin");  // архив доступен и офицеру
   $("who").textContent = (me.username || me.name || "") +
     (IS_ADMIN ? " · админ" : " · офицер");
   document.body.setAttribute("data-role", me.role || "");
@@ -172,6 +173,8 @@
         <td class="cmp-act">${IS_ADMIN
           ? `<button class="cmp-ed" data-id="${m.id}" title="править">✎</button>` +
             ` <button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button>`
+          : ""}${IS_OFFICER
+          ? ` <button class="cmp-arch" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Кикнуть в архив — убрать игрока в «Покинули клан», даже если он ещё есть в снимке. Вернуть можно кнопкой «↩ Из архива» сверху.">🚪 в архив</button>`
           : ""}</td>
       </tr>`;
     }).join("");
@@ -225,6 +228,7 @@
       // Клик по строке (не по нику/значению/кнопке) → тоже показать кадр.
       tr.addEventListener("click", (e) => {
         if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
+            e.target.closest(".cmp-arch") ||
             e.target.closest(".cmp-ok") || e.target.closest(".cmp-c") ||
             e.target.closest(".cmp-nick-t")) return;
         selectRow(tr);
@@ -248,6 +252,59 @@
       tbody.querySelectorAll(".cmp-ok").forEach(b =>
         b.addEventListener("click", (e) => { e.stopPropagation(); verifyMember(+b.dataset.id); }));
     }
+    if (IS_OFFICER) {
+      tbody.querySelectorAll(".cmp-arch").forEach(b =>
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          archiveMember(b.dataset.canon, b.dataset.nick);
+        }));
+    }
+  }
+
+  // ── Кикнуть в архив (офицер/админ) ──
+  async function archiveMember(canon, nick) {
+    const reason = prompt(`Кикнуть «${nick}» в архив доблести?\nПометка (причина, необязательно):`, "");
+    if (reason === null) return;
+    try {
+      await API.valorArchive(canon, reason);
+      toast("Кикнут в архив: " + nick);
+      await reloadKeepScroll();
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+
+  // ── Вернуть из архива (офицер/админ): список ушедших + восстановление ──
+  async function openRestore() {
+    const ov = $("cmp-edit");
+    ov.innerHTML = `<div class="ce-box"><div class="ce-h">Загрузка архива…</div></div>`;
+    ov.hidden = false;
+    ov.onclick = (e) => { if (e.target === ov) ov.hidden = true; };
+    let dep = [];
+    try { dep = await API.valorDeparted(); } catch (_) {}
+    const rows = (dep || []).map(d => `
+      <tr>
+        <td><b>${esc(d.nick)}</b></td>
+        <td>${esc(WeekFmt.range(d.last_week))}</td>
+        <td class="ce-note">${d.archive_reason ? esc(d.archive_reason) + (d.archive_by ? " · " + esc(d.archive_by) : "") : "—"}</td>
+        <td><button class="ce-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}">↩ вернуть</button></td>
+      </tr>`).join("");
+    ov.innerHTML = `<div class="ce-box ce-box-wide">
+      <div class="ce-h">Архив доблести — «Покинули клан» (${(dep || []).length})</div>
+      ${rows ? `<table class="ce-dep-table"><thead><tr><th>Ник</th><th>Последняя неделя</th><th>Пометка</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+             : `<p class="ce-msg">Архив пуст.</p>`}
+      <div class="ce-btns"><button id="ce-close" class="ce-cancel">Закрыть</button></div>
+    </div>`;
+    ov.querySelector("#ce-close").onclick = () => { ov.hidden = true; };
+    ov.querySelectorAll(".ce-restore").forEach(b =>
+      b.addEventListener("click", async () => {
+        const reason = prompt(`Вернуть «${b.dataset.nick}» из архива в основной список?\nПометка (причина возврата, необязательно):`, "");
+        if (reason === null) return;
+        try {
+          await API.valorRestore(b.dataset.canon, reason);
+          toast("Возвращён: " + b.dataset.nick);
+          b.closest("tr").remove();
+          if (openWeek) await reloadKeepScroll();
+        } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+      }));
   }
 
   // ── Подтвердить, что строка распознана верно (снять сомнение) ──
@@ -817,6 +874,10 @@
       $("cmp-add").addEventListener("click", openAdd);
       $("cmp-done").addEventListener("click", doneRefresh);
       $("cmp-log").addEventListener("click", () => openEditLog(openWeek));
+    }
+    if (IS_OFFICER) {
+      const rb = $("cmp-restore-btn");
+      if (rb) { rb.hidden = false; rb.addEventListener("click", openRestore); }
     }
     const first = $("vs-weeks").querySelector(".vs-folder");
     if (first) loadWeek(first.dataset.week, first).then(focusFromUrl);

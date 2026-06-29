@@ -202,6 +202,8 @@
     valorMissingWeeks: () => request("GET", "/valor/missing-weeks"),
     valorSkipWeek:  (body) => request("POST", "/valor/skip-week", body),
     valorDeparted:  () => request("GET", "/valor/departed"),
+    valorArchive:   (canon, reason) => request("POST", "/valor/archive", { canon, reason: reason || "" }),
+    valorRestore:   (canon, reason) => request("POST", "/valor/restore", { canon, reason: reason || "" }),
     valorByCanon:   (weeks = 0) => request("GET", "/valor/by-canon?weeks=" + weeks),
     valorTimeline:  (weeks = 12) => request("GET", "/valor/timeline?weeks=" + weeks),
     valorHistory:   (nick, field) => {
