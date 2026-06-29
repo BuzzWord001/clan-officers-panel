@@ -1198,16 +1198,21 @@
       const sugHtml = (IS_ADMIN && m.ai_nick && m.suggest)
         ? ` <button class="ai-sug" data-act="merge-suggest" data-canon="${esc(m.nick_canon)}" data-target="${esc(m.suggest.nick)}" title="🤖 Возможно, ИИ распознал ник с ошибкой и это «${esc(m.suggest.nick)}». Нажми, чтобы подтвердить — записи объединятся, и кривой ник в будущем сам сматчится.">🤖→ ${esc(m.suggest.nick)}?</button>`
         : "";
-      const adminBtns = IS_ADMIN
-        ? ` <span class="row-admin">`
-          + `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
-          + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🔗 «Это он и есть» — слить неверно распознанного игрока (как нового или ушедшего) в существующего. История объединится, кривой ник в будущем сам сматчится.">🔗</button>`
-          + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="🗑 Удалить фантом — убрать ошибочную строку OCR (дубль или мусор) из текущего снимка.">🗑</button>`
-          + `</span>`
+      // «В архив» (🗄) — офицеру и админу. Кладём ПЕРВОЙ в ту же группу
+      // .row-admin, что и админские кнопки ✎🔗🗑 → у офицера и админа кнопка
+      // оказывается в одном и том же месте (рядом с админскими кнопками).
+      const archiveBtnHtml = IS_OFFICER
+        ? `<button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Кикнуть в архив — переместить игрока в «Покинули клан», даже если он ещё есть в снимке. Можно добавить пометку (причину). Вернуть можно там же.">🗄</button>`
         : "";
-      // Кнопка «в архив» доступна и офицеру, и админу (с пометкой-причиной).
-      const archiveBtn = IS_OFFICER
-        ? ` <button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Кикнуть в архив — переместить игрока в «Покинули клан», даже если он ещё есть в снимке. Можно добавить пометку (причину). Вернуть можно там же.">🗄</button>`
+      const adminBtns = IS_OFFICER
+        ? ` <span class="row-admin">`
+          + archiveBtnHtml
+          + (IS_ADMIN
+            ? `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
+              + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🔗 «Это он и есть» — слить неверно распознанного игрока (как нового или ушедшего) в существующего. История объединится, кривой ник в будущем сам сматчится.">🔗</button>`
+              + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="🗑 Удалить фантом — убрать ошибочную строку OCR (дубль или мусор) из текущего снимка.">🗑</button>`
+            : "")
+          + `</span>`
         : "";
       const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
       // Кнопка истории снятых (прощённых) предупреждений — только если они есть.
@@ -1217,7 +1222,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${archiveBtn}${adminBtns}</td>
+          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">
