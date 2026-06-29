@@ -1303,7 +1303,7 @@
       .vedit-btn:hover{background:#16320f}
       .vedit-save{background:#13420f;border-color:#3c7;color:#dfffd0;font-weight:600}
       .vedit-save:disabled{opacity:.5;cursor:default}
-      .row-admin{white-space:nowrap;margin-left:6px}
+      .row-admin{display:block;white-space:nowrap;margin:3px 0 0 0}
       .radm{background:none;border:1px solid #2a6;color:#8fd;border-radius:4px;
         cursor:pointer;font-size:11px;line-height:1;padding:1px 4px;margin-left:3px;opacity:.6}
       .radm:hover{opacity:1;background:#0c2a12}
