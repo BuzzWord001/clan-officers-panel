@@ -2516,6 +2516,10 @@
   // Сначала устанавливаем сессию (гость/офицер), ПОТОМ грузим данные — иначе
   // первый valorCurrent() уходит без сессии, 401 и мелькает «Ошибка загрузки».
   loadMe().then(() => {
+    // Стили .radm/.dep-restore (кнопки архива/возврата) нужны и офицеру, не
+    // только админу — иначе кнопка «🗄 в архив» падает на дефолтный крупный
+    // button и выглядит большой. injectEditStyles идемпотентен.
+    if (IS_OFFICER) injectEditStyles();
     if (IS_ADMIN) injectAdminHelp();
     return load();
   }).then(() => { apply(); loadTimeline(); loadDeparted(); });
