@@ -65,7 +65,7 @@
     const editBtn = IS_ADMIN
       ? ` <button class="cmp-people-edit" title="Указать/исправить, сколько реально людей было в клане на этот сбор">✎ людей в клане</button>`
       : "";
-    $("cmp-meta").innerHTML = `<b>${esc(week)}</b> · норма ${sn.valor_norm ?? "?"} · ` +
+    $("cmp-meta").innerHTML = `<b>${esc(WeekFmt.range(week))}</b> <span style="opacity:.6">· ${esc(WeekFmt.num(week))}</span> · норма ${sn.valor_norm ?? "?"} · ` +
       `${people} · ${DATA.screenshots.length} кадров${editBtn}`;
     if (IS_ADMIN) {
       const eb = $("cmp-meta").querySelector(".cmp-people-edit");
@@ -101,9 +101,11 @@
   function renderShots() {
     const box = $("cmp-shots");
     box.innerHTML = DATA.screenshots.map(s =>
+      // data-idx — внутренний 0-based индекс (связка строка↔кадр, scrollToFrame).
+      // Пользователю показываем номер с 1 (s.idx + 1).
       `<figure class="cmp-shot" data-idx="${s.idx}">
-         <img loading="lazy" src="${esc(s.url)}" alt="кадр ${s.idx}" data-full="${esc(s.url)}">
-         <figcaption>кадр #${s.idx}</figcaption>
+         <img loading="lazy" src="${esc(s.url)}" alt="кадр ${s.idx + 1}" data-full="${esc(s.url)}">
+         <figcaption>кадр #${s.idx + 1}</figcaption>
        </figure>`).join("");
     box.querySelectorAll(".cmp-shot img").forEach(img =>
       img.addEventListener("click", () => openLightbox(img.dataset.full)));
@@ -202,10 +204,12 @@
   function selectRow(tr) {
     const tbody = $("cmp-rows").querySelector("tbody");
     if (!tbody || !tr) return;
-    const fr = tr.dataset.frame;
-    scrollToFrame(+tr.dataset.i, (fr === "" || fr == null) ? null : +fr);
     tbody.querySelectorAll(".cmp-row-on").forEach(x => x.classList.remove("cmp-row-on"));
     tr.classList.add("cmp-row-on");
+    const m = DATA.members[+tr.dataset.i];
+    pinMember(m);                       // клик = зафиксировать
+    if (rowBand(m)) showRowZoom(m, true);
+    else { hideZoom(); scrollToFrame(+tr.dataset.i, null); }   // нет кадра → старое поведение
   }
 
   function bindRows() {
@@ -225,6 +229,16 @@
             e.target.closest(".cmp-nick-t")) return;
         selectRow(tr);
       });
+      // Наведение = превью увеличенной строки в лупе (без принудительной прокрутки).
+      tr.addEventListener("mouseenter", () => {
+        const m = DATA.members[+tr.dataset.i];
+        if (rowBand(m)) showRowZoom(m, false);
+      });
+    });
+    // Увели мышь из таблицы — вернуть зафиксированную строку (клик) или скрыть.
+    tbody.addEventListener("mouseleave", () => {
+      const m = _pinnedId != null ? DATA.members.find(x => x.id === _pinnedId) : null;
+      if (m && rowBand(m)) showRowZoom(m, false); else hideZoom();
     });
     if (IS_ADMIN) {
       tbody.querySelectorAll(".cmp-ed").forEach(b =>
@@ -451,30 +465,122 @@
     });
   }
 
-  // Примерный кадр для строки i: пропорция позиции среди всех строк.
-  function scrollToFrame(i, frameIdx) {
-    const shots = DATA.screenshots; if (!shots.length) return;
+  // Находит DOM-элемент кадра по его idx (или ближайший загруженный).
+  function findShot(frameIdx, i) {
+    const shots = DATA.screenshots; if (!shots.length) return null;
     let targetIdx;
     if (Number.isInteger(frameIdx)) {
       targetIdx = frameIdx;   // точный кадр (idx скрина), где распознан ник
     } else {
       // фолбэк (нет точного кадра): пропорция позиции в списке по доблести
       const fi = Math.min(shots.length - 1,
-        Math.round(i / Math.max(1, DATA.members.length - 1) * (shots.length - 1)));
+        Math.round((i || 0) / Math.max(1, DATA.members.length - 1) * (shots.length - 1)));
       targetIdx = shots[fi].idx;
     }
     let el = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${targetIdx}"]`);
-    // если такого кадра нет в загруженных — берём ближайший существующий
-    if (!el && shots.length) {
+    if (!el) {
       const near = shots.reduce((a, b) =>
         Math.abs(b.idx - targetIdx) < Math.abs(a.idx - targetIdx) ? b : a);
       el = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${near.idx}"]`);
     }
+    return el;
+  }
+
+  function scrollToFrame(i, frameIdx) {
+    const el = findShot(frameIdx, i);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("cmp-shot-on");
       setTimeout(() => el.classList.remove("cmp-shot-on"), 1600);
     }
+  }
+
+  // ── Зум строки: рамка на кадре + лупа (увеличенный кроп именно этой строки) ──
+  //
+  // Геометрия строки — ЕДИНАЯ модель {frame, x, y, w, h} в долях кадра (0..1).
+  //   Фаза 1: оценка по позиции среди строк того же кадра (строки равномерны).
+  //   Фаза 2: m.bbox из калибровки в трекере (пиксельно точно + зум по полю).
+  function rowBand(m) {
+    if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2
+    if (!m || m.frame == null) return null;
+    const same = DATA.members.filter(x => x.frame === m.frame);
+    const idx = Math.max(0, same.indexOf(m));
+    const n = Math.max(1, same.length);
+    return { frame: m.frame, x: 0, w: 1, y: idx / n, h: 1 / n };
+  }
+
+  function _loupe() {
+    let l = $("cmp-loupe");
+    if (!l) {
+      l = document.createElement("div");
+      l.className = "cmp-loupe"; l.id = "cmp-loupe"; l.hidden = true;
+      l.innerHTML = `<img alt=""><div class="cmp-loupe-cap"></div>`;
+      document.body.appendChild(l);
+    }
+    return l;
+  }
+  function hideZoom() {
+    const l = $("cmp-loupe"); if (l) l.hidden = true;
+    document.querySelectorAll(".cmp-rowband").forEach(x => x.remove());
+  }
+  function showRowZoom(m, scroll) {
+    const band = rowBand(m);
+    const shot = band ? findShot(band.frame) : null;
+    if (!band || !shot) { hideZoom(); return; }
+    if (scroll) shot.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const img = shot.querySelector("img");
+    if (!img) return;
+    // Рамка строки на кадре.
+    document.querySelectorAll(".cmp-rowband").forEach(x => { if (x.parentNode !== shot) x.remove(); });
+    let ov = shot.querySelector(".cmp-rowband");
+    if (!ov) { ov = document.createElement("div"); ov.className = "cmp-rowband"; shot.appendChild(ov); }
+    ov.style.left = (band.x * 100) + "%"; ov.style.width = (band.w * 100) + "%";
+    ov.style.top = (band.y * 100) + "%";  ov.style.height = (band.h * 100) + "%";
+    // Лупа.
+    const l = _loupe(), li = l.querySelector("img");
+    const paint = () => {
+      const dw = img.clientWidth, dh = img.clientHeight;
+      if (!dw) { img.addEventListener("load", paint, { once: true }); return; }
+      const LW = l.clientWidth || 640, LH = l.clientHeight || 150;
+      const Z = Math.max(1.2, Math.min(4, LW / Math.max(1, band.w * dw)));  // вписать ширину полосы
+      li.src = img.src; li.style.width = (dw * Z) + "px";
+      const cx = (band.x + band.w / 2) * dw * Z, cy = (band.y + band.h / 2) * dh * Z;
+      li.style.transform = `translate(${LW / 2 - cx}px, ${LH / 2 - cy}px)`;
+      l.querySelector(".cmp-loupe-cap").textContent =
+        `кадр #${band.frame + 1} · ${m.nick || ""}`;
+      l.hidden = false;
+    };
+    paint();
+  }
+
+  // Навигация ↑/↓ по видимым строкам (быстрая сверка спорных).
+  let _pinnedId = null;
+  function pinMember(m) { _pinnedId = m ? m.id : null; }
+  function _visibleRows() {
+    const tb = $("cmp-rows") && $("cmp-rows").querySelector("tbody");
+    return tb ? Array.from(tb.querySelectorAll(".cmp-row")) : [];
+  }
+  function _memberOfRow(tr) { return DATA.members[+tr.dataset.i]; }
+  function stepRow(dir) {
+    const rows = _visibleRows(); if (!rows.length) return;
+    let cur = rows.findIndex(tr => _memberOfRow(tr) && _memberOfRow(tr).id === _pinnedId);
+    let next = cur < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, cur + dir));
+    const tr = rows[next]; if (!tr) return;
+    rows.forEach(x => x.classList.remove("cmp-row-on"));
+    tr.classList.add("cmp-row-on");
+    tr.scrollIntoView({ block: "nearest" });
+    const m = _memberOfRow(tr); pinMember(m); showRowZoom(m, true);
+  }
+  if (!window._cmpKeysBound) {
+    window._cmpKeysBound = true;
+    document.addEventListener("keydown", (e) => {
+      if ($("cmp") && $("cmp").hidden) return;
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      if (e.key === "ArrowDown") { e.preventDefault(); stepRow(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); stepRow(-1); }
+      else if (e.key === "Escape") { hideZoom(); }
+    });
   }
 
   // ── Правка строки (админ) ──
@@ -655,7 +761,7 @@
         return `<button class="vs-folder vs-folder-skip" data-week="${esc(s.week)}" data-skipped="1">
            <span class="vs-folder-ic">📭</span>
            <span class="vs-folder-txt">
-             <span class="vs-folder-w">${esc(s.week)}</span>
+             <span class="vs-folder-w">${esc(WeekFmt.range(s.week))} <small style="opacity:.55">· ${esc(WeekFmt.num(s.week))}</small></span>
              <span class="vs-folder-c">данные не собирались</span>
            </span>
          </button>`;
@@ -675,7 +781,7 @@
       return `<button class="vs-folder" data-week="${esc(s.week)}">
          <span class="vs-folder-ic">📁</span>
          <span class="vs-folder-txt">
-           <span class="vs-folder-w">${esc(s.week)}</span>
+           <span class="vs-folder-w">${esc(WeekFmt.range(s.week))} <small style="opacity:.55">· ${esc(WeekFmt.num(s.week))}</small></span>
            <span class="vs-folder-c${mismatch ? " vs-folder-warn" : ""}">${esc(meta)}${mismatch ? " ⚠" : ""}</span>
            ${dt ? `<span class="vs-folder-d">собрано ${esc(dt)} UTC</span>` : ""}
            ${s.notes ? `<span class="vs-folder-n" title="${esc(s.notes)}">✎ ${esc(s.notes)}</span>` : ""}

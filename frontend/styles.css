@@ -2808,7 +2808,7 @@ video.chat-media-thumb {
 .valor-popover.valor-history { min-width: 340px; max-width: 460px; }
 .valor-popover.valor-history .vh-head {
   display: grid;
-  grid-template-columns: 90px 1fr 70px 80px;
+  grid-template-columns: 118px 1fr 64px 70px;
   gap: 6px;
   padding: 0 4px 4px 4px;
   border-bottom: 1px solid var(--accent-dim);
@@ -2820,7 +2820,7 @@ video.chat-media-thumb {
 }
 .valor-popover.valor-history .vh-row {
   display: grid;
-  grid-template-columns: 90px 1fr 70px 80px;
+  grid-template-columns: 118px 1fr 64px 70px;
   gap: 6px;
   padding: 4px;
   position: relative;
@@ -3181,6 +3181,28 @@ body.show-valor .valor-col { display: table-cell; }
 .cmp-shot img { display: block; width: 100%; height: auto; cursor: zoom-in; }
 .cmp-shot figcaption { font-size: 10px; color: #ffd24a; padding: 2px 6px; background: rgba(0,0,0,0.5); }
 .cmp-shot-on { outline: 2px solid #ffd24a; box-shadow: 0 0 14px rgba(255,210,74,0.4); }
+
+/* ── Зум строки: рамка на кадре + лупа (увеличенный кроп строки) ── */
+.cmp-shot { position: relative; }   /* для абсолютной рамки строки */
+.cmp-rowband {
+  position: absolute; pointer-events: none; z-index: 2;
+  border: 2px solid #ffd24a; border-radius: 3px;
+  background: rgba(255,210,74,0.14);
+  box-shadow: 0 0 10px rgba(255,210,74,0.55), inset 0 0 6px rgba(255,210,74,0.25);
+}
+.cmp-loupe {
+  position: fixed; z-index: 13000; pointer-events: none;
+  left: 50%; bottom: 14px; transform: translateX(-50%);
+  width: min(680px, 92vw); height: 150px; overflow: hidden;
+  border: 2px solid #ffd24a; border-radius: 10px;
+  background: #0a0f0a; box-shadow: 0 8px 30px rgba(0,0,0,0.75);
+}
+.cmp-loupe[hidden] { display: none; }
+.cmp-loupe img { position: absolute; top: 0; left: 0; max-width: none; }
+.cmp-loupe-cap {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  font-size: 11px; color: #ffd24a; background: rgba(0,0,0,0.7); padding: 2px 8px;
+}
 
 .cmp-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
 .cmp-table th { position: sticky; top: 0; background: #0c130c; color: #8fdfa0;

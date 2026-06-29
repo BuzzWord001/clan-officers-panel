@@ -4768,10 +4768,16 @@ def valor_by_canon_map(weeks: int = 0) -> dict[str, dict[str, Any]]:
 
 
 def valor_get_departed() -> list[dict[str, Any]]:
-    """Список ушедших из клана с последними известными данными."""
+    """Список ушедших из клана с последними известными данными.
+    Если человека увели в архив вручную (кик) — добавляем пометку (причину)
+    и кто это сделал из valor_force_archived (LEFT JOIN: у самостоятельно
+    ушедших пометки нет → NULL)."""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM valor_departed ORDER BY departed_at DESC"
+            "SELECT d.*, fa.reason AS archive_reason, fa.archived_by AS archive_by "
+            "FROM valor_departed d "
+            "LEFT JOIN valor_force_archived fa ON fa.nick_canon = d.nick_canon "
+            "ORDER BY d.departed_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -5894,16 +5900,25 @@ def valor_archive_member(canon: str, actor: dict, reason: str = "") -> dict:
                ON CONFLICT(nick_canon) DO UPDATE SET archived_at=excluded.archived_at,
                  archived_by=excluded.archived_by, reason=excluded.reason""",
             (canon, now, by, reason or ""))
+        _write_audit(conn, "valor_archive", None, disp_nick, None,
+                     {"reason": (reason or "").strip()[:200]}, actor)
     return {"ok": True}
 
 
-def valor_restore(canon: str, actor: dict) -> dict:
+def valor_restore(canon: str, actor: dict, reason: str = "") -> dict:
     """Вернуть человека из архива в основной список (снять ручной кик и убрать
-    из departed). Если он есть в текущем снимке — снова появится в списке."""
+    из departed). Если он есть в текущем снимке — снова появится в списке.
+    Причина возврата (пометка) пишется в журнал действий."""
     with connection() as conn:
         canon = _resolve_canon(canon, _alias_map(conn))
+        row = conn.execute(
+            "SELECT nick FROM valor_departed WHERE nick_canon = ?", (canon,)
+        ).fetchone()
+        disp_nick = row["nick"] if row else canon
         conn.execute("DELETE FROM valor_force_archived WHERE nick_canon = ?", (canon,))
         conn.execute("DELETE FROM valor_departed WHERE nick_canon = ?", (canon,))
+        _write_audit(conn, "valor_restore", None, disp_nick,
+                     {"reason": (reason or "").strip()[:200]}, None, actor)
     return {"ok": True}
 
 

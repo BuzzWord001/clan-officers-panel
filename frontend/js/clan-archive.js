@@ -57,7 +57,7 @@
     `;
     $("archive-tbody").innerHTML = sessions.map(s => `
       <tr class="m-row">
-        <td><b>${esc(s.week)}</b></td>
+        <td><b>${esc(WeekFmt.range(s.week))}</b><br><small style="opacity:.6">${esc(WeekFmt.num(s.week))}</small></td>
         <td>${esc(fmtDT(s.captured_at))}</td>
         <td class="m-cell-num">${s.valor_norm}</td>
         <td class="m-cell-num">${s.screens_count || 0}</td>

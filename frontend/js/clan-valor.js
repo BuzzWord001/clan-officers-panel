@@ -194,7 +194,7 @@
       ? `<span>иммун. снят на неделе: <b style="color:#c9a8ff">🛡 ${immGrace}</b></span>`
       : "";
     $("valor-summary").innerHTML = `
-      <span>неделя: <b>${esc(s.week)}</b></span>
+      <span>неделя: <b>${esc(WeekFmt.range(s.week))}</b> <small style="opacity:.6">· ${esc(WeekFmt.num(s.week))}</small></span>
       <span>норматив: <b>${esc(s.valor_norm)}</b></span>
       <span>всего: <b>${m.length}</b></span>
       <span>выполнили: <b style="color:#88ff88">${metGood}</b></span>
@@ -763,7 +763,7 @@
         if (a.weekly && a.weekly.length) {
           tip += "\nПо неделям (набрано за неделю):";
           for (const w of a.weekly) {
-            tip += `\n  ${w.week}: ${w.valor == null ? "—" : w.valor}`;
+            tip += `\n  ${WeekFmt.range(w.week)}: ${w.valor == null ? "—" : w.valor}`;
           }
         }
         return `<span class="norm-cell norm-afk" title="${esc(tip + noteTip)}"
@@ -869,17 +869,17 @@
   const sevTitle = (sev) => `${SEV_NAME[sev] || "Среднее"} предупреждение`;
 
   // colorCls — класс цвета (wsev-* или wtype-title); wtip — короткий текст.
-  // «2026-W22» → «W22»;  «2026-06-02T..» → «02.06»
+  // «2026-W22» → «нед. 22»;  «2026-06-02T..» → «02.06»
   function weekShort(w) {
     const s = String(w || ""); const i = s.indexOf("-W");
-    return i >= 0 ? "W" + s.slice(i + 2) : s;
+    return i >= 0 ? "нед. " + (+s.slice(i + 2)) : s;
   }
   function dateShort(iso) {
     const p = String(iso || "").slice(0, 10).split("-");
     return p.length === 3 ? p[2] + "." + p[1] : String(iso || "");
   }
-  const _MON = ["янв", "фев", "мар", "апр", "мая", "июн",
-                "июл", "авг", "сен", "окт", "ноя", "дек"];
+  const _MON = ["января", "февраля", "марта", "апреля", "мая", "июня",
+                "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   // Понедельник ISO-недели (ISO 8601).
   function isoWeekMonday(year, week) {
     const s = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
@@ -1202,9 +1202,12 @@
         ? ` <span class="row-admin">`
           + `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
           + `<button class="radm" data-act="merge" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🔗 «Это он и есть» — слить неверно распознанного игрока (как нового или ушедшего) в существующего. История объединится, кривой ник в будущем сам сматчится.">🔗</button>`
-          + `<button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Кикнуть в архив — убрать игрока в «Покинули клан», даже если он ещё есть в снимке. Система запомнит, что его кикнули.">🗄</button>`
           + `<button class="radm" data-act="delete" data-id="${m.id}" data-nick="${esc(m.nick)}" title="🗑 Удалить фантом — убрать ошибочную строку OCR (дубль или мусор) из текущего снимка.">🗑</button>`
           + `</span>`
+        : "";
+      // Кнопка «в архив» доступна и офицеру, и админу (с пометкой-причиной).
+      const archiveBtn = IS_OFFICER
+        ? ` <button class="radm" data-act="archive" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="🗄 Убрать в архив — переместить игрока в «Покинули клан», даже если он ещё есть в снимке. Можно добавить пометку (причину). Вернуть можно там же.">🗄</button>`
         : "";
       const achBtn = ` <button class="ach-btn" data-nick="${esc(m.nick)}" title="Посмотреть все достижения и прогресс ролей">🏆</button>`;
       // Кнопка истории снятых (прощённых) предупреждений — только если они есть.
@@ -1214,7 +1217,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${archiveBtn}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">
@@ -1543,9 +1546,12 @@
   // Делегированные админ-действия в строках таблицы.
   $("valor-tbody").addEventListener("click", async (ev) => {
     const b = ev.target.closest(".radm, .ai-sug");
-    if (!b || !IS_ADMIN) return;
-    ev.stopPropagation();
+    if (!b) return;
     const act = b.dataset.act;
+    // «В архив» — офицеру и админу; остальные правки — только админ.
+    if (act === "archive") { if (!IS_OFFICER) return; }
+    else if (!IS_ADMIN) return;
+    ev.stopPropagation();
     const id = b.dataset.id ? parseInt(b.dataset.id, 10) : null;
     const canon = b.dataset.canon;
     try {
@@ -1859,7 +1865,7 @@
       const d = it.detail || {};
       let what = "";
       if (it.kind === "norm") {
-        what = `неделя ${esc(d.week || it.ref)}`;
+        what = `неделя ${esc(WeekFmt.range(d.week || it.ref))}`;
         if (d.valor != null) what += ` · набрано ${esc(d.valor)} из ${esc(d.norm)} (${esc(d.pct)}%)`;
         if (d.grace) {
           what += ` · <span class="dh-grace">норматив снижен (иммунитет спал среди недели`;
@@ -2275,7 +2281,7 @@
               : Math.round((h._val / max) * 100);
             return `
               <div class="vh-row vh-${cls}">
-                <span class="w">${esc(h.week)}</span>
+                <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
                 <span class="v">${h._val ?? "—"}</span>
                 <span class="d">${dTxt}</span>
                 <span class="p">${pctTxt}</span>
@@ -2285,7 +2291,7 @@
         `;
       } else {
         popover.querySelector(".body").innerHTML = hist.map(h => `
-          <div class="row"><span class="w">${esc(h.week)}</span>
+          <div class="row"><span class="w">${esc(WeekFmt.range(h.week))}</span>
             <span class="v">${esc(h.value || "—")}</span></div>
         `).join("");
       }
@@ -2371,7 +2377,7 @@
     CHART = new Chart(ctx, {
       type: "line",
       data: {
-        labels: TL_RAW.periods,
+        labels: TL_RAW.periods.map(p => WeekFmt.range(p, { noYear: true })),
         datasets: totalDs.concat(series.map((s, i) => ({
           label: s.nick + (s.true_name ? "  ·  " + s.true_name : ""),
           data: s.counts,
@@ -2458,7 +2464,7 @@
       <tr class="m-row">
         <td><b>${esc(d.nick)}</b></td>
         <td>${esc(d.true_name)}</td>
-        <td>${esc(d.last_week)}</td>
+        <td>${esc(WeekFmt.range(d.last_week))}</td>
         <td>${esc(d.last_rank)}</td>
         <td>${esc(d.last_title)}</td>
         <td class="m-cell-num">${d.last_level ?? ""}</td>
@@ -2469,20 +2475,25 @@
             ? `<span class="warn-badge">⚠ ${d.warning_count}</span>`
             : '—'}
         </td>
-        ${IS_ADMIN
-          ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="↩ Вернуть в основной список — если игрок ушёл/был кикнут по ошибке. Вернётся, если он есть в текущем снимке.">↩ вернуть</button></td>`
+        <td class="dep-note">${d.archive_reason
+            ? `<span class="dep-note-txt" title="${esc(d.archive_reason)}${d.archive_by ? ' — ' + esc(d.archive_by) : ''}">${esc(d.archive_reason)}</span>`
+            + (d.archive_by ? `<br><small style="color:var(--text-dim)">${esc(d.archive_by)}</small>` : "")
+            : '<span style="color:var(--text-dim)">—</span>'}</td>
+        ${IS_OFFICER
+          ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="↩ Вернуть в основной список — если игрок ушёл/был кикнут по ошибке. Можно добавить пометку (причину возврата). Вернётся, если он есть в текущем снимке.">↩ вернуть</button></td>`
           : ""}
       </tr>
     `).join("");
   }
 
-  // Восстановление из архива (только админ).
+  // Восстановление из архива (офицер/админ) с пометкой-причиной.
   $("dep-tbody").addEventListener("click", async (ev) => {
     const b = ev.target.closest(".dep-restore");
-    if (!b || !IS_ADMIN) return;
-    if (!confirm(`Вернуть «${b.dataset.nick}» из архива в основной список?`)) return;
+    if (!b || !IS_OFFICER) return;
+    const reason = prompt(`Вернуть «${b.dataset.nick}» из архива в основной список?\nПометка (причина возврата, необязательно):`, "");
+    if (reason === null) return;
     try {
-      await adminCall("POST", "/valor/restore", { canon: b.dataset.canon });
+      await adminCall("POST", "/valor/restore", { canon: b.dataset.canon, reason });
       await load(); await loadDeparted();
     } catch (_) { /* alert уже показан */ }
   });

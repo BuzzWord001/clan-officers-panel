@@ -454,8 +454,11 @@ def valor_merge_ep(payload: MergeIn, actor: dict = Depends(require_admin)) -> di
 
 
 @router.post("/archive")
-def valor_archive_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> dict:
-    """Ручной кик: убрать человека в архив доблести (admin)."""
+def valor_archive_ep(payload: CanonIn,
+                     _: dict = Depends(require_officer),
+                     actor: dict = Depends(current_actor)) -> dict:
+    """Ручной кик: убрать человека в архив доблести (офицер/админ).
+    Пометка (причина) сохраняется и видна в «Покинули клан»."""
     res = db.valor_archive_member(payload.canon, actor, payload.reason or "")
     if not res.get("ok"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "not_found"))
@@ -463,9 +466,12 @@ def valor_archive_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> 
 
 
 @router.post("/restore")
-def valor_restore_ep(payload: CanonIn, actor: dict = Depends(require_admin)) -> dict:
-    """Вернуть человека из архива в основной список (admin)."""
-    return db.valor_restore(payload.canon, actor)
+def valor_restore_ep(payload: CanonIn,
+                     _: dict = Depends(require_officer),
+                     actor: dict = Depends(current_actor)) -> dict:
+    """Вернуть человека из архива в основной список (офицер/админ).
+    Пометка (причина возврата) пишется в журнал действий."""
+    return db.valor_restore(payload.canon, actor, payload.reason or "")
 
 
 @router.delete("/member/{member_id}")
