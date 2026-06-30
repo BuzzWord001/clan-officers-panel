@@ -1210,6 +1210,7 @@
         : "";
       const adminBtns = IS_OFFICER
         ? ` <span class="row-admin">`
+          + afkBtn(m)            // 💤 АФК — в той же группе, что и админ-кнопки (единое место)
           + archiveBtnHtml
           + (IS_ADMIN
             ? `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
@@ -1226,7 +1227,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${afkBtn(m)}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">
