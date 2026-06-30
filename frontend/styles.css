@@ -3191,11 +3191,12 @@ body.show-valor .valor-col { display: table-cell; }
   box-shadow: 0 0 10px rgba(255,210,74,0.55), inset 0 0 6px rgba(255,210,74,0.25);
 }
 .cmp-loupe {
+  /* Появляется НАД наведённой строкой справа; left/top ставит JS. */
   position: fixed; z-index: 13000; pointer-events: none;
-  left: 50%; bottom: 14px; transform: translateX(-50%);
-  width: min(680px, 92vw); height: 150px; overflow: hidden;
+  left: 0; top: 0;
+  width: min(600px, 92vw); height: 110px; overflow: hidden;
   border: 2px solid #ffd24a; border-radius: 10px;
-  background: #0a0f0a; box-shadow: 0 8px 30px rgba(0,0,0,0.75);
+  background: #0a0f0a; box-shadow: 0 10px 30px rgba(0,0,0,0.85);
 }
 .cmp-loupe[hidden] { display: none; }
 .cmp-loupe img { position: absolute; top: 0; left: 0; max-width: none; }

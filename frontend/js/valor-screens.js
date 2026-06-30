@@ -212,8 +212,8 @@
     tbody.querySelectorAll(".cmp-row-on").forEach(x => x.classList.remove("cmp-row-on"));
     tr.classList.add("cmp-row-on");
     const m = DATA.members[+tr.dataset.i];
-    pinMember(m);                       // клик = зафиксировать
-    if (rowBand(m)) showRowZoom(m, true);
+    pinMember(m);                       // клик = зафиксировать (для навигации ↑/↓)
+    if (rowBand(m)) showRowZoom(m, true, tr);
     else { hideZoom(); scrollToFrame(+tr.dataset.i, null); }   // нет кадра → старое поведение
   }
 
@@ -235,17 +235,14 @@
             e.target.closest(".cmp-nick-t")) return;
         selectRow(tr);
       });
-      // Наведение = превью увеличенной строки в лупе (без принудительной прокрутки).
+      // Наведение на строку = лупа НАД этой строкой (без принудительной прокрутки).
       tr.addEventListener("mouseenter", () => {
         const m = DATA.members[+tr.dataset.i];
-        if (rowBand(m)) showRowZoom(m, false);
+        if (rowBand(m)) showRowZoom(m, false, tr); else hideZoom();
       });
     });
-    // Увели мышь из таблицы — вернуть зафиксированную строку (клик) или скрыть.
-    tbody.addEventListener("mouseleave", () => {
-      const m = _pinnedId != null ? DATA.members.find(x => x.id === _pinnedId) : null;
-      if (m && rowBand(m)) showRowZoom(m, false); else hideZoom();
-    });
+    // Ушли из таблицы строк — лупа скрывается (показываем только при наведении).
+    tbody.addEventListener("mouseleave", () => hideZoom());
     if (IS_ADMIN) {
       tbody.querySelectorAll(".cmp-ed").forEach(b =>
         b.addEventListener("click", () => openEdit(+b.dataset.id)));
@@ -627,7 +624,7 @@
     const l = $("cmp-loupe"); if (l) l.hidden = true;
     document.querySelectorAll(".cmp-rowband").forEach(x => x.remove());
   }
-  function showRowZoom(m, scroll) {
+  function showRowZoom(m, scroll, anchorEl) {
     const band = rowBand(m);
     const shot = band ? findShot(band.frame) : null;
     if (!band || !shot) { hideZoom(); return; }
@@ -649,21 +646,34 @@
       ov.style.left = (band.x * 100) + "%"; ov.style.width = (band.w * 100) + "%";
       ov.style.top = (band.y * 100) + "%";  ov.style.height = (band.h * 100) + "%";
     }
-    // Лупа.
+    // Лупа — увеличенный кроп ИМЕННО этой строки, появляется НАД наведённой
+    // строкой справа (anchorEl). Без наведения — скрыта (hideZoom).
     const l = _loupe(), li = l.querySelector("img");
     const paint = () => {
       const dw = img.clientWidth, dh = img.clientHeight;
       if (!dw) { img.addEventListener("load", paint, { once: true }); return; }
-      const LW = l.clientWidth || 640, LH = l.clientHeight || 150;
-      const Z = Math.max(1.2, Math.min(4, LW / Math.max(1, band.w * dw)));  // вписать ширину полосы
+      l.hidden = false;                       // показать, чтобы корректно измерить размеры
+      const LW = l.clientWidth || 600, LH = l.clientHeight || 110;
+      const Z = Math.max(1.2, Math.min(5, LW / Math.max(1, band.w * dw)));  // вписать ширину строки
       li.src = img.src; li.style.width = (dw * Z) + "px";
       const cx = (band.x + band.w / 2) * dw * Z, cy = (band.y + band.h / 2) * dh * Z;
       li.style.transform = `translate(${LW / 2 - cx}px, ${LH / 2 - cy}px)`;
       l.querySelector(".cmp-loupe-cap").textContent =
         `кадр #${band.frame + 1} · ${m.nick || ""}`;
-      l.hidden = false;
+      if (anchorEl) positionLoupe(l, anchorEl);
     };
     paint();
+  }
+  // Поставить лупу прямо НАД наведённой строкой (если не влезает сверху — под ней).
+  function positionLoupe(l, anchorEl) {
+    const lw = l.offsetWidth || 600, lh = l.offsetHeight || 110;
+    const r = anchorEl.getBoundingClientRect();
+    let left = r.left + r.width / 2 - lw / 2;
+    left = Math.max(6, Math.min(window.innerWidth - lw - 6, left));
+    let top = r.top - lh - 10;
+    if (top < 6) top = r.bottom + 10;
+    l.style.left = left + "px";
+    l.style.top = top + "px";
   }
 
   // ── Ручная калибровка раскладки строк (админ) ───────────────────────────
@@ -909,7 +919,7 @@
     rows.forEach(x => x.classList.remove("cmp-row-on"));
     tr.classList.add("cmp-row-on");
     tr.scrollIntoView({ block: "nearest" });
-    const m = _memberOfRow(tr); pinMember(m); showRowZoom(m, true);
+    const m = _memberOfRow(tr); pinMember(m); showRowZoom(m, true, tr);
   }
   if (!window._cmpKeysBound) {
     window._cmpKeysBound = true;
