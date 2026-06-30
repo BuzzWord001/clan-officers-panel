@@ -4020,6 +4020,12 @@ body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.col-not
 }
 .afk-set-btn:hover { opacity: 1; }
 .afk-note-mark { cursor: help; opacity: 0.85; font-size: 11px; }
+.afk-until-mark { cursor: help; font-size: 10.5px; color: #ffd080;
+  background: rgba(255,200,128,0.14); border: 1px solid rgba(255,200,128,0.32);
+  border-radius: 5px; padding: 0 4px; white-space: nowrap; }
+.afk-until-clear { cursor: pointer; border: 1px solid var(--line,#8a6a3a);
+  background: rgba(60,40,20,.5); color: #f3e8d2; border-radius: 6px; }
+.afk-until-clear:hover { background: rgba(90,60,30,.7); }
 body.guest-mode .afk-set-btn { display: none; }
 
 .warn-add-btn {

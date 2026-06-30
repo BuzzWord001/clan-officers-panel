@@ -329,16 +329,19 @@ def valor_warning_dismissed(canon: str = Query(..., min_length=1),
 
 
 class ValorAfkIn(BaseModel):
-    is_afk:   bool
-    afk_note: str | None = None
+    is_afk:    bool
+    afk_note:  str | None = None
+    afk_until: str | None = None   # 'YYYY-MM-DD' — срок, после которого АФК снимется сам
 
 
 @router.post("/afk/{member_id}")
 def valor_afk_set(member_id: int, payload: ValorAfkIn,
                   _: dict = Depends(require_officer),
                   actor: dict = Depends(current_actor)) -> dict:
-    """Дать/снять статус АФК + комментарий (офицер/админ). Лог действий."""
-    res = db.valor_set_afk(member_id, payload.is_afk, payload.afk_note, actor)
+    """Дать/снять статус АФК + комментарий + СРОК (офицер/админ). Лог действий.
+    afk_until — дата, после которой статус АФК снимется автоматически."""
+    res = db.valor_set_afk(member_id, payload.is_afk, payload.afk_note, actor,
+                           afk_until=payload.afk_until)
     if res is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "member_not_found")
     return res

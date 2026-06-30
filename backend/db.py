@@ -539,6 +539,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )""")
     except sqlite3.OperationalError:
         pass
+    # 2026-06-30: срок АФК — дата 'YYYY-MM-DD', после которой статус снимается
+    # сам (valor_expire_afk). Пусто = бессрочно (как было). Офицер/админ задаёт.
+    try:
+        conn.execute("ALTER TABLE valor_afk_note ADD COLUMN afk_until TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
 
     # 2026-06-01: счётчик стрика невыполненного норматива в valor_members.
     # 0 — выполнил в эту неделю (или АФК). При невыполнении +1 от prev.
@@ -1000,6 +1006,55 @@ def valor_afk_notes() -> dict[str, str]:
     with connection() as conn:
         return {r["nick_canon"]: r["note"] for r in conn.execute(
             "SELECT nick_canon, note FROM valor_afk_note WHERE note != ''")}
+
+
+def valor_afk_info() -> dict[str, dict]:
+    """canon → {note, until}: комментарий к АФК и срок (дата 'YYYY-MM-DD' или '')."""
+    with connection() as conn:
+        return {r["nick_canon"]: {"note": r["note"], "until": r["afk_until"]}
+                for r in conn.execute(
+                    "SELECT nick_canon, note, afk_until FROM valor_afk_note")}
+
+
+def _norm_afk_until(v) -> str:
+    """Нормализует срок АФК в 'YYYY-MM-DD' (или '' если пусто/некорректно)."""
+    if not v:
+        return ""
+    s = str(v).strip()[:10]
+    try:
+        datetime.strptime(s, "%Y-%m-%d")
+        return s
+    except ValueError:
+        return ""
+
+
+def valor_expire_afk() -> dict:
+    """Снимает АФК у тех, чей срок (afk_until) истёк (дата < сегодня, UTC).
+    Снимает флаг is_afk на ПОСЛЕДНЕМ снимке игрока и удаляет запись срока/заметки.
+    Запускается лениво при чтении текущей таблицы и в планировщике."""
+    today = datetime.utcnow().date().isoformat()
+    expired = 0
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT nick_canon, afk_until FROM valor_afk_note "
+            "WHERE afk_until != '' AND afk_until < ?", (today,)).fetchall()
+        sysactor = {"platform": "system", "id": "", "name": "авто (срок АФК)"}
+        for r in rows:
+            canon = r["nick_canon"]
+            last = conn.execute(
+                "SELECT vm.id, vm.nick, vm.is_afk FROM valor_members vm "
+                "JOIN valor_snapshots vs ON vm.snapshot_id = vs.id "
+                "WHERE vm.nick_canon = ? ORDER BY vs.week DESC, vm.id DESC LIMIT 1",
+                (canon,)).fetchone()
+            if last and last["is_afk"]:
+                conn.execute("UPDATE valor_members SET is_afk = 0 WHERE id = ?",
+                             (last["id"],))
+                _write_audit(conn, "afk_expired", None, last["nick"],
+                             {"is_afk": True, "afk_until": r["afk_until"]},
+                             {"is_afk": False}, sysactor)
+            conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
+            expired += 1
+    return {"expired": expired}
 
 
 def valor_known_nicks() -> list[str]:
@@ -4622,10 +4677,13 @@ def valor_remove_manual_warning(warning_id: int, actor: dict | None = None) -> b
 
 
 def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
-                  actor: dict | None = None) -> dict | None:
-    """Дать/снять статус АФК + комментарий (офицер/админ). Лог в audit_log."""
+                  actor: dict | None = None, afk_until: str | None = None) -> dict | None:
+    """Дать/снять статус АФК + комментарий + СРОК (офицер/админ). Лог в audit_log.
+    afk_until — дата 'YYYY-MM-DD', после которой АФК снимется сам (пусто =
+    бессрочно). При снятии АФК (is_afk=False) срок и заметка очищаются."""
     actor = actor or {"platform": "", "id": "", "name": ""}
     now = datetime.utcnow().isoformat(timespec="seconds")
+    until = _norm_afk_until(afk_until) if afk_until is not None else None
     with connection() as conn:
         row = conn.execute(
             "SELECT nick, nick_canon, is_afk FROM valor_members WHERE id = ?",
@@ -4636,23 +4694,34 @@ def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
         before = {"is_afk": bool(row["is_afk"])}
         conn.execute("UPDATE valor_members SET is_afk = ? WHERE id = ?",
                      (1 if is_afk else 0, member_id))
-        if afk_note is not None:
-            note = str(afk_note).strip()
-            if note:
+        # Заметку/срок ведём в valor_afk_note (по canon, переживает снимки).
+        if not is_afk:
+            # АФК снят — срок и заметка больше не нужны.
+            conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
+        elif afk_note is not None or until is not None:
+            note = (str(afk_note).strip() if afk_note is not None else "")
+            cur = conn.execute(
+                "SELECT note, afk_until FROM valor_afk_note WHERE nick_canon = ?",
+                (canon,)).fetchone()
+            new_note = note if afk_note is not None else (cur["note"] if cur else "")
+            new_until = (until if until is not None
+                         else (cur["afk_until"] if cur else ""))
+            if new_note or new_until:
                 conn.execute(
-                    """INSERT INTO valor_afk_note (nick_canon, note, updated_at, updated_by)
-                       VALUES (?, ?, ?, ?)
+                    """INSERT INTO valor_afk_note (nick_canon, note, afk_until, updated_at, updated_by)
+                       VALUES (?, ?, ?, ?, ?)
                        ON CONFLICT(nick_canon) DO UPDATE SET
-                         note=excluded.note, updated_at=excluded.updated_at,
-                         updated_by=excluded.updated_by""",
-                    (canon, note, now, actor.get("name", "")))
+                         note=excluded.note, afk_until=excluded.afk_until,
+                         updated_at=excluded.updated_at, updated_by=excluded.updated_by""",
+                    (canon, new_note, new_until, now, actor.get("name", "")))
             else:
                 conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
         after = {"is_afk": bool(is_afk),
-                 "afk_note": (afk_note or "").strip() if afk_note is not None else "—"}
+                 "afk_note": (afk_note or "").strip() if afk_note is not None else "—",
+                 "afk_until": until if until is not None else "—"}
         _write_audit(conn, "afk_on" if is_afk else "afk_off", None,
                      row["nick"], before, after, actor)
-        return {"ok": True, "is_afk": bool(is_afk)}
+        return {"ok": True, "is_afk": bool(is_afk), "afk_until": until or ""}
 
 
 def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
@@ -4926,6 +4995,7 @@ def valor_get_current(with_reg_notes: bool = False,
     реестра приёма (по canon ника). Видно только офицерам/админу; гостю флаг
     не выставляется, поэтому примечания в ответ не попадают.
     """
+    valor_expire_afk()   # авто-снятие АФК с истёкшим сроком (лениво, при чтении)
     with connection() as conn:
         snaps = conn.execute(
             "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 2"
@@ -5107,7 +5177,8 @@ def valor_get_current(with_reg_notes: bool = False,
         # Теги по canon (ветеран и т.п.) — для UI меток.
         tags_map = valor_list_tags()
         tag_dates_map = valor_tag_dates()
-        afk_notes_map = valor_afk_notes()   # комментарии к АФК по canon
+        afk_info_map = valor_afk_info()     # {canon: {note, until}} — коммент + срок
+        afk_notes_map = {c: v["note"] for c, v in afk_info_map.items() if v["note"]}
         # Активность в чатах по canon — для финального score.
         chat_msgs = valor_chat_activity_by_canon()
         # Top-rank когда-либо (для авто-тега «Офицер» + score).
@@ -5570,6 +5641,7 @@ def valor_get_current(with_reg_notes: bool = False,
             m["manual_warnings"] = manual_warn_map.get(cn, [])
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
+            m["afk_until"] = (afk_info_map.get(cn) or {}).get("until", "")
             # АФК — снимаем ВСЕ предупреждения (по требованию Лира): пока человек
             # в АФК, на сайте у него нет ни норматив-, ни титульных, ни ручных
             # предупреждений. Вернётся из АФК — реальные провалы прошлых недель

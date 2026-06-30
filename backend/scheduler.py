@@ -91,4 +91,8 @@ def make_scheduler() -> AsyncIOScheduler:
     # и докачиваем установщики. Сама refresh не качает, если версия та же.
     sched.add_job(ts3.refresh, CronTrigger(hour=5, minute=0),
                   id="ts3_refresh", max_instances=1, coalesce=True)
+    # АФК со сроком: ежедневно в 00:05 UTC снимаем истёкшие (на случай, если
+    # страницу никто не открывал; при открытии снимается и лениво в current).
+    sched.add_job(db.valor_expire_afk, CronTrigger(hour=0, minute=5),
+                  id="afk_expire", max_instances=1, coalesce=True)
     return sched

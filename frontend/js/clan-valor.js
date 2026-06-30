@@ -747,8 +747,12 @@
     if (m.is_afk) {
       const a = m.afk_info;
       const note = m.afk_note || "";
+      const until = m.afk_until || "";                       // 'YYYY-MM-DD' или ''
+      const untilTxt = until ? until.split("-").reverse().join(".") : "";  // → ДД.ММ.ГГГГ
+      const untilTip = until ? `\n⏳ АФК до ${untilTxt} (затем снимется автоматически)` : "";
+      const untilMark = until ? ` <span class="afk-until-mark" title="${esc("АФК до " + untilTxt + " — снимется сам")}">⏳ ${esc(untilTxt.slice(0, 5))}</span>` : "";
       const noteTip = note ? `\n💬 Комментарий: ${note}` : "";
-      const noteMark = note ? ` <span class="afk-note-mark" title="${esc(note)}">💬</span>` : "";
+      const noteMark = (note ? ` <span class="afk-note-mark" title="${esc(note)}">💬</span>` : "") + untilMark;
       if (a && a.weeks) {
         // Доблесть недельная (сброс по понедельникам), поэтому за время АФК
         // суммируем недельные значения — кто фармил даже в АФК.
@@ -766,11 +770,11 @@
             tip += `\n  ${WeekFmt.range(w.week)}: ${w.valor == null ? "—" : w.valor}`;
           }
         }
-        return `<span class="norm-cell norm-afk" title="${esc(tip + noteTip)}"
+        return `<span class="norm-cell norm-afk" title="${esc(tip + untilTip + noteTip)}"
           >${_pctHtml}<small class="norm-note">${_sep}АФК · ${a.weeks} нед.${gainHtml}${noteMark}</small></span>`;
       }
       return `<span class="norm-cell norm-afk"
-        title="${esc("АФК — норматив не оценивается" + noteTip)}">${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
+        title="${esc("АФК — норматив не оценивается" + untilTip + noteTip)}">${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
     }
     // ── Иммунитет имеет приоритет над обычной оценкой ──
     const imm = m.immunity;
@@ -2115,7 +2119,8 @@
     if (!IS_OFFICER) return "";
     return ` <button class="afk-set-btn" data-id="${m.id}" ` +
       `data-afk="${m.is_afk ? 1 : 0}" data-note="${esc(m.afk_note || "")}" ` +
-      `data-nick="${esc(m.nick)}" title="${m.is_afk ? "Снять АФК / изменить комментарий" : "Дать статус АФК (с комментарием)"}">💤</button>`;
+      `data-until="${esc(m.afk_until || "")}" ` +
+      `data-nick="${esc(m.nick)}" title="${m.is_afk ? "Снять АФК / изменить срок и комментарий" : "Дать статус АФК (со сроком и комментарием)"}">💤</button>`;
   }
   let AFK_POP = null;
   function closeAfkPop() { if (AFK_POP) { AFK_POP.remove(); AFK_POP = null; } }
@@ -2124,14 +2129,20 @@
     const id = btn.dataset.id, nick = btn.dataset.nick;
     const cur = btn.dataset.afk === "1";
     const note = btn.dataset.note || "";
+    const until = btn.dataset.until || "";
     const pop = document.createElement("div");
     pop.className = "warn-add-pop";
     pop.innerHTML =
       `<div class="wap-title">Статус АФК: <b>${esc(nick)}</b></div>` +
       `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px;cursor:pointer">` +
         `<input type="checkbox" class="afk-chk" ${cur ? "checked" : ""} style="transform:scale(1.3)"> в статусе АФК</label>` +
+      `<label class="afk-until-row" style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px">` +
+        `<span style="white-space:nowrap">АФК до:</span>` +
+        `<input class="afk-until-inp" type="date" value="${esc(until)}" style="flex:1">` +
+        `<button type="button" class="afk-until-clear" title="бессрочно (без срока)" style="padding:2px 8px">✕</button></label>` +
+      `<div class="afk-until-hint" style="font-size:11px;color:#9bb;margin:-2px 0 6px">Пусто = бессрочно. После даты статус АФК снимется сам.</div>` +
       `<input class="afk-note-inp" type="text" maxlength="200" value="${esc(note)}" ` +
-        `placeholder="причина / до какого числа (напр. «отпуск до 20.07»)">` +
+        `placeholder="причина (напр. «отпуск», «экзамены»)">` +
       `<div class="wap-actions">` +
         `<button type="button" class="wap-add">Сохранить</button>` +
         `<button type="button" class="wap-cancel">Отмена</button>` +
@@ -2144,15 +2155,19 @@
     pop.style.left = Math.max(8, left) + "px";
     pop.style.top = (r.bottom + 6) + "px";
     pop.querySelector(".wap-cancel").addEventListener("click", closeAfkPop);
+    pop.querySelector(".afk-until-clear").addEventListener("click", () => {
+      pop.querySelector(".afk-until-inp").value = "";
+    });
     pop.querySelector(".wap-add").addEventListener("click", async () => {
       const is_afk = pop.querySelector(".afk-chk").checked;
       const afk_note = pop.querySelector(".afk-note-inp").value.trim();
+      const afk_until = pop.querySelector(".afk-until-inp").value || "";  // 'YYYY-MM-DD' или ''
       try {
         const res = await fetch((window.OFFICERS_CONFIG?.API_URL || "") + "/valor/afk/" + id,
           { method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json",
               "Authorization": "Bearer " + (localStorage.getItem("officer_session_token") || "") },
-            body: JSON.stringify({ is_afk, afk_note }) });
+            body: JSON.stringify({ is_afk, afk_note, afk_until }) });
         if (!res.ok) throw new Error("HTTP " + res.status);
         closeAfkPop(); await load();
       } catch (e) { alert("Ошибка: " + (e.message || e)); }
