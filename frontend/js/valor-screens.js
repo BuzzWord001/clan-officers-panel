@@ -654,8 +654,14 @@
       if (!dw) { img.addEventListener("load", paint, { once: true }); return; }
       l.hidden = false;
       // Лупа = РОВНО откалиброванная строка: вписываем ширину полосы в ширину
-      // лупы, а ВЫСОТУ лупы делаем равной высоте строки (без соседних строк).
-      const LW = Math.min(900, Math.round(window.innerWidth * 0.94));
+      // лупы, ВЫСОТА лупы = высоте строки (без соседних). Ширина лупы = ширине
+      // наведённой строки справа (не шире её), чтобы зум был ровно над строкой.
+      let LW = Math.min(900, Math.round(window.innerWidth * 0.94));
+      if (anchorEl) {
+        const aw = Math.round(anchorEl.getBoundingClientRect().width);
+        const rowsW = $("cmp-rows") ? $("cmp-rows").clientWidth : aw;
+        if (aw > 50) LW = Math.min(aw, rowsW || aw, LW);
+      }
       l.style.width = LW + "px";
       const Z = Math.max(1.5, Math.min(8, LW / Math.max(1, band.w * dw)));
       const rowPx = Math.max(20, band.h * dh * Z);   // высота строки в зуме
