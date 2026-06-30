@@ -4014,17 +4014,15 @@ body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.col-not
 .wtip-severe { border-color: rgba(255,106,106,0.66);
                box-shadow: 0 4px 22px rgba(255,70,70,0.24), 0 0 50px rgba(0,0,0,0.7); }
 /* Кнопка «+» — добавить предупреждение вручную */
+/* Кнопка АФК — в колонке «Ник», в одном стиле с другими кнопками (🏆 .ach-btn). */
 .afk-set-btn {
-  display: inline-block; margin-left: 6px; cursor: pointer;
-  border: 1px solid rgba(120,180,255,.55); background: rgba(120,180,255,.14);
-  color: #cfe3ff; padding: 1px 7px; font-size: 10.5px; line-height: 1.5;
-  border-radius: 7px; white-space: nowrap; opacity: 1; transition: background .15s;
+  background: none; border: 1px solid #b8881f; color: #ffcf4a;
+  border-radius: 5px; cursor: pointer; font-size: 11px; line-height: 1;
+  padding: 1px 5px; margin-left: 6px; opacity: 0.7; vertical-align: middle;
 }
-.afk-set-btn:hover { background: rgba(120,180,255,.3); color: #fff; }
-/* У кого АФК уже стоит — кнопка тёплая (как метка АФК), чтобы отличать. */
-.afk-set-btn-on { border-color: rgba(255,200,128,.6); background: rgba(255,200,128,.16);
-  color: #ffd9a0; }
-.afk-set-btn-on:hover { background: rgba(255,200,128,.3); color: #fff; }
+.afk-set-btn:hover { opacity: 1; background: #2a2008; box-shadow: 0 0 8px rgba(255,207,74,0.4); }
+/* У кого АФК уже стоит — заливаем, чтобы отличать. */
+.afk-set-btn-on { background: rgba(255,200,128,0.18); opacity: 1; }
 .afk-note-mark { cursor: help; opacity: 0.85; font-size: 11px; }
 .afk-until-mark { cursor: help; font-size: 10.5px; color: #ffd080;
   background: rgba(255,200,128,0.14); border: 1px solid rgba(255,200,128,0.32);

@@ -1226,7 +1226,7 @@
       return `
         <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${afkBtn(m)}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">
@@ -1242,7 +1242,7 @@
           <td class="m-cell-warn">${warnCell}</td>
           <td class="tags-cell">${renderTags(m)}</td>
           <td class="tags-cell">${renderTagsAll(m)}</td>
-          <td class="m-cell-num">${normLabel}${afkBtn(m)}</td>
+          <td class="m-cell-num">${normLabel}</td>
           <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
     }).join("");
@@ -2118,12 +2118,11 @@
   function afkBtn(m) {
     if (!IS_OFFICER) return "";
     const on = !!m.is_afk;
-    const label = on ? "💤 АФК ✎" : "💤 дать АФК";
     const cls = "afk-set-btn" + (on ? " afk-set-btn-on" : "");
-    return ` <button class="${cls}" data-id="${m.id}" ` +
+    return `<button class="${cls}" data-id="${m.id}" ` +
       `data-afk="${on ? 1 : 0}" data-note="${esc(m.afk_note || "")}" ` +
       `data-until="${esc(m.afk_until || "")}" ` +
-      `data-nick="${esc(m.nick)}" title="${on ? "Изменить срок/причину или снять АФК" : "Дать статус АФК — на срок, с причиной"}">${label}</button>`;
+      `data-nick="${esc(m.nick)}" title="${on ? "Статус АФК: изменить срок/причину или снять" : "Дать статус АФК — на срок, с причиной"}">💤</button>`;
   }
   let AFK_POP = null;
   function closeAfkPop() { if (AFK_POP) { AFK_POP.remove(); AFK_POP = null; } }
