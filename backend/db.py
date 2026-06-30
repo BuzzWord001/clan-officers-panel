@@ -1042,16 +1042,19 @@ def valor_expire_afk() -> dict:
         for r in rows:
             canon = r["nick_canon"]
             last = conn.execute(
-                "SELECT vm.id, vm.nick, vm.is_afk FROM valor_members vm "
+                "SELECT vm.id, vm.nick, vm.is_afk, vm.title FROM valor_members vm "
                 "JOIN valor_snapshots vs ON vm.snapshot_id = vs.id "
                 "WHERE vm.nick_canon = ? ORDER BY vs.week DESC, vm.id DESC LIMIT 1",
                 (canon,)).fetchone()
             if last and last["is_afk"]:
                 conn.execute("UPDATE valor_members SET is_afk = 0 WHERE id = ?",
                              (last["id"],))
+                # Если в ТИТУЛЕ всё ещё «АФК» — игрок остаётся АФК по титулу
+                # (игровой сигнал); снимаем только РУЧНОЙ срок. Аудит — правдиво.
+                still = _title_is_afk(last["title"])
                 _write_audit(conn, "afk_expired", None, last["nick"],
                              {"is_afk": True, "afk_until": r["afk_until"]},
-                             {"is_afk": False}, sysactor)
+                             {"is_afk": still, "afk_via_title": still}, sysactor)
             conn.execute("DELETE FROM valor_afk_note WHERE nick_canon = ?", (canon,))
             expired += 1
     return {"expired": expired}
@@ -4995,7 +4998,6 @@ def valor_get_current(with_reg_notes: bool = False,
     реестра приёма (по canon ника). Видно только офицерам/админу; гостю флаг
     не выставляется, поэтому примечания в ответ не попадают.
     """
-    valor_expire_afk()   # авто-снятие АФК с истёкшим сроком (лениво, при чтении)
     with connection() as conn:
         snaps = conn.execute(
             "SELECT * FROM valor_snapshots ORDER BY week DESC LIMIT 2"

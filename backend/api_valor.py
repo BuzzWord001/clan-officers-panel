@@ -94,6 +94,13 @@ def valor_current(s: dict = Depends(require_viewer)) -> dict:
     и данные VK/Telegram (socials) — только офицерам/админу, гость их не
     получает (ни в UI, ни в ответе API)."""
     is_officer = s.get("role") in ("officer", "admin")
+    # Авто-снятие АФК с истёкшим сроком — ТОЛЬКО на привилегированном чтении
+    # (гость не должен инициировать запись в БД). Плюс ежедневно в планировщике.
+    if is_officer:
+        try:
+            db.valor_expire_afk()
+        except Exception as e:
+            log.warning("afk expire failed: %s", e)
     return db.valor_get_current(with_reg_notes=is_officer,
                                 with_socials=is_officer)
 
