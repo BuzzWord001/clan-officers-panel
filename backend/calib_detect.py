@@ -17,72 +17,101 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 
-# Фикс. порядок колонок списка PW → поля сайта. Сторона/В сети не трекаются → "other".
-COL_TEMPLATE = ["nick", "rank", "title", "level", "class", "other", "other", "valor"]
-
-
 def _smooth(a: np.ndarray, k: int) -> np.ndarray:
     return np.convolve(a, np.ones(k) / k, mode="same")
 
 
+# Левые трекаемые поля по порядку (Сторона/В сети = "other" в середине,
+# Доблесть = последняя). Маппинг устойчив к слиянию Сторона+В сети в 1 колонку.
+_LEFT_KEYS = ["nick", "rank", "title", "level", "class"]
+
+
+def _peaks(sig, min_dist, thr):
+    out = []
+    for i in range(1, len(sig) - 1):
+        if sig[i] >= thr and sig[i] >= sig[i - 1] and sig[i] > sig[i + 1]:
+            if not out or i - out[-1] >= min_dist:
+                out.append(i)
+            elif sig[i] > sig[out[-1]]:
+                out[-1] = i
+    return out
+
+
 def detect_grid(im: Image.Image) -> dict | None:
-    """im → калибровка в долях кадра или None, если разметить не удалось."""
+    """im → калибровка в долях кадра или None, если разметить не удалось.
+    Строки выравниваются по ЦЕНТРАМ текста; колонки — в ГЭПАХ между ними."""
     im = im.convert("RGB")
     W, H = im.size
     if W < 60 or H < 60:
         return None
     g = np.asarray(im.convert("L"), dtype=np.float32)
+    sb = max(int(W * 0.9), W - 35)          # отсечь скроллбар справа
 
-    # ── Строки: пики вертикального градиента (горизонт. линии-разделители) ──
-    vg = _smooth(np.abs(np.diff(g, axis=0)).mean(axis=1), 3)
-    thr = vg.mean() + vg.std() * 0.7
-    peaks: list[int] = []
-    for y in range(1, len(vg) - 1):
-        if vg[y] >= thr and vg[y] >= vg[y - 1] and vg[y] > vg[y + 1]:
-            if not peaks or y - peaks[-1] >= 10:
-                peaks.append(y)
-            elif vg[y] > vg[peaks[-1]]:
-                peaks[-1] = y
-    if len(peaks) < 3:
+    # ── Высота строки rh: из линий-разделителей (пики вертикального градиента),
+    #    медиана БЕЗ аномально больших промежутков (шапка выше обычной строки). ──
+    vg = _smooth(np.abs(np.diff(g[:, :sb], axis=0)).mean(axis=1), 3)
+    pk = _peaks(vg, 10, vg.mean() + vg.std() * 0.7)
+    if len(pk) < 3:
         return None
-    rh = int(np.median(np.diff(peaks)))
+    sp = np.diff(pk)
+    med = np.median(sp)
+    rh = int(np.median(sp[sp < med * 1.6])) if np.any(sp < med * 1.6) else int(med)
     if rh < 6:
         return None
-    y0, y1 = peaks[0], peaks[-1]
-    if y0 < rh * 0.5 and len(peaks) >= 2:   # первая линия = верх рамки → шапка ниже
-        y0 = peaks[1]
+
+    # ── Строки по ЦЕНТРАМ ТЕКСТА: «текстовость» = дисперсия яркости по строке.
+    #    Шапку (верхняя ~строка) отбрасываем → первый центр данных. ──
+    rowact = _smooth(g[:, :sb].std(axis=1), 3)
+    centers = _peaks(rowact, int(rh * 0.6), rowact.mean() * 0.8)
+    centers = [c for c in centers if c > rh * 0.9]      # выкинуть шапку
+    if len(centers) < 2:
+        return None
+    y0 = max(0, int(round(centers[0] - rh / 2)))
+    nrows = max(1, min(len(centers), int((H - y0) / rh)))
+    y1 = min(H - 1, y0 + nrows * rh)
     if y1 - y0 < rh:
         return None
 
-    # ── Колонки: дисперсия яркости по столбцу на области данных; гэпы = впадины ──
-    sb = max(int(W * 0.9), W - 35)          # отсечь скроллбар справа
-    region = g[y0:y1, :sb]
-    cstd = _smooth(region.std(axis=0), 5)
-    cthr = cstd.mean() * 0.55
-    ink = cstd > cthr
-    raw = [x for x in range(1, sb) if ink[x] and not ink[x - 1]]
-    cols_x: list[int] = []
-    for x in raw:
-        if not cols_x or x - cols_x[-1] >= rh * 0.7:   # слить близкие границы
-            cols_x.append(x)
-    if not cols_x:
-        return None
-
-    # ── Поля по шаблону (точное совпадение числа колонок) или эвристика ──
-    n = len(cols_x)
-    keys: list[str] = []
-    for i in range(n):
-        if n == len(COL_TEMPLATE):
-            keys.append(COL_TEMPLATE[i])
+    # ── Колонки: текстовые блоки по дисперсии; границы — в ЦЕНТРАХ гэпов ──
+    cstd = _smooth(g[y0:y1, :sb].std(axis=0), 5)
+    ink = cstd > cstd.mean() * 0.55
+    blocks = []
+    s = None
+    for x in range(sb):
+        if ink[x] and s is None:
+            s = x
+        elif not ink[x] and s is not None:
+            blocks.append([s, x - 1]); s = None
+    if s is not None:
+        blocks.append([s, sb - 1])
+    merged = []
+    for b in blocks:
+        if merged and b[0] - merged[-1][1] < rh * 0.7:   # слить внутриколоночные гэпы
+            merged[-1][1] = b[1]
         else:
-            keys.append("nick" if i == 0 else ("valor" if i == n - 1 else "other"))
-    cols = [{"x": round(cx / W, 4), "key": k} for cx, k in zip(cols_x, keys)]
+            merged.append(b)
+    if not merged:
+        return None
+    bounds = [max(0, merged[0][0] - 3)]                  # левый край 1-й колонки
+    for i in range(1, len(merged)):
+        bounds.append((merged[i - 1][1] + merged[i][0]) // 2)   # центр гэпа
 
-    nrows = max(1, round((y1 - y0) / rh))
+    # ── Поля: первые 5 = nick/rank/title/level/class, последняя = valor, прочие = other ──
+    n = len(bounds)
+    keys = []
+    for i in range(n):
+        if i == n - 1:
+            keys.append("valor")
+        elif i < len(_LEFT_KEYS):
+            keys.append(_LEFT_KEYS[i])
+        else:
+            keys.append("other")
+    cols = [{"x": round(bx / W, 4), "key": k} for bx, k in zip(bounds, keys)]
+
     return {
-        "x": round(cols_x[0] / W, 4),
+        "x": round(bounds[0] / W, 4),
         "y": round(y0 / H, 4),
-        "w": round((sb - cols_x[0]) / W, 4),
+        "w": round((sb - bounds[0]) / W, 4),
         "h": round(nrows * rh / H, 4),
         "rh": round(rh / H, 4),
         "cols": cols,
