@@ -68,6 +68,36 @@
   }
   $("f-nick").addEventListener("input", checkNickDup);
 
+  // ── Проверка ника в архиве «Покинули клан» / кикнутых (с причиной) ──
+  let _kickT = null, _kickSeq = 0;
+  function checkNickKicked() {
+    const note = $("nick-kicked-note");
+    if (!note) return;
+    const nick = $("f-nick").value.trim();
+    clearTimeout(_kickT);
+    if (!nick) { note.hidden = true; note.innerHTML = ""; return; }
+    const seq = ++_kickSeq;
+    _kickT = setTimeout(async () => {
+      let res;
+      try { res = await API.valorDepartedCheck(nick); } catch (_) { return; }
+      if (seq !== _kickSeq) return;            // пришёл ответ на устаревший ввод
+      const ms = (res && res.matches) || [];
+      if (!ms.length) { note.hidden = true; note.innerHTML = ""; return; }
+      note.innerHTML = ms.map((m) => {
+        const who = esc(m.nick || nick);
+        const week = m.last_week ? ` <span class="kn-week">(посл. неделя ${esc(m.last_week)})</span>` : "";
+        if (m.kicked) {
+          const reason = m.reason ? `Причина: <b>${esc(m.reason)}</b>` : "Причина не указана";
+          const by = m.by ? ` · кикнул: ${esc(m.by)}` : "";
+          return `⚠ <b>${who}</b> — в архиве <b>кикнутых</b>. ${reason}${by}.${week}`;
+        }
+        return `⚠ <b>${who}</b> — ранее <b>покинул клан</b> (в архиве «Покинули клан»).${week}`;
+      }).join("<br>");
+      note.hidden = false;
+    }, 400);
+  }
+  $("f-nick").addEventListener("input", checkNickKicked);
+
   // ── Поиск по реестру ──
   if ($("reg-search")) $("reg-search").addEventListener("input", applyFilter);
 
@@ -96,6 +126,7 @@
       $("f-date").value = DateRu.today();
       if ($("f-veteran")) $("f-veteran").checked = false;
       if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
+      if ($("nick-kicked-note")) { $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = ""; }
       setStatus(`✓ Добавлен: ${nick}${veteran ? " (★ Ветеран)" : ""}`);
       await reload();
     } catch (e) {

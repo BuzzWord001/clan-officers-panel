@@ -14,6 +14,10 @@
     .dup-note { margin-top:5px; font-size:12px; line-height:1.35; color:#ffcc66;
                 background:rgba(255,170,40,.08); border-left:2px solid #ffaa28;
                 padding:4px 8px; border-radius:3px; }
+    .kicked-note { margin-top:5px; font-size:12px; line-height:1.4; color:#ff9a9a;
+                background:rgba(255,70,70,.10); border-left:3px solid #ff5a5a;
+                padding:5px 9px; border-radius:3px; }
+    .kicked-note .kn-week { color:#caa; font-weight:normal; }
     .reg-search-wrap { margin:4px 0 12px; display:flex; gap:10px; align-items:center; }
     .reg-search { flex:1; min-width:0; padding:7px 10px; font-family:inherit; font-size:13px;
                   background:var(--panel,#111); color:var(--text,#cfcfcf);
@@ -101,6 +105,7 @@
             <label for="f-nick">Ник в игре<span class="req">*</span></label>
             <input type="text" id="f-nick" name="nick" placeholder="например, Мелодька" required maxlength="64">
             <div id="nick-dup-note" class="dup-note" hidden></div>
+            <div id="nick-kicked-note" class="kicked-note" hidden></div>
           </div>
           <div class="ff optional">
             <label for="f-title">Титул</label>
@@ -185,10 +190,10 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1795930000"></script>
+  <script src="js/api.js?v=1797640000"></script>
   <script src="js/dateutil.js?v=1795930000"></script>
   <script src="js/help-tips.js?v=1795930000"></script>
-  <script src="js/app.js?v=1795930000"></script>
+  <script src="js/app.js?v=1797640000"></script>
   <script src="js/tooltips.js?v=1786000400"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
   <script src="js/chamber-door.js?v=1791800000"></script>

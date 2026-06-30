@@ -4989,6 +4989,43 @@ def valor_get_departed() -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
+def valor_departed_match(game_nick: str) -> list[dict]:
+    """Для вводимого в реестр ника(ов) ищет совпадения в архиве «Покинули клан»
+    (valor_departed) и в ручных киках (valor_force_archived — с причиной).
+    Ник канонизируется тем же способом, что и доблесть (гомоглифы + алиасы),
+    поэтому «ОnliF» матчит «OnliF». Возвращает список найденных:
+    {input, nick, nick_canon, kicked, reason, by, last_week, departed_at}."""
+    out: list[dict] = []
+    with connection() as conn:
+        amap = _alias_map(conn)
+        seen: set[str] = set()
+        for canon, disp in _acceptance_nicks(game_nick):
+            rc = _resolve_canon(canon, amap)
+            if rc in seen:
+                continue
+            seen.add(rc)
+            dep = conn.execute(
+                "SELECT nick, last_week, departed_at FROM valor_departed "
+                "WHERE nick_canon = ?", (rc,)).fetchone()
+            fa = conn.execute(
+                "SELECT reason, archived_by, archived_at FROM valor_force_archived "
+                "WHERE nick_canon = ?", (rc,)).fetchone()
+            if not dep and not fa:
+                continue
+            out.append({
+                "input": disp,
+                "nick": dep["nick"] if dep else disp,
+                "nick_canon": rc,
+                "kicked": bool(fa),                       # ручной кик (есть причина)
+                "reason": fa["reason"] if fa else "",
+                "by": fa["archived_by"] if fa else "",
+                "last_week": dep["last_week"] if dep else "",
+                "departed_at": (dep["departed_at"] if dep
+                                else (fa["archived_at"] if fa else "")),
+            })
+    return out
+
+
 def valor_get_current(with_reg_notes: bool = False,
                       with_socials: bool = True) -> dict[str, Any]:
     """Самый свежий снапшот + все его участники + тренд vs предыдущий

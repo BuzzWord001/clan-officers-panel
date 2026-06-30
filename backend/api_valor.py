@@ -229,6 +229,14 @@ def valor_departed(_: dict = Depends(require_viewer)) -> list[dict]:
     return db.valor_get_departed()
 
 
+@router.get("/departed-check")
+def valor_departed_check(nick: str = Query(..., min_length=1),
+                         _: dict = Depends(require_officer)) -> dict:
+    """Проверка вводимого в реестр ника: есть ли он в архиве «Покинули клан»
+    / среди кикнутых (с причиной). Офицеру/админу — предупреждение при приёме."""
+    return {"matches": db.valor_departed_match(nick)}
+
+
 @router.get("/by-canon")
 def valor_by_canon(weeks: int = Query(default=0, ge=0, le=52),
                    _: dict = Depends(require_officer)) -> dict:
