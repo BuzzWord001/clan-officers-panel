@@ -563,16 +563,42 @@
   //     rh — ОДИНАКОВО на всех кадрах (rh от кадра, на котором калибровали).
   //     Старые записи без rh → откат к делению области /n (для совместимости).
   //   Фаза 1 (грубо): нет калибровки → делим ВСЮ высоту кадра по числу строк.
-  function calibFor(frame) {
-    const c = DATA && DATA.calib;
-    if (!c) return null;
-    const f = (c.frames && c.frames[frame]) || null;   // ключи кадров — строки, но f[number] === f["number"]
-    return f || c.default || null;
-  }
   // Фикс. высота строки калибровки (доля кадра). rh хранится в записи; если
   // его нет (старые данные) — делим высоту области на число строк кадра.
   function calibRowH(c, n) {
     return (c && c.rh && c.rh > 0) ? c.rh : (c.h / Math.max(1, n));
+  }
+  // Первый кадр сбора (мин. номер): у него смещения нет; у остальных кадров
+  // строки начинаются НИЖЕ на «перекрытие» (частичная прокрутка между скринами).
+  function firstFrameIdx() {
+    let f = null;
+    (DATA.members || []).forEach(m => {
+      if (m.frame != null && (f === null || m.frame < f)) f = m.frame;
+    });
+    return f;
+  }
+  function frameCount(f) {
+    return (DATA.members || []).filter(m => m.frame === f).length;
+  }
+  // Авто-перекрытие (строк) = видимых строк (1-й кадр) − шаг прокрутки (2-й кадр).
+  // Полная прокрутка → 0; частичная → сколько строк дублируется между кадрами.
+  function autoOverlap() {
+    const ff = firstFrameIdx();
+    if (ff === null) return 0;
+    let second = null;
+    (DATA.members || []).forEach(m => {
+      if (m.frame != null && m.frame > ff && (second === null || m.frame < second)) second = m.frame;
+    });
+    if (second === null) return 0;
+    return Math.max(0, frameCount(ff) - frameCount(second));
+  }
+  function weekOverlap() {
+    const d = DATA.calib && DATA.calib.default;
+    return (d && d.off != null) ? d.off : autoOverlap();
+  }
+  // Номер видимого ряда игрока в его кадре: idx + перекрытие (для НЕ первого кадра).
+  function memberRow(m, idx) {
+    return (m.frame === firstFrameIdx() ? 0 : weekOverlap()) + idx;
   }
   function rowBand(m) {
     if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2 (десктоп)
@@ -580,9 +606,10 @@
     const same = DATA.members.filter(x => x.frame === m.frame);
     const idx = Math.max(0, same.indexOf(m));
     const n = Math.max(1, same.length);
-    const c = calibFor(m.frame);                              // ручная калибровка
+    const c = (DATA.calib && DATA.calib.default) || null;     // единая сетка-регион
     if (c) { const rh = calibRowH(c, n);
-             return { frame: m.frame, x: c.x, w: c.w, y: c.y + idx * rh, h: rh }; }
+             return { frame: m.frame, x: c.x, w: c.w,
+                      y: c.y + memberRow(m, idx) * rh, h: rh }; }
     return { frame: m.frame, x: 0, w: 1, y: idx / n, h: 1 / n };  // Фаза 1
   }
 
@@ -640,53 +667,85 @@
   }
 
   // ── Ручная калибровка раскладки строк (админ) ───────────────────────────
-  // Для старых сборов (и пока десктоп не шлёт координаты) офицер-админ
-  // обводит на каждом кадре ОБЛАСТЬ строк; строки внутри делятся равномерно
-  // по числу игроков этого кадра. Можно «применить ко всем кадрам» (список
-  // обычно в одном и том же месте экрана на всех скринах недели).
+  // Список на всех кадрах недели — в ОДНОМ месте экрана (окно игры не двигается),
+  // поэтому калибруем ОДНУ сетку-регион {x,y,w,h} + число видимых строк (→ высота
+  // строки rh). Между кадрами список прокручен на фикс. ШАГ, обычно меньше экрана,
+  // → строки нового кадра начинаются ниже на «перекрытие» off строк (DiosEos после
+  // Лисси! не вверху 2-го кадра, а на off строк ниже). Сетка живая; рамку тянем
+  // за края; число строк и перекрытие настраиваются.
   function calibFrameMembers(frameIdx) {
     return (DATA.members || []).filter(m => m.frame === frameIdx);
   }
   function clearCalibOverlays() {
-    document.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint").forEach(x => x.remove());
+    document.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow").forEach(x => x.remove());
   }
   function imgMetrics(img) {
     return { ox: img.offsetLeft, oy: img.offsetTop,
              iw: img.clientWidth, ih: img.clientHeight };
   }
-  // Нарисовать сохранённую рамку кадра + линии разбивки строк (превью).
-  // Сетка строится по ФИКС. высоте rh → одинакова на всех кадрах.
-  function drawCalibForShot(shot, idx) {
-    shot.querySelectorAll(".calib-rect:not(.calib-draw), .calib-rowline, .calib-hint").forEach(x => x.remove());
+  // Текущая сетка-регион (общая для всех кадров).
+  function calibRect() { return (DATA.calib && DATA.calib.default) || null; }
+  // Число видимых строк сетки (= строк на экране в игре).
+  function gridRows(c) {
+    if (c && c.rh && c.rh > 0) return Math.max(1, Math.round(c.h / c.rh));
+    return Math.max(1, frameCount(firstFrameIdx()));
+  }
+  // Нарисовать на кадре сетку (+ при full — рамку с ручками и предсказанные
+  // строки игроков с никами, чтобы сверить попадание).
+  function paintGrid(shot, idx, rect, full) {
+    shot.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow").forEach(x => x.remove());
     const img = shot.querySelector("img"); if (!img) return;
-    const members = calibFrameMembers(idx);
-    const cal = DATA.calib || {};
-    const c = (cal.frames && cal.frames[idx]) || cal.default;
-    const hint = document.createElement("div");
-    hint.className = "calib-hint";
-    const rh0 = c ? calibRowH(c, members.length) : 0;
-    const gridRows = c ? Math.max(1, Math.round(c.h / rh0)) : 0;
-    hint.textContent = members.length
-      ? (members.length + " строк" + (c ? " · сетка " + gridRows : ""))
-      : "нет строк";
-    shot.appendChild(hint);
-    if (!c) return;
     const { ox, oy, iw, ih } = imgMetrics(img);
     if (!iw || !ih) { img.addEventListener("load", () => drawCalibForShot(shot, idx), { once: true }); return; }
-    const rect = document.createElement("div");
-    rect.className = "calib-rect";
-    rect.style.left = (ox + c.x * iw) + "px"; rect.style.width = (c.w * iw) + "px";
-    rect.style.top = (oy + c.y * ih) + "px"; rect.style.height = (c.h * ih) + "px";
-    shot.appendChild(rect);
-    // Линии по фикс. высоте rh (а не /n этого кадра) — единая сетка.
-    for (let i = 1; i < gridRows; i++) {
+    const members = calibFrameMembers(idx);
+    const px = (fx, fy) => ({ left: ox + fx * iw, top: oy + fy * ih });
+    const hint = document.createElement("div");
+    hint.className = "calib-hint";
+    const gr = rect ? gridRows(rect) : 0;
+    hint.textContent = (members.length ? members.length + " строк" : "нет строк")
+      + (rect ? " · сетка " + gr + (idx === firstFrameIdx() ? "" : " · сдвиг " + weekOverlap()) : "");
+    shot.appendChild(hint);
+    if (!rect) return;
+    const rh = rect.h / gr;
+    const box = document.createElement("div");
+    box.className = "calib-rect" + (full ? " calib-rect-edit" : "");
+    const p0 = px(rect.x, rect.y);
+    box.style.left = p0.left + "px"; box.style.top = p0.top + "px";
+    box.style.width = (rect.w * iw) + "px"; box.style.height = (rect.h * ih) + "px";
+    shot.appendChild(box);
+    for (let i = 1; i < gr; i++) {
       const ln = document.createElement("div");
       ln.className = "calib-rowline";
-      ln.style.left = (ox + c.x * iw) + "px"; ln.style.width = (c.w * iw) + "px";
-      ln.style.top = (oy + (c.y + i * rh0) * ih) + "px";
+      const p = px(rect.x, rect.y + i * rh);
+      ln.style.left = p.left + "px"; ln.style.width = (rect.w * iw) + "px"; ln.style.top = p.top + "px";
       shot.appendChild(ln);
     }
+    if (!full) return;
+    ["n", "s", "e", "w"].forEach(side => {
+      const h = document.createElement("div");
+      h.className = "calib-h calib-h-" + side;
+      h.addEventListener("pointerdown", (e) => startCalibDrag(e, shot, idx, side));
+      box.appendChild(h);
+    });
+    const grip = document.createElement("div");
+    grip.className = "calib-grip"; grip.title = "перетащить рамку"; grip.textContent = "✥";
+    grip.addEventListener("pointerdown", (e) => startCalibDrag(e, shot, idx, "move"));
+    box.appendChild(grip);
+    // предсказанные строки игроков этого кадра (зелёным, с ником) — для сверки
+    members.forEach((m, i2) => {
+      const row = memberRow(m, i2);
+      const top = rect.y + row * rh;
+      if (top >= 1) return;
+      const mr = document.createElement("div");
+      mr.className = "calib-memrow";
+      const p = px(rect.x, top);
+      mr.style.left = p.left + "px"; mr.style.width = (rect.w * iw) + "px";
+      mr.style.top = p.top + "px"; mr.style.height = (rh * ih) + "px";
+      mr.innerHTML = `<span>${esc(m.nick || "")}</span>`;
+      shot.appendChild(mr);
+    });
   }
+  function drawCalibForShot(shot, idx) { paintGrid(shot, idx, calibRect(), true); }
   function renderCalibShots() {
     clearCalibOverlays();
     document.querySelectorAll(".cmp-shot").forEach(shot => {
@@ -695,72 +754,85 @@
       const img = shot.querySelector("img");
       if (img && !img._calibBound) {
         img._calibBound = true;
-        img.addEventListener("pointerdown", (e) => onCalibDown(e, shot, idx));
+        img.addEventListener("pointerdown", (e) => startCalibDrag(e, shot, idx, "new"));
       }
     });
   }
-  // Перетаскивание рамки по изображению кадра.
-  function onCalibDown(e, shot, idx) {
+  // Рисование/перемещение/ресайз рамки. mode: new|move|n|s|e|w.
+  function startCalibDrag(e, shot, idx, mode) {
     if (!CALIB_MODE) return;
     const img = shot.querySelector("img"); if (!img) return;
-    e.preventDefault();
+    e.preventDefault(); e.stopPropagation();
     const r = img.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const ox = img.offsetLeft, oy = img.offsetTop;
+    const base = mode === "new" ? null : Object.assign({ x: 0, y: 0, w: 0, h: 0 }, calibRect());
     const sx = e.clientX, sy = e.clientY;
-    shot.querySelectorAll(".calib-rect, .calib-rowline").forEach(x => x.remove());
-    const box = document.createElement("div");
-    box.className = "calib-rect calib-draw";
-    shot.appendChild(box);
-    const cl = (v, mx) => (v < 0 ? 0 : (v > mx ? mx : v));
-    function update(ev) {
-      const x0 = cl(Math.min(sx, ev.clientX) - r.left, r.width);
-      const x1 = cl(Math.max(sx, ev.clientX) - r.left, r.width);
-      const y0 = cl(Math.min(sy, ev.clientY) - r.top, r.height);
-      const y1 = cl(Math.max(sy, ev.clientY) - r.top, r.height);
-      box.style.left = (ox + x0) + "px"; box.style.top = (oy + y0) + "px";
-      box.style.width = (x1 - x0) + "px"; box.style.height = (y1 - y0) + "px";
-      box._frac = { x: x0 / r.width, y: y0 / r.height,
-                    w: (x1 - x0) / r.width, h: (y1 - y0) / r.height };
+    const cl = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
+    const MIN = 0.02;
+    function calc(ev) {
+      if (mode === "new") {
+        const x0 = cl((Math.min(sx, ev.clientX) - r.left) / r.width, 0, 1);
+        const x1 = cl((Math.max(sx, ev.clientX) - r.left) / r.width, 0, 1);
+        const y0 = cl((Math.min(sy, ev.clientY) - r.top) / r.height, 0, 1);
+        const y1 = cl((Math.max(sy, ev.clientY) - r.top) / r.height, 0, 1);
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+      const dx = (ev.clientX - sx) / r.width, dy = (ev.clientY - sy) / r.height;
+      let { x, y, w, h } = base;
+      if (mode === "move") { x = cl(base.x + dx, 0, 1 - base.w); y = cl(base.y + dy, 0, 1 - base.h); }
+      else if (mode === "e") { w = cl(base.w + dx, MIN, 1 - base.x); }
+      else if (mode === "s") { h = cl(base.h + dy, MIN, 1 - base.y); }
+      else if (mode === "w") { const nx = cl(base.x + dx, 0, base.x + base.w - MIN); w = base.x + base.w - nx; x = nx; }
+      else if (mode === "n") { const ny = cl(base.y + dy, 0, base.y + base.h - MIN); h = base.y + base.h - ny; y = ny; }
+      return { x, y, w, h };
     }
+    function move(ev) { paintGrid(shot, idx, calc(ev), false); }
     function up(ev) {
-      document.removeEventListener("pointermove", update);
+      document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
-      update(ev);
-      const f = box._frac;
-      if (!f || f.w < 0.02 || f.h < 0.02) { drawCalibForShot(shot, idx); return; }
-      saveCalib(idx, f);
+      const nr = calc(ev);
+      if (nr.w < MIN || nr.h < MIN) { renderCalibShots(); return; }
+      saveCalib(nr);
     }
-    document.addEventListener("pointermove", update);
+    document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", up);
-    update(e);
+    move(e);
   }
-  async function saveCalib(frameIdx, rect) {
-    // Фикс. высота строки = высота обведённой области / число игроков кадра.
-    // Эту же rh применяем ко всем кадрам → сетка везде одинаковая.
-    const n = Math.max(1, calibFrameMembers(frameIdx).length);
-    rect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, rh: rect.h / n };
-    _calibLastRect = rect;
+  // Сохранить сетку-регион (общую для всех кадров). rh = высота / число строк.
+  async function saveCalib(rect) {
     if (!DATA.calib) DATA.calib = { default: null, frames: {} };
-    if (!DATA.calib.frames) DATA.calib.frames = {};
-    DATA.calib.frames[frameIdx] = rect;            // оптимистично
-    const shot = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${frameIdx}"]`);
-    if (shot) drawCalibForShot(shot, frameIdx);
+    const prev = DATA.calib.default;
+    const gr = prev ? gridRows(prev) : Math.max(1, frameCount(firstFrameIdx()));
+    const off = (prev && prev.off != null) ? prev.off : autoOverlap();
+    const payload = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, rh: rect.h / gr, off };
+    DATA.calib.default = payload;
+    _calibLastRect = payload;
+    renderCalibShots(); updateOffLabel();
     try {
-      await API.valorCalibSet(openWeek, frameIdx, rect);
-      toast("Калибровка кадра #" + (frameIdx + 1) + " сохранена");
+      await API.valorCalibSet(openWeek, -1, payload);
+      toast("Калибровка сохранена (все кадры)");
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
-  async function applyCalibToAll() {
-    const r = _calibLastRect || (DATA.calib && DATA.calib.default);
-    if (!r) { toast("Сначала обведи область строк на одном кадре"); return; }
-    try {
-      await API.valorCalibClear(openWeek);          // убрать переопределения кадров
-      await API.valorCalibSet(openWeek, -1, r);     // дефолт на все кадры (с фикс. rh)
-      DATA.calib = { default: { x: r.x, y: r.y, w: r.w, h: r.h, rh: r.rh }, frames: {} };
-      toast("Применено ко всем кадрам");
-      renderCalibShots();
-    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  // Изменить число видимых строк сетки (rh = h / N).
+  async function setGridN(delta) {
+    const c = calibRect();
+    if (!c) { toast("Сначала обведи область строк"); return; }
+    const n = Math.max(1, gridRows(c) + delta);
+    c.rh = c.h / n;
+    renderCalibShots(); updateOffLabel();
+    try { await API.valorCalibSet(openWeek, -1, c); } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  // Изменить перекрытие кадров (строк частичной прокрутки).
+  async function setOff(delta) {
+    const c = calibRect();
+    if (!c) { toast("Сначала обведи область строк"); return; }
+    c.off = Math.max(0, weekOverlap() + delta);
+    renderCalibShots(); updateOffLabel();
+    try { await API.valorCalibSet(openWeek, -1, c); } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  function updateOffLabel() {
+    const v = $("calib-off-val"); if (v) v.textContent = weekOverlap();
+    const g = $("calib-n-val"); if (g) g.textContent = calibRect() ? gridRows(calibRect()) : "—";
   }
   async function clearCalibWeek() {
     if (!confirm("Сбросить всю калибровку строк недели " + openWeek + "?")) return;
@@ -768,7 +840,7 @@
       await API.valorCalibClear(openWeek);
       DATA.calib = { default: null, frames: {} };
       toast("Калибровка недели сброшена");
-      renderCalibShots();
+      renderCalibShots(); updateOffLabel();
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
   function calibBanner() {
@@ -776,17 +848,26 @@
     const b = document.createElement("div");
     b.id = "calib-banner"; b.className = "calib-banner";
     b.innerHTML =
-      `<b>📐 Калибровка строк.</b> На кадре слева <b>обведи мышью область со строками</b> ` +
-      `(от верха первой строки до низа последней). Строки внутри разложатся равномерно ` +
-      `по числу игроков кадра (число показано на кадре). Сохраняется сразу. ` +
-      `<button id="calib-all" class="btn-mini" title="Применить последнюю рамку ко всем кадрам недели">↧ ко всем кадрам</button>` +
-      `<button id="calib-clear" class="btn-mini" title="Сбросить всю калибровку недели">× сбросить неделю</button>` +
+      `<b>📐 Калибровка строк.</b> Обведи мышью область строк на кадре — появится живая ` +
+      `сетка; рамку двигай за грип ✥ и тяни за края. <b style="color:#7CFC9A">Зелёным</b> — где ` +
+      `система ждёт каждого игрока (с ником), сверь со скрином. ` +
+      `<span class="calib-ctl" title="Сколько строк помещается на экране">строк: ` +
+      `<button id="calib-n-dec" class="btn-mini">−</button><b id="calib-n-val">—</b>` +
+      `<button id="calib-n-inc" class="btn-mini">+</button></span>` +
+      `<span class="calib-ctl" title="На сколько строк прокручен каждый следующий кадр (частичная прокрутка). Подгони так, чтобы зелёные строки на 2-м+ кадре совпали со скрином.">` +
+      `перекрытие: <button id="calib-off-dec" class="btn-mini">−</button>` +
+      `<b id="calib-off-val">0</b><button id="calib-off-inc" class="btn-mini">+</button> строк</span>` +
+      `<button id="calib-clear" class="btn-mini" title="Сбросить всю калибровку недели">× сбросить</button>` +
       `<button id="calib-done" class="btn-mini">Готово</button>`;
     const split = $("cmp").querySelector(".cmp-split");
     $("cmp").insertBefore(b, split);
     $("calib-done").addEventListener("click", () => toggleCalib(false));
-    $("calib-all").addEventListener("click", applyCalibToAll);
     $("calib-clear").addEventListener("click", clearCalibWeek);
+    $("calib-n-dec").addEventListener("click", () => setGridN(-1));
+    $("calib-n-inc").addEventListener("click", () => setGridN(1));
+    $("calib-off-dec").addEventListener("click", () => setOff(-1));
+    $("calib-off-inc").addEventListener("click", () => setOff(1));
+    updateOffLabel();
   }
   function toggleCalib(on) {
     CALIB_MODE = (on === undefined) ? !CALIB_MODE : !!on;

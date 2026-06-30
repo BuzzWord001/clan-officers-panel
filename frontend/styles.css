@@ -3208,13 +3208,37 @@ body.show-valor .valor-col { display: table-cell; }
 .calib-banner { margin: 0 0 10px; padding: 8px 11px; border: 1px solid #5ad1ff;
   border-radius: 8px; background: rgba(90,209,255,0.12); color: #eaf6ff;
   font-size: 12.5px; line-height: 1.55; }
-.calib-banner .btn-mini { margin-left: 8px; }
+.calib-banner .btn-mini { margin-left: 6px; }
+.calib-ctl { display: inline-flex; align-items: center; gap: 4px; margin-left: 12px;
+  padding: 2px 8px; border: 1px solid rgba(90,209,255,0.4); border-radius: 7px;
+  background: rgba(90,209,255,0.08); white-space: nowrap; }
+.calib-ctl .btn-mini { margin-left: 0; padding: 0 8px; }
+.calib-ctl b { min-width: 16px; text-align: center; display: inline-block; }
 body.calib-on .cmp-shot img { cursor: crosshair; }
 .calib-rect { position: absolute; z-index: 5; pointer-events: none;
-  border: 2px solid #5ad1ff; background: rgba(90,209,255,0.14);
-  box-shadow: 0 0 8px rgba(90,209,255,0.55), inset 0 0 6px rgba(90,209,255,0.25); }
+  border: 2px solid #5ad1ff; background: rgba(90,209,255,0.10);
+  box-shadow: 0 0 8px rgba(90,209,255,0.55), inset 0 0 6px rgba(90,209,255,0.18); }
+/* В режиме редактирования рамка ловит мышь только ручками/грипом (тело — нет,
+   чтобы можно было нарисовать новую рамку поверх). */
+.calib-rect-edit { pointer-events: none; }
+.calib-h { position: absolute; z-index: 8; pointer-events: auto; background: transparent; }
+.calib-h-n, .calib-h-s { left: 0; right: 0; height: 11px; cursor: ns-resize; }
+.calib-h-n { top: -6px; } .calib-h-s { bottom: -6px; }
+.calib-h-e, .calib-h-w { top: 0; bottom: 0; width: 11px; cursor: ew-resize; }
+.calib-h-e { right: -6px; } .calib-h-w { left: -6px; }
+.calib-grip { position: absolute; z-index: 9; pointer-events: auto; cursor: move;
+  left: 50%; top: -11px; transform: translateX(-50%);
+  width: 22px; height: 18px; line-height: 18px; text-align: center; font-size: 12px;
+  color: #04222e; background: #5ad1ff; border-radius: 5px; }
 .calib-rowline { position: absolute; z-index: 6; height: 0; pointer-events: none;
-  border-top: 1px dashed rgba(90,209,255,0.85); }
+  border-top: 1px dashed rgba(90,209,255,0.7); }
+.calib-memrow { position: absolute; z-index: 7; pointer-events: none;
+  border: 1px solid rgba(124,252,154,0.9); background: rgba(124,252,154,0.16);
+  box-shadow: inset 0 0 4px rgba(124,252,154,0.3); overflow: hidden; }
+.calib-memrow span { position: absolute; left: 2px; top: 0; font-size: 9px;
+  line-height: 1.4; color: #052b12; background: rgba(124,252,154,0.92);
+  padding: 0 4px; border-radius: 0 0 4px 0; max-width: 100%; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
 .calib-hint { position: absolute; top: 0; left: 0; z-index: 7; pointer-events: none;
   font-size: 10px; font-weight: 700; color: #04222e; background: #5ad1ff;
   padding: 1px 7px; border-bottom-right-radius: 6px; }

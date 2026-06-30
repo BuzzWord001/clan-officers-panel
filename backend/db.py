@@ -682,7 +682,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 frame       INTEGER NOT NULL,   -- idx скрина; -1 = дефолт недели
                 x  REAL NOT NULL, y  REAL NOT NULL,
                 w  REAL NOT NULL, h  REAL NOT NULL,
-                rh REAL,                        -- фикс. высота строки (доля кадра)
+                rh  REAL,                       -- фикс. высота строки (доля кадра)
+                off REAL,                       -- перекрытие кадров (строк, на default)
                 PRIMARY KEY (snapshot_id, frame)
             )
         """)
@@ -693,6 +694,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # всех кадрах (раньше делили область /n, а n у кадров разное → разнобой).
     try:
         conn.execute("ALTER TABLE valor_frame_calib ADD COLUMN rh REAL")
+    except sqlite3.OperationalError:
+        pass
+    # 2026-06-30: перекрытие кадров off (строк) — частичная прокрутка между
+    # скринами (строки нового кадра начинаются ниже на off). Хранится на default.
+    try:
+        conn.execute("ALTER TABLE valor_frame_calib ADD COLUMN off REAL")
     except sqlite3.OperationalError:
         pass
 
@@ -840,10 +847,10 @@ def valor_compare_data(week: str) -> dict:
         # подсвечивает строку-источник вместо грубой оценки по высоте кадра.
         calib = {"default": None, "frames": {}}
         for cr in conn.execute(
-                "SELECT frame, x, y, w, h, rh FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh, off FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
             rect = {"x": cr["x"], "y": cr["y"], "w": cr["w"], "h": cr["h"],
-                    "rh": cr["rh"]}
+                    "rh": cr["rh"], "off": cr["off"]}
             if cr["frame"] == -1:
                 calib["default"] = rect
             else:
@@ -902,10 +909,10 @@ def valor_calib_get(week: str) -> dict:
         if not snap:
             return out
         for r in conn.execute(
-                "SELECT frame, x, y, w, h, rh FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh, off FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
             rect = {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
-                    "rh": r["rh"]}
+                    "rh": r["rh"], "off": r["off"]}
             if r["frame"] == -1:
                 out["default"] = rect
             else:
@@ -939,13 +946,21 @@ def valor_calib_set(week: str, frame: int, rect: dict | None) -> dict:
         rh = _clamp01(rh) if rh is not None else None
         if rh is not None and rh <= 0:
             rh = None
+        off = rect.get("off")
+        try:
+            off = float(off) if off is not None else None
+        except (TypeError, ValueError):
+            off = None
+        if off is not None and off < 0:
+            off = 0.0
         conn.execute(
-            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h, rh) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h, rh, off) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(snapshot_id, frame) "
-            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?, rh = ?",
-            (sid, frame, x, y, w, h, rh, x, y, w, h, rh))
-        return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h, "rh": rh}}
+            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?, rh = ?, off = ?",
+            (sid, frame, x, y, w, h, rh, off, x, y, w, h, rh, off))
+        return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h,
+                                     "rh": rh, "off": off}}
 
 
 def valor_calib_clear(week: str) -> dict:
