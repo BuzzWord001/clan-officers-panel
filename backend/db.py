@@ -682,9 +682,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 frame       INTEGER NOT NULL,   -- idx скрина; -1 = дефолт недели
                 x  REAL NOT NULL, y  REAL NOT NULL,
                 w  REAL NOT NULL, h  REAL NOT NULL,
+                rh REAL,                        -- фикс. высота строки (доля кадра)
                 PRIMARY KEY (snapshot_id, frame)
             )
         """)
+    except sqlite3.OperationalError:
+        pass
+
+    # 2026-06-30: фикс. высота строки rh — чтобы сетка строк была ОДИНАКОВОЙ на
+    # всех кадрах (раньше делили область /n, а n у кадров разное → разнобой).
+    try:
+        conn.execute("ALTER TABLE valor_frame_calib ADD COLUMN rh REAL")
     except sqlite3.OperationalError:
         pass
 
@@ -832,9 +840,10 @@ def valor_compare_data(week: str) -> dict:
         # подсвечивает строку-источник вместо грубой оценки по высоте кадра.
         calib = {"default": None, "frames": {}}
         for cr in conn.execute(
-                "SELECT frame, x, y, w, h FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
-            rect = {"x": cr["x"], "y": cr["y"], "w": cr["w"], "h": cr["h"]}
+            rect = {"x": cr["x"], "y": cr["y"], "w": cr["w"], "h": cr["h"],
+                    "rh": cr["rh"]}
             if cr["frame"] == -1:
                 calib["default"] = rect
             else:
@@ -893,9 +902,10 @@ def valor_calib_get(week: str) -> dict:
         if not snap:
             return out
         for r in conn.execute(
-                "SELECT frame, x, y, w, h FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
-            rect = {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"]}
+            rect = {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
+                    "rh": r["rh"]}
             if r["frame"] == -1:
                 out["default"] = rect
             else:
@@ -925,13 +935,17 @@ def valor_calib_set(week: str, frame: int, rect: dict | None) -> dict:
         w, h = _clamp01(rect.get("w")), _clamp01(rect.get("h"))
         if w <= 0 or h <= 0:
             return {"ok": False, "reason": "empty_rect"}
+        rh = rect.get("rh")
+        rh = _clamp01(rh) if rh is not None else None
+        if rh is not None and rh <= 0:
+            rh = None
         conn.execute(
-            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h, rh) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(snapshot_id, frame) "
-            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?",
-            (sid, frame, x, y, w, h, x, y, w, h))
-        return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h}}
+            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?, rh = ?",
+            (sid, frame, x, y, w, h, rh, x, y, w, h, rh))
+        return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h, "rh": rh}}
 
 
 def valor_calib_clear(week: str) -> dict:

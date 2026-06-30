@@ -558,14 +558,21 @@
   //
   // Геометрия строки — ЕДИНАЯ модель {frame, x, y, w, h} в долях кадра (0..1).
   //   Фаза 2 (точно): m.bbox из десктоп-калибровки (пока трекер их не шлёт).
-  //   Ручная калибровка: прямоугольник области строк кадра (DATA.calib) —
-  //     строки внутри него делятся равномерно по числу игроков этого кадра.
+  //   Ручная калибровка: прямоугольник области строк кадра + ФИКС. высота
+  //     строки rh (доля кадра). Строки стоят сеткой y = top + idx*rh, высота
+  //     rh — ОДИНАКОВО на всех кадрах (rh от кадра, на котором калибровали).
+  //     Старые записи без rh → откат к делению области /n (для совместимости).
   //   Фаза 1 (грубо): нет калибровки → делим ВСЮ высоту кадра по числу строк.
   function calibFor(frame) {
     const c = DATA && DATA.calib;
     if (!c) return null;
     const f = (c.frames && c.frames[frame]) || null;   // ключи кадров — строки, но f[number] === f["number"]
     return f || c.default || null;
+  }
+  // Фикс. высота строки калибровки (доля кадра). rh хранится в записи; если
+  // его нет (старые данные) — делим высоту области на число строк кадра.
+  function calibRowH(c, n) {
+    return (c && c.rh && c.rh > 0) ? c.rh : (c.h / Math.max(1, n));
   }
   function rowBand(m) {
     if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2 (десктоп)
@@ -574,8 +581,8 @@
     const idx = Math.max(0, same.indexOf(m));
     const n = Math.max(1, same.length);
     const c = calibFor(m.frame);                              // ручная калибровка
-    if (c) return { frame: m.frame, x: c.x, w: c.w,
-                    y: c.y + (idx / n) * c.h, h: c.h / n };
+    if (c) { const rh = calibRowH(c, n);
+             return { frame: m.frame, x: c.x, w: c.w, y: c.y + idx * rh, h: rh }; }
     return { frame: m.frame, x: 0, w: 1, y: idx / n, h: 1 / n };  // Фаза 1
   }
 
@@ -648,16 +655,21 @@
              iw: img.clientWidth, ih: img.clientHeight };
   }
   // Нарисовать сохранённую рамку кадра + линии разбивки строк (превью).
+  // Сетка строится по ФИКС. высоте rh → одинакова на всех кадрах.
   function drawCalibForShot(shot, idx) {
     shot.querySelectorAll(".calib-rect:not(.calib-draw), .calib-rowline, .calib-hint").forEach(x => x.remove());
     const img = shot.querySelector("img"); if (!img) return;
     const members = calibFrameMembers(idx);
-    const hint = document.createElement("div");
-    hint.className = "calib-hint";
-    hint.textContent = members.length ? (members.length + " строк") : "нет строк";
-    shot.appendChild(hint);
     const cal = DATA.calib || {};
     const c = (cal.frames && cal.frames[idx]) || cal.default;
+    const hint = document.createElement("div");
+    hint.className = "calib-hint";
+    const rh0 = c ? calibRowH(c, members.length) : 0;
+    const gridRows = c ? Math.max(1, Math.round(c.h / rh0)) : 0;
+    hint.textContent = members.length
+      ? (members.length + " строк" + (c ? " · сетка " + gridRows : ""))
+      : "нет строк";
+    shot.appendChild(hint);
     if (!c) return;
     const { ox, oy, iw, ih } = imgMetrics(img);
     if (!iw || !ih) { img.addEventListener("load", () => drawCalibForShot(shot, idx), { once: true }); return; }
@@ -666,12 +678,12 @@
     rect.style.left = (ox + c.x * iw) + "px"; rect.style.width = (c.w * iw) + "px";
     rect.style.top = (oy + c.y * ih) + "px"; rect.style.height = (c.h * ih) + "px";
     shot.appendChild(rect);
-    const nn = Math.max(1, members.length);
-    for (let i = 1; i < nn; i++) {
+    // Линии по фикс. высоте rh (а не /n этого кадра) — единая сетка.
+    for (let i = 1; i < gridRows; i++) {
       const ln = document.createElement("div");
       ln.className = "calib-rowline";
       ln.style.left = (ox + c.x * iw) + "px"; ln.style.width = (c.w * iw) + "px";
-      ln.style.top = (oy + (c.y + (i / nn) * c.h) * ih) + "px";
+      ln.style.top = (oy + (c.y + i * rh0) * ih) + "px";
       shot.appendChild(ln);
     }
   }
@@ -724,6 +736,10 @@
     update(e);
   }
   async function saveCalib(frameIdx, rect) {
+    // Фикс. высота строки = высота обведённой области / число игроков кадра.
+    // Эту же rh применяем ко всем кадрам → сетка везде одинаковая.
+    const n = Math.max(1, calibFrameMembers(frameIdx).length);
+    rect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, rh: rect.h / n };
     _calibLastRect = rect;
     if (!DATA.calib) DATA.calib = { default: null, frames: {} };
     if (!DATA.calib.frames) DATA.calib.frames = {};
@@ -740,8 +756,8 @@
     if (!r) { toast("Сначала обведи область строк на одном кадре"); return; }
     try {
       await API.valorCalibClear(openWeek);          // убрать переопределения кадров
-      await API.valorCalibSet(openWeek, -1, r);     // дефолт на все кадры
-      DATA.calib = { default: { x: r.x, y: r.y, w: r.w, h: r.h }, frames: {} };
+      await API.valorCalibSet(openWeek, -1, r);     // дефолт на все кадры (с фикс. rh)
+      DATA.calib = { default: { x: r.x, y: r.y, w: r.w, h: r.h, rh: r.rh }, frames: {} };
       toast("Применено ко всем кадрам");
       renderCalibShots();
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
