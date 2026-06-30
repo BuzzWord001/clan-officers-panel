@@ -2117,10 +2117,13 @@
   // ── Статус АФК: дать/снять + комментарий (офицер/админ) ──
   function afkBtn(m) {
     if (!IS_OFFICER) return "";
-    return ` <button class="afk-set-btn" data-id="${m.id}" ` +
-      `data-afk="${m.is_afk ? 1 : 0}" data-note="${esc(m.afk_note || "")}" ` +
+    const on = !!m.is_afk;
+    const label = on ? "💤 АФК ✎" : "💤 дать АФК";
+    const cls = "afk-set-btn" + (on ? " afk-set-btn-on" : "");
+    return ` <button class="${cls}" data-id="${m.id}" ` +
+      `data-afk="${on ? 1 : 0}" data-note="${esc(m.afk_note || "")}" ` +
       `data-until="${esc(m.afk_until || "")}" ` +
-      `data-nick="${esc(m.nick)}" title="${m.is_afk ? "Снять АФК / изменить срок и комментарий" : "Дать статус АФК (со сроком и комментарием)"}">💤</button>`;
+      `data-nick="${esc(m.nick)}" title="${on ? "Изменить срок/причину или снять АФК" : "Дать статус АФК — на срок, с причиной"}">${label}</button>`;
   }
   let AFK_POP = null;
   function closeAfkPop() { if (AFK_POP) { AFK_POP.remove(); AFK_POP = null; } }
