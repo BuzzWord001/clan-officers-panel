@@ -652,14 +652,19 @@
     const paint = () => {
       const dw = img.clientWidth, dh = img.clientHeight;
       if (!dw) { img.addEventListener("load", paint, { once: true }); return; }
-      l.hidden = false;                       // показать, чтобы корректно измерить размеры
-      const LW = l.clientWidth || 600, LH = l.clientHeight || 110;
-      const Z = Math.max(1.2, Math.min(5, LW / Math.max(1, band.w * dw)));  // вписать ширину строки
+      l.hidden = false;
+      // Лупа = РОВНО откалиброванная строка: вписываем ширину полосы в ширину
+      // лупы, а ВЫСОТУ лупы делаем равной высоте строки (без соседних строк).
+      const LW = Math.min(900, Math.round(window.innerWidth * 0.94));
+      l.style.width = LW + "px";
+      const Z = Math.max(1.5, Math.min(8, LW / Math.max(1, band.w * dw)));
+      const rowPx = Math.max(20, band.h * dh * Z);   // высота строки в зуме
+      const LH = Math.round(rowPx) + 8;               // строка + тонкое поле
+      l.style.height = LH + "px";
       li.src = img.src; li.style.width = (dw * Z) + "px";
       const cx = (band.x + band.w / 2) * dw * Z, cy = (band.y + band.h / 2) * dh * Z;
       li.style.transform = `translate(${LW / 2 - cx}px, ${LH / 2 - cy}px)`;
-      l.querySelector(".cmp-loupe-cap").textContent =
-        `кадр #${band.frame + 1} · ${m.nick || ""}`;
+      l.querySelector(".cmp-loupe-cap").textContent = "#" + (band.frame + 1);
       if (anchorEl) positionLoupe(l, anchorEl);
     };
     paint();
