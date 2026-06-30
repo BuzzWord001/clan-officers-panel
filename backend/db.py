@@ -4998,6 +4998,15 @@ def valor_departed_match(game_nick: str) -> list[dict]:
     out: list[dict] = []
     with connection() as conn:
         amap = _alias_map(conn)
+        # Логин админа → показываем как «Админ» (не светим личный логin Лира).
+        arow = conn.execute(
+            "SELECT admin_username FROM auth_config WHERE id = 1").fetchone()
+        admin_name = (arow["admin_username"] if arow else "") or ""
+
+        def _by_label(name: str) -> str:
+            name = name or ""
+            return "Админ" if name and (name == admin_name or name == "Администратор") else name
+
         seen: set[str] = set()
         for canon, disp in _acceptance_nicks(game_nick):
             rc = _resolve_canon(canon, amap)
@@ -5018,7 +5027,7 @@ def valor_departed_match(game_nick: str) -> list[dict]:
                 "nick_canon": rc,
                 "kicked": bool(fa),                       # ручной кик (есть причина)
                 "reason": fa["reason"] if fa else "",
-                "by": fa["archived_by"] if fa else "",
+                "by": _by_label(fa["archived_by"]) if fa else "",
                 "last_week": dep["last_week"] if dep else "",
                 "departed_at": (dep["departed_at"] if dep
                                 else (fa["archived_at"] if fa else "")),
