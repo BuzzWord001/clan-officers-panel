@@ -490,6 +490,21 @@ def valor_member_verify(member_id: int,
     return res
 
 
+class AutoVerifyIn(BaseModel):
+    week: str = Field(..., min_length=1)
+
+
+@router.post("/auto-verify")
+def valor_auto_verify_ep(payload: AutoVerifyIn,
+                         actor: dict = Depends(require_admin)) -> dict:
+    """ШАГ 1 авто-проверки: снять ложные флаги «ИИ-ник» у строк, чей canon уже
+    есть в истории Доблести/реестре/архиве (распознано верно). Без AI. ТОЛЬКО админ."""
+    res = db.valor_auto_verify(payload.week, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "failed"))
+    return res
+
+
 # ── Веса (проценты) категорий ценности ───────────────────────────────────
 class ValorWeightsIn(BaseModel):
     base:    float = Field(..., ge=0, le=100)

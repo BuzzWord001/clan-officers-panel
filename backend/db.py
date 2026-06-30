@@ -5928,6 +5928,52 @@ def valor_verify_member(member_id: int, actor: dict) -> dict:
     return {"ok": True}
 
 
+def valor_auto_verify(week: str, actor: dict | None = None) -> dict:
+    """ШАГ 1 авто-проверки скринов (БЕЗ AI): снимает ЛОЖНЫЙ флаг «ИИ-ник»
+    (flag_new_nick) у строк, чей canon уже есть в АВТОРИТЕТНЫХ источниках сайта —
+    история Доблести ДРУГИХ недель ∪ реестр приёма ∪ архив ушедших. Значит ник
+    распознан верно (совпал по канону с известным игроком), флаг лишний. Каждое
+    снятие пишется в журнал правок недели → откатываемо. Возвращает
+    {checked, cleared, remaining:[{id,nick}]} (remaining — реально неизвестные)."""
+    actor = actor or {"platform": "system", "id": "auto", "name": "авто-проверка"}
+    week = (week or "").strip()
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        sid = snap["id"]
+        amap = _alias_map(conn)
+        # Авторитетные canon'ы (с разворотом alias).
+        known = {_resolve_canon(r["nick_canon"], amap) for r in conn.execute(
+            "SELECT DISTINCT nick_canon FROM valor_members WHERE snapshot_id != ?", (sid,))}
+        known |= {_resolve_canon(r["nick_canon"], amap) for r in conn.execute(
+            "SELECT nick_canon FROM valor_departed")}
+        for rr in conn.execute(
+                "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0"):
+            for c, _p in _acceptance_nicks(rr["game_nick"]):
+                known.add(_resolve_canon(c, amap))
+        rows = conn.execute(
+            "SELECT * FROM valor_members WHERE snapshot_id = ? AND flag_new_nick = 1",
+            (sid,)).fetchall()
+        cleared, remaining = 0, []
+        for r in rows:
+            if _resolve_canon(r["nick_canon"], amap) in known:
+                before = _member_snap(r)
+                conn.execute(
+                    "UPDATE valor_members SET flag_new_nick = 0 WHERE id = ?", (r["id"],))
+                after = dict(before)
+                after["flag_new_nick"] = 0
+                _log_valor_edit(conn, week=week, action="verify", member_id=r["id"],
+                                nick=r["nick"], canon=r["nick_canon"],
+                                before=before, after=after, actor=actor)
+                cleared += 1
+            else:
+                remaining.append({"id": r["id"], "nick": r["nick"]})
+        return {"ok": True, "checked": len(rows), "cleared": cleared,
+                "remaining": remaining}
+
+
 def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
     """Админ: добавить пропущенную строку (OCR не распознал игрока) в снимок.
 

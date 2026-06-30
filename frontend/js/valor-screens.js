@@ -428,6 +428,21 @@
     toast("Готово — таблица «Доблесть» содержит данные недели " + openWeek);
   }
 
+  // ── ШАГ 1 авто-проверки: снять ложные флаги «ИИ-ник» у известных игроков ──
+  async function autoVerify() {
+    if (!openWeek) { toast("Сначала выбери неделю"); return; }
+    const btn = $("cmp-autoverify");
+    if (btn) { btn.disabled = true; btn.textContent = "🔍 проверяю…"; }
+    try {
+      const r = await API.valorAutoVerify(openWeek);
+      const left = (r.remaining || []).length;
+      toast(`Авто-проверка: снято ложных флагов ${r.cleared} из ${r.checked}` +
+            (left ? ` · осталось проверить ${left}` : " · больше нечего"));
+      await loadWeek(openWeek, activeFolder());
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+    if (btn) { btn.disabled = false; btn.textContent = "🔍 Авто-проверка"; }
+  }
+
   // ── Журнал правок недели (только админ): просмотр + отмена ──
   const ELOG_ACT = { edit: "Правка", add: "Добавление", delete: "Удаление",
                      verify: "Снято сомнение", meta: "Правка снимка" };
@@ -1299,6 +1314,8 @@
       $("cmp-add").addEventListener("click", openAdd);
       $("cmp-done").addEventListener("click", doneRefresh);
       $("cmp-log").addEventListener("click", () => openEditLog(openWeek));
+      const av = $("cmp-autoverify");
+      if (av) av.addEventListener("click", autoVerify);
       const cb = $("cmp-calib");
       if (cb) cb.addEventListener("click", () => toggleCalib());
     }
