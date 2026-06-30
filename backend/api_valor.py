@@ -152,6 +152,38 @@ def valor_compare(week: str = Query(..., min_length=1),
     return db.valor_compare_data(week)
 
 
+class CalibIn(BaseModel):
+    """Ручная калибровка раскладки строк кадра (доли 0..1).
+    frame=-1 — дефолт на все кадры недели; rect=None — удалить калибровку."""
+    week:  str = Field(..., min_length=1)
+    frame: int = -1
+    rect:  dict | None = None
+
+
+@router.post("/calib")
+def valor_calib_post(payload: CalibIn,
+                     _: dict = Depends(require_admin)) -> dict:
+    """Задать/сбросить ручную калибровку строк на кадре (ТОЛЬКО админ). Для
+    старых сборов, где десктоп ещё не присылал координаты строк."""
+    res = db.valor_calib_set(payload.week, payload.frame, payload.rect)
+    if not res.get("ok"):
+        reason = res.get("reason", "failed")
+        code = (status.HTTP_404_NOT_FOUND if reason == "no_snapshot"
+                else status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(code, reason)
+    return res
+
+
+@router.delete("/calib")
+def valor_calib_delete(week: str = Query(..., min_length=1),
+                       _: dict = Depends(require_admin)) -> dict:
+    """Сбросить всю калибровку строк недели (ТОЛЬКО админ)."""
+    res = db.valor_calib_clear(week)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "failed"))
+    return res
+
+
 @router.get("/sessions")
 def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     """Все снапшоты — для «Архив доблести»."""

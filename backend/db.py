@@ -667,6 +667,27 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-06-30: ручная калибровка раскладки строк на скринах сбора доблести.
+    # Для недели (snapshot) можно задать прямоугольник области строк в ДОЛЯХ
+    # кадра (0..1): frame=-1 — дефолт на все кадры недели, frame>=0 —
+    # переопределение конкретного кадра. Строки внутри прямоугольника
+    # раскладываются равномерно по числу участников этого кадра. Нужно для
+    # старых сборов, где десктоп ещё не присылал координаты строк (без неё
+    # подсветка строки оценивается грубо — по всей высоте кадра).
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS valor_frame_calib (
+                snapshot_id INTEGER NOT NULL
+                            REFERENCES valor_snapshots(id) ON DELETE CASCADE,
+                frame       INTEGER NOT NULL,   -- idx скрина; -1 = дефолт недели
+                x  REAL NOT NULL, y  REAL NOT NULL,
+                w  REAL NOT NULL, h  REAL NOT NULL,
+                PRIMARY KEY (snapshot_id, frame)
+            )
+        """)
+    except sqlite3.OperationalError:
+        pass
+
 
 def init_db() -> None:
     db_path = Path(settings.db_path)
@@ -807,8 +828,19 @@ def valor_compare_data(week: str) -> dict:
         shots = [{"idx": r["idx"], "url": r["r2_url"]} for r in conn.execute(
             "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
             (week,))]
-        return {"week": week, "snapshot": dict(snap),
-                "members": members, "screenshots": shots}
+        # Ручная калибровка раскладки строк (если задана) — фронт точно
+        # подсвечивает строку-источник вместо грубой оценки по высоте кадра.
+        calib = {"default": None, "frames": {}}
+        for cr in conn.execute(
+                "SELECT frame, x, y, w, h FROM valor_frame_calib "
+                "WHERE snapshot_id = ?", (snap["id"],)):
+            rect = {"x": cr["x"], "y": cr["y"], "w": cr["w"], "h": cr["h"]}
+            if cr["frame"] == -1:
+                calib["default"] = rect
+            else:
+                calib["frames"][str(cr["frame"])] = rect
+        return {"week": week, "snapshot": dict(snap), "members": members,
+                "screenshots": shots, "calib": calib}
 
 
 def valor_set_frames(week: str, items: list[dict]) -> dict:
@@ -839,6 +871,80 @@ def valor_set_frames(week: str, items: list[dict]) -> dict:
             else:
                 missing += 1
     return {"ok": True, "updated": updated, "missing": missing}
+
+
+def _clamp01(v) -> float:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if v < 0 else (1.0 if v > 1 else v)
+
+
+def valor_calib_get(week: str) -> dict:
+    """Ручная калибровка раскладки строк недели:
+    {"default": {x,y,w,h}|None, "frames": {"<idx>": {x,y,w,h}}}.
+    Координаты — доли кадра 0..1."""
+    week = (week or "").strip()
+    out = {"default": None, "frames": {}}
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return out
+        for r in conn.execute(
+                "SELECT frame, x, y, w, h FROM valor_frame_calib "
+                "WHERE snapshot_id = ?", (snap["id"],)):
+            rect = {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"]}
+            if r["frame"] == -1:
+                out["default"] = rect
+            else:
+                out["frames"][str(r["frame"])] = rect
+    return out
+
+
+def valor_calib_set(week: str, frame: int, rect: dict | None) -> dict:
+    """Задать/обновить (rect={x,y,w,h} в долях 0..1) или удалить (rect=None)
+    калибровку строк кадра. frame=-1 — дефолт на всю неделю."""
+    week = (week or "").strip()
+    try:
+        frame = int(frame)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "bad_frame"}
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        sid = snap["id"]
+        if rect is None:
+            conn.execute("DELETE FROM valor_frame_calib "
+                         "WHERE snapshot_id = ? AND frame = ?", (sid, frame))
+            return {"ok": True, "deleted": True}
+        x, y = _clamp01(rect.get("x")), _clamp01(rect.get("y"))
+        w, h = _clamp01(rect.get("w")), _clamp01(rect.get("h"))
+        if w <= 0 or h <= 0:
+            return {"ok": False, "reason": "empty_rect"}
+        conn.execute(
+            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(snapshot_id, frame) "
+            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?",
+            (sid, frame, x, y, w, h, x, y, w, h))
+        return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h}}
+
+
+def valor_calib_clear(week: str) -> dict:
+    """Удалить всю калибровку недели (дефолт + переопределения кадров)."""
+    week = (week or "").strip()
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        cur = conn.execute("DELETE FROM valor_frame_calib WHERE snapshot_id = ?",
+                           (snap["id"],))
+        return {"ok": True, "deleted": cur.rowcount}
 
 
 def valor_screenshot_weeks() -> list[dict]:

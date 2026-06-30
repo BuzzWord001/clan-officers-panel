@@ -185,6 +185,8 @@
     valorScreenshotWeeks: () => request("GET", "/valor/screenshots/weeks"),
     valorScreenshots: (week) => request("GET", "/valor/screenshots?week=" + encodeURIComponent(week)),
     valorCompare: (week) => request("GET", "/valor/compare?week=" + encodeURIComponent(week)),
+    valorCalibSet: (week, frame, rect) => request("POST", "/valor/calib", { week, frame, rect }),
+    valorCalibClear: (week) => request("DELETE", "/valor/calib?week=" + encodeURIComponent(week)),
     valorMemberEdit: (id, fields) => request("PATCH", "/valor/member/" + id, fields),
     valorMemberAdd:  (fields) => request("POST", "/valor/member", fields),
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),

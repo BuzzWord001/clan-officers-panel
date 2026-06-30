@@ -36,6 +36,7 @@
   }
 
   let DATA = null, openWeek = null;
+  let CALIB_MODE = false, _calibLastRect = null;   // ручная калибровка строк
   // Переход с таблицы Доблести (двойной клик): подсветить нужный ник.
   const FOCUS_CANON = new URLSearchParams(location.search).get("focus") || "";
 
@@ -109,7 +110,8 @@
          <figcaption>кадр #${s.idx + 1}</figcaption>
        </figure>`).join("");
     box.querySelectorAll(".cmp-shot img").forEach(img =>
-      img.addEventListener("click", () => openLightbox(img.dataset.full)));
+      img.addEventListener("click", () => { if (!CALIB_MODE) openLightbox(img.dataset.full); }));
+    if (CALIB_MODE) renderCalibShots();   // вернуть рамки калибровки после перерисовки
   }
 
   // ── Правая колонка: распознанные строки ──
@@ -555,15 +557,26 @@
   // ── Зум строки: рамка на кадре + лупа (увеличенный кроп именно этой строки) ──
   //
   // Геометрия строки — ЕДИНАЯ модель {frame, x, y, w, h} в долях кадра (0..1).
-  //   Фаза 1: оценка по позиции среди строк того же кадра (строки равномерны).
-  //   Фаза 2: m.bbox из калибровки в трекере (пиксельно точно + зум по полю).
+  //   Фаза 2 (точно): m.bbox из десктоп-калибровки (пока трекер их не шлёт).
+  //   Ручная калибровка: прямоугольник области строк кадра (DATA.calib) —
+  //     строки внутри него делятся равномерно по числу игроков этого кадра.
+  //   Фаза 1 (грубо): нет калибровки → делим ВСЮ высоту кадра по числу строк.
+  function calibFor(frame) {
+    const c = DATA && DATA.calib;
+    if (!c) return null;
+    const f = (c.frames && c.frames[frame]) || null;   // ключи кадров — строки, но f[number] === f["number"]
+    return f || c.default || null;
+  }
   function rowBand(m) {
-    if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2
+    if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2 (десктоп)
     if (!m || m.frame == null) return null;
     const same = DATA.members.filter(x => x.frame === m.frame);
     const idx = Math.max(0, same.indexOf(m));
     const n = Math.max(1, same.length);
-    return { frame: m.frame, x: 0, w: 1, y: idx / n, h: 1 / n };
+    const c = calibFor(m.frame);                              // ручная калибровка
+    if (c) return { frame: m.frame, x: c.x, w: c.w,
+                    y: c.y + (idx / n) * c.h, h: c.h / n };
+    return { frame: m.frame, x: 0, w: 1, y: idx / n, h: 1 / n };  // Фаза 1
   }
 
   function _loupe() {
@@ -591,8 +604,17 @@
     document.querySelectorAll(".cmp-rowband").forEach(x => { if (x.parentNode !== shot) x.remove(); });
     let ov = shot.querySelector(".cmp-rowband");
     if (!ov) { ov = document.createElement("div"); ov.className = "cmp-rowband"; shot.appendChild(ov); }
-    ov.style.left = (band.x * 100) + "%"; ov.style.width = (band.w * 100) + "%";
-    ov.style.top = (band.y * 100) + "%";  ov.style.height = (band.h * 100) + "%";
+    // Позиционируем рамку В ПИКСЕЛЯХ относительно изображения (а не figure с
+    // подписью), чтобы она совпадала с лупой и калибровкой.
+    const _iw = img.clientWidth, _ih = img.clientHeight;
+    if (_iw && _ih) {
+      const ox = img.offsetLeft, oy = img.offsetTop;
+      ov.style.left = (ox + band.x * _iw) + "px"; ov.style.width = (band.w * _iw) + "px";
+      ov.style.top = (oy + band.y * _ih) + "px"; ov.style.height = (band.h * _ih) + "px";
+    } else {
+      ov.style.left = (band.x * 100) + "%"; ov.style.width = (band.w * 100) + "%";
+      ov.style.top = (band.y * 100) + "%";  ov.style.height = (band.h * 100) + "%";
+    }
     // Лупа.
     const l = _loupe(), li = l.querySelector("img");
     const paint = () => {
@@ -608,6 +630,161 @@
       l.hidden = false;
     };
     paint();
+  }
+
+  // ── Ручная калибровка раскладки строк (админ) ───────────────────────────
+  // Для старых сборов (и пока десктоп не шлёт координаты) офицер-админ
+  // обводит на каждом кадре ОБЛАСТЬ строк; строки внутри делятся равномерно
+  // по числу игроков этого кадра. Можно «применить ко всем кадрам» (список
+  // обычно в одном и том же месте экрана на всех скринах недели).
+  function calibFrameMembers(frameIdx) {
+    return (DATA.members || []).filter(m => m.frame === frameIdx);
+  }
+  function clearCalibOverlays() {
+    document.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint").forEach(x => x.remove());
+  }
+  function imgMetrics(img) {
+    return { ox: img.offsetLeft, oy: img.offsetTop,
+             iw: img.clientWidth, ih: img.clientHeight };
+  }
+  // Нарисовать сохранённую рамку кадра + линии разбивки строк (превью).
+  function drawCalibForShot(shot, idx) {
+    shot.querySelectorAll(".calib-rect:not(.calib-draw), .calib-rowline, .calib-hint").forEach(x => x.remove());
+    const img = shot.querySelector("img"); if (!img) return;
+    const members = calibFrameMembers(idx);
+    const hint = document.createElement("div");
+    hint.className = "calib-hint";
+    hint.textContent = members.length ? (members.length + " строк") : "нет строк";
+    shot.appendChild(hint);
+    const cal = DATA.calib || {};
+    const c = (cal.frames && cal.frames[idx]) || cal.default;
+    if (!c) return;
+    const { ox, oy, iw, ih } = imgMetrics(img);
+    if (!iw || !ih) { img.addEventListener("load", () => drawCalibForShot(shot, idx), { once: true }); return; }
+    const rect = document.createElement("div");
+    rect.className = "calib-rect";
+    rect.style.left = (ox + c.x * iw) + "px"; rect.style.width = (c.w * iw) + "px";
+    rect.style.top = (oy + c.y * ih) + "px"; rect.style.height = (c.h * ih) + "px";
+    shot.appendChild(rect);
+    const nn = Math.max(1, members.length);
+    for (let i = 1; i < nn; i++) {
+      const ln = document.createElement("div");
+      ln.className = "calib-rowline";
+      ln.style.left = (ox + c.x * iw) + "px"; ln.style.width = (c.w * iw) + "px";
+      ln.style.top = (oy + (c.y + (i / nn) * c.h) * ih) + "px";
+      shot.appendChild(ln);
+    }
+  }
+  function renderCalibShots() {
+    clearCalibOverlays();
+    document.querySelectorAll(".cmp-shot").forEach(shot => {
+      const idx = +shot.dataset.idx;
+      drawCalibForShot(shot, idx);
+      const img = shot.querySelector("img");
+      if (img && !img._calibBound) {
+        img._calibBound = true;
+        img.addEventListener("pointerdown", (e) => onCalibDown(e, shot, idx));
+      }
+    });
+  }
+  // Перетаскивание рамки по изображению кадра.
+  function onCalibDown(e, shot, idx) {
+    if (!CALIB_MODE) return;
+    const img = shot.querySelector("img"); if (!img) return;
+    e.preventDefault();
+    const r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const ox = img.offsetLeft, oy = img.offsetTop;
+    const sx = e.clientX, sy = e.clientY;
+    shot.querySelectorAll(".calib-rect, .calib-rowline").forEach(x => x.remove());
+    const box = document.createElement("div");
+    box.className = "calib-rect calib-draw";
+    shot.appendChild(box);
+    const cl = (v, mx) => (v < 0 ? 0 : (v > mx ? mx : v));
+    function update(ev) {
+      const x0 = cl(Math.min(sx, ev.clientX) - r.left, r.width);
+      const x1 = cl(Math.max(sx, ev.clientX) - r.left, r.width);
+      const y0 = cl(Math.min(sy, ev.clientY) - r.top, r.height);
+      const y1 = cl(Math.max(sy, ev.clientY) - r.top, r.height);
+      box.style.left = (ox + x0) + "px"; box.style.top = (oy + y0) + "px";
+      box.style.width = (x1 - x0) + "px"; box.style.height = (y1 - y0) + "px";
+      box._frac = { x: x0 / r.width, y: y0 / r.height,
+                    w: (x1 - x0) / r.width, h: (y1 - y0) / r.height };
+    }
+    function up(ev) {
+      document.removeEventListener("pointermove", update);
+      document.removeEventListener("pointerup", up);
+      update(ev);
+      const f = box._frac;
+      if (!f || f.w < 0.02 || f.h < 0.02) { drawCalibForShot(shot, idx); return; }
+      saveCalib(idx, f);
+    }
+    document.addEventListener("pointermove", update);
+    document.addEventListener("pointerup", up);
+    update(e);
+  }
+  async function saveCalib(frameIdx, rect) {
+    _calibLastRect = rect;
+    if (!DATA.calib) DATA.calib = { default: null, frames: {} };
+    if (!DATA.calib.frames) DATA.calib.frames = {};
+    DATA.calib.frames[frameIdx] = rect;            // оптимистично
+    const shot = $("cmp-shots").querySelector(`.cmp-shot[data-idx="${frameIdx}"]`);
+    if (shot) drawCalibForShot(shot, frameIdx);
+    try {
+      await API.valorCalibSet(openWeek, frameIdx, rect);
+      toast("Калибровка кадра #" + (frameIdx + 1) + " сохранена");
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  async function applyCalibToAll() {
+    const r = _calibLastRect || (DATA.calib && DATA.calib.default);
+    if (!r) { toast("Сначала обведи область строк на одном кадре"); return; }
+    try {
+      await API.valorCalibClear(openWeek);          // убрать переопределения кадров
+      await API.valorCalibSet(openWeek, -1, r);     // дефолт на все кадры
+      DATA.calib = { default: { x: r.x, y: r.y, w: r.w, h: r.h }, frames: {} };
+      toast("Применено ко всем кадрам");
+      renderCalibShots();
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  async function clearCalibWeek() {
+    if (!confirm("Сбросить всю калибровку строк недели " + openWeek + "?")) return;
+    try {
+      await API.valorCalibClear(openWeek);
+      DATA.calib = { default: null, frames: {} };
+      toast("Калибровка недели сброшена");
+      renderCalibShots();
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  function calibBanner() {
+    if ($("calib-banner")) return;
+    const b = document.createElement("div");
+    b.id = "calib-banner"; b.className = "calib-banner";
+    b.innerHTML =
+      `<b>📐 Калибровка строк.</b> На кадре слева <b>обведи мышью область со строками</b> ` +
+      `(от верха первой строки до низа последней). Строки внутри разложатся равномерно ` +
+      `по числу игроков кадра (число показано на кадре). Сохраняется сразу. ` +
+      `<button id="calib-all" class="btn-mini" title="Применить последнюю рамку ко всем кадрам недели">↧ ко всем кадрам</button>` +
+      `<button id="calib-clear" class="btn-mini" title="Сбросить всю калибровку недели">× сбросить неделю</button>` +
+      `<button id="calib-done" class="btn-mini">Готово</button>`;
+    const split = $("cmp").querySelector(".cmp-split");
+    $("cmp").insertBefore(b, split);
+    $("calib-done").addEventListener("click", () => toggleCalib(false));
+    $("calib-all").addEventListener("click", applyCalibToAll);
+    $("calib-clear").addEventListener("click", clearCalibWeek);
+  }
+  function toggleCalib(on) {
+    CALIB_MODE = (on === undefined) ? !CALIB_MODE : !!on;
+    document.body.classList.toggle("calib-on", CALIB_MODE);
+    const btn = $("cmp-calib");
+    if (btn) btn.classList.toggle("cmp-btn-active", CALIB_MODE);
+    if (CALIB_MODE) {
+      if (!openWeek) { toast("Сначала выбери неделю"); CALIB_MODE = false;
+        document.body.classList.remove("calib-on"); if (btn) btn.classList.remove("cmp-btn-active"); return; }
+      hideZoom(); calibBanner(); renderCalibShots();
+    } else {
+      const b = $("calib-banner"); if (b) b.remove();
+      clearCalibOverlays();
+    }
   }
 
   // Навигация ↑/↓ по видимым строкам (быстрая сверка спорных).
@@ -874,6 +1051,8 @@
       $("cmp-add").addEventListener("click", openAdd);
       $("cmp-done").addEventListener("click", doneRefresh);
       $("cmp-log").addEventListener("click", () => openEditLog(openWeek));
+      const cb = $("cmp-calib");
+      if (cb) cb.addEventListener("click", () => toggleCalib());
     }
     if (IS_OFFICER) {
       const rb = $("cmp-restore-btn");
