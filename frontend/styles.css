@@ -3201,10 +3201,11 @@ body.show-valor .valor-col { display: table-cell; }
 .cmp-loupe[hidden] { display: none; }
 .cmp-loupe img { position: absolute; top: 0; left: 0; max-width: none; }
 .cmp-loupe-cap {
-  /* Крошечная метка номера кадра в правом верхнем углу — не закрывает строку. */
-  position: absolute; right: 0; top: 0;
-  font-size: 9px; line-height: 1.4; color: #ffd24a;
-  background: rgba(0,0,0,0.6); padding: 0 4px; border-bottom-left-radius: 5px;
+  /* Тонкая шапка-полоска сверху с номером кадра — строка зумится ПОД ней,
+     поэтому номер не перекрывает увеличенный контент (доблесть и т.п.). */
+  position: absolute; left: 0; right: 0; top: 0; height: 13px; line-height: 13px;
+  font-size: 9.5px; color: #ffd24a; background: rgba(0,0,0,0.82);
+  text-align: right; padding: 0 6px;
 }
 
 /* ── Ручная калибровка раскладки строк (админ) ── */

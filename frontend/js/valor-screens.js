@@ -665,12 +665,14 @@
       l.style.width = LW + "px";
       const Z = Math.max(1.5, Math.min(8, LW / Math.max(1, band.w * dw)));
       const rowPx = Math.max(20, band.h * dh * Z);   // высота строки в зуме
-      const LH = Math.round(rowPx) + 8;               // строка + тонкое поле
+      const capH = 13;                                // тонкая шапка под номер кадра
+      const LH = Math.round(rowPx) + capH + 4;
       l.style.height = LH + "px";
       li.src = img.src; li.style.width = (dw * Z) + "px";
       const cx = (band.x + band.w / 2) * dw * Z, cy = (band.y + band.h / 2) * dh * Z;
-      li.style.transform = `translate(${LW / 2 - cx}px, ${LH / 2 - cy}px)`;
-      l.querySelector(".cmp-loupe-cap").textContent = "#" + (band.frame + 1);
+      const targetCy = capH + rowPx / 2 + 2;          // строка ПОД шапкой
+      li.style.transform = `translate(${LW / 2 - cx}px, ${targetCy - cy}px)`;
+      l.querySelector(".cmp-loupe-cap").textContent = "кадр #" + (band.frame + 1);
       if (anchorEl) positionLoupe(l, anchorEl);
     };
     paint();
