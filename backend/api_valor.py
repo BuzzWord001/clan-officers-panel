@@ -191,6 +191,38 @@ def valor_calib_delete(week: str = Query(..., min_length=1),
     return res
 
 
+class CalibAutoIn(BaseModel):
+    week: str = Field(..., min_length=1)
+
+
+@router.post("/calib/auto")
+def valor_calib_auto(payload: CalibAutoIn,
+                     _: dict = Depends(require_admin)) -> dict:
+    """Авто-разметка сетки строк/колонок по скрину недели (БЕЗ AI, классическое
+    image-processing). Возвращает предложенную калибровку — админ проверяет/правит.
+    ТОЛЬКО админ."""
+    import urllib.request
+    import calib_detect
+    url = db.valor_first_screenshot_url(payload.week)
+    if not url:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_screenshots")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "calib-detect"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+    except Exception as e:
+        log.warning("auto-calib download failed: %s", e)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "download_failed")
+    try:
+        res = calib_detect.detect_from_bytes(data)
+    except Exception as e:
+        log.warning("auto-calib detect error: %s", e)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "detect_error")
+    if not res:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "detect_failed")
+    return {"calib": res}
+
+
 @router.get("/sessions")
 def valor_sessions(_: dict = Depends(require_officer)) -> list[dict]:
     """Все снапшоты — для «Архив доблести»."""

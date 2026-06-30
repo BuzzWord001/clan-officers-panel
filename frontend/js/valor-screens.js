@@ -700,6 +700,7 @@
     { key: "nick", label: "Ник" }, { key: "level", label: "Ур." },
     { key: "class", label: "Класс" }, { key: "rank", label: "Должн." },
     { key: "title", label: "Титул" }, { key: "valor", label: "Добл." },
+    { key: "other", label: "проч." },
   ];
   function colLabel(key) { const d = CALIB_COL_DEFS.find(c => c.key === key); return d ? d.label : key; }
   function calibCols() { const c = calibRect(); return (c && c.cols) || []; }
@@ -736,6 +737,33 @@
   function clearCols() {
     const c = calibRect(); if (!c) return;
     c.cols = []; saveCols(); toast("Колонки сброшены");
+  }
+  // Авто-разметка сетки строк+колонок по скрину (без AI, на сервере).
+  async function autoCalib() {
+    if (!openWeek) { toast("Сначала выбери неделю"); return; }
+    const btn = $("calib-auto"); if (btn) { btn.disabled = true; btn.textContent = "✨ ищу…"; }
+    let res;
+    try { res = await API.valorCalibAuto(openWeek); }
+    catch (e) {
+      toast(e.status === 422 ? "Не удалось распознать сетку — размечай вручную"
+            : "Ошибка авто-разметки: " + (e.detail || e.message));
+      if (btn) { btn.disabled = false; btn.textContent = "✨ авто"; }
+      return;
+    }
+    const a = res.calib || {};
+    if (!DATA.calib) DATA.calib = { default: null, frames: {} };
+    const prev = DATA.calib.default;
+    const off = (prev && prev.off != null) ? prev.off : autoOverlap();
+    DATA.calib.default = { x: a.x, y: a.y, w: a.w, h: a.h, rh: a.rh, off,
+                           cols: a.cols || [] };
+    _calibLastRect = DATA.calib.default;
+    renderCalibShots(); updateOffLabel();
+    try {
+      await API.valorCalibSet(openWeek, -1, DATA.calib.default);
+      const meta = a._meta || {};
+      toast(`Авто-разметка: ${meta.rows || "?"} строк, ${(a.cols || []).length} колонок — проверь и поправь`);
+    } catch (e) { toast("Ошибка сохранения: " + (e.detail || e.message)); }
+    if (btn) { btn.disabled = false; btn.textContent = "✨ авто"; }
   }
   function startColDrag(e, shot, idx, colIdx) {
     if (!CALIB_MODE) return;
@@ -952,9 +980,9 @@
     const b = document.createElement("div");
     b.id = "calib-banner"; b.className = "calib-banner";
     b.innerHTML =
-      `<b>📐 Калибровка строк.</b> Обведи мышью область строк на кадре — появится живая ` +
-      `сетка; рамку двигай за грип ✥ и тяни за края. <b style="color:#7CFC9A">Зелёным</b> — где ` +
-      `система ждёт каждого игрока (с ником), сверь со скрином. ` +
+      `<b>📐 Калибровка строк.</b> <button id="calib-auto" class="btn-mini" title="Авто-разметка строк и колонок по скрину (без AI). Потом проверь и поправь.">✨ авто</button> ` +
+      `или обведи мышью область строк; рамку двигай за грип ✥ и тяни за края. ` +
+      `<b style="color:#7CFC9A">Зелёным</b> — где система ждёт каждого игрока (с ником), сверь со скрином. ` +
       `<span class="calib-ctl" title="Сколько строк помещается на экране">строк: ` +
       `<button id="calib-n-dec" class="btn-mini">−</button><b id="calib-n-val">—</b>` +
       `<button id="calib-n-inc" class="btn-mini">+</button></span>` +
@@ -976,6 +1004,7 @@
     $("calib-off-inc").addEventListener("click", () => setOff(1));
     $("calib-col-add").addEventListener("click", addCol);
     $("calib-col-clear").addEventListener("click", clearCols);
+    $("calib-auto").addEventListener("click", autoCalib);
     updateOffLabel();
   }
   function toggleCalib(on) {

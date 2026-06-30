@@ -911,7 +911,17 @@ def _clamp01(v) -> float:
     return 0.0 if v < 0 else (1.0 if v > 1 else v)
 
 
-_CALIB_COL_KEYS = {"nick", "level", "class", "rank", "title", "valor", "true_name"}
+_CALIB_COL_KEYS = {"nick", "level", "class", "rank", "title", "valor", "true_name", "other"}
+
+
+def valor_first_screenshot_url(week: str) -> str | None:
+    """URL первого (по idx) скрина недели — для авто-детекции сетки."""
+    week = (week or "").strip()
+    with connection() as conn:
+        r = conn.execute(
+            "SELECT r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx LIMIT 1",
+            (week,)).fetchone()
+        return r["r2_url"] if r else None
 
 
 def _norm_cols(cols) -> list:
