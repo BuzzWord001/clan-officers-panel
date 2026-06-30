@@ -687,7 +687,7 @@
     return (DATA.members || []).filter(m => m.frame === frameIdx);
   }
   function clearCalibOverlays() {
-    document.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow").forEach(x => x.remove());
+    document.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow, .calib-colline, .calib-collabel").forEach(x => x.remove());
   }
   function imgMetrics(img) {
     return { ox: img.offsetLeft, oy: img.offsetTop,
@@ -695,6 +695,68 @@
   }
   // Текущая сетка-регион (общая для всех кадров).
   function calibRect() { return (DATA.calib && DATA.calib.default) || null; }
+  // ── Вертикальная разметка колонок (поля игрока на скрине) ──
+  const CALIB_COL_DEFS = [
+    { key: "nick", label: "Ник" }, { key: "level", label: "Ур." },
+    { key: "class", label: "Класс" }, { key: "rank", label: "Должн." },
+    { key: "title", label: "Титул" }, { key: "valor", label: "Добл." },
+  ];
+  function colLabel(key) { const d = CALIB_COL_DEFS.find(c => c.key === key); return d ? d.label : key; }
+  function calibCols() { const c = calibRect(); return (c && c.cols) || []; }
+  async function saveCols() {
+    const c = calibRect(); if (!c) return;
+    c.cols = (c.cols || []).slice().sort((a, b) => a.x - b.x);
+    renderCalibShots();
+    try { await API.valorCalibSet(openWeek, -1, c); }
+    catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+  function addCol() {
+    const c = calibRect();
+    if (!c) { toast("Сначала обведи область строк"); return; }
+    if (!c.cols) c.cols = [];
+    const used = new Set(c.cols.map(k => k.key));
+    const nextKey = (CALIB_COL_DEFS.find(d => !used.has(d.key)) || CALIB_COL_DEFS[0]).key;
+    const lastX = c.cols.length ? Math.max(...c.cols.map(k => k.x)) : c.x;
+    const nx = Math.min(c.x + c.w - 0.02, c.cols.length ? lastX + 0.08 : c.x + 0.02);
+    c.cols.push({ x: nx, key: nextKey });
+    saveCols();
+  }
+  function cycleCol(i) {
+    const c = calibRect(); if (!c || !c.cols[i]) return;
+    const cur = c.cols[i].key;
+    const idx = CALIB_COL_DEFS.findIndex(d => d.key === cur);
+    c.cols[i].key = CALIB_COL_DEFS[(idx + 1) % CALIB_COL_DEFS.length].key;
+    saveCols();
+  }
+  function removeCol(i) {
+    const c = calibRect(); if (!c || !c.cols) return;
+    c.cols.splice(i, 1);
+    saveCols();
+  }
+  function clearCols() {
+    const c = calibRect(); if (!c) return;
+    c.cols = []; saveCols(); toast("Колонки сброшены");
+  }
+  function startColDrag(e, shot, idx, colIdx) {
+    if (!CALIB_MODE) return;
+    e.preventDefault(); e.stopPropagation();
+    const img = shot.querySelector("img"); if (!img) return;
+    const r = img.getBoundingClientRect(); if (!r.width) return;
+    const c = calibRect(); if (!c || !c.cols[colIdx]) return;
+    const cl = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
+    function move(ev) {
+      c.cols[colIdx].x = cl((ev.clientX - r.left) / r.width, c.x, c.x + c.w);
+      renderCalibShots();
+    }
+    function up() {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      c.cols.sort((a, b) => a.x - b.x);
+      saveCols();
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  }
   // Число видимых строк сетки (= строк на экране в игре). Защита от вырождения:
   //  • нет номеров кадров вообще (frame=null у всех) → авто-rh посчитан от ВСЕХ
   //    игроков (мусор, сотни «строк» → сетка как вертикальная штриховка) →
@@ -712,7 +774,7 @@
   // Нарисовать на кадре сетку (+ при full — рамку с ручками и предсказанные
   // строки игроков с никами, чтобы сверить попадание).
   function paintGrid(shot, idx, rect, full) {
-    shot.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow").forEach(x => x.remove());
+    shot.querySelectorAll(".calib-rect, .calib-rowline, .calib-hint, .calib-memrow, .calib-colline, .calib-collabel").forEach(x => x.remove());
     const img = shot.querySelector("img"); if (!img) return;
     const { ox, oy, iw, ih } = imgMetrics(img);
     if (!iw || !ih) { img.addEventListener("load", () => drawCalibForShot(shot, idx), { once: true }); return; }
@@ -762,6 +824,28 @@
       mr.style.top = p.top + "px"; mr.style.height = (rh * ih) + "px";
       mr.innerHTML = `<span>${esc(m.nick || "")}</span>`;
       shot.appendChild(mr);
+    });
+    // ── Вертикальная разметка колонок: линии + метки полей (перетаскиваемые) ──
+    const cols = rect.cols || [];
+    cols.forEach((col, ci) => {
+      const p = px(col.x, rect.y);
+      const line = document.createElement("div");
+      line.className = "calib-colline";
+      line.style.left = p.left + "px"; line.style.top = p.top + "px";
+      line.style.height = (rect.h * ih) + "px";
+      line.addEventListener("pointerdown", (e) => startColDrag(e, shot, idx, ci));
+      shot.appendChild(line);
+      const lab = document.createElement("div");
+      lab.className = "calib-collabel";
+      lab.style.left = p.left + "px"; lab.style.top = (oy + rect.y * ih - 17) + "px";
+      lab.innerHTML = `<span class="cl-key" title="клик — сменить поле">${esc(colLabel(col.key))}</span>` +
+                      `<span class="cl-x" title="убрать колонку">×</span>`;
+      lab.addEventListener("pointerdown", (e) => e.stopPropagation());  // не начинать drag рамки
+      lab.querySelector(".cl-key").addEventListener("click",
+        (e) => { e.stopPropagation(); cycleCol(ci); });
+      lab.querySelector(".cl-x").addEventListener("click",
+        (e) => { e.stopPropagation(); removeCol(ci); });
+      shot.appendChild(lab);
     });
   }
   function drawCalibForShot(shot, idx) { paintGrid(shot, idx, calibRect(), true); }
@@ -823,7 +907,8 @@
     const prev = DATA.calib.default;
     const gr = prev ? gridRows(prev) : Math.max(1, frameCount(firstFrameIdx()));
     const off = (prev && prev.off != null) ? prev.off : autoOverlap();
-    const payload = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, rh: rect.h / gr, off };
+    const payload = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, rh: rect.h / gr, off,
+                      cols: (prev && prev.cols) || [] };   // сохранить разметку колонок
     DATA.calib.default = payload;
     _calibLastRect = payload;
     renderCalibShots(); updateOffLabel();
@@ -876,6 +961,9 @@
       `<span class="calib-ctl" title="На сколько строк прокручен каждый следующий кадр (частичная прокрутка). Подгони так, чтобы зелёные строки на 2-м+ кадре совпали со скрином.">` +
       `перекрытие: <button id="calib-off-dec" class="btn-mini">−</button>` +
       `<b id="calib-off-val">0</b><button id="calib-off-inc" class="btn-mini">+</button> строк</span>` +
+      `<span class="calib-ctl" title="Вертикальная разметка колонок: добавь границу колонки, перетащи на место; клик по метке — сменить поле (Ник/Добл./Ур./Класс/Должн./Титул), × — убрать.">` +
+      `колонки: <button id="calib-col-add" class="btn-mini">+ колонка</button>` +
+      `<button id="calib-col-clear" class="btn-mini">× колонки</button></span>` +
       `<button id="calib-clear" class="btn-mini" title="Сбросить всю калибровку недели">× сбросить</button>` +
       `<button id="calib-done" class="btn-mini">Готово</button>`;
     const split = $("cmp").querySelector(".cmp-split");
@@ -886,6 +974,8 @@
     $("calib-n-inc").addEventListener("click", () => setGridN(1));
     $("calib-off-dec").addEventListener("click", () => setOff(-1));
     $("calib-off-inc").addEventListener("click", () => setOff(1));
+    $("calib-col-add").addEventListener("click", addCol);
+    $("calib-col-clear").addEventListener("click", clearCols);
     updateOffLabel();
   }
   function toggleCalib(on) {

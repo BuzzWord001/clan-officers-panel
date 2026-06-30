@@ -3233,6 +3233,17 @@ body.calib-on .cmp-shot img { cursor: crosshair; }
   color: #04222e; background: #5ad1ff; border-radius: 5px; }
 .calib-rowline { position: absolute; z-index: 6; height: 0; pointer-events: none;
   border-top: 1px dashed rgba(90,209,255,0.7); }
+/* Вертикальная разметка колонок */
+.calib-colline { position: absolute; z-index: 7; width: 0; cursor: ew-resize;
+  border-left: 2px solid rgba(200,120,255,0.9); pointer-events: auto; }
+.calib-colline::before { content: ""; position: absolute; left: -5px; top: 0; bottom: 0; width: 11px; }
+.calib-collabel { position: absolute; z-index: 8; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+  font-size: 10px; font-weight: 700; color: #1a0a2a; background: #c878ff;
+  padding: 1px 4px; border-radius: 5px; pointer-events: auto; }
+.calib-collabel .cl-key { cursor: pointer; }
+.calib-collabel .cl-x { cursor: pointer; color: #4a1060; font-weight: 900; padding: 0 1px; }
+.calib-collabel .cl-x:hover { color: #c00; }
 .calib-memrow { position: absolute; z-index: 7; pointer-events: none;
   border: 1px solid rgba(124,252,154,0.9); background: rgba(124,252,154,0.16);
   box-shadow: inset 0 0 4px rgba(124,252,154,0.3); overflow: hidden; }

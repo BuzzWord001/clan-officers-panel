@@ -690,6 +690,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 w  REAL NOT NULL, h  REAL NOT NULL,
                 rh  REAL,                       -- фикс. высота строки (доля кадра)
                 off REAL,                       -- перекрытие кадров (строк, на default)
+                cols TEXT,                      -- колонки: JSON [{x,key}] (вертик. разметка)
                 PRIMARY KEY (snapshot_id, frame)
             )
         """)
@@ -706,6 +707,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # скринами (строки нового кадра начинаются ниже на off). Хранится на default.
     try:
         conn.execute("ALTER TABLE valor_frame_calib ADD COLUMN off REAL")
+    except sqlite3.OperationalError:
+        pass
+    # 2026-06-30: вертикальная разметка колонок cols — JSON [{x,key}] (левый край
+    # колонки в долях кадра + поле: nick/level/class/rank/title/valor). Чтобы
+    # программа знала где какая КОЛОНКА (вместе со строками = полная сетка ячеек).
+    try:
+        conn.execute("ALTER TABLE valor_frame_calib ADD COLUMN cols TEXT")
     except sqlite3.OperationalError:
         pass
 
@@ -853,10 +861,10 @@ def valor_compare_data(week: str) -> dict:
         # подсвечивает строку-источник вместо грубой оценки по высоте кадра.
         calib = {"default": None, "frames": {}}
         for cr in conn.execute(
-                "SELECT frame, x, y, w, h, rh, off FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh, off, cols FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
             rect = {"x": cr["x"], "y": cr["y"], "w": cr["w"], "h": cr["h"],
-                    "rh": cr["rh"], "off": cr["off"]}
+                    "rh": cr["rh"], "off": cr["off"], "cols": _cols_from_json(cr["cols"])}
             if cr["frame"] == -1:
                 calib["default"] = rect
             else:
@@ -903,6 +911,34 @@ def _clamp01(v) -> float:
     return 0.0 if v < 0 else (1.0 if v > 1 else v)
 
 
+_CALIB_COL_KEYS = {"nick", "level", "class", "rank", "title", "valor", "true_name"}
+
+
+def _norm_cols(cols) -> list:
+    """Валидирует вертикальную разметку колонок: список {x (0..1), key}.
+    Отбрасывает мусор, сортирует по x. Возвращает [] если пусто/некорректно."""
+    if not isinstance(cols, (list, tuple)):
+        return []
+    out = []
+    for c in cols:
+        if not isinstance(c, dict):
+            continue
+        key = str(c.get("key", "")).strip()
+        if key not in _CALIB_COL_KEYS:
+            continue
+        x = _clamp01(c.get("x"))
+        out.append({"x": x, "key": key})
+    out.sort(key=lambda c: c["x"])
+    return out
+
+
+def _cols_from_json(s):
+    try:
+        return _norm_cols(json.loads(s)) if s else []
+    except (ValueError, TypeError):
+        return []
+
+
 def valor_calib_get(week: str) -> dict:
     """Ручная калибровка раскладки строк недели:
     {"default": {x,y,w,h}|None, "frames": {"<idx>": {x,y,w,h}}}.
@@ -915,10 +951,10 @@ def valor_calib_get(week: str) -> dict:
         if not snap:
             return out
         for r in conn.execute(
-                "SELECT frame, x, y, w, h, rh, off FROM valor_frame_calib "
+                "SELECT frame, x, y, w, h, rh, off, cols FROM valor_frame_calib "
                 "WHERE snapshot_id = ?", (snap["id"],)):
             rect = {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
-                    "rh": r["rh"], "off": r["off"]}
+                    "rh": r["rh"], "off": r["off"], "cols": _cols_from_json(r["cols"])}
             if r["frame"] == -1:
                 out["default"] = rect
             else:
@@ -959,14 +995,20 @@ def valor_calib_set(week: str, frame: int, rect: dict | None) -> dict:
             off = None
         if off is not None and off < 0:
             off = 0.0
+        # Вертикальная разметка колонок (если прислана) → JSON.
+        cols = _norm_cols(rect.get("cols")) if rect.get("cols") is not None else None
+        cols_json = json.dumps(cols, ensure_ascii=False) if cols is not None else None
         conn.execute(
-            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h, rh, off) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO valor_frame_calib (snapshot_id, frame, x, y, w, h, rh, off, cols) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(snapshot_id, frame) "
-            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?, rh = ?, off = ?",
-            (sid, frame, x, y, w, h, rh, off, x, y, w, h, rh, off))
+            # cols через COALESCE: если не прислали (None) — сохраняем прежние.
+            "DO UPDATE SET x = ?, y = ?, w = ?, h = ?, rh = ?, off = ?, "
+            "cols = COALESCE(?, cols)",
+            (sid, frame, x, y, w, h, rh, off, cols_json,
+             x, y, w, h, rh, off, cols_json))
         return {"ok": True, "rect": {"x": x, "y": y, "w": w, "h": h,
-                                     "rh": rh, "off": off}}
+                                     "rh": rh, "off": off, "cols": cols or []}}
 
 
 def valor_calib_clear(week: str) -> dict:
