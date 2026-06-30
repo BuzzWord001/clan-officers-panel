@@ -497,12 +497,22 @@ class AutoVerifyIn(BaseModel):
 @router.post("/auto-verify")
 def valor_auto_verify_ep(payload: AutoVerifyIn,
                          actor: dict = Depends(require_admin)) -> dict:
-    """ШАГ 1 авто-проверки: снять ложные флаги «ИИ-ник» у строк, чей canon уже
-    есть в истории Доблести/реестре/архиве (распознано верно). Без AI. ТОЛЬКО админ."""
-    res = db.valor_auto_verify(payload.week, actor)
-    if not res.get("ok"):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "failed"))
-    return res
+    """Авто-проверка скринов (без AI): ШАГ 1 — снять ложные флаги «ИИ-ник» у
+    известных игроков (canon в истории Доблести/реестре/архиве); ШАГ 2 — резолв
+    по похожести: удалить фантомные дубли (двойник в том же кадре с идентичными
+    стат). Всё с логом (откатываемо). ТОЛЬКО админ."""
+    s1 = db.valor_auto_verify(payload.week, actor)
+    if not s1.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, s1.get("reason", "failed"))
+    s2 = db.valor_auto_fuzzy(payload.week, actor)
+    return {
+        "ok": True,
+        "checked": s1.get("checked", 0),
+        "cleared": s1.get("cleared", 0),          # снято ложных флагов (Шаг 1)
+        "deduped": s2.get("deduped", 0),          # удалено фантомных дублей (Шаг 2)
+        "deleted": s2.get("deleted", []),
+        "remaining": s2.get("remaining", s1.get("remaining", [])),
+    }
 
 
 # ── Веса (проценты) категорий ценности ───────────────────────────────────

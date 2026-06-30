@@ -5974,6 +5974,61 @@ def valor_auto_verify(week: str, actor: dict | None = None) -> dict:
                 "remaining": remaining}
 
 
+def valor_auto_fuzzy(week: str, actor: dict | None = None) -> dict:
+    """ШАГ 2 авто-проверки (БЕЗ AI): резолв по ПОХОЖЕСТИ. Находит ФАНТОМНЫЕ
+    ДУБЛИ — строку с флагом «ИИ-ник», у которой в ТОМ ЖЕ снимке есть двойник с
+    почти идентичным ником (similarity ≥ 0.86) и ИДЕНТИЧНЫМИ доблесть+уровень+
+    кадр, причём двойник — известный игрок (история/реестр/архив). Это один
+    игрок, распознанный OCR дважды → удаляем фантом (лог, откатываемо).
+    Возвращает {checked, deduped, deleted:[{nick,twin}], remaining:[{id,nick}]}."""
+    actor = actor or {"platform": "system", "id": "auto", "name": "авто-проверка"}
+    week = (week or "").strip()
+    SIM = 0.86
+    with connection() as conn:
+        snap = conn.execute(
+            "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
+        if not snap:
+            return {"ok": False, "reason": "no_snapshot"}
+        sid = snap["id"]
+        amap = _alias_map(conn)
+        auth = {_resolve_canon(r["nick_canon"], amap) for r in conn.execute(
+            "SELECT DISTINCT nick_canon FROM valor_members WHERE snapshot_id != ?", (sid,))}
+        auth |= {_resolve_canon(r["nick_canon"], amap) for r in conn.execute(
+            "SELECT nick_canon FROM valor_departed")}
+        for rr in conn.execute(
+                "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0"):
+            for c, _p in _acceptance_nicks(rr["game_nick"]):
+                auth.add(_resolve_canon(c, amap))
+        cur = conn.execute(
+            "SELECT id, nick, nick_canon, valor, level, frame, flag_new_nick "
+            "FROM valor_members WHERE snapshot_id = ?", (sid,)).fetchall()
+    flagged = [r for r in cur if r["flag_new_nick"]]
+    to_delete, remaining = [], []
+    for X in flagged:
+        xc = _resolve_canon(X["nick_canon"], amap)
+        twin, tsim = None, 0.0
+        for Y in cur:
+            if Y["id"] == X["id"]:
+                continue
+            s = _valor_similar(xc, _resolve_canon(Y["nick_canon"], amap))
+            if s > tsim:
+                tsim, twin = s, Y
+        if (twin and tsim >= SIM
+                and twin["valor"] == X["valor"] and twin["level"] == X["level"]
+                and twin["frame"] == X["frame"]
+                and _resolve_canon(twin["nick_canon"], amap) in auth):
+            to_delete.append((X["id"], X["nick"], twin["nick"]))
+        else:
+            remaining.append({"id": X["id"], "nick": X["nick"]})
+    deduped = 0
+    for mid, _nk, _twin in to_delete:
+        if valor_delete_member(mid, actor).get("ok"):
+            deduped += 1
+    return {"ok": True, "checked": len(flagged), "deduped": deduped,
+            "deleted": [{"nick": n, "twin": t} for _i, n, t in to_delete],
+            "remaining": remaining}
+
+
 def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
     """Админ: добавить пропущенную строку (OCR не распознал игрока) в снимок.
 

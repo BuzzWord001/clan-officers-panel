@@ -436,8 +436,9 @@
     try {
       const r = await API.valorAutoVerify(openWeek);
       const left = (r.remaining || []).length;
-      toast(`Авто-проверка: снято ложных флагов ${r.cleared} из ${r.checked}` +
-            (left ? ` · осталось проверить ${left}` : " · больше нечего"));
+      const dd = r.deduped ? ` · удалено дублей ${r.deduped}` : "";
+      toast(`Авто-проверка: снято флагов ${r.cleared}/${r.checked}${dd}` +
+            (left ? ` · осталось ${left}` : " · больше нечего"));
       await loadWeek(openWeek, activeFolder());
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
     if (btn) { btn.disabled = false; btn.textContent = "🔍 Авто-проверка"; }
