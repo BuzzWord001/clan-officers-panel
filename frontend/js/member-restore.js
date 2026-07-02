@@ -120,8 +120,32 @@
     }
   }
 
+  // Нормализованная строка для поиска — все имена/ники/id/ссылочные поля одного
+  // человека, склеенные и приведённые к нижнему регистру (@ убираем, ё→е).
+  // Кэшируется на объекте, чтобы не пересобирать на каждый ввод.
+  function haystack(m) {
+    if (m._hay != null) return m._hay;
+    const parts = [
+      m.display_name, m.game_nick,
+      m.tg_username, m.tg_first_name, m.tg_last_name, m.tg_display,
+      m.vk_screen_name, m.vk_first, m.vk_last, m.vk_display,
+      m.tg_id, m.vk_id,
+    ];
+    m._hay = parts.map(v => String(v == null ? "" : v)).join(" ")
+      .toLowerCase().replace(/@/g, "").replace(/ё/g, "е");
+    return m._hay;
+  }
+
+  const nameKey = (m) => (m.display_name || m.game_nick || "￿").trim();
+  // Ключ свежести: в чате сейчас — первыми, затем по «дней назад» (недавние выше),
+  // неизвестные — в конец.
+  const recencyKey = (m) => (m.active ? -1 : (m.days_ago == null ? 1e9 : m.days_ago));
+
   function render() {
-    const q = ($("mr-filter").value || "").trim().toLowerCase();
+    // Мульти-токенный поиск: все слова запроса должны найтись (AND), в любом поле.
+    const q = ($("mr-filter").value || "").trim().toLowerCase()
+      .replace(/@/g, "").replace(/ё/g, "е");
+    const terms = q ? q.split(/\s+/) : [];
     const plat = $("mr-platform").value;
     const reg = $("mr-reg").value;
     const sort = $("mr-sort").value;
@@ -131,24 +155,25 @@
       if (plat === "both" && !(m.has_tg && m.has_vk)) return false;
       if (reg === "reg" && !m.registered) return false;
       if (reg === "unreg" && m.registered) return false;
-      if (!q) return true;
-      return [m.display_name, m.game_nick, m.tg_username, m.vk_screen_name,
-              m.tg_id, m.vk_id].some(v => String(v || "").toLowerCase().includes(q));
+      if (terms.length) {
+        const h = haystack(m);
+        if (!terms.every(t => h.includes(t))) return false;
+      }
+      return true;
     });
-    if (sort === "name") {
-      list = list.slice().sort((a, b) =>
-        (a.display_name || a.game_nick || "").localeCompare(b.display_name || b.game_nick || "", "ru"));
-    } else if (sort === "tg") {
-      // сначала с TG (по username/id), потом без
-      list = list.slice().sort((a, b) =>
-        (b.has_tg - a.has_tg) ||
-        String(a.tg_username || a.tg_id || "").localeCompare(String(b.tg_username || b.tg_id || ""), "ru"));
-    } else if (sort === "vk") {
-      list = list.slice().sort((a, b) =>
-        (b.has_vk - a.has_vk) ||
-        String(a.vk_screen_name || a.vk_id || "").localeCompare(String(b.vk_screen_name || b.vk_id || ""), "ru"));
+    list = list.slice();
+    if (sort === "name-asc") {
+      list.sort((a, b) => nameKey(a).localeCompare(nameKey(b), "ru", { sensitivity: "base" }));
+    } else if (sort === "name-desc") {
+      list.sort((a, b) => nameKey(b).localeCompare(nameKey(a), "ru", { sensitivity: "base" }));
+    } else if (sort === "active") {
+      list.sort((a, b) => (b.active - a.active) || (recencyKey(a) - recencyKey(b))
+        || nameKey(a).localeCompare(nameKey(b), "ru", { sensitivity: "base" }));
+    } else {
+      // recent (по умолчанию): сначала недавние (в чате → свежие → давние), тай-брейк по имени
+      list.sort((a, b) => (recencyKey(a) - recencyKey(b))
+        || nameKey(a).localeCompare(nameKey(b), "ru", { sensitivity: "base" }));
     }
-    // recency — уже отсортировано сервером (в составе → свежие → давние)
     $("mr-list").innerHTML = list.map(cardHtml).join("");
     $("mr-empty").hidden = list.length > 0;
     const act = roster.filter(m => m.active).length;
@@ -322,7 +347,23 @@
     if (b) showDetail(b.dataset.key);
   });
   $("mr-recent").addEventListener("change", loadRoster);
-  $("mr-filter").addEventListener("input", render);
+  // Поиск: дебаунс 150мс (не дёргаем перерисовку на каждый символ) + крестик очистки.
+  let filterTimer;
+  function syncClearBtn() {
+    const c = $("mr-filter-clear");
+    if (c) c.hidden = !$("mr-filter").value;
+  }
+  $("mr-filter").addEventListener("input", () => {
+    syncClearBtn();
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(render, 150);
+  });
+  $("mr-filter").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { $("mr-filter").value = ""; syncClearBtn(); render(); }
+  });
+  { const c = $("mr-filter-clear"); if (c) c.addEventListener("click", () => {
+      $("mr-filter").value = ""; syncClearBtn(); render(); $("mr-filter").focus();
+    }); }
   $("mr-platform").addEventListener("change", render);
   $("mr-reg").addEventListener("change", render);
   $("mr-sort").addEventListener("change", render);

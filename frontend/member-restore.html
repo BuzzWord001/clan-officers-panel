@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Возврат состава</title>
-  <link rel="stylesheet" href="styles.css?v=1798800000">
+  <link rel="stylesheet" href="styles.css?v=1800900000">
   <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .shell{visibility:hidden}</style>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
@@ -71,12 +71,9 @@
       <div class="panel">
         <h2>Возврат состава</h2>
         <p class="hint" style="margin-bottom:10px">
-          Резервная копия всех участников чатов (TG + VK) с профилями и ссылками
-          для приглашения назад — на случай, если владелец чата удалит его,
-          выгонит всех или почистит. Система <b>ежедневно снимает состав</b> и
-          помнит, кто был у нас в какой день. Так ты сможешь позвать обратно
-          <b>именно тех, кто был с нами недавно</b>, а не всех когда-либо.
-          <b>🟢 сейчас в чате</b> · <b>⚪ ушёл</b> (с датой последнего дня у нас).
+          Профили участников наших чатов — Telegram и VK: имена, ники и ссылки
+          для связи и приглашения. Данные сохраняются на случай потери чата,
+          чтобы при необходимости пригласить людей обратно.
         </p>
 
         <div class="mr-controls">
@@ -106,13 +103,19 @@
           </label>
           <label>Сортировка:
             <select id="mr-sort">
-              <option value="recency">по свежести</option>
-              <option value="name">по имени</option>
-              <option value="tg">по Telegram</option>
-              <option value="vk">по VK</option>
+              <option value="recent">сначала недавние</option>
+              <option value="active">сначала в чате</option>
+              <option value="name-asc">имя: А–Я</option>
+              <option value="name-desc">имя: Я–А</option>
             </select>
           </label>
-          <input type="text" id="mr-filter" placeholder="фильтр: ник / имя / TG / VK">
+          <div class="mr-search">
+            <span class="mr-search-ic" aria-hidden="true">🔍</span>
+            <input type="search" id="mr-filter" autocomplete="off" spellcheck="false"
+                   placeholder="Поиск: имя, ник, @username, id…">
+            <button type="button" id="mr-filter-clear" class="mr-search-clear"
+                    title="Очистить" aria-label="Очистить поиск" hidden>✕</button>
+          </div>
           <span class="mr-spacer"></span>
           <button id="mr-capture" class="cmp-add-btn" title="Снять снимок состава прямо сейчас">📸 Снять снимок сейчас</button>
           <a id="mr-backup" class="cmp-add-btn" href="/chat/members/backup-export" title="Скачать полный резерв (JSON) — храни у себя">⬇ Скачать резерв (JSON)</a>
@@ -144,7 +147,7 @@
 
   <script src="config.js?v=1791600000"></script>
   <script src="js/api.js?v=1798500000"></script>
-  <script src="js/member-restore.js?v=1798800000"></script>
+  <script src="js/member-restore.js?v=1800900000"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
   <script src="js/chamber-door.js?v=1791800000"></script>
   <script src="js/magic-social.js?v=1796250000"></script>
