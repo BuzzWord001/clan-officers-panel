@@ -812,14 +812,17 @@ def _row_to_acceptance(row: sqlite3.Row) -> dict[str, Any]:
     accepted = date.fromisoformat(row["accepted_date"])
     immune_until = accepted + timedelta(days=IMMUNITY_DAYS)
     keys = row.keys()
+    note = row["note"]
     return {
         "id": row["id"],
         "game_nick": row["game_nick"],
+        "nick_canon": _valor_canon(row["game_nick"]),
+        "note_count": 0 if (not note or _is_note_noise(note)) else 1,
         "title": row["title"] if "title" in keys else "",
         "accepted_date": row["accepted_date"],
         "immune_until": immune_until.isoformat(),
         "immune_active": date.today() < immune_until,
-        "note": row["note"],
+        "note": "" if _is_note_noise(note) else note,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "created_by_platform": row["created_by_platform"],
