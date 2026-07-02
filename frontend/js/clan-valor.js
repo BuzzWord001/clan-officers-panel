@@ -1213,6 +1213,27 @@
     return chip("trend-stale-bad", "▾", "Стабильно низко", "Стабильно заметно ниже нормы. " + gTip);
   }
 
+  // Ячейка «Примечание»: для офицера/админа — кликабельный «свиток» с текущей
+  // заметкой + бейдж числа записей в истории. Гость видит пусто (reg_note ему
+  // не приходит). Клик открывает папирусный свиток истории (см. openNoteScroll).
+  function renderNoteCell(m) {
+    const note = m.reg_note || "";
+    const cnt = m.note_count || 0;
+    if (!IS_OFFICER) {
+      return `<span class="cn-text" title="${esc(note)}">${esc(note)}</span>`;
+    }
+    const short = note.length > 64 ? note.slice(0, 64) + "…" : note;
+    const preview = note
+      ? `<span class="cn-preview">${esc(short)}</span>`
+      : `<span class="cn-empty">+ примечание</span>`;
+    const badge = cnt > 1
+      ? `<span class="cn-badge" title="${cnt} записей в истории">${cnt}</span>` : "";
+    return `<button type="button" class="cn-open" data-canon="${esc(m.nick_canon)}"
+        data-nick="${esc(m.nick)}"
+        title="${note ? esc(note) + " · клик — история примечаний" : "Открыть свиток — история примечаний"}">
+        <span class="cn-scroll" aria-hidden="true">📜</span>${preview}${badge}</button>`;
+  }
+
   // Объединённая ячейка «Оценка и тренд» (обе метрики — за последние 4 недели):
   // сверху оценка формы (средний % нормы + закрыто/всего), снизу — ярлык динамики.
   function renderGradeTrend(m) {
@@ -1369,7 +1390,7 @@
             <span class="hist-cell tn-title" data-field="title" title="Клик — прошлые титулы">${renderTitle(m)}</span>
             ${m.true_name ? `<span class="tn-name" title="Имя / ник мэйн-аккаунта">${esc(m.true_name)}</span>` : ""}
           </td>
-          <td class="col-note" title="${m.reg_note ? esc(m.reg_note) : ""}">${esc(m.reg_note || "")}</td>
+          <td class="col-note">${renderNoteCell(m)}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-warn">${warnCell}</td>
@@ -1977,6 +1998,133 @@
     ov.querySelector("#vedit-cancel").onclick = closeEditModal;
     ov.querySelector("#ach-allroles").onclick = () => openRoleGuide();
   }
+
+  // ═══════════ Примечание-«свиток»: история заметок о человеке ═══════════
+  function fmtNoteWhen(iso) {
+    const p = String(iso || "").split(/[T ]/);
+    const d = (p[0] || "").split("-");           // YYYY-MM-DD
+    const t = (p[1] || "").slice(0, 5);          // HH:MM (UTC)
+    if (d.length !== 3) return esc(iso || "");
+    return `${d[2]}.${d[1]}.${d[0]}${t ? " " + t : ""}`;
+  }
+  const NS_SRC = { registry: "реестр", seed: "реестр" };
+
+  function noteEntryHtml(e) {
+    const who = e.author || (e.source === "seed" || e.source === "registry" ? "Реестр" : "—");
+    const src = NS_SRC[e.source] ? ` · ${NS_SRC[e.source]}` : "";
+    const del = IS_ADMIN
+      ? `<button class="ns-del" data-id="${e.id}" title="Удалить запись">✕</button>` : "";
+    return `<div class="ns-entry">
+      <div class="ns-meta"><span class="ns-when">${fmtNoteWhen(e.created_at)}</span>
+        <span class="ns-who">${esc(who)}${src}</span>${del}</div>
+      <div class="ns-text">${esc(e.text)}</div>
+    </div>`;
+  }
+
+  function cssEsc(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s)
+      : String(s).replace(/["\\]/g, "\\$&");
+  }
+
+  // Обновить in-memory участника и его ячейку в таблице без полного перерендера.
+  function updateMemberNote(canon, data) {
+    const m = (DATA.members || []).find(x => x.nick_canon === canon);
+    if (m) {
+      m.reg_note = (data && data.current) || "";
+      m.note_count = (data && data.count) || 0;
+      const cell = document.querySelector(
+        `#valor-tbody tr[data-canon="${cssEsc(canon)}"] .col-note`);
+      if (cell) cell.innerHTML = renderNoteCell(m);
+    }
+  }
+
+  function renderScrollBody(box, data, canon) {
+    const notes = (data && data.notes) || [];
+    const listEl = box.querySelector(".ns-list");
+    listEl.innerHTML = notes.length
+      ? notes.map(noteEntryHtml).join("")
+      : `<div class="ns-empty">Пока пусто — первая запись откроет свиток.</div>`;
+    listEl.scrollTop = listEl.scrollHeight;   // к последней записи (низ свитка)
+    updateMemberNote(canon, data);
+  }
+
+  let NS_OV = null;
+  function closeNoteScroll() { if (NS_OV) { NS_OV.remove(); NS_OV = null; } }
+
+  async function openNoteScroll(canon, nick) {
+    closeNoteScroll();
+    const ov = document.createElement("div");
+    ov.className = "ns-ov";
+    ov.innerHTML = `
+      <div class="ns-scroll" role="dialog" aria-modal="true">
+        <div class="ns-cap ns-cap-top"></div>
+        <div class="ns-sheet">
+          <button class="ns-close" title="Закрыть">✕</button>
+          <div class="ns-title">📜 Свиток · <b>${esc(nick)}</b></div>
+          <div class="ns-sub">Летопись примечаний. Синхронизирована с реестром приёма.</div>
+          <div class="ns-list"><div class="ns-empty">Загрузка…</div></div>
+          <div class="ns-add">
+            <textarea class="ns-input" rows="2" maxlength="2000"
+              placeholder="Вписать новую строку в свиток…  (Ctrl+Enter — добавить)"></textarea>
+            <button class="ns-save" type="button">✒ Вписать</button>
+          </div>
+        </div>
+        <div class="ns-cap ns-cap-bot"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    NS_OV = ov;
+    const box = ov.querySelector(".ns-scroll");
+    ov.addEventListener("click", e => { if (e.target === ov) closeNoteScroll(); });
+    box.querySelector(".ns-close").onclick = closeNoteScroll;
+
+    try {
+      const data = await API.valorNotes(canon);
+      renderScrollBody(box, data, canon);
+    } catch (e) {
+      box.querySelector(".ns-list").innerHTML =
+        `<div class="ns-empty">Ошибка: ${esc(e.detail || e.message)}</div>`;
+    }
+
+    const input = box.querySelector(".ns-input");
+    const save = box.querySelector(".ns-save");
+    async function doAdd() {
+      const text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      save.disabled = true;
+      try {
+        const data = await API.valorNoteAdd(canon, text);
+        input.value = "";
+        renderScrollBody(box, data, canon);
+      } catch (e) {
+        alert("Не удалось сохранить: " + (e.detail || e.message));
+      } finally { save.disabled = false; }
+    }
+    save.onclick = doAdd;
+    input.addEventListener("keydown", e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doAdd(); }
+    });
+    setTimeout(() => input.focus(), 30);
+
+    box.querySelector(".ns-list").addEventListener("click", async e => {
+      const del = e.target.closest(".ns-del");
+      if (!del) return;
+      if (!confirm("Удалить эту запись из свитка? (реестр пересинхронизируется)")) return;
+      try {
+        const data = await API.valorNoteDelete(del.dataset.id, canon);
+        renderScrollBody(box, data, canon);
+      } catch (err) {
+        alert("Не удалось удалить: " + (err.detail || err.message));
+      }
+    });
+  }
+
+  $("valor-tbody").addEventListener("click", (ev) => {
+    const b = ev.target.closest(".cn-open");
+    if (b) openNoteScroll(b.dataset.canon, b.dataset.nick);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeNoteScroll();
+  });
 
   $("valor-tbody").addEventListener("click", (ev) => {
     const nb = ev.target.closest(".ach-btn");

@@ -394,6 +394,43 @@ def valor_afk_set(member_id: int, payload: ValorAfkIn,
     return res
 
 
+# ── Примечания-«свиток» (история заметок о человеке) ──────────────────────
+class ValorNoteIn(BaseModel):
+    canon: str = Field(..., min_length=1)   # nick_canon участника
+    text:  str = Field(..., min_length=1, max_length=2000)
+
+
+@router.get("/notes")
+def valor_notes_get(canon: str = Query(..., min_length=1),
+                    _: dict = Depends(require_officer)) -> dict:
+    """История примечаний о человеке (офицер/админ). Ленивый seed из реестра."""
+    return db.valor_note_history(canon)
+
+
+@router.post("/notes")
+def valor_notes_add(payload: ValorNoteIn,
+                    _: dict = Depends(require_officer),
+                    actor: dict = Depends(current_actor)) -> dict:
+    """Добавить примечание в «свиток» (офицер/админ). Синхронизируется с
+    примечанием реестра (последняя версия). Возвращает историю целиком."""
+    res = db.valor_note_add(payload.canon, payload.text, actor)
+    if res is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty_note_or_canon")
+    return res
+
+
+@router.delete("/notes/{entry_id}")
+def valor_notes_delete(entry_id: int,
+                       canon: str = Query(..., min_length=1),
+                       _: dict = Depends(require_admin)) -> dict:
+    """Удалить одну запись «свитка» (только админ — правка ошибок).
+    Реестр пересинхронизируется на новую последнюю запись."""
+    res = db.valor_note_delete(entry_id, canon)
+    if res is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "note_not_found")
+    return res
+
+
 class ValorMemberEdit(BaseModel):
     """Админ-правка строки доблести. Любое подмножество полей."""
     nick:      str | None = None

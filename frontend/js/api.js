@@ -222,6 +222,10 @@
       if (field) qs += "&field=" + encodeURIComponent(field);
       return request("GET", "/valor/history?" + qs);
     },
+    // Примечания-«свиток» (история заметок о человеке)
+    valorNotes:      (canon) => request("GET", "/valor/notes?canon=" + encodeURIComponent(canon)),
+    valorNoteAdd:    (canon, text) => request("POST", "/valor/notes", { canon, text }),
+    valorNoteDelete: (id, canon) => request("DELETE", "/valor/notes/" + id + "?canon=" + encodeURIComponent(canon)),
 
     // ── Тайная комната → Курсы волшебства (admin) ──
     chamberCourses:  () => request("GET",  "/chamber/courses"),

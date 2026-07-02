@@ -347,6 +347,21 @@ CREATE TABLE IF NOT EXISTS valor_manual_warnings (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_mwarn ON valor_manual_warnings(nick_canon);
 
+-- История примечаний о человеке (append-only «свиток»). Синхронизируется с
+-- примечанием реестра (acceptances.note): и офицер/админ дополняют прямо из
+-- таблицы Доблести, и правка заметки в реестре дописывается сюда. Текущее
+-- примечание = самая свежая запись. source: valor|registry|seed.
+CREATE TABLE IF NOT EXISTS valor_note_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    nick_canon  TEXT    NOT NULL,
+    text        TEXT    NOT NULL,
+    author      TEXT    NOT NULL DEFAULT '',
+    author_role TEXT    NOT NULL DEFAULT '',
+    source      TEXT    NOT NULL DEFAULT 'valor',
+    created_at  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_valor_note_hist ON valor_note_history(nick_canon);
+
 -- «Прощённые» вычисляемые предупреждения (офицер снял вручную):
 --   kind='norm'  ref=week   — прощён авто-штраф за невыполнение норматива в неделю
 --   kind='title' ref=<N>    — прощён штраф из титула (цифра N); при смене цифры
@@ -1351,6 +1366,13 @@ def update_acceptance(
                     conn.execute(
                         "DELETE FROM valor_tags WHERE nick_canon = ? AND tag = 'veteran'",
                         (canon,))
+        # Синхрон примечания Реестр → «свиток»: если текст изменился и непустой,
+        # дописываем в историю (source=registry), чтобы заметки реестра и таблицы
+        # Доблести были одной историей.
+        if note is not None and (new_note or "") != (before["note"] or "") and new_note:
+            _note_hist_append_conn(conn, _valor_canon(new_nick), new_note,
+                                   actor.get("name") or "", actor.get("role") or "",
+                                   source="registry")
         _write_audit(conn, "update", acc_id, new_nick, dict(before), dict(after), actor)
         _mark_dirty(conn)
         return _row_to_acceptance(after)
@@ -1367,6 +1389,127 @@ def delete_acceptance(acc_id: int, *, actor: dict[str, str]) -> bool:
         _write_audit(conn, "delete", acc_id, before["game_nick"], dict(before), None, actor)
         _mark_dirty(conn)
         return True
+
+
+# ==================== ИСТОРИЯ ПРИМЕЧАНИЙ («свиток») ====================
+# Примечание о человеке ведётся как append-only история, общая для реестра
+# приёма (acceptances.note) и таблицы Доблести. Текущее примечание = самая
+# свежая запись. Офицеры и админ дополняют прямо из таблицы; правка заметки
+# в реестре тоже дописывается сюда (см. update_acceptance).
+
+def _note_hist_append_conn(conn, nick_canon, text, author, author_role, source="valor"):
+    """Дописать запись в историю примечаний ВНУТРИ существующей транзакции."""
+    text = (text or "").strip()
+    nick_canon = (nick_canon or "").strip()
+    if not nick_canon or not text:
+        return None
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    cur = conn.execute(
+        "INSERT INTO valor_note_history "
+        "(nick_canon, text, author, author_role, source, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (nick_canon, text, author or "", author_role or "", source, now))
+    return {"id": cur.lastrowid, "nick_canon": nick_canon, "text": text,
+            "author": author or "", "author_role": author_role or "",
+            "source": source, "created_at": now}
+
+
+def _note_hist_seed_conn(conn, nick_canon):
+    """Ленивая инициализация: если истории ещё нет, а в реестре (acceptances.note)
+    есть непустое примечание — заносим его первой записью «свитка» (source=seed),
+    чтобы старые заметки реестра появились в истории."""
+    nick_canon = (nick_canon or "").strip()
+    if not nick_canon:
+        return
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM valor_note_history WHERE nick_canon = ?",
+        (nick_canon,)).fetchone()
+    if row and row["n"]:
+        return
+    for r in conn.execute(
+            "SELECT game_nick, note, accepted_date, updated_at FROM acceptances"):
+        note = (r["note"] or "").strip()
+        if not note:
+            continue
+        if any(_valor_canon(p) == nick_canon
+               for p in (r["game_nick"] or "").split(",")):
+            ts = r["updated_at"] or r["accepted_date"] \
+                or datetime.utcnow().isoformat(timespec="seconds")
+            conn.execute(
+                "INSERT INTO valor_note_history "
+                "(nick_canon, text, author, author_role, source, created_at) "
+                "VALUES (?, ?, 'Реестр', '', 'seed', ?)",
+                (nick_canon, note, ts))
+            break
+
+
+def _note_hist_rows(conn, nick_canon):
+    return [dict(r) for r in conn.execute(
+        "SELECT id, text, author, author_role, source, created_at "
+        "FROM valor_note_history WHERE nick_canon = ? ORDER BY created_at, id",
+        (nick_canon,))]
+
+
+def _note_sync_registry(conn, nick_canon, text):
+    """Обновляет acceptances.note для этого канона на `text` (последняя версия),
+    если запись приёма существует. Держит реестр и «свиток» синхронными."""
+    for r in conn.execute("SELECT id, game_nick FROM acceptances"):
+        if any(_valor_canon(p) == nick_canon
+               for p in (r["game_nick"] or "").split(",")):
+            conn.execute(
+                "UPDATE acceptances SET note = ?, updated_at = ? WHERE id = ?",
+                (text, datetime.utcnow().isoformat(timespec="seconds"), r["id"]))
+            return True
+    return False
+
+
+def valor_note_history(nick_canon):
+    """История примечаний по канону (старые сверху). Ленивый seed из реестра.
+    Возвращает {"notes":[...], "current":<текст последней>, "count":N}."""
+    nick_canon = (nick_canon or "").strip()
+    if not nick_canon:
+        return {"notes": [], "current": "", "count": 0}
+    with connection() as conn:
+        _note_hist_seed_conn(conn, nick_canon)
+        rows = _note_hist_rows(conn, nick_canon)
+    return {"notes": rows, "current": rows[-1]["text"] if rows else "",
+            "count": len(rows)}
+
+
+def valor_note_add(nick_canon, text, actor):
+    """Добавляет запись в «свиток» + синхронизирует acceptances.note (последняя
+    версия). Возвращает историю целиком (как getter). None — если пусто."""
+    nick_canon = (nick_canon or "").strip()
+    text = (text or "").strip()
+    if not nick_canon or not text:
+        return None
+    author = (actor or {}).get("name") or ""
+    role = (actor or {}).get("role") or ""
+    with connection() as conn:
+        _note_hist_seed_conn(conn, nick_canon)
+        _note_hist_append_conn(conn, nick_canon, text, author, role, source="valor")
+        _note_sync_registry(conn, nick_canon, text)
+        _mark_dirty(conn)
+        rows = _note_hist_rows(conn, nick_canon)
+    return {"notes": rows, "current": rows[-1]["text"] if rows else "",
+            "count": len(rows)}
+
+
+def valor_note_delete(entry_id, nick_canon):
+    """Удаляет одну запись «свитка» (админ — правка ошибок). Пересинхронизирует
+    примечание реестра на новую последнюю запись. None — если записи не было."""
+    nick_canon = (nick_canon or "").strip()
+    with connection() as conn:
+        cur = conn.execute(
+            "DELETE FROM valor_note_history WHERE id = ? AND nick_canon = ?",
+            (entry_id, nick_canon))
+        if not cur.rowcount:
+            return None
+        rows = _note_hist_rows(conn, nick_canon)
+        current = rows[-1]["text"] if rows else ""
+        _note_sync_registry(conn, nick_canon, current)
+        _mark_dirty(conn)
+    return {"notes": rows, "current": current, "count": len(rows)}
 
 
 def delete_audit_entry(entry_id: int) -> bool:
@@ -5879,6 +6022,7 @@ def valor_get_current(with_reg_notes: bool = False,
         # Примечание из реестра приёма по canon (только для офицеров/админа).
         # ORDER BY accepted_date — более поздняя запись перетирает раннюю.
         note_by_canon: dict[str, str] = {}
+        note_hist_by_canon: dict[str, tuple] = {}   # canon -> (latest_text, count)
         if with_reg_notes:
             for r in conn.execute(
                 "SELECT game_nick, note FROM acceptances ORDER BY accepted_date"
@@ -5887,6 +6031,18 @@ def valor_get_current(with_reg_notes: bool = False,
                     c = _valor_canon(piece)
                     if c:
                         note_by_canon[c] = r["note"] or ""
+            # История «свитка»: последняя запись перекрывает реестр (они синхронны;
+            # для valor-only участников без записи приёма — единственный источник).
+            _cnt: dict[str, int] = {}
+            _last: dict[str, str] = {}
+            for r in conn.execute(
+                "SELECT nick_canon, text FROM valor_note_history "
+                "ORDER BY nick_canon, created_at, id"
+            ):
+                c = r["nick_canon"]
+                _cnt[c] = _cnt.get(c, 0) + 1
+                _last[c] = r["text"]     # ASC → последняя перезапишет
+            note_hist_by_canon = {c: (_last[c], _cnt[c]) for c in _cnt}
         # Пул кандидатов для подсказки «возможно это X» при кривом OCR-нике:
         # текущие участники + ушедшие (искомый часто «ушёл», т.к. его нормальный
         # ник в этом снимке не распознался).
@@ -5973,9 +6129,18 @@ def valor_get_current(with_reg_notes: bool = False,
             elif reg_n:
                 m["nick"] = reg_n
             m["ai_nick"] = (cn in ai_nick_canons) and not ov and (cn not in ai_registered)
-            # Примечание из реестра (только если запрошено — т.е. не гость).
+            # Примечание (только если запрошено — т.е. не гость). Текущее = самая
+            # свежая запись истории; для не-seed'нутых — из реестра. note_count —
+            # сколько записей в «свитке» (для бейджа/индикатора в UI).
             if with_reg_notes:
-                m["reg_note"] = note_by_canon.get(cn, "")
+                h = note_hist_by_canon.get(cn)
+                if h:
+                    m["reg_note"] = h[0]
+                    m["note_count"] = h[1]
+                else:
+                    base = note_by_canon.get(cn, "")
+                    m["reg_note"] = base
+                    m["note_count"] = 1 if base else 0
             # Подсказка «возможно это X»: для непроверенного ИИ-ника ищем
             # самого похожего среди других участников и ушедших.
             m["suggest"] = None
