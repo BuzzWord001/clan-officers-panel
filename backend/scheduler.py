@@ -95,4 +95,19 @@ def make_scheduler() -> AsyncIOScheduler:
     # страницу никто не открывал; при открытии снимается и лениво в current).
     sched.add_job(db.valor_expire_afk, CronTrigger(hour=0, minute=5),
                   id="afk_expire", max_instances=1, coalesce=True)
+    # Система возврата состава: ежедневный датированный снимок ростера чатов
+    # (00:15 UTC = 03:15 МСК). Фиксирует, кто был у нас в этот день, + метит
+    # last_active_day. Так при удалении/чистке чатов владельцем можно позвать
+    # назад именно недавних участников.
+    sched.add_job(_member_snapshot_job, CronTrigger(hour=0, minute=15),
+                  id="member_snapshot", max_instances=1, coalesce=True)
     return sched
+
+
+def _member_snapshot_job() -> None:
+    try:
+        r = db.capture_member_snapshot()
+        log.info("member snapshot: %s участников (%s активных) на %s",
+                 r.get("members"), r.get("active"), r.get("day"))
+    except Exception:
+        log.exception("member snapshot failed")

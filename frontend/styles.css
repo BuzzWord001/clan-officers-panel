@@ -1360,24 +1360,22 @@ body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
    ПК/ноут не затронуты (правило только в этом media-блоке).
    ──────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  /* прячем не-ключевые столбцы (и th, и td — порядок фиксирован) */
+  /* прячем не-ключевые столбцы (и th, и td — порядок фиксирован).
+     Столбцов 12 (тренд переехал в тайл норматива). */
   #valor-table th:nth-child(3),  #valor-table td:nth-child(3),    /* соцсети */
   #valor-table th:nth-child(4),  #valor-table td:nth-child(4),    /* должность */
   #valor-table th:nth-child(5),  #valor-table td:nth-child(5),    /* титул */
   #valor-table th:nth-child(6),  #valor-table td:nth-child(6),    /* примечание */
   #valor-table th:nth-child(7),  #valor-table td:nth-child(7),    /* уровень */
   #valor-table th:nth-child(8),  #valor-table td:nth-child(8),    /* класс */
-  #valor-table th:nth-child(10), #valor-table td:nth-child(10),   /* оценка */
-  #valor-table th:nth-child(11), #valor-table td:nth-child(11),   /* тренд */
-  #valor-table th:nth-child(12), #valor-table td:nth-child(12),   /* предупреждения */
-  #valor-table th:nth-child(13), #valor-table td:nth-child(13),   /* роли за неделю */
-  #valor-table th:nth-child(14), #valor-table td:nth-child(14) {  /* роли за всё время */
+  #valor-table th:nth-child(9),  #valor-table td:nth-child(9),    /* предупреждения */
+  #valor-table th:nth-child(10), #valor-table td:nth-child(10) {  /* роли */
     display: none !important;
   }
-  /* остаётся: 1(№) 2(Ник) 9(Доблесть) 15(Норматив) 16(Ценность) */
+  /* остаётся: 1(№) 2(Ник) 11(Норматив доблести) 12(Ценность) */
   #valor-table { min-width: 0; width: 100%; table-layout: fixed; }
   #valor-table th, #valor-table td { box-sizing: border-box; padding: 9px 4px; font-size: 11.5px; white-space: normal; word-break: break-word; overflow: hidden; }
-  /* подписи под заголовками («(клик — история)», «% выполнения»…) на телефоне
+  /* подписи под заголовками («клик — история», «% выполнения»…) на телефоне
      прячем — они раздувают ширину столбцов; смысл и так понятен. */
   #valor-table thead small { display: none; }
   #valor-table thead th br { display: none; }
@@ -1385,11 +1383,16 @@ body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
   /* снимаем десктопный min-width:200px со столбца Ник — он форсил overflow */
   #valor-table .m-col-name, #valor-table .m-cell-name { min-width: 0; }
   /* доли ширины: № узкий, Ник пошире, метрики поровну (сумма 100% с запасом) */
-  #valor-table th:nth-child(1)  { width: 8%; }
-  #valor-table th:nth-child(2)  { width: 30%; }
-  #valor-table th:nth-child(9)  { width: 20%; }
-  #valor-table th:nth-child(15) { width: 20%; }
-  #valor-table th:nth-child(16) { width: 22%; }
+  #valor-table th:nth-child(1)  { width: 9%; }
+  #valor-table th:nth-child(2)  { width: 33%; }
+  #valor-table th:nth-child(11) { width: 32%; }
+  #valor-table th:nth-child(12) { width: 26%; }
+  /* стат-тайл на телефоне — по ширине столбца, без десктопного min-width,
+     числа компактнее и переносятся, чтобы «набрано/норма» не подрезалось. */
+  #valor-table .mnc-tile { min-width: 0; max-width: none; padding: 4px 3px 5px; }
+  #valor-table .mnc-tile .mnc-head { flex-wrap: wrap; gap: 3px 5px; }
+  #valor-table .mnc-tile .norm-pct  { font-size: 12px; }
+  #valor-table .mnc-tile .norm-frac { font-size: 10.5px; }
   /* всё влезает — горизонтальная подсказка/скролл не нужны */
   .members-panel .scroll-hint { display: none; }
 }
@@ -2783,13 +2786,26 @@ video.chat-media-thumb {
   font-weight: 600;
   border: 1px solid transparent;
 }
-.trend-up   { color: #ffd9a0; background: rgba(80,220,80,0.08);   border-color: rgba(80,220,80,0.3); }
-.trend-down { color: #ff8080; background: rgba(255,80,120,0.08);  border-color: rgba(255,80,120,0.3); }
+.trend-up   { color: #a6e58a; background: rgba(120,220,90,0.09);  border-color: rgba(120,220,90,0.32); }
+/* «Снижается» (норму ещё держит) — мягкий янтарь, не тревожный красный */
+.trend-down { color: #ffcc66; background: rgba(255,200,100,0.08); border-color: rgba(255,200,100,0.30); }
+/* Немного не добирает норму — мягкий жёлтый (не жёсткий) */
+.trend-near   { color: #e8d68a; background: rgba(232,214,138,0.09); border-color: rgba(232,214,138,0.30); }
+/* Не добирает, но подтягивается — обнадёживающий лайм (не полноценный зелёный) */
+.trend-better { color: #cfe38a; background: rgba(191,227,138,0.11); border-color: rgba(191,227,138,0.36); }
 .trend-flat { color: #c0c0c0; background: rgba(180,180,180,0.05); border-color: rgba(180,180,180,0.2); }
 .trend-stable { color: #7fe0c0; background: rgba(80,220,180,0.10); border-color: rgba(80,220,180,0.35); font-weight: 600; }
 .trend-new  { color: #ffd080; background: rgba(255,200,100,0.08); border-color: rgba(255,200,100,0.3); }
 .trend-dead { color: #888;    background: rgba(120,120,120,0.05); border-color: rgba(120,120,120,0.2); }
 .trend-none { color: #888; }
+/* Перевыполняет / держится высоко — самый «сильный» позитив */
+.trend-high { color: #8bef73; background: rgba(90,235,90,0.14); border-color: rgba(90,235,90,0.45); font-weight: 700; }
+/* АФК и иммунитет новичка — нейтрально-синие (норматив не оценивается) */
+/* АФК — сиреневый (пауза), иммунитет — синий (щит). Разные состояния — разные цвета. */
+.trend-afk    { color: #d5b3f2; background: rgba(198,150,235,0.12); border-color: rgba(198,150,235,0.38); }
+.trend-immune { color: #8fb0ff; background: rgba(120,150,255,0.12); border-color: rgba(120,150,255,0.40); }
+/* Падает и не закрывает норму — сильнее обычного спада */
+.trend-down-bad { color: #ff6a6a; background: rgba(255,80,80,0.13); border-color: rgba(255,80,80,0.42); font-weight: 600; }
 
 /* Warning-бейдж (счётчик стрика невыполненного норматива) */
 .warn-badge {
@@ -2805,52 +2821,71 @@ video.chat-media-thumb {
 }
 
 /* Биржевой попап истории доблести */
-.valor-popover.valor-history { min-width: 340px; max-width: 460px; }
-.valor-popover.valor-history .vh-head {
-  display: grid;
-  grid-template-columns: 118px 1fr 64px 70px;
-  gap: 6px;
-  padding: 0 4px 4px 4px;
+.valor-popover.valor-history { min-width: 360px; max-width: 480px; }
+/* Сводка сверху: Σ всего · недель · среднее · лучшая */
+.valor-popover.valor-history .vh-sum {
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  padding: 2px 4px 8px 4px; margin-bottom: 6px;
   border-bottom: 1px solid var(--accent-dim);
-  margin-bottom: 4px;
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  letter-spacing: 0.5px;
+  font-size: 11.5px; color: var(--text-dim);
 }
+.valor-popover.valor-history .vh-sum b { color: var(--text); font-size: 13px; }
+.valor-popover.valor-history .vh-sum .vh-best { color: #ffd98a; margin-left: auto; }
+/* Список недель */
+.valor-popover.valor-history .vh-list { display: flex; flex-direction: column; }
 .valor-popover.valor-history .vh-row {
   display: grid;
-  grid-template-columns: 118px 1fr 64px 70px;
-  gap: 6px;
-  padding: 4px;
-  position: relative;
+  grid-template-columns: 96px 62px 1fr 52px;
+  align-items: center; gap: 8px;
+  padding: 4px 4px;
   font-family: "Cascadia Code", monospace;
   font-size: 12px;
-  z-index: 1;
-  border-bottom: 1px dashed rgba(255,255,255,0.04);
+  border-bottom: 1px dashed rgba(255,255,255,0.05);
 }
 .valor-popover.valor-history .vh-row:last-child { border-bottom: 0; }
 .valor-popover.valor-history .vh-row .w { color: var(--text-dim); }
-.valor-popover.valor-history .vh-row .v { color: var(--text); font-weight: 600; }
-.valor-popover.valor-history .vh-row .d,
-.valor-popover.valor-history .vh-row .p { text-align: right; font-weight: 600; }
-.valor-popover.valor-history .vh-row.vh-u .d,
-.valor-popover.valor-history .vh-row.vh-u .p { color: #ffd9a0; }
-.valor-popover.valor-history .vh-row.vh-d .d,
-.valor-popover.valor-history .vh-row.vh-d .p { color: #ff8080; }
-.valor-popover.valor-history .vh-row.vh-f .d,
-.valor-popover.valor-history .vh-row.vh-f .p { color: #c0c0c0; }
-.valor-popover.valor-history .vh-row.vh-n .d,
-.valor-popover.valor-history .vh-row.vh-n .p { color: #888; }
-/* Bar высотой во всю строку, на заднем плане */
-.valor-popover.valor-history .vh-row .bar {
-  position: absolute;
-  left: 4px; top: 0; bottom: 0;
-  background: rgba(255, 107, 128, 0.10);
-  border-right: 1px solid rgba(255, 107, 128, 0.25);
-  z-index: -1;
-  pointer-events: none;
+.valor-popover.valor-history .vh-row .v { color: var(--text); font-weight: 700; text-align: right; }
+.valor-popover.valor-history .vh-row .v i { color: var(--text-dim); font-weight: 400; font-style: normal; font-size: 10.5px; }
+.valor-popover.valor-history .vh-row .d { text-align: right; font-weight: 600; font-size: 11px; }
+.valor-popover.valor-history .vh-row .d.vh-u { color: #7CFC00; }
+.valor-popover.valor-history .vh-row .d.vh-d { color: #ff8080; }
+.valor-popover.valor-history .vh-row .d.vh-f { color: #888; }
+/* Дорожка с заливкой (масштаб к лучшей неделе) + метка норматива */
+.valor-popover.valor-history .vh-row .track {
+  position: relative; height: 14px; border-radius: 3px;
+  background: rgba(255,255,255,0.05); overflow: hidden;
 }
+.valor-popover.valor-history .vh-row .fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  border-radius: 3px 0 0 3px; min-width: 2px;
+  transition: width .2s;
+}
+.valor-popover.valor-history .vh-row.vh-ok  .fill { background: linear-gradient(90deg,#3ea55a,#66d47f); }
+.valor-popover.valor-history .vh-row.vh-mid .fill { background: linear-gradient(90deg,#c79a3a,#ffcc66); }
+.valor-popover.valor-history .vh-row.vh-low .fill { background: linear-gradient(90deg,#b04a4a,#ff8080); }
+.valor-popover.valor-history .vh-row.vh-afk .fill { background: linear-gradient(90deg,#4a6ab0,#8fb0ff); opacity: .65; }
+.valor-popover.valor-history .vh-row.vh-ok  .v { color: #a6f0b8; }
+/* Метка норматива поверх дорожки — вертикальная риска */
+.valor-popover.valor-history .vh-row .norm-mark {
+  position: absolute; top: -1px; bottom: -1px; width: 0;
+  border-left: 2px dashed rgba(255,255,255,0.7);
+  transform: translateX(-1px); pointer-events: none;
+}
+/* Легенда снизу */
+.valor-popover.valor-history .vh-leg {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  margin-top: 7px; padding-top: 6px;
+  border-top: 1px solid var(--accent-dim);
+  font-size: 10px; color: var(--text-dim);
+}
+.valor-popover.valor-history .vh-leg .vh-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 2px; vertical-align: -1px;
+}
+.valor-popover.valor-history .vh-leg .vh-dot.ok  { background: #66d47f; }
+.valor-popover.valor-history .vh-leg .vh-dot.mid { background: #ffcc66; }
+.valor-popover.valor-history .vh-leg .vh-dot.low { background: #ff8080; }
+.valor-popover.valor-history .vh-leg .vh-dot.afk { background: #8fb0ff; }
+.valor-popover.valor-history .vh-leg .vh-legmark { color: rgba(255,255,255,0.75); letter-spacing: -1px; }
 
 /* Колонка «Данные VK / Telegram» */
 .socials-cell { font-size: 11px; line-height: 1.6; }
@@ -2882,6 +2917,92 @@ video.chat-media-thumb {
   white-space: nowrap;
   border: 1px solid transparent;
 }
+/* ── Стат-тайл «Норматив доблести» ──────────────────────────────────────
+   Числа (сколько набрал / норма + % и статус) и мини-график набора за всё
+   время — в ЕДИНОЙ компактной карточке (best practice KPI-ячейки: крупное
+   значение + спарклайн-тренд под ним). Верхняя кромка тайла окрашена по
+   статусу недели. Клик по тайлу раскрывает подробную историю. */
+.m-norm-cell { cursor: pointer; text-align: center; }
+.mnc-tile {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 138px;
+  max-width: 184px;
+  padding: 5px 9px 6px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-top-width: 2px;
+  transition: background .15s, box-shadow .15s;
+}
+.mnc-tile.mnc-ok     { border-top-color: rgba(102,212,127,0.75); }
+.mnc-tile.mnc-mid    { border-top-color: rgba(255,204,102,0.75); }
+.mnc-tile.mnc-low    { border-top-color: rgba(255,128,128,0.75); }
+.mnc-tile.mnc-immune { border-top-color: rgba(120,160,255,0.72); }  /* иммунитет — синий */
+.mnc-tile.mnc-afk    { border-top-color: rgba(198,150,235,0.72); }  /* АФК — сиреневый */
+.mnc-tile.mnc-none   { border-top-color: rgba(255,255,255,0.18); }
+.m-norm-cell:hover .mnc-tile {
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 8px rgba(0,0,0,0.35);
+}
+/* Строка чисел внутри тайла: убираем «пилюльный» фон/рамку у .norm-cell —
+   контейнером служит сам тайл, числа остаются цветными по статусу. */
+.mnc-tile .mnc-head { display: flex; align-items: baseline; justify-content: center; gap: 5px; }
+.mnc-tile .norm-cell {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 0 !important;
+  display: inline-flex; align-items: baseline; gap: 3px 5px;
+  /* длинные приписки (Иммун до…, АФК · N нед., кон. Пн) переносим внутри тайла,
+     а не вылезаем за карточку — ширина тайлов остаётся ровной. */
+  flex-wrap: wrap; justify-content: center; white-space: normal;
+}
+.mnc-tile .norm-pct  { font-size: 13px; font-weight: 700; }
+.mnc-tile .norm-frac { font-size: 12px; opacity: 0.92; }   /* «сколько набрал / норма» — заметно */
+.mnc-tile .norm-note { font-size: 10px; }
+/* Ненавязчивая метка ▾ (раскрыть историю): приглушена, ярче при наведении. */
+.mnc-tile .mnc-head::after {
+  content: "▾";
+  font-size: 9px; line-height: 1;
+  color: var(--text-dim); opacity: 0.4;
+  transition: opacity .15s, color .15s, transform .15s;
+  align-self: center;
+}
+.m-norm-cell:hover .mnc-head::after { opacity: 0.95; color: var(--accent); transform: translateY(1px); }
+/* Ярлык тренда (тенденция за 4 недели) — в самом тайле, под графиком */
+.mnc-tile .mnc-trend { margin-top: 4px; text-align: center; line-height: 1.15; }
+.mnc-tile .mnc-trend .trend { font-size: 11px; white-space: normal; }
+/* Мини-график набора доблести — на всю ширину тайла, под числами */
+.valor-spark {
+  display: block;
+  width: 100%;
+  height: 20px;
+  overflow: visible;
+}
+.valor-spark .sp-normline {
+  stroke: rgba(255,255,255,0.6);
+  stroke-width: 1;
+  stroke-dasharray: 2.5 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.valor-spark .sp-ok  { fill: #66d47f; }
+.valor-spark .sp-mid { fill: #ffcc66; }
+.valor-spark .sp-low { fill: #ff8080; }
+.valor-spark .sp-afk { fill: #8fb0ff; opacity: 0.5; }
+
+/* ── Объединённая ячейка «Оценка и тренд» ────────────────────────────────
+   Сверху — оценка всех недель (форма), под ней — динамика к прошлой неделе.
+   Два показателя в одном компактном блоке, выровнены по центру. */
+.gt-col { text-align: center; }
+.gt-cell {
+  display: inline-flex; flex-direction: column; align-items: center;
+  gap: 4px; min-width: 96px;
+}
+.gt-cell .gt-grade { line-height: 1.1; }
+.gt-cell .gt-trend { line-height: 1.1; }
+.gt-cell .gt-trend .trend { font-size: 11px; }
 .norm-cell.norm-good   { color: #ffd9a0; background: rgba(80,220,80,0.12);  border-color: rgba(80,220,80,0.35); }
 .norm-cell.norm-p100   { color: #ffd9a0; background: rgba(80,220,80,0.12);  border-color: rgba(80,220,80,0.35); }
 .norm-cell.norm-p80    { color: #b8e070; background: rgba(184,224,112,0.10);border-color: rgba(184,224,112,0.30); }
@@ -2889,7 +3010,7 @@ video.chat-media-thumb {
 .norm-cell.norm-p40    { color: #e0a070; background: rgba(224,160,112,0.10);border-color: rgba(224,160,112,0.30); }
 .norm-cell.norm-p20    { color: #e07070; background: rgba(224,112,112,0.10);border-color: rgba(224,112,112,0.35); }
 .norm-cell.norm-p0     { color: #ff5070; background: rgba(255,80,112,0.14); border-color: rgba(255,80,112,0.45); }
-.norm-cell.norm-afk    { color: #ffd080; background: rgba(255,200,128,0.10);border-color: rgba(255,200,128,0.30); }
+.norm-cell.norm-afk    { color: #d5b3f2; background: rgba(198,150,235,0.10);border-color: rgba(198,150,235,0.30); }
 .norm-cell.norm-unknown { color: #888; }
 .comp-cell small { font-size: 9px; }
 
@@ -3170,6 +3291,7 @@ body.show-valor .valor-col { display: table-cell; }
 .bdg-seen { background: rgba(120,180,255,0.14); color: #bcd6ff; border: 1px solid rgba(120,180,255,0.4); }
 .bdg-sus { background: rgba(255,90,110,0.16); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.45); }
 .bdg-afk { background: rgba(150,170,255,0.16); color: #b9c6ff; border: 1px solid rgba(150,170,255,0.4); }
+.bdg-kick { background: rgba(200,90,90,0.18); color: #ffb0a0; border: 1px solid rgba(200,90,90,0.5); }
 
 .cmp-split { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 10px; align-items: start; }
 .cmp-shots, .cmp-rows { max-height: 78vh; overflow-y: auto; border: 1px solid rgba(224,162,74,0.12);
@@ -3275,6 +3397,8 @@ body.calib-on .cmp-shot img { cursor: crosshair; }
 .cmp-row:hover { background: rgba(224,162,74,0.05); }
 .cmp-row-on { background: rgba(255,210,74,0.10); outline: 1px solid rgba(255,210,74,0.4); }
 .cmp-row-warn { background: rgba(255,120,90,0.05); }
+.cmp-row-kick { background: rgba(200,90,90,0.09); }
+.cmp-row-kick .cmp-nick-t { text-decoration: line-through; opacity: 0.75; }
 .cmp-num { color: var(--text-dim,#789); font-variant-numeric: tabular-nums; }
 .cmp-nick-t { font-weight: 700; color: #dfe; cursor: copy; }
 .cmp-c { cursor: copy; }
@@ -3286,6 +3410,73 @@ body.calib-on .cmp-shot img { cursor: crosshair; }
 .cmp-del { background: rgba(255,90,110,0.14); color: #ff9aa9; border: 1px solid rgba(255,90,110,0.4);
   border-radius: 6px; cursor: pointer; padding: 2px 7px; font-size: 13px; }
 .cmp-del:hover { background: rgba(255,90,110,0.3); }
+/* Вставить пропущенный ник ниже строки (админ) */
+.cmp-ins { background: rgba(90,200,120,0.14); color: #9ff0b6; border: 1px solid rgba(90,200,120,0.45);
+  border-radius: 6px; cursor: pointer; padding: 2px 8px; font-size: 13px; }
+.cmp-ins:hover { background: rgba(90,200,120,0.32); }
+/* ✎ 🗑 ➕ держим в один ряд (nowrap), чтобы ➕ не переносился под строку и не
+   раздувал высоту. «в архив» остаётся отдельной строкой ниже. */
+.cmp-act-ic { display: inline-flex; gap: 5px; white-space: nowrap; vertical-align: middle; }
+.cmp-act .cmp-arch { margin-top: 5px; }
+
+/* ═══ Возврат состава (member-restore) ═══ */
+.mr-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+.mr-controls label { font-size: 13px; color: var(--text-dim, #9ab); }
+.mr-controls select, .mr-controls input[type=text] {
+  padding: 6px 9px; background: rgba(0,0,0,0.35); border: 1px solid rgba(224,162,74,0.25);
+  border-radius: 6px; color: #dfe; font-size: 13px; }
+.mr-controls input[type=text] { min-width: 220px; }
+.mr-spacer { flex: 1 1 auto; }
+a.cmp-add-btn { text-decoration: none; display: inline-block; }
+.mr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.mr-card { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; }
+.mr-card.mr-on { border-color: rgba(90,200,120,0.45); background: rgba(90,200,120,0.06); }
+.mr-ava { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+  background: #222; border: 1px solid rgba(255,255,255,0.12); }
+.mr-ava-ph { display: flex; align-items: center; justify-content: center; font-size: 22px; color: #778; }
+.mr-body { flex: 1 1 auto; min-width: 0; }
+.mr-nick { font-weight: 700; color: #f3e8d2; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-aka { font-size: 11px; color: #b99; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-name { font-size: 12px; color: var(--text-dim, #9ab); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-status { font-size: 12px; margin-top: 2px; }
+.mr-links { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.mr-link { font-size: 12px; padding: 3px 8px; border-radius: 6px; text-decoration: none; white-space: nowrap; text-align: center; }
+.mr-tg { background: rgba(50,150,240,0.15); color: #8fd0ff; border: 1px solid rgba(50,150,240,0.4); }
+.mr-tg:hover { background: rgba(50,150,240,0.3); }
+.mr-vk { background: rgba(80,120,200,0.15); color: #aec4ff; border: 1px solid rgba(80,120,200,0.4); }
+.mr-vk:hover { background: rgba(80,120,200,0.3); }
+.mr-none { color: #776; border: 1px dashed rgba(255,255,255,0.15); }
+.mr-snaps { display: flex; flex-wrap: wrap; gap: 8px; }
+.mr-snap { display: flex; flex-direction: column; gap: 2px; padding: 7px 12px; cursor: pointer;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(224,162,74,0.25); border-radius: 8px; color: #f3e8d2; }
+.mr-snap:hover { background: rgba(224,162,74,0.12); }
+.mr-snap-day { font-weight: 700; font-size: 13px; }
+.mr-snap-cnt { font-size: 11px; color: var(--text-dim, #9ab); }
+.mr-asof { font-size: 12px; color: #d8c39a; background: rgba(224,162,74,0.08);
+  border: 1px solid rgba(224,162,74,0.2); border-radius: 8px; padding: 7px 11px; margin: 4px 0; }
+.mr-card.mr-unreg { border-style: dashed; opacity: 0.92; }
+.mr-badge { font-size: 10px; padding: 1px 6px; border-radius: 5px; vertical-align: middle; margin-left: 4px; }
+.mr-reg-b { background: rgba(90,200,120,0.15); color: #9ff0b6; border: 1px solid rgba(90,200,120,0.4); }
+.mr-unreg-b { background: rgba(200,160,90,0.15); color: #f0d59f; border: 1px solid rgba(200,160,90,0.4); }
+.mr-plat { font-size: 10px; color: #89a; margin-left: 6px; letter-spacing: 0.5px; }
+.mr-detail-btn { font-size: 14px; line-height: 1; padding: 3px 7px; border-radius: 6px; cursor: pointer;
+  background: rgba(224,162,74,0.12); color: #e8c98a; border: 1px solid rgba(224,162,74,0.35); }
+.mr-detail-btn:hover { background: rgba(224,162,74,0.28); }
+/* Модалка полной инфы TG/VK */
+.mrd-box { max-width: 560px; }
+.mrd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.mrd-sec { margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; }
+.mrd-h { font-size: 13px; font-weight: 700; color: #e8c98a; margin-bottom: 6px; }
+.mrd-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+.mrd-label { flex: 0 0 130px; color: var(--text-dim, #9ab); font-size: 12px; }
+.mrd-val { flex: 1 1 auto; color: #f3e8d2; word-break: break-all; }
+.mrd-link { color: #8fd0ff; text-decoration: none; }
+.mrd-link:hover { text-decoration: underline; }
+.mrd-copy { flex: 0 0 auto; cursor: pointer; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15); color: #cde; border-radius: 5px; padding: 2px 7px; font-size: 12px; }
+.mrd-copy:hover { background: rgba(224,162,74,0.25); }
 /* Кикнуть в архив (офицер/админ) */
 .cmp-arch { background: rgba(255,150,60,0.14); color: #ffc089; border: 1px solid rgba(255,150,60,0.45);
   border-radius: 6px; cursor: pointer; padding: 2px 8px; font-size: 12.5px; white-space: nowrap; }
@@ -3343,8 +3534,10 @@ body.calib-on .cmp-shot img { cursor: crosshair; }
   padding: 16px 18px; width: 360px; max-width: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.7); }
 .ce-h { font-size: 14px; margin-bottom: 10px; color: #cfe; }
 .ce-f { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; font-size: 12px; color: var(--text-dim,#9ab); }
-.ce-f input[type=text], .ce-f input[type=number] { padding: 6px 9px; background: rgba(0,0,0,0.35);
+.ce-f input[type=text], .ce-f input[type=number], .ce-f select { padding: 6px 9px; background: rgba(0,0,0,0.35);
   border: 1px solid rgba(224,162,74,0.2); border-radius: 6px; color: #dfe; font-size: 13px; }
+.ce-f select { cursor: pointer; }
+#ce-pos-hint { margin: -4px 0 9px; color: #9ff0b6; font-size: 12px; }
 .ce-chk { flex-direction: row; align-items: center; gap: 6px; }
 .ce-btns { display: flex; gap: 8px; margin-top: 10px; }
 .ce-save { flex: 1; padding: 8px; background: linear-gradient(#1f7a3a,#15602c); color: #fff;

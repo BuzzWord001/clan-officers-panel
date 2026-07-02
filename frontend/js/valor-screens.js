@@ -56,6 +56,9 @@
     const sn = DATA.snapshot || {};
     const rec = DATA.members.length;            // распознал Gemini
     const real = sn.actual_members;             // реально в клане (ввод офицера)
+    // Кикнутые вручную (force_archived): есть в снимке, но в Таблице скрыты.
+    // Явно сводим счётчик, иначе «распознано 200 · в Таблице 199» выглядит багом.
+    const kicked = DATA.members.filter(m => m.force_archived).length;
     let people;
     if (real != null) {
       const diff = real - rec;
@@ -63,6 +66,9 @@
         (diff ? ` <span class="cmp-meta-warn" title="Gemini распознал ${rec}, в клане ${real}">⚠ ${diff > 0 ? "не хватает " + diff : "лишних " + (-diff)}</span>` : " ✓");
     } else {
       people = `распознано <b>${rec}</b>`;
+    }
+    if (kicked) {
+      people += ` · <span class="cmp-meta-warn" title="Эти строки есть в скринах, но вручную скрыты из таблицы Доблести — поэтому в Таблице на ${kicked} меньше. Кнопка ↩ у строки вернёт человека.">кикнут вручную ${kicked} → в Таблице ${rec - kicked}</span>`;
     }
     const editBtn = IS_ADMIN
       ? ` <button class="cmp-people-edit" title="Указать/исправить, сколько реально людей было в клане на этот сбор">✎ людей в клане</button>`
@@ -102,7 +108,16 @@
   // ── Левая колонка: скрины ──
   function renderShots() {
     const box = $("cmp-shots");
-    box.innerHTML = DATA.screenshots.map(s =>
+    // АВТО-СКРЫТИЕ ХВОСТОВЫХ ДУБЛЕЙ: десктоп-тул иногда шлёт лишние кадры в
+    // конце (прокрутка упёрлась в низ → тот же кусок таблицы). У них нет ни
+    // одного нового участника (idx > последнего кадра с людьми) → это чистые
+    // дубли. Прячем их в обычном режиме; в калибровке показываем ВСЕ кадры,
+    // чтобы админ мог их размечать/чистить.
+    const lastF = lastFrameIdx();
+    const shots = (!CALIB_MODE && lastF != null)
+      ? DATA.screenshots.filter(s => s.idx <= lastF)
+      : DATA.screenshots;
+    box.innerHTML = shots.map(s =>
       // data-idx — внутренний 0-based индекс (связка строка↔кадр, scrollToFrame).
       // Пользователю показываем номер с 1 (s.idx + 1).
       `<figure class="cmp-shot" data-idx="${s.idx}">
@@ -124,6 +139,14 @@
     else
       b.push(`<span class="cmp-badge bdg-seen" title="постоянный участник: есть в таблице Доблести со стабильным ником, просто не занесён в реестр приёма — это нормально">в Доблести</span>`);
     if (m.is_afk) b.push(`<span class="cmp-badge bdg-afk">АФК</span>`);
+    if (m.force_archived) {
+      const ai = m.archive_info || {};
+      const when = ai.at ? String(ai.at).slice(0, 10) : "";
+      const tip = "Строка есть в скринах, но вручную скрыта из таблицы Доблести"
+        + (when ? " (" + when + (ai.by ? ", " + ai.by : "") + ")" : "")
+        + (ai.reason ? ": " + ai.reason : "") + ". Кнопка ↩ вернёт человека в таблицу.";
+      b.push(`<span class="cmp-badge bdg-kick" title="${esc(tip)}">кикнут вручную</span>`);
+    }
     return b.join(" ");
   }
 
@@ -167,16 +190,17 @@
         ? `<div class="cmp-reasons" title="${esc(tipAll)}">⚠ проверь: ${esc(keys.map(k => sf[k].label).join(", "))}${okBtn}</div>`
         : "";
       const valorWarn = !!sf.valor;
-      return `<tr class="cmp-row${warn ? " cmp-row-warn" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
+      return `<tr class="cmp-row${warn ? " cmp-row-warn" : ""}${m.force_archived ? " cmp-row-kick" : ""}" data-i="${m._i}" data-canon="${esc(m.nick_canon)}" data-frame="${m.frame == null ? "" : m.frame}">
         <td class="cmp-num">${m._i + 1}</td>
         <td class="cmp-nick"><span class="cmp-nick-t${sf.nick ? " cmp-cell-warn" : ""}" title="${sf.nick ? esc(sf.nick.tip) : "клик — показать кадр слева · двойной клик — к нику в Доблести"}">${esc(m.nick)}</span><br>${badges(m)}${susBadge}${reasonsLine}</td>
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cellW(m.level, !!sf.level, sf.level && sf.level.tip)}
         ${cellW(m.class, !!sf.class_, sf.class_ && sf.class_.tip)}<td class="cmp-c cmp-valor${valorWarn ? " cmp-cell-warn" : ""}" title="${valorWarn ? esc(sf.valor.tip) : "клик — копировать"}">${m.valor == null ? "—" : m.valor}</td>
         <td class="cmp-act">${IS_ADMIN
-          ? `<button class="cmp-ed" data-id="${m.id}" title="править">✎</button>` +
-            ` <button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button>`
+          ? `<span class="cmp-act-ic"><button class="cmp-ed" data-id="${m.id}" title="править">✎</button><button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button><button class="cmp-ins" data-id="${m.id}" title="Добавить пропущенный ник НИЖЕ этой строки — встанет ровно между ней и следующей">➕</button></span>`
           : ""}${IS_OFFICER
-          ? ` <button class="cmp-arch" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Кикнуть в архив — убрать игрока в «Покинули клан», даже если он ещё есть в снимке. Вернуть можно кнопкой «↩ Из архива» сверху.">🚪 в архив</button>`
+          ? (m.force_archived
+             ? `<button class="cmp-unarch" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Вернуть игрока в таблицу Доблести (снять ручной кик). Сейчас он есть в скринах, но скрыт из Таблицы.">↩ вернуть</button>`
+             : `<button class="cmp-arch" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Кикнуть в архив — убрать игрока в «Покинули клан», даже если он ещё есть в снимке. Вернуть можно кнопкой «↩ Из архива» сверху.">🚪 в архив</button>`)
           : ""}</td>
       </tr>`;
     }).join("");
@@ -230,7 +254,7 @@
       // Клик по строке (не по нику/значению/кнопке) → тоже показать кадр.
       tr.addEventListener("click", (e) => {
         if (e.target.closest(".cmp-ed") || e.target.closest(".cmp-del") ||
-            e.target.closest(".cmp-arch") ||
+            e.target.closest(".cmp-arch") || e.target.closest(".cmp-unarch") ||
             e.target.closest(".cmp-ok") || e.target.closest(".cmp-c") ||
             e.target.closest(".cmp-nick-t")) return;
         selectRow(tr);
@@ -250,12 +274,22 @@
         b.addEventListener("click", () => delMember(+b.dataset.id, b.dataset.nick)));
       tbody.querySelectorAll(".cmp-ok").forEach(b =>
         b.addEventListener("click", (e) => { e.stopPropagation(); verifyMember(+b.dataset.id); }));
+      tbody.querySelectorAll(".cmp-ins").forEach(b =>
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openAdd(DATA.members.find(x => x.id === +b.dataset.id) || null);
+        }));
     }
     if (IS_OFFICER) {
       tbody.querySelectorAll(".cmp-arch").forEach(b =>
         b.addEventListener("click", (e) => {
           e.stopPropagation();
           archiveMember(b.dataset.canon, b.dataset.nick);
+        }));
+      tbody.querySelectorAll(".cmp-unarch").forEach(b =>
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          unarchiveMember(b.dataset.canon, b.dataset.nick);
         }));
     }
   }
@@ -267,6 +301,16 @@
     try {
       await API.valorArchive(canon, reason);
       toast("Кикнут в архив: " + nick);
+      await reloadKeepScroll();
+    } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+
+  // ── Вернуть из архива прямо со строки скринов (кикнут вручную) ──
+  async function unarchiveMember(canon, nick) {
+    if (!confirm(`Вернуть «${nick}» в таблицу Доблести? Он есть в скринах, но сейчас скрыт из Таблицы.`)) return;
+    try {
+      await API.valorRestore(canon, "");
+      toast("Возвращён в таблицу: " + nick);
       await reloadKeepScroll();
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
   }
@@ -371,15 +415,26 @@
   }
 
   // ── Добавить пропущенную строку (админ) ──
-  function openAdd() {
+  // afterMember — если открыли кнопкой ➕ на строке: вставить сразу ПОСЛЕ неё.
+  function openAdd(afterMember) {
     if (!openWeek) { toast("Сначала выбери неделю"); return; }
     const ov = $("cmp-edit");
     const f = (lbl, key, val, type) =>
       `<label class="ce-f"><span>${lbl}</span>
         <input data-k="${key}" type="${type || "text"}" value="${esc(val == null ? "" : val)}"></label>`;
+    // Селектор позиции: «в конец» + «после каждого ника». По умолчанию —
+    // строка, на которой нажали ➕ (иначе конец списка).
+    const afterId = afterMember ? afterMember.id : "";
+    const posOpts = [`<option value="">— в конец списка —</option>`]
+      .concat((DATA.members || []).map((mm, i) =>
+        `<option value="${mm.id}"${mm.id === afterId ? " selected" : ""}>${i + 1}. после «${esc(mm.nick)}»${mm.frame != null ? ` · кадр #${mm.frame + 1}` : ""}</option>`))
+      .join("");
     ov.innerHTML =
       `<div class="ce-box">
-        <div class="ce-h">Добавить строку · неделя <b>${esc(openWeek)}</b></div>
+        <div class="ce-h">Добавить пропущенный ник · неделя <b>${esc(openWeek)}</b></div>
+        <label class="ce-f"><span>Куда вставить</span>
+          <select data-k="after_id" id="ce-after">${posOpts}</select></label>
+        <div class="ce-msg" id="ce-pos-hint"></div>
         ${f("Ник", "nick", "")}
         ${f("Имя (true_name)", "true_name", "")}
         ${f("Должность", "rank", "")}
@@ -397,11 +452,26 @@
     ov.hidden = false;
     ov.querySelector("#ce-cancel").onclick = () => { ov.hidden = true; };
     ov.onclick = (e) => { if (e.target === ov) ov.hidden = true; };
+    // Живая подсказка: между какими двумя никами встанет строка.
+    const sel = ov.querySelector("#ce-after");
+    const hint = ov.querySelector("#ce-pos-hint");
+    const updHint = () => {
+      const v = sel.value;
+      if (!v) { hint.textContent = "Строка встанет в КОНЕЦ списка."; return; }
+      const idx = (DATA.members || []).findIndex(mm => mm.id === +v);
+      const a = DATA.members[idx], b = DATA.members[idx + 1];
+      hint.textContent = b
+        ? `Встанет между «${a.nick}» и «${b.nick}»` + (a.frame != null ? ` · кадр #${a.frame + 1}` : "")
+        : `Встанет сразу после «${a.nick}» (последним)` + (a.frame != null ? ` · кадр #${a.frame + 1}` : "");
+    };
+    sel.addEventListener("change", updHint);
+    updHint();
     ov.querySelector("#ce-save").onclick = async () => {
       const fields = { week: openWeek };
       ov.querySelectorAll("[data-k]").forEach(inp => {
         const k = inp.dataset.k;
         if (k === "is_afk") fields[k] = inp.checked;
+        else if (k === "after_id") fields[k] = inp.value ? parseInt(inp.value, 10) : null;
         else if (inp.type === "number") fields[k] = inp.value === "" ? null : parseInt(inp.value, 10);
         else fields[k] = inp.value;
       });
@@ -414,9 +484,41 @@
         toast("Добавлено: " + fields.nick);
         await loadWeek(openWeek, activeFolder());
       } catch (e) {
-        msg.textContent = e.status === 409
-          ? "Такой ник уже есть в этой неделе — правь его строкой ✎"
-          : "Ошибка: " + (e.detail || e.message);
+        const c = e.status === 409 && e.detail && e.detail.conflict;
+        if (c && c.via_alias) {
+          // Ник авто-связан (алиасом) с ДРУГИМ игроком (напр. Нефеса↔Небеса).
+          // Предлагаем разорвать связь и добавить как отдельного игрока.
+          const frameTxt = c.frame != null ? ` · кадр #${c.frame + 1}` : "";
+          msg.innerHTML =
+            `Ник «${esc(fields.nick)}» авто-связан с игроком «${esc(c.nick)}» ` +
+            `(доблесть ${c.valor == null ? "—" : c.valor} · ур ${c.level == null ? "—" : c.level}${frameTxt}) — считается тем же.<br>` +
+            `Если это <b>другой</b> игрок — разорви связь и добавь отдельно:` +
+            `<div style="margin-top:7px"><button type="button" id="ce-breakalias" class="ce-save">🔗✂ Разорвать связь и добавить</button></div>`;
+          const bb = ov.querySelector("#ce-breakalias");
+          if (bb) bb.onclick = async () => {
+            bb.disabled = true; bb.textContent = "Добавляю…";
+            try {
+              await API.valorMemberAdd({ ...fields, break_alias: true });
+              ov.hidden = true;
+              toast("Добавлено отдельно: " + fields.nick);
+              await loadWeek(openWeek, activeFolder());
+            } catch (e2) { msg.textContent = "Ошибка: " + (e2.detail || e2.message); }
+          };
+        } else if (c) {
+          // Прямой дубль по нику — предлагаем исправить ту строку (✎).
+          const frameTxt = c.frame != null ? ` · кадр #${c.frame + 1}` : "";
+          msg.innerHTML =
+            `Ник «${esc(c.nick)}» уже есть в этой неделе: ` +
+            `доблесть ${c.valor == null ? "—" : c.valor} · ур ${c.level == null ? "—" : c.level}${frameTxt}.<br>` +
+            `Если это <b>другой</b> игрок (ошибка распознавания) — исправь ту строку, потом добавь этого.` +
+            `<div style="margin-top:7px"><button type="button" id="ce-fixconflict" class="ce-save">✎ Исправить строку «${esc(c.nick)}»</button></div>`;
+          const fb = ov.querySelector("#ce-fixconflict");
+          if (fb) fb.onclick = () => openEdit(c.id);
+        } else if (e.status === 409) {
+          msg.textContent = "Такой ник уже есть в этой неделе — правь его строкой ✎";
+        } else {
+          msg.textContent = "Ошибка: " + (e.detail || e.message);
+        }
       }
     };
   }
@@ -590,6 +692,13 @@
     });
     return f;
   }
+  function lastFrameIdx() {
+    let f = null;
+    (DATA.members || []).forEach(m => {
+      if (m.frame != null && (f === null || m.frame > f)) f = m.frame;
+    });
+    return f;
+  }
   function frameCount(f) {
     return (DATA.members || []).filter(m => m.frame === f).length;
   }
@@ -605,13 +714,28 @@
     if (second === null) return 0;
     return Math.max(0, frameCount(ff) - frameCount(second));
   }
-  function weekOverlap() {
+  function weekOverlap(frame) {
+    // 1) Ручной пофреймовый off (админ задал явно) — высший приоритет.
+    const fr = (frame != null && DATA.calib && DATA.calib.frames)
+               ? DATA.calib.frames[frame] : null;
+    if (fr && fr.off != null) return fr.off;
     const d = DATA.calib && DATA.calib.default;
+    // 2) АВТО-ФИКС ХВОСТА: у ПОСЛЕДНЕГО кадра прокрутка упирается в низ, шаг
+    //    меньше обычного → перекрытие = видимых строк − новых в кадре. Считаем
+    //    автоматически для любой недели. Середину НЕ трогаем (там глобальный off
+    //    верен; авто по всем кадрам ловил бы OCR-пропуски как ложный сдвиг).
+    if (frame != null && d && frame === lastFrameIdx()
+        && frame !== firstFrameIdx()) {
+      const nnew = frameCount(frame);
+      const gr = gridRows(d);
+      if (nnew > 0 && gr > 0) return Math.max(0, gr - nnew);
+    }
+    // 3) Общий off / авто-оценка по первым двум кадрам.
     return (d && d.off != null) ? d.off : autoOverlap();
   }
   // Номер видимого ряда игрока в его кадре: idx + перекрытие (для НЕ первого кадра).
   function memberRow(m, idx) {
-    return (m.frame === firstFrameIdx() ? 0 : weekOverlap()) + idx;
+    return (m.frame === firstFrameIdx() ? 0 : weekOverlap(m.frame)) + idx;
   }
   function rowBand(m) {
     if (m && m.bbox && m.bbox.frame != null) return m.bbox;   // Фаза 2 (десктоп)

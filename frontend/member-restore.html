@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru" class="booting">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#140d07">
+  <meta name="color-scheme" content="dark">
+  <title>SanTDeviL — Возврат состава</title>
+  <link rel="stylesheet" href="styles.css?v=1798800000">
+  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .shell{visibility:hidden}</style>
+  <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
+  <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
+</head>
+<body>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="assets/logo.png?v=1798200000" alt="SanTDeviL">
+        <div class="brand-name">SanTDeviL</div>
+        <span class="classified-badge">Только для офицеров</span>
+      </div>
+      <div class="user-bar" id="user-bar">
+        <span class="who" id="who"></span>
+        <button id="logout-btn">Выйти</button>
+      </div>
+    </header>
+
+    <section class="title-block">
+      <div class="glitch">S a n T D e v i L</div>
+      <div class="subtitle">Возврат состава — резерв на случай потери чатов</div>
+    </section>
+
+    <main>
+      <div class="ts3-dl" id="ts3-dl"></div>
+      <div class="tabs">
+        <div class="tabs-group">
+          <span class="tabs-group-label">приём</span>
+          <div class="tabs-group-links">
+            <a href="index.html">Реестр</a>
+            <a href="audit.html">История</a>
+          </div>
+        </div>
+        <div class="tabs-sep" aria-hidden="true"></div>
+        <div class="tabs-group">
+          <span class="tabs-group-label">чаты</span>
+          <div class="tabs-group-links">
+            <a href="chat-archive.html">Архив</a>
+            <a href="chat-members.html">Участники</a>
+            <a href="member-restore.html" class="active">Возврат</a>
+          </div>
+        </div>
+        <div class="tabs-sep" aria-hidden="true"></div>
+        <div class="tabs-group">
+          <span class="tabs-group-label">доблесть</span>
+          <div class="tabs-group-links">
+            <a href="clan-valor.html">Таблица</a>
+            <a href="valor-screens.html">Скрины</a>
+          </div>
+        </div>
+        <div class="tabs-sep admin-only" aria-hidden="true"></div>
+        <div class="tabs-group admin-only">
+          <span class="tabs-group-label">админ</span>
+          <div class="tabs-group-links">
+            <a href="settings.html" id="settings-tab">Настройки</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Возврат состава</h2>
+        <p class="hint" style="margin-bottom:10px">
+          Резервная копия всех участников чатов (TG + VK) с профилями и ссылками
+          для приглашения назад — на случай, если владелец чата удалит его,
+          выгонит всех или почистит. Система <b>ежедневно снимает состав</b> и
+          помнит, кто был у нас в какой день. Так ты сможешь позвать обратно
+          <b>именно тех, кто был с нами недавно</b>, а не всех когда-либо.
+          <b>🟢 сейчас в чате</b> · <b>⚪ ушёл</b> (с датой последнего дня у нас).
+        </p>
+
+        <div class="mr-controls">
+          <label>Когда был:
+            <select id="mr-recent">
+              <option value="">всех кого помним</option>
+              <option value="0">только в составе сейчас</option>
+              <option value="14">был ≤ 2 недель назад</option>
+              <option value="30">был ≤ месяца назад</option>
+              <option value="90">был ≤ 3 месяцев назад</option>
+            </select>
+          </label>
+          <label>Площадка:
+            <select id="mr-platform">
+              <option value="">TG и VK</option>
+              <option value="tg">есть Telegram</option>
+              <option value="vk">есть VK</option>
+              <option value="both">есть оба</option>
+            </select>
+          </label>
+          <label>Кто:
+            <select id="mr-reg">
+              <option value="">все</option>
+              <option value="reg">зарегистрированные</option>
+              <option value="unreg">не зарег. (из чата)</option>
+            </select>
+          </label>
+          <label>Сортировка:
+            <select id="mr-sort">
+              <option value="recency">по свежести</option>
+              <option value="name">по имени</option>
+              <option value="tg">по Telegram</option>
+              <option value="vk">по VK</option>
+            </select>
+          </label>
+          <input type="text" id="mr-filter" placeholder="фильтр: ник / имя / TG / VK">
+          <span class="mr-spacer"></span>
+          <button id="mr-capture" class="cmp-add-btn" title="Снять снимок состава прямо сейчас">📸 Снять снимок сейчас</button>
+          <a id="mr-backup" class="cmp-add-btn" href="/chat/members/backup-export" title="Скачать полный резерв (JSON) — храни у себя">⬇ Скачать резерв (JSON)</a>
+        </div>
+
+        <div id="mr-asof" class="mr-asof"></div>
+        <div id="mr-stats" class="members-stats" style="margin:6px 0"></div>
+        <div id="mr-loading" class="chat-loading">Загрузка…</div>
+        <div id="mr-list" class="mr-grid"></div>
+        <div id="mr-empty" class="empty" hidden>Никого не найдено</div>
+      </div>
+
+      <div class="panel">
+        <h2>История снимков состава</h2>
+        <p class="hint" style="margin-bottom:8px">
+          Каждый снимок — состав чатов на дату. Клик — посмотреть, с кем мы были
+          в тот день (и позвать их назад).
+        </p>
+        <div id="mr-snaps" class="mr-snaps"></div>
+      </div>
+    </main>
+
+    <footer class="bottom">SanTDeviL — Офицерская панель</footer>
+  </div>
+
+  <div id="mr-day-modal" class="cmp-edit-ov" hidden></div>
+  <div id="mr-detail" class="cmp-edit-ov" hidden></div>
+  <div id="mr-toast" class="cmp-toast" hidden></div>
+
+  <script src="config.js?v=1791600000"></script>
+  <script src="js/api.js?v=1798500000"></script>
+  <script src="js/member-restore.js?v=1798800000"></script>
+  <script src="js/social-bar.js?v=1792200000"></script>
+  <script src="js/chamber-door.js?v=1791800000"></script>
+  <script src="js/magic-social.js?v=1796250000"></script>
+  <script src="js/ts3.js?v=1796700000"></script>
+</body>
+</html>

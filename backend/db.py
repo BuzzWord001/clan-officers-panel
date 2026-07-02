@@ -571,6 +571,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-07-01: ключ ручной сортировки строк (дробный индекс). NULL → строка
+    # сортируется по id (порядок чтения со скрина, как раньше). Задаётся при
+    # вставке пропущенного ника МЕЖДУ двумя строками: sort_key = середина между
+    # соседями → строка встаёт ровно на нужное место, не трогая id остальных.
+    try:
+        conn.execute("ALTER TABLE valor_members ADD COLUMN sort_key REAL")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-16: недели, за которые данные НЕ собирались (пропуск).
     # ОТДЕЛЬНАЯ таблица — чтобы НЕ засорять valor_snapshots (иначе пустой
     # «пропущенный» снимок становился бы «последним» и ломал текущую таблицу
@@ -581,6 +590,48 @@ def _migrate(conn: sqlite3.Connection) -> None:
             marked_at  TEXT NOT NULL DEFAULT '',
             marked_by  TEXT NOT NULL DEFAULT ''
         )""")
+    except sqlite3.OperationalError:
+        pass
+
+    # 2026-07-02: СИСТЕМА ВОЗВРАТА СОСТАВА. Датированные снимки ростера чатов —
+    # чтобы при удалении/чистке чатов владельцем можно было пригласить назад
+    # именно тех, кто был у нас В ПОСЛЕДНЕЕ ВРЕМЯ (а не всех когда-либо). Каждый
+    # снимок — полный профиль всех участников на дату (JSON) + счётчики.
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS member_snapshots (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            day          TEXT NOT NULL UNIQUE,   -- YYYY-MM-DD (один снимок в день)
+            captured_at  TEXT NOT NULL,          -- полный ISO timestamp
+            member_count INTEGER NOT NULL DEFAULT 0,
+            active_count INTEGER NOT NULL DEFAULT 0,
+            roster_json  TEXT NOT NULL DEFAULT '[]'
+        )""")
+    except sqlite3.OperationalError:
+        pass
+    # 2026-07-02: ЖИВОЙ РОСТЕР чатов — множество id ВСЕХ участников (вкл.
+    # незарегистрированных), кто СЕЙЧАС в VK/TG чатах. Присылает reconcile бота.
+    # Даёт точный «в чате сейчас» для ЛЮБОГО (не только зарег.). kv_meta.k=
+    # 'live_roster_as_of' хранит дату последнего опроса.
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS live_chat_members (
+            platform TEXT NOT NULL,
+            user_id  TEXT NOT NULL,
+            PRIMARY KEY (platform, user_id)
+        )""")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS kv_meta (
+            k TEXT PRIMARY KEY, v TEXT NOT NULL DEFAULT ''
+        )""")
+    except sqlite3.OperationalError:
+        pass
+
+    # last_active_day — последний день, когда человек ПОДТВЕРЖДЁННО был в чатах
+    # (is_active=1 на момент снимка). Даёт «был у нас до ДД.ММ» без разбора всех
+    # снимков. Обновляется при каждом capture_member_snapshot.
+    try:
+        conn.execute("ALTER TABLE clan_members ADD COLUMN last_active_day TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -827,6 +878,24 @@ def valor_compare_data(week: str) -> dict:
             for c, p in _acceptance_nicks(rr["game_nick"]):
                 reg.add(c)
                 reg_nick[c] = p
+        # Явная админ-коррекция ника (override) ГЛАВЕНСТВУЕТ над реестром:
+        # если админ поправил написание кнопкой ✎, оно и показывается, даже
+        # если в реестре другой вариант (напр. реестр внесён с опечаткой, или
+        # два разных ника канонятся одинаково и поздняя запись реестра перетёрла).
+        nick_override: dict[str, str] = {
+            r["nick_canon"]: r["nick"]
+            for r in conn.execute(
+                "SELECT nick_canon, nick FROM valor_nick_override WHERE nick != ''")}
+        # Ручной кик (force_archived): такие есть в снимке, но Таблица их
+        # скрывает. Без этой инфы Скрины молча показывали бы на 1 больше, чем
+        # Таблица (напр. распознано 200, а в Таблице 199). Отдаём флаг + инфо,
+        # чтобы фронт пометил строку и честно свёл счётчик.
+        arch_info: dict[str, dict] = {
+            r["nick_canon"]: {"at": r["archived_at"], "by": r["archived_by"],
+                              "reason": r["reason"]}
+            for r in conn.execute(
+                "SELECT nick_canon, archived_at, archived_by, reason "
+                "FROM valor_force_archived")}
         rows = conn.execute(
             "SELECT id, nick, nick_canon, true_name, rank, title, level, "
             "class_, valor, is_afk, norm_met, flag_new_nick, flag_ocr_suspect, frame "
@@ -836,12 +905,15 @@ def valor_compare_data(week: str) -> dict:
             # порядок в игровом списке), и мы храним их в этом же порядке (id).
             # Пересортировка по valor/frame/nick ломала это (тёзки одной доблести
             # вставали по алфавиту, а не как на экране). Поэтому ORDER BY id.
-            "ORDER BY id",
+            # sort_key (дробный индекс) задаётся только у вручную вставленных
+            # МЕЖДУ строк — иначе NULL → падает в id, порядок чтения сохраняется.
+            "ORDER BY COALESCE(sort_key, id), id",
             (snap["id"],)).fetchall()
         members = [{
             "id": r["id"],
-            # Написание из реестра — эталон; иначе как распознали со скрина.
-            "nick": reg_nick.get(r["nick_canon"], r["nick"]),
+            # Приоритет написания: админ-override → реестр → как распознали.
+            "nick": (nick_override.get(r["nick_canon"])
+                     or reg_nick.get(r["nick_canon"], r["nick"])),
             "nick_canon": r["nick_canon"],
             "in_registry": r["nick_canon"] in reg,
             # Если ник есть в реестре приёма — написание авторитетно (Лир
@@ -853,6 +925,9 @@ def valor_compare_data(week: str) -> dict:
             "true_name": r["true_name"], "rank": r["rank"], "title": r["title"],
             "level": r["level"], "class": r["class_"], "valor": r["valor"],
             "is_afk": bool(r["is_afk"]), "frame": r["frame"],
+            # Ручной кик: строка есть в снимке, но в Таблице скрыта.
+            "force_archived": r["nick_canon"] in arch_info,
+            "archive_info": arch_info.get(r["nick_canon"]),
         } for r in rows]
         shots = [{"idx": r["idx"], "url": r["r2_url"]} for r in conn.execute(
             "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
@@ -1758,6 +1833,19 @@ def _row_to_chat_message(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+# Категории фильтра по типу вложения (UI-ключ → реальные kind'ы в media_json).
+# Позволяет искать «только фото / только голосовые / только видео» и т.д.
+_CHAT_MEDIA_CATEGORIES = {
+    "photo":   ("photo",),
+    "video":   ("video", "video_note"),
+    "voice":   ("voice",),
+    "audio":   ("audio",),
+    "sticker": ("sticker", "sticker_video", "sticker_anim_thumb", "animation"),
+    "file":    ("doc", "document"),
+    "link":    ("link", "wall"),
+}
+
+
 def list_chat_messages(
     *,
     chat_group: str | None = None,
@@ -1765,6 +1853,7 @@ def list_chat_messages(
     date_to: str | None = None,
     user: str | None = None,
     search: str | None = None,
+    media: str | None = None,
     limit: int = 100,
     before_id: int | None = None,
     after_id: int | None = None,
@@ -1802,6 +1891,21 @@ def list_chat_messages(
     if user:
         clauses.append("user_display LIKE ?")
         params.append(f"%{user}%")
+    if media:
+        mk = media.strip().lower()
+        if mk == "any":                       # любое вложение
+            clauses.append("media_json != '[]' AND media_json != ''")
+        elif mk == "text":                    # только текст (без вложений)
+            clauses.append(
+                "(media_json = '[]' OR media_json = '' OR media_json IS NULL)")
+        elif mk in _CHAT_MEDIA_CATEGORIES:     # конкретная категория типа
+            kinds = _CHAT_MEDIA_CATEGORIES[mk]
+            ph = ",".join("?" * len(kinds))
+            clauses.append(
+                "EXISTS (SELECT 1 FROM json_each(media_json) "
+                f"WHERE json_extract(value, '$.kind') IN ({ph}))")
+            params.extend(kinds)
+        # неизвестное значение — игнорируем (без фильтра)
     if before_id:
         clauses.append("id < ?")
         params.append(before_id)
@@ -2289,12 +2393,435 @@ def backfill_chat_users() -> dict:
     return {"created": n}
 
 
-def list_clan_members() -> list[dict]:
+def _merge_member_group(group: list[dict]) -> dict:
+    """Склеивает несколько записей ОДНОГО человека (общий tg_id/vk_id) в одну.
+
+    Нужно потому что один человек, зарегавшийся дважды (напр. вернулся под
+    новым ником через другую площадку), попадает в clan_members двумя рядами
+    с разными key (tg_… и vk_…) и разными game_nick. Система должна понимать,
+    что это ОДИН человек. Берём самую свежую активную запись за основу, пустые
+    поля дозаполняем из остальных, game_nick = все ники (текущий первым)."""
+    g = sorted(group, key=lambda r: (
+        1 if str(r.get("is_active")) == "1" else 0,
+        r.get("synced_at") or ""), reverse=True)
+    merged = dict(g[0])
+    for r in g[1:]:
+        for f, v in r.items():
+            cur = merged.get(f)
+            if (cur is None or str(cur).strip() == "") and v not in (None, "") \
+                    and str(v).strip():
+                merged[f] = v
+    merged["is_active"] = 1 if any(str(r.get("is_active")) == "1"
+                                   for r in group) else 0
+    nicks: list[str] = []
+    for r in g:
+        for nk in (r.get("game_nick") or "").split(","):
+            nk = nk.strip()
+            if nk and nk not in nicks:
+                nicks.append(nk)
+    merged["game_nick"] = ",".join(nicks)
+    merged["_aka"] = nicks[1:]                     # прежние ники
+    merged["_merged_keys"] = [r.get("key") for r in group]
+    # last_active_day — самый свежий среди всех записей человека.
+    merged["last_active_day"] = max(
+        (str(r.get("last_active_day") or "") for r in group), default="")
+    return merged
+
+
+def _unify_members(rows: list[dict]) -> list[dict]:
+    """Объединяет записи одного человека (общий непустой tg_id ИЛИ vk_id)
+    в одну запись через union-find. Один человек = одна карточка со всеми
+    никами/аккаунтами — чинит дубли в «Участниках», поиске и identity-резолве."""
+    n = len(rows)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    by_tg: dict[str, int] = {}
+    by_vk: dict[str, int] = {}
+    for i, r in enumerate(rows):
+        tg = (r.get("tg_id") or "").strip()
+        vk = (r.get("vk_id") or "").strip()
+        if tg:
+            if tg in by_tg:
+                union(i, by_tg[tg])
+            else:
+                by_tg[tg] = i
+        if vk:
+            if vk in by_vk:
+                union(i, by_vk[vk])
+            else:
+                by_vk[vk] = i
+    groups: dict[int, list[dict]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(rows[i])
+    out = [_merge_member_group(g) if len(g) > 1 else dict(g[0])
+           for g in groups.values()]
+    out.sort(key=lambda m: (m.get("display_name") or "").lower())
+    return out
+
+
+def list_clan_members(unified: bool = True) -> list[dict]:
+    with connection() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM clan_members ORDER BY display_name")]
+    # unified=True (по умолчанию) — склеиваем дубли одного человека.
+    # Сырые ряды (unified=False) нужны только служебной синхронизации.
+    return _unify_members(rows) if unified else rows
+
+
+# ═══════════ СИСТЕМА ВОЗВРАТА СОСТАВА (backup / re-invite) ═══════════
+
+_MEMBER_PROFILE_FIELDS = (
+    "key", "game_nick", "display_name",
+    "tg_id", "tg_username", "tg_display", "tg_first_name", "tg_last_name",
+    "tg_avatar_url",
+    "vk_id", "vk_screen_name", "vk_display", "vk_first", "vk_last",
+    "vk_avatar_url",
+    "is_active", "last_active_day", "last_seen_at",
+)
+
+
+def _reinvite_links(m: dict) -> dict:
+    """Ссылки чтобы позвать человека обратно: TG и VK."""
+    links: dict[str, str] = {}
+    tgu = (m.get("tg_username") or "").lstrip("@").strip()
+    tgid = str(m.get("tg_id") or "").strip()
+    if tgu:
+        links["tg"] = f"https://t.me/{tgu}"
+    elif tgid:
+        links["tg"] = f"tg://user?id={tgid}"
+    vks = (m.get("vk_screen_name") or "").strip()
+    vkid = str(m.get("vk_id") or "").strip()
+    if vks:
+        links["vk"] = f"https://vk.com/{vks}"
+    elif vkid:
+        links["vk"] = f"https://vk.com/id{vkid}"
+    return links
+
+
+def _is_active_val(v) -> int:
+    return 1 if str(v) in ("1", "True", "true") else 0
+
+
+def capture_member_snapshot(day: str | None = None) -> dict:
+    """Снимает ДАТИРОВАННЫЙ ростер состава (полные профили всех участников).
+
+    Один снимок в день (upsert по day). Плюс обновляет last_active_day у тех,
+    кто СЕЙЧАС в чате (is_active=1). Это фундамент восстановления: видно, кто
+    был у нас в какой день → можно позвать назад именно недавних, а не всех.
+    """
+    now = datetime.utcnow()
+    day = day or now.strftime("%Y-%m-%d")
+    members = list_clan_members()          # унифицированные, 1 запись/человек
+    roster = []
+    active = 0
+    for m in members:
+        prof = {f: m.get(f) for f in _MEMBER_PROFILE_FIELDS}
+        prof["is_active"] = _is_active_val(m.get("is_active"))
+        prof["aka"] = m.get("_aka") or []
+        if prof["is_active"]:
+            active += 1
+        roster.append(prof)
+    roster_json = json.dumps(roster, ensure_ascii=False)
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO member_snapshots (day, captured_at, member_count, "
+            "active_count, roster_json) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(day) DO UPDATE SET captured_at=excluded.captured_at, "
+            "member_count=excluded.member_count, active_count=excluded.active_count, "
+            "roster_json=excluded.roster_json",
+            (day, now.isoformat(timespec="seconds"), len(roster), active,
+             roster_json))
+        conn.execute(
+            "UPDATE clan_members SET last_active_day = ? WHERE is_active = 1",
+            (day,))
+    return {"day": day, "members": len(roster), "active": active}
+
+
+def set_live_roster(members: list | None = None, tg_ids: list | None = None,
+                    vk_ids: list | None = None, as_of: str = "") -> dict:
+    """Сохраняет ЖИВОЙ список участников чатов (кто СЕЙЧАС в VK/TG), присланный
+    reconcile бота. Полная замена. Боты исключаются. Профили незнакомых
+    участников (кто не писал и не регался) дозаписываются в chat_users —
+    чтобы они тоже показывались в «Возврате» со ссылкой (полное совпадение 1-в-1
+    с реальным составом чатов)."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    as_of = as_of or now
+    rows = []   # (platform, id, name, username, is_bot)
+    if members:
+        for m in members:
+            rows.append((m.get("platform"), str(m.get("id") or ""),
+                         (m.get("name") or "").strip(),
+                         (m.get("username") or "").strip(),
+                         bool(m.get("is_bot"))))
+    else:   # обратная совместимость: голые списки id
+        for i in (tg_ids or []):
+            rows.append(("tg", str(i), "", "", False))
+        for i in (vk_ids or []):
+            rows.append(("vk", str(i), "", "", False))
+    tg_n = vk_n = 0
+    with connection() as conn:
+        conn.execute("DELETE FROM live_chat_members")
+        for plat, uid, name, uname, is_bot in rows:
+            if plat not in ("tg", "vk") or not uid or is_bot:
+                continue  # боты и мусор — не люди
+            conn.execute(
+                "INSERT OR IGNORE INTO live_chat_members(platform,user_id) VALUES(?,?)",
+                (plat, uid))
+            tg_n += (plat == "tg")
+            vk_n += (plat == "vk")
+            if name or uname:
+                # дозапись профиля: имя/username обновляем свежими, msg_count и
+                # first_seen НЕ трогаем (у писавших сохраняется история).
+                conn.execute(
+                    "INSERT INTO chat_users(platform,user_id,display_name,username,"
+                    "first_seen,last_seen,msg_count) VALUES(?,?,?,?,?,?,0) "
+                    "ON CONFLICT(platform,user_id) DO UPDATE SET "
+                    "display_name=CASE WHEN excluded.display_name!='' "
+                    "THEN excluded.display_name ELSE chat_users.display_name END, "
+                    "username=CASE WHEN excluded.username!='' "
+                    "THEN excluded.username ELSE chat_users.username END, "
+                    "last_seen=excluded.last_seen",
+                    (plat, uid, name, uname, now, now))
+        conn.execute(
+            "INSERT INTO kv_meta(k,v) VALUES('live_roster_as_of',?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v", (as_of,))
+    return {"tg": tg_n, "vk": vk_n, "total": tg_n + vk_n, "as_of": as_of}
+
+
+def _live_roster() -> tuple[set, set, str]:
+    """(tg_ids, vk_ids, as_of) живого ростера. Пустые множества, если ещё не
+    присылали (тогда фолбэк на is_active)."""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM clan_members ORDER BY display_name"
-        ).fetchall()
-        return [dict(r) for r in rows]
+            "SELECT platform, user_id FROM live_chat_members").fetchall()
+        m = conn.execute(
+            "SELECT v FROM kv_meta WHERE k='live_roster_as_of'").fetchone()
+    tg = {r["user_id"] for r in rows if r["platform"] == "tg"}
+    vk = {r["user_id"] for r in rows if r["platform"] == "vk"}
+    return tg, vk, (m["v"] if m else "")
+
+
+def _days_since(day: str, today) -> int | None:
+    day = (day or "").strip()[:10]
+    if not day:
+        return None
+    try:
+        return (today - datetime.strptime(day, "%Y-%m-%d").date()).days
+    except ValueError:
+        return None
+
+
+def member_restore_roster(recent_days: int | None = None) -> dict:
+    """Ростер для восстановления состава. Включает И зарегистрированных
+    (clan_members), И НЕзарегистрированных, кто просто писал в чатах
+    (chat_users, не сопоставлен с реестром). У каждого — максимум профиля
+    TG/VK + ссылки для возврата.
+
+    ВАЖНО: «в составе» у зарегистрированных = по последней сверке (reconcile),
+    дата в `as_of`. Живой статус в чате обновляется только запуском reconcile.
+
+    Возвращает {as_of, active_count, total, members:[...]}.
+    """
+    today = datetime.utcnow().date()
+    out = []
+    known_tg: set[str] = set()
+    known_vk: set[str] = set()
+    as_of = ""
+    # Живой ростер чатов (все id, вкл. незарег.). Если есть — «в чате сейчас»
+    # считаем по нему для ВСЕХ; иначе фолбэк на is_active (только зарег.).
+    live_tg, live_vk, live_as_of = _live_roster()
+    has_live = bool(live_tg or live_vk)
+
+    def _live_active(tg, vk):
+        return (tg in live_tg) or (vk in live_vk)
+
+    # 1) Зарегистрированные (реестр clan_members)
+    for m in list_clan_members():
+        tg = str(m.get("tg_id") or "").strip()
+        vk = str(m.get("vk_id") or "").strip()
+        active = _live_active(tg, vk) if has_live else _is_active_val(m.get("is_active"))
+        lad = (m.get("last_active_day") or "").strip()
+        sy = (m.get("synced_at") or "")[:10]
+        if active and sy > as_of:
+            as_of = sy
+        if tg:
+            known_tg.add(tg)
+        if vk:
+            known_vk.add(vk)
+        out.append({
+            "key": m.get("key"),
+            "registered": True,
+            "display_name": m.get("display_name"),
+            "game_nick": m.get("game_nick"),
+            "aka": m.get("_aka") or [],
+            "tg_id": tg, "tg_username": m.get("tg_username"),
+            "tg_display": m.get("tg_display"),
+            "tg_first_name": m.get("tg_first_name"),
+            "tg_last_name": m.get("tg_last_name"),
+            "tg_avatar_url": m.get("tg_avatar_url"),
+            "vk_id": vk, "vk_screen_name": m.get("vk_screen_name"),
+            "vk_display": m.get("vk_display"),
+            "vk_first": m.get("vk_first"), "vk_last": m.get("vk_last"),
+            "vk_avatar_url": m.get("vk_avatar_url"),
+            "has_tg": bool(tg), "has_vk": bool(vk),
+            "active": bool(active),
+            "last_active_day": lad,
+            "days_ago": _days_since(lad, today),
+            "msgs": None,
+            "links": _reinvite_links(m),
+        })
+
+    # Индекс СИЛЬНЫХ имён зарег. участников (полное имя / ник / username) → его
+    # запись. Чтобы сопоставить незарегистрированного из чата с уже известным
+    # человеком по НИКУ/ИМЕНИ (напр. «СестрёнкА» в TG = Светлана Серова, у которой
+    # в реестре только VK). Только длинные ключи (>=4) — не сливать разных людей
+    # по общему короткому имени.
+    name_index: dict[str, dict] = {}
+    for e in out:
+        keys = [e.get("display_name")]
+        keys += [n.strip() for n in (e.get("game_nick") or "").split(",")]
+        keys += [e.get("tg_username"), e.get("vk_screen_name"),
+                 e.get("vk_display"), e.get("tg_display")]
+        for k in keys:
+            nk = _norm_name((k or "").lstrip("@"))
+            if len(nk) >= 4:
+                name_index.setdefault(nk, e)
+
+    _JUNK_IDS = {"0", "1"}
+    _JUNK_NAMES = {"test", "тест", "deleted", "deleted account",
+                   "удаленный аккаунт", "bot", "бот"}
+
+    # 2) НЕзарегистрированные — просто писали в чатах (chat_users)
+    with connection() as conn:
+        cu = conn.execute(
+            "SELECT platform, user_id, display_name, username, last_seen, "
+            "msg_count FROM chat_users").fetchall()
+    for r in cu:
+        uid = str(r["user_id"]).strip()
+        plat = r["platform"]
+        dname = r["display_name"] or ""
+        uname = r["username"] or ""
+        if (plat == "tg" and uid in known_tg) or (plat == "vk" and uid in known_vk):
+            continue  # уже есть как зарегистрированный (по соц-id)
+        if uid in _JUNK_IDS or _norm_name(dname) in _JUNK_NAMES:
+            continue  # тестовое/битое — не показываем
+        # Умный матч по нику/имени (СестрёнкА → Светлана): это тот же человек.
+        match = name_index.get(_norm_name(dname)) or name_index.get(_norm_name(uname))
+        if match:
+            # Если ЭТОТ чат-аккаунт человека СЕЙЧАС в чате — человек активен,
+            # даже если в реестре у него записан другой/старый id этой площадки
+            # (напр. сменил TG-аккаунт). Иначе показывался бы «вышел», хотя он тут.
+            if has_live and ((plat == "tg" and uid in live_tg)
+                             or (plat == "vk" and uid in live_vk)):
+                match["active"] = True
+            # Обогащаем недостающей площадкой — вторая ссылка для возврата.
+            if plat == "tg" and not match.get("has_tg"):
+                match["tg_id"] = uid
+                match["tg_username"] = uname
+                match["tg_display"] = dname
+                match["has_tg"] = True
+                match["links"] = _reinvite_links(match)
+            elif plat == "vk" and not match.get("has_vk"):
+                match["vk_id"] = uid
+                match["vk_screen_name"] = uname
+                match["vk_display"] = dname
+                match["has_vk"] = True
+                match["links"] = _reinvite_links(match)
+            continue
+        m = {"tg_id": uid, "tg_username": uname} if plat == "tg" \
+            else {"vk_id": uid, "vk_screen_name": uname}
+        seen = (r["last_seen"] or "")[:10]
+        # Незарег. «в чате сейчас» — по живому ростеру (если он есть).
+        cu_active = has_live and ((uid in live_tg) if plat == "tg" else (uid in live_vk))
+        out.append({
+            "key": f"cu_{plat}_{uid}",
+            "registered": False,
+            "display_name": dname,
+            "game_nick": "",
+            "aka": [],
+            "tg_id": uid if plat == "tg" else "", "tg_username": uname if plat == "tg" else "",
+            "tg_display": dname if plat == "tg" else "",
+            "tg_first_name": "", "tg_last_name": "", "tg_avatar_url": "",
+            "vk_id": uid if plat == "vk" else "", "vk_screen_name": uname if plat == "vk" else "",
+            "vk_display": dname if plat == "vk" else "",
+            "vk_first": "", "vk_last": "", "vk_avatar_url": "",
+            "has_tg": plat == "tg", "has_vk": plat == "vk",
+            "active": bool(cu_active),
+            "last_active_day": seen,
+            "days_ago": _days_since(seen, today),
+            "msgs": r["msg_count"],
+            "links": _reinvite_links(m),
+        })
+
+    if recent_days is not None:
+        if recent_days <= 0:                  # «только в чате сейчас» = строго active
+            out = [m for m in out if m["active"]]
+        else:
+            out = [m for m in out if m["active"]
+                   or (m["days_ago"] is not None and m["days_ago"] <= recent_days)]
+    out.sort(key=lambda m: (0 if m["active"] else 1,
+                            m["days_ago"] if m["days_ago"] is not None else 10 ** 9,
+                            (m["display_name"] or "").lower()))
+    return {
+        "as_of": (live_as_of[:10] if has_live else as_of),
+        "live": has_live,        # True = «в чате сейчас» точный (живой опрос)
+        "total": len(out),
+        "active_count": sum(1 for m in out if m["active"]),
+        "members": out,
+    }
+
+
+def member_snapshots_list() -> list[dict]:
+    """Датированные снимки (история — на какую дату какой был состав)."""
+    with connection() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT day, captured_at, member_count, active_count "
+            "FROM member_snapshots ORDER BY day DESC")]
+
+
+def member_snapshot_roster(day: str) -> list[dict]:
+    """Ростер на конкретную дату из снимка — с кем мы были в тот день."""
+    with connection() as conn:
+        r = conn.execute(
+            "SELECT roster_json FROM member_snapshots WHERE day=?",
+            (day,)).fetchone()
+    if not r:
+        return []
+    try:
+        roster = json.loads(r["roster_json"])
+    except Exception:
+        return []
+    for m in roster:
+        m["links"] = _reinvite_links(m)
+    return roster
+
+
+def member_backup_export() -> dict:
+    """ПОЛНЫЙ дамп для оффсайт-бэкапа: все сырые записи clan_members + все
+    датированные снимки. Отдаётся JSON'ом для скачивания / гита у бота."""
+    with connection() as conn:
+        members = [dict(r) for r in conn.execute("SELECT * FROM clan_members")]
+        snaps = [dict(r) for r in conn.execute(
+            "SELECT day, captured_at, member_count, active_count, roster_json "
+            "FROM member_snapshots ORDER BY day")]
+    return {
+        "exported_at": datetime.utcnow().isoformat(timespec="seconds"),
+        "member_count": len(members),
+        "snapshot_count": len(snaps),
+        "members": members,
+        "snapshots": snaps,
+    }
 
 
 def _member_name_variants(m: dict) -> list[str]:
@@ -3248,6 +3775,11 @@ _CANON_OVERRIDE = {
     "_Lica_":  "licaunder",    # Жнец
     "AtiScaT": "atiscatscat",  # Бард
     "AtisCat": "atiscatcat",   # Дух крови
+    # _Hоps_ (Оборотень, ур105) — главный, канон по умолчанию = hops.
+    # __Hops__ (Бард, ур102) — его ТВИН, ОТДЕЛЬНЫЙ игрок. Без этого канон
+    # стирает подчёркивания и оба сливаются в hops. Кир./лат. о — на случай OCR.
+    "__Hops__": "hopstwin",
+    "__Hоps__": "hopstwin",
 }
 
 
@@ -5196,7 +5728,8 @@ def valor_get_current(with_reg_notes: bool = False,
                 "ostreak": 0, "omax": 0, "o_cur_ofs": 0.0, "omax_ofs": 0.0,
                 "o_cur_start": "", "omax_start": "", "omax_end": "",
                 "ofs_best": 0.0, "xp": 0.0, "cum_value": 0.0,
-                "pcts": []})   # % выполнения по неделям (для «формы» 4 нед)
+                "pcts": [],    # % выполнения по неделям (для «формы» 4 нед)
+                "spark": []})  # мини-график: (ratio к норме, excused) по неделям
             d["any"] += 1
             if not d["first_week"]:
                 d["first_week"] = wk
@@ -5236,6 +5769,12 @@ def valor_get_current(with_reg_notes: bool = False,
             _wk_base = _mag_base_w(ratio, W["base"])
             if _wk_base > 0:
                 d["cum_value"] += _wk_base * _streak_multiplier(d["o_cur_ofs"], _mult_cap)
+
+            # Точка мини-графика набора доблести (спарклайн в колонке норматива):
+            # отношение к норме (1.0 = норма выполнена) + флаг «освобождён»
+            # (АФК/иммун — не в счёт нормы, рисуем приглушённо). Пишем ДО
+            # excused-continue, чтобы график был непрерывным по всем неделям.
+            d["spark"].append({"r": round(ratio, 2), "e": 1 if excused else 0})
 
             # ── Оценка НОРМЫ и «форма» — АФК и ИММУННЫЕ ОСВОБОЖДЕНЫ: их недели
             #    здесь не учитываем (нет предупреждений, форма не падает). ──
@@ -5422,14 +5961,17 @@ def valor_get_current(with_reg_notes: bool = False,
             # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
             m["id"] = r["id"]
             ov = nick_override.get(cn)
-            # Написание ника: реестр приёма — эталон (Лир копирует из игры),
-            # он главнее распознанного OCR. Иначе ручной override админа. Иначе
-            # как распознали.
+            # Написание ника (приоритет): ЯВНАЯ админ-коррекция (override, кнопка
+            # ✎) → реестр приёма (Лир копирует из игры) → как распознал OCR.
+            # Override главнее реестра: это осознанная точечная правка админа
+            # (напр. реестр внесён с опечаткой, или два ника канонятся одинаково
+            # и поздняя запись реестра перетёрла нужное написание). Едино со
+            # страницей Скринов (valor_compare_data).
             reg_n = reg_nick.get(cn)
-            if reg_n:
-                m["nick"] = reg_n
-            elif ov:
+            if ov:
                 m["nick"] = ov
+            elif reg_n:
+                m["nick"] = reg_n
             m["ai_nick"] = (cn in ai_nick_canons) and not ov and (cn not in ai_registered)
             # Примечание из реестра (только если запрошено — т.е. не гость).
             if with_reg_notes:
@@ -5532,6 +6074,7 @@ def valor_get_current(with_reg_notes: bool = False,
                 _n = d["n"] or 1   # АФК-игрок может иметь 0 оценённых недель
                 m["compliance"] = {
                     "avg_pct":     round(d["sum"] / _n, 1),
+                    "spark":       d["spark"][-16:],   # мини-график (посл. 16 нед.)
                     "recent_pct":  round(sum(_recent) / len(_recent), 1) if _recent else 0.0,
                     "recent_weeks": len(_recent),
                     "total_xp":    _xp,
@@ -6057,14 +6600,60 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
         valor_norm = int(snap["valor_norm"] or 0)
 
         alias_map = _alias_map(conn)
-        canon = _resolve_canon(_valor_canon(nick), alias_map)
-        if not canon:
+        raw_canon = _valor_canon(nick)
+        resolved = _resolve_canon(raw_canon, alias_map)
+        if not resolved:
             return {"ok": False, "reason": "bad_nick"}
+        # break_alias=True → пользователь подтвердил, что это ДРУГОЙ игрок,
+        # чей ник авто-связан (алиасом) с уже существующим. Разрываем связь и
+        # добавляем под СОБСТВЕННЫМ каноном ника (напр. реальная «Нефеса» ур105
+        # ≠ «Небеса» ур102, хотя алиас heфeca→heбeca их слил).
+        break_alias = bool(fields.get("break_alias")) and (raw_canon in alias_map)
+        if break_alias:
+            conn.execute("DELETE FROM valor_alias WHERE alias_canon = ?", (raw_canon,))
+            canon = raw_canon
+        else:
+            canon = resolved
         dup = conn.execute(
-            "SELECT id FROM valor_members WHERE snapshot_id = ? AND nick_canon = ?",
+            "SELECT id, nick, frame, valor, level FROM valor_members "
+            "WHERE snapshot_id = ? AND nick_canon = ?",
             (snap_id, canon)).fetchone()
         if dup:
-            return {"ok": False, "reason": "exists", "id": dup["id"]}
+            # via_alias — конфликт возник ТОЛЬКО из-за авто-связи ников (алиаса),
+            # а не прямого совпадения → фронт предложит «разорвать связь и добавить».
+            # Иначе (прямой дубль canon) — предложит исправить существующую строку.
+            via_alias = (raw_canon != resolved) and (raw_canon in alias_map)
+            return {"ok": False, "reason": "exists", "id": dup["id"],
+                    "conflict": {"id": dup["id"], "nick": dup["nick"],
+                                 "frame": dup["frame"], "valor": dup["valor"],
+                                 "level": dup["level"], "via_alias": via_alias,
+                                 "typed": nick}}
+
+        # ── Позиция вставки (удобно для проверки скринов) ──
+        # after_id задан → вставляем МЕЖДУ строкой after_id и следующей за ней:
+        # sort_key = середина между их ключами (дробный индекс, ничего не сдвигаем).
+        # Кадр по умолчанию берём у строки-соседа (та же перемотка скрина) →
+        # добавленный ник сразу виден на сетке/лупе в правильном месте.
+        # after_id нет → sort_key=NULL, строка падает в конец (как раньше).
+        after_id = fields.get("after_id") if isinstance(fields.get("after_id"), int) else None
+        frame_val = fields.get("frame") if isinstance(fields.get("frame"), int) else None
+        sort_key = None
+        if after_id:
+            ordered = conn.execute(
+                "SELECT id, sort_key, frame FROM valor_members WHERE snapshot_id = ? "
+                "ORDER BY COALESCE(sort_key, id), id", (snap_id,)).fetchall()
+            pos = next((i for i, r in enumerate(ordered) if r["id"] == after_id), None)
+            if pos is not None:
+                aft = ordered[pos]
+                aft_key = aft["sort_key"] if aft["sort_key"] is not None else float(aft["id"])
+                nxt = ordered[pos + 1] if pos + 1 < len(ordered) else None
+                if nxt is not None:
+                    nxt_key = nxt["sort_key"] if nxt["sort_key"] is not None else float(nxt["id"])
+                    sort_key = (aft_key + nxt_key) / 2.0
+                else:
+                    sort_key = aft_key + 1.0
+                if frame_val is None and aft["frame"] is not None:
+                    frame_val = aft["frame"]
 
         cls = (fields.get("class_") or fields.get("class") or "").strip()
         title = (fields.get("title") or "").strip()
@@ -6104,12 +6693,12 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
             """INSERT INTO valor_members
                (snapshot_id, nick, nick_canon, true_name, rank, title,
                 level, class_, valor, is_afk, norm_met,
-                flag_new_nick, flag_ocr_suspect, warning_count)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                flag_new_nick, flag_ocr_suspect, warning_count, frame, sort_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (snap_id, nick, canon, true_name, rank, title, level_val, cls,
              valor_val, 1 if is_afk else 0,
              None if norm_met_raw is None else (1 if norm_met_raw else 0),
-             0, 0, warning_count))
+             0, 0, warning_count, frame_val, sort_key))
         mid = cur.lastrowid
 
         # Снова в списке → не ушедший и не кикнутый.
@@ -6643,6 +7232,25 @@ def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:
     if field and field not in _HIST_FIELDS:
         raise ValueError(f"unknown field: {field!r}")
     with connection() as conn:
+        if field == "valor":
+            # Обогащаем историю доблести нормой/АФК/выполнением той недели —
+            # чтобы попап показывал не только «сколько набрал», но и «попал ли
+            # в норматив» (цвет строки) и не путал 0 в АФК с провалом.
+            rows = conn.execute(
+                """SELECT vh.week AS week, vh.value AS value,
+                          vh.captured_at AS captured_at,
+                          vs.valor_norm AS norm,
+                          vm.is_afk AS is_afk, vm.norm_met AS norm_met
+                   FROM valor_history vh
+                   LEFT JOIN valor_snapshots vs ON vs.week = vh.week
+                   LEFT JOIN valor_members vm
+                          ON vm.snapshot_id = vs.id
+                         AND vm.nick_canon = vh.nick_canon
+                   WHERE vh.nick_canon = ? AND vh.field = 'valor'
+                   ORDER BY vh.week DESC""",
+                (canon,),
+            ).fetchall()
+            return {"valor": [dict(r) for r in rows]}
         if field:
             rows = conn.execute(
                 """SELECT week, value, captured_at FROM valor_history

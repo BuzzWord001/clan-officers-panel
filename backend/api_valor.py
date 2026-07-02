@@ -421,6 +421,9 @@ class ValorMemberAdd(BaseModel):
     class_:    str | None = Field(default="", alias="class")
     valor:     int | None = None
     is_afk:    bool | None = False
+    after_id:  int | None = None   # вставить ПОСЛЕ этой строки (иначе — в конец)
+    frame:     int | None = None   # кадр (idx скрина); пусто → возьмём у соседа
+    break_alias: bool | None = False  # разорвать авто-связь ников (другой игрок)
 
     class Config:
         populate_by_name = True
@@ -436,8 +439,12 @@ def valor_member_add(payload: ValorMemberAdd,
     res = db.valor_add_member(week, fields, actor)
     if not res.get("ok"):
         reason = res.get("reason", "add_failed")
-        code = (status.HTTP_409_CONFLICT if reason == "exists"
-                else status.HTTP_404_NOT_FOUND if reason == "no_snapshot"
+        if reason == "exists":
+            # detail — объект: фронт покажет конфликтную строку и даст её исправить.
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                detail={"reason": "exists",
+                                        "conflict": res.get("conflict")})
+        code = (status.HTTP_404_NOT_FOUND if reason == "no_snapshot"
                 else status.HTTP_400_BAD_REQUEST)
         raise HTTPException(code, reason)
     return res

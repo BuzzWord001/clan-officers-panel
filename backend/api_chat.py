@@ -189,6 +189,10 @@ def list_msgs(
     date_to: str | None = Query(default=None),
     user: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    media: str | None = Query(
+        default=None,
+        pattern="^(any|text|photo|video|voice|audio|sticker|file|link)$",
+        description="Фильтр по типу: any/text/photo/video/voice/audio/sticker/file/link"),
     before_id: int | None = Query(default=None),
     after_id: int | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
@@ -201,6 +205,7 @@ def list_msgs(
         date_to=date_to,
         user=user,
         search=search,
+        media=media,
         before_id=before_id,
         after_id=after_id,
         limit=limit,
@@ -542,6 +547,79 @@ def members_activity(_: dict = Depends(require_officer)) -> list[dict]:
     по неделям за 12 недель.
     """
     return db.list_members_activity()
+
+
+# ═══════════ ВОЗВРАТ СОСТАВА (backup / re-invite) ═══════════
+
+@router.get("/members/restore-roster")
+def members_restore_roster(
+    recent_days: int | None = Query(default=None, ge=0, le=3650),
+    _: dict = Depends(require_officer),
+) -> dict:
+    """Ростер для восстановления: зарегистрированные + незарегистрированные из
+    чатов, статус актуальности + ссылки возврата (TG/VK). {as_of, members, ...}.
+    recent_days — оставить только кто в составе ИЛИ был не давнее N дней."""
+    return db.member_restore_roster(recent_days=recent_days)
+
+
+@router.get("/members/snapshots")
+def members_snapshots(_: dict = Depends(require_officer)) -> list[dict]:
+    """Датированные снимки состава (на какую дату сколько было участников)."""
+    return db.member_snapshots_list()
+
+
+@router.get("/members/snapshot")
+def members_snapshot_by_day(
+    day: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _: dict = Depends(require_officer),
+) -> list[dict]:
+    """Состав на конкретную дату из снимка — с кем мы были в тот день."""
+    return db.member_snapshot_roster(day)
+
+
+@router.post("/members/snapshot/capture")
+def members_snapshot_capture(actor: dict = Depends(require_officer)) -> dict:
+    """Снять снимок состава прямо сейчас (вручную, помимо ежедневного)."""
+    return db.capture_member_snapshot()
+
+
+@router.get("/members/backup-export")
+def members_backup_export(_: dict = Depends(require_officer)):
+    """ПОЛНЫЙ дамп состава + снимков (JSON-файл для скачивания/оффсайт-бэкапа)."""
+    import json as _json
+    from fastapi.responses import Response
+    data = db.member_backup_export()
+    body = _json.dumps(data, ensure_ascii=False, indent=1)
+    fname = f"santdevil-members-backup-{data['exported_at'][:10]}.json"
+    return Response(
+        content=body, media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/members/backup-bot")
+def members_backup_bot(_: None = Depends(require_bot_token)) -> dict:
+    """Тот же полный дамп, но под БОТ-токеном — чтобы clan-reg-bot забирал его
+    и коммитил в git (clan-chat-archive) для ОФФСАЙТ-бэкапа (переживает
+    потерю сайта/тома/ПК). Возвращает JSON напрямую."""
+    return db.member_backup_export()
+
+
+class LiveRosterIn(BaseModel):
+    # members: [{platform, id, name, username, is_bot}] — предпочтительно (с профилями)
+    members: list[dict] = Field(default_factory=list)
+    tg: list[str] = Field(default_factory=list)   # legacy: голые id TG
+    vk: list[str] = Field(default_factory=list)   # legacy: голые id VK
+    as_of: str = ""
+
+
+@router.post("/members/live-roster")
+def members_live_roster(payload: LiveRosterIn,
+                        _: None = Depends(require_bot_token)) -> dict:
+    """Бот (reconcile) присылает ЖИВОЙ список ВСЕХ участников чатов с профилями
+    (вкл. незарегистрированных и не писавших) → точный «в чате сейчас» 1-в-1 +
+    показ незнакомых со ссылкой. Боты исключаются."""
+    return db.set_live_roster(members=payload.members, tg_ids=payload.tg,
+                              vk_ids=payload.vk, as_of=payload.as_of)
 
 
 @router.delete("/messages")

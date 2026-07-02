@@ -896,6 +896,7 @@
     if (dateTo) dateTo = dateTo + "T23:59:59";
     return {
       chat_group: $("f-group").value || undefined,
+      media: $("f-media") ? ($("f-media").value || undefined) : undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       user: $("f-user").value.trim() || undefined,
@@ -1025,6 +1026,7 @@
   // Переключение чата (Все/Общий/Офицерский) — сразу применяет фильтр
   // без нажатия «Поиск»: естественное поведение для select-а.
   $("f-group").addEventListener("change", applyFilters);
+  if ($("f-media")) $("f-media").addEventListener("change", applyFilters);
 
   // Клик по тегам тем в подсказке → подставляет «тема:X» в поле поиска
   // и сразу запускает. Остальные фильтры (даты, автор, чат) НЕ трогаем —
@@ -1054,7 +1056,8 @@
       });
     });
   $("reset-btn").addEventListener("click", () => {
-    for (const id of ["f-group", "f-from", "f-to", "f-user", "f-search"]) {
+    for (const id of ["f-group", "f-media", "f-from", "f-to", "f-user", "f-search"]) {
+      if (!$(id)) continue;
       $(id).value = "";
       $(id).classList.remove("invalid");
     }

@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Архив переписки</title>
-  <link rel="stylesheet" href="styles.css?v=1797960000">
+  <link rel="stylesheet" href="styles.css?v=1798800000">
   <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .shell{visibility:hidden}</style>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
-  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
   <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
        устаревшую вкладку из кэша (старые иконки/разметку). -->
   <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
@@ -20,7 +20,7 @@
   <div class="shell">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="assets/logo.png" alt="SanTDeviL">
+        <img class="brand-logo" src="assets/logo.png?v=1798200000" alt="SanTDeviL">
         <div class="brand-name">SanTDeviL</div>
         <span class="classified-badge">Только для офицеров</span>
       </div>
@@ -50,6 +50,7 @@
           <div class="tabs-group-links">
             <a href="chat-archive.html" class="active">Архив</a>
             <a href="chat-members.html">Участники</a>
+            <a href="member-restore.html">Возврат</a>
           </div>
         </div>
         <div class="tabs-sep" aria-hidden="true"></div>
@@ -77,6 +78,21 @@
               <option value="">Все</option>
               <option value="general">Общий</option>
               <option value="officers">Офицерский</option>
+            </select>
+          </div>
+          <div class="ff">
+            <label>Тип</label>
+            <select id="f-media">
+              <option value="">Все</option>
+              <option value="text">Только текст</option>
+              <option value="any">С вложением</option>
+              <option value="photo">Фото</option>
+              <option value="video">Видео</option>
+              <option value="voice">Голосовые</option>
+              <option value="audio">Аудио</option>
+              <option value="sticker">Стикеры / GIF</option>
+              <option value="file">Файлы</option>
+              <option value="link">Ссылки</option>
             </select>
           </div>
           <div class="ff">
@@ -157,7 +173,7 @@
   <script src="config.js?v=1791600000"></script>
   <script src="js/api.js?v=1795930000"></script>
   <script src="js/dateutil.js?v=1795930000"></script>
-  <script src="js/chat-archive.js?v=1796400000"></script>
+  <script src="js/chat-archive.js?v=1798320000"></script>
   <script src="js/tooltips.js?v=1786000400"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
   <script src="js/chamber-door.js?v=1791800000"></script>

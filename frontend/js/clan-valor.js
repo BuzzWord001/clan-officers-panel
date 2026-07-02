@@ -145,7 +145,7 @@
       if (DATA) showNetBanner(false);
     } catch (e) {
       if (e && e.status === 0) showNetBanner(true);
-      $("valor-tbody").innerHTML = `<tr><td colspan="9" class="m-error">
+      $("valor-tbody").innerHTML = `<tr><td colspan="12" class="m-error">
         Ошибка загрузки: ${esc(e.detail || e.message)}</td></tr>`;
       return;
     } finally {
@@ -234,7 +234,11 @@
       return n ? (m.valor / n) * 100 : m.valor;
     }
     if (key === "compliance") {
-      return m.compliance ? m.compliance.avg_pct : -1;
+      // Колонка «Оценка и тренд» показывает форму за последние 4 недели —
+      // сортируем по ней же (recent_pct), а не по средней за всё время.
+      if (!m.compliance) return -1;
+      return m.compliance.recent_pct != null
+        ? m.compliance.recent_pct : m.compliance.avg_pct;
     }
     if (key === "warnings") {
       // Сортируем по числу всех активных предупреждений.
@@ -733,6 +737,49 @@
     return `${d.getDate()} ${m[d.getMonth()]}`;
   }
 
+  // Мини-график (спарклайн) набора доблести по неделям — под цифрами норматива.
+  // Каждый столбик = неделя, высота ∝ отношению к норме (ratio), пунктирная
+  // линия = норма (1.0). Цвет: выполнил (зелёный) / частично / мало / АФК.
+  // Сразу видно, как человек держит норматив во времени.
+  function renderValorSpark(m) {
+    const sp = m.compliance && m.compliance.spark;
+    if (!sp || !sp.length) return "";
+    const W = 100, H = 20, gap = 1.4;
+    const n = sp.length;
+    const bw = Math.max(2, (W - (n - 1) * gap) / n);
+    // Масштаб: норма всегда видна, пики выше 2.5× клипаем (чтобы не сплющить
+    // остальные недели). Минимум 1.3×, чтобы столбики нормы не упирались в верх.
+    const maxR = Math.max(1.3, ...sp.map(p => p.r));
+    const scale = Math.min(maxR, 2.5);
+    const normY = +(H - (1 / scale) * H).toFixed(1);   // Y линии нормы (ratio=1)
+    const bars = sp.map((p, i) => {
+      const r = Math.min(p.r, scale);
+      const bh = Math.max(1.5, (r / scale) * H);
+      const x = +(i * (bw + gap)).toFixed(1);
+      const y = +(H - bh).toFixed(1);
+      const cls = p.e ? "afk" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
+      return `<rect x="${x}" y="${y}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="0.8" class="sp-${cls}"/>`;
+    }).join("");
+    const tip = `Набор доблести по неделям (${n}): столбик — доля нормы, ` +
+                `пунктир — норматив. Выше линии = норма выполнена.`;
+    // Линию нормы рисуем ПОВЕРХ столбиков — чтобы она была видна и на высоких.
+    return `<svg class="valor-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="график набора доблести"><title>${tip}</title>` +
+      `${bars}<line class="sp-normline" x1="0" y1="${normY}" x2="${W}" y2="${normY}"/></svg>`;
+  }
+
+  // Статус текущей недели для акцента стат-тайла (цвет верхней кромки).
+  function normStatus(m) {
+    const im = m.immunity;
+    // АФК и иммунитет — РАЗНЫЕ состояния и разные цвета кромки тайла:
+    // АФК = сиреневый (пауза), иммунитет новичка = синий (щит).
+    if (m.is_afk) return "afk";
+    if (im && (im.status === "active" || im.status === "extended" || im.status === "grace"))
+      return "immune";
+    if (m.norm_met === true) return "ok";
+    if (m.norm_pct == null) return "none";
+    return m.norm_pct >= 50 ? "mid" : "low";
+  }
+
   function renderNorm(m, norm) {
     // % выполнения нормы показываем ВСЕМ (АФК/иммун/новичкам тоже), их приписки
     // (АФК · N нед., 🛡 …) сохраняются. Сортировка норм-столбца — по этому %.
@@ -1043,46 +1090,119 @@
     return esc(m.title);
   }
 
+  // Статистика за последние (до 4) ОЦЕНЁННЫХ недель — общая основа и «Оценки»,
+  // и «Тренда». spark = [{r:ratio, e:excused}] по неделям (старые→новые); берём
+  // последние 4 НЕ облегчённые (не АФК/иммун) недели.
+  function last4Stats(m) {
+    const sp = (m.compliance && m.compliance.spark) || [];
+    const ev = sp.filter(p => !p.e).slice(-4);
+    if (!ev.length) return null;
+    const raw = ev.map(p => p.r);
+    const cap = raw.map(r => Math.min(r, 1));           // доля нормы, капнута 100%
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const dirOf = a => {                                 // прогресс: свежая половина − ранняя
+      if (a.length < 2) return 0;
+      const h = Math.floor(a.length / 2);
+      return mean(a.slice(a.length - h)) - mean(a.slice(0, a.length - h));
+    };
+    return {
+      n: raw.length,
+      met: raw.filter(r => r >= 1).length,
+      avgCap: mean(cap),        // консистентность (0..1) — для недобора нормы
+      avgRaw: mean(raw),        // средняя кратность — для «высоко/взлёт»
+      dirRaw: dirOf(raw),       // динамика по кратности (для тех, кто закрывает норму)
+      dirCap: dirOf(cap),       // динамика прогресса к норме (для недобора)
+    };
+  }
+
+  // Оценка формы за ПОСЛЕДНИЕ 4 НЕДЕЛИ (верх объединённой ячейки).
+  function renderGrade4(m) {
+    const s = last4Stats(m);
+    if (!s)
+      return `<span class="norm-cell" style="color:#888" title="нет оценённых недель за последний месяц (АФК/иммунитет)">—</span>`;
+    const pct = Math.round(s.avgCap * 100);
+    const cls = pctClass(pct);
+    const allAvg = (m.compliance && m.compliance.avg_pct != null)
+      ? ` · за всё время ${m.compliance.avg_pct}%` : "";
+    const tip = `За последние ${s.n} нед.: в среднем ${pct}% нормы, закрыл ${s.met}/${s.n}${allAvg}`;
+    return `<span class="norm-cell comp-cell norm-${cls}" title="${esc(tip)}"
+      >${pct}% <small style="opacity:0.7">${s.met}/${s.n}</small></span>`;
+  }
+
+  // Осмысленный ярлык динамики по ПОСЛЕДНИМ 4 НЕДЕЛЯМ. Особые состояния (АФК /
+  // иммунитет / новичок / пропал) важнее. Иначе: УРОВЕНЬ (средняя доля нормы за
+  // 4 нед.) × НАПРАВЛЕНИЕ. Недобор разделён на «немного не добирает» (мягкий
+  // цвет) и «стабильно низко» (жёсткий). Улучшение, пока норма не закрыта, —
+  // не зелёное «Растёт», а «Уже лучше» / «Начал подтягиваться».
   function renderTrend(t, m) {
-    if (!t) {
-      return `<span class="trend trend-none" title="нет данных предыдущей недели">—</span>`;
+    const chip = (cls, icon, label, tip) =>
+      `<span class="trend ${cls}" title="${esc(tip)}">${icon} ${label}</span>`;
+
+    // ── 1. Особые состояния (текущая неделя) ──
+    if (m && m.is_afk)
+      return chip("trend-afk", "💤", "На паузе (АФК)",
+        "Игрок в АФК — норматив не оценивается, серия не рвётся.");
+    const im = m && m.immunity;
+    if (im && (im.status === "active" || im.status === "extended"))
+      return chip("trend-immune", "🛡", "Новичок",
+        "Под иммунитетом новичка — осваивается, норматив пока не спрашивается." +
+        (im.immune_until ? ` Иммунитет до ${im.immune_until}.` : ""));
+    if (im && im.status === "grace")
+      return chip("trend-immune", "🛡", "Осваивается",
+        "Иммунитет только что закончился — неделя со сниженной нормой (адаптация).");
+    if (t && t.kind === "lost")
+      return chip("trend-dead", "✕", "Пропал",
+        "Сейчас нет данных доблести — не был в последнем сборе.");
+
+    // ── 2. Оценка по последним 4 неделям ──
+    const s = last4Stats(m);
+    if (!s) {
+      if (t && t.kind === "new")
+        return chip("trend-new", "★", "Новенький", "Появился в составе недавно.");
+      return chip("trend-none", "—", "мало данных",
+        "Недостаточно оценённых недель для оценки динамики.");
     }
-    if (t.kind === "new") {
-      return `<span class="trend trend-new" title="вступил в клан с прошлой недели"
-        >★ new</span>`;
+    if (s.n === 1 && t && t.kind === "new")
+      return chip("trend-new", "★", "Новенький", "Первая неделя в составе.");
+
+    const gTip = `Средне ${Math.round(s.avgCap * 100)}% нормы за ${s.n} нед., закрыл ${s.met}/${s.n}.`;
+    const meets = s.avgCap >= 0.9;                 // почти всегда закрывает норму
+    const high  = meets && s.avgRaw >= 1.3;        // и заметно перевыполняет
+    const near  = !meets && s.avgCap >= 0.65;      // немного не добирает
+    const upM = s.dirRaw >  0.25, downM = s.dirRaw < -0.25;  // норма — по кратности
+    const upU = s.dirCap >  0.08, downU = s.dirCap < -0.08;  // недобор — по прогрессу к норме
+
+    // ── 3. Уверенно выполняет (в среднем ≥90% нормы) ──
+    if (meets) {
+      if (high)
+        return upM
+          ? chip("trend-high", "🚀", "Взлёт", "Растёт и держится высоко над нормой. " + gTip)
+          : chip("trend-high", "🔥", "Стабильно высоко", "С запасом перевыполняет норму. " + gTip);
+      if (upM)   return chip("trend-up", "▲", "Растёт", "Идёт вверх, норму держит. " + gTip);
+      if (downM) return chip("trend-down", "▼", "Снижается", "Сбавил темп, но норму держит. " + gTip);
+      return chip("trend-stable", "✓", "Стабильно", "Ровно закрывает норматив. " + gTip);
     }
-    if (t.kind === "lost") {
-      return `<span class="trend trend-dead" title="нет данных доблести сейчас">✕</span>`;
+
+    // ── 4. Немного не добирает (в среднем 65–90% нормы) — МЯГКО ──
+    if (near) {
+      if (upU)   return chip("trend-better", "↗", "Уже лучше", "Норму пока не закрывает, но подтягивается. " + gTip);
+      if (downU) return chip("trend-near", "↘", "Слегка просел", "Чуть не дотягивает и сбавил. " + gTip);
+      return chip("trend-near", "≈", "Немного не добирает", "Стабильно чуть ниже нормы. " + gTip);
     }
-    if (t.kind === "flat") {
-      // Если стабильно НЕ выполняет норматив (вкл. «всегда 0») — это негатив,
-      // а не похвала: отдельный статус «стабильно низко». АФК/иммун (норматив
-      // не оценивается, norm_met != false) сюда не попадают.
-      if (m && m.norm_met === false) {
-        const tipB = `Стабильно НЕ выполняет норматив — держится на низком ` +
-          `уровне (без улучшения к прошлой неделе).`;
-        return `<span class="trend trend-stale-bad" title="${esc(tipB)}">▾ Стабильно низко</span>`;
-      }
-      // Стабильно (норматив выполняется) — позитивная оценка «держится ровно».
-      const dSign = t.delta > 0 ? "+" : "";
-      const tipS = t.pct_delta != null
-        ? `Держится стабильно (Δ ${t.pct_delta > 0 ? "+" : ""}${t.pct_delta} п.п.)`
-        : `Держится стабильно (Δ ${dSign}${t.delta})`;
-      return `<span class="trend trend-stable" title="${esc(tipS)}">✓ Стабильно</span>`;
-    }
-    const arrow = t.kind === "up" ? "▲" : t.kind === "down" ? "▼" : "▬";
-    const sign = t.delta > 0 ? "+" : "";
-    const pdSign = (t.pct_delta != null && t.pct_delta > 0) ? "+" : "";
-    // Главное — изменение % выполнения норматива (если есть), плюс
-    // абсолютный delta доблести в скобках.
-    const pctLabel = t.pct_delta != null
-      ? ` ${pdSign}${t.pct_delta}pp`
-      : "";
-    const tip = t.pct_delta != null
-      ? `Δ % выполнения: ${pdSign}${t.pct_delta} п.п.; Δ доблести: ${sign}${t.delta}`
-      : `Δ доблести ${sign}${t.delta} (норматив одинаковый)`;
-    return `<span class="trend trend-${t.kind}" title="${esc(tip)}"
-      >${arrow}${pctLabel}<small style="opacity:0.7"> ${sign}${t.delta}</small></span>`;
+
+    // ── 5. Заметно ниже нормы (в среднем <65%) — ЖЁСТЧЕ ──
+    if (upU)   return chip("trend-better", "↗", "Начал подтягиваться", "Пока низко, но пошёл вверх. " + gTip);
+    if (downU) return chip("trend-down-bad", "▼", "Падает", "Идёт вниз и норму не закрывает. " + gTip);
+    return chip("trend-stale-bad", "▾", "Стабильно низко", "Стабильно заметно ниже нормы. " + gTip);
+  }
+
+  // Объединённая ячейка «Оценка и тренд» (обе метрики — за последние 4 недели):
+  // сверху оценка формы (средний % нормы + закрыто/всего), снизу — ярлык динамики.
+  function renderGradeTrend(m) {
+    return `<div class="gt-cell">
+      <div class="gt-grade">${renderGrade4(m)}</div>
+      <div class="gt-trend">${renderTrend(m.trend, m)}</div>
+    </div>`;
   }
 
   // Вторичная сортировка при РАВНОЙ «ценности для клана» (особенно для
@@ -1188,13 +1308,11 @@
       else if (m.norm_met === false) rowCls += " row-bad";
       else if (m.norm_met === true)  rowCls += " row-good";
       if (cup) rowCls += " row-cup-" + cup;
-      const valorCell = m.valor == null
-        ? `<span class="hist-cell" data-field="valor" style="color:#888">—</span>`
-        : `<span class="hist-cell" data-field="valor">${esc(m.valor)}</span>`;
+      // Столбцы «Доблесть» и «Норматив» объединены в один (на месте Норматива):
+      // ячейка показывает % выполнения (renderNorm), а клик раскрывает историю
+      // набора доблести по неделям. Поэтому отдельной ячейки valorCell больше нет.
       const normLabel    = renderNorm(m, norm);
-      const compLabel    = renderCompliance(m.compliance);
       const warnCell     = renderWarnings(m);
-      const trendCell    = renderTrend(m.trend, m);
       const socialCell   = renderSocials(m.socials);
       const aiMark = m.ai_nick
         ? ` <span class="ai-nick" title="Ник распознан ИИ-зрением — проверьте и при необходимости исправьте вручную (только админ)">🤖</span>`
@@ -1237,13 +1355,10 @@
           <td class="col-note" title="${m.reg_note ? esc(m.reg_note) : ""}">${esc(m.reg_note || "")}</td>
           <td class="m-cell-num hist-cell" data-field="level">${m.level ?? ""}</td>
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
-          <td class="m-cell-num m-cell-total">${valorCell}</td>
-          <td class="m-cell-num">${compLabel}</td>
-          <td class="m-cell-num">${trendCell}</td>
           <td class="m-cell-warn">${warnCell}</td>
-          <td class="tags-cell">${renderTags(m)}</td>
-          <td class="tags-cell">${renderTagsAll(m)}</td>
-          <td class="m-cell-num">${normLabel}</td>
+          <td class="tags-cell">${renderTags(m, m.tags_all || [], true)}</td>
+          <td class="m-cell-num hist-cell m-norm-cell" data-field="valor" title="Клик — история набора доблести по неделям">
+            <div class="mnc-tile mnc-${normStatus(m)}"><span class="mnc-head">${normLabel}</span>${renderValorSpark(m)}<div class="mnc-trend">${renderTrend(m.trend, m)}</div></div></td>
           <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
     }).join("");
@@ -2265,52 +2380,73 @@
       if (!hist.length) {
         popover.querySelector(".body").textContent = "(пусто)";
       } else if (field === "valor") {
-        // Биржевой вид: дата | значение | Δ | %
-        // hist приходит от backend ORDER BY week DESC. Развернём для
-        // расчёта дельт от предыдущей недели и снова показ desc.
-        const asc = hist.slice().reverse();  // самая ранняя сверху
-        for (let i = 0; i < asc.length; i++) {
-          const cur = parseInt(asc[i].value, 10);
-          const prev = i > 0 ? parseInt(asc[i-1].value, 10) : null;
-          asc[i]._val = isNaN(cur) ? null : cur;
-          if (prev != null && !isNaN(prev) && asc[i]._val != null) {
-            asc[i]._delta = asc[i]._val - prev;
-            asc[i]._pct = prev === 0
-              ? null
-              : Math.round((asc[i]._delta / prev) * 1000) / 10;
-          } else {
-            asc[i]._delta = null;
-            asc[i]._pct = null;
-          }
-        }
-        const desc = asc.slice().reverse();  // newest first
-        const max = Math.max(1, ...asc.map(h => h._val || 0));
+        // Наглядная история набора: сводка сверху + бар по каждой неделе с
+        // МЕТКОЙ норматива (видно, дотянул ли столбик до нормы), цвет = статус
+        // недели (норма/частично/мало/АФК), Δ к прошлой неделе. hist от backend
+        // ORDER BY week DESC; разворачиваем в asc для дельт, показываем desc.
+        const asc = hist.slice().reverse();   // самая ранняя сверху
+        asc.forEach((h, i) => {
+          const cur = parseInt(h.value, 10);
+          h._val  = isNaN(cur) ? null : cur;
+          h._norm = (h.norm != null) ? parseInt(h.norm, 10) : null;
+          const prev = i > 0 ? asc[i - 1]._val : null;
+          h._delta = (prev != null && h._val != null) ? h._val - prev : null;
+          // Статус недели: АФК/новичок не оценивается; иначе норма/частично/мало.
+          // norm_met/is_afk из SQLite приходят как 1/0/null — проверяем truthy.
+          if (h.is_afk || h.norm_met == null)               h._st = "afk";
+          else if (h.norm_met ||
+                   (h._norm && h._val != null && h._val >= h._norm)) h._st = "ok";
+          else if (h._norm && h._val != null && h._val >= h._norm * 0.5) h._st = "mid";
+          else                                              h._st = "low";
+        });
+        const vals   = asc.map(h => h._val || 0);
+        const max    = Math.max(1, ...vals);
+        const totSum = vals.reduce((a, b) => a + b, 0);
+        const rated  = asc.filter(h => h._st !== "afk" && h._val != null);
+        const avg    = rated.length
+          ? Math.round(rated.reduce((a, h) => a + h._val, 0) / rated.length) : null;
+        const best   = Math.max(0, ...vals);
+        const bestWk = best > 0 ? asc.find(h => (h._val || 0) === best) : null;
+        const desc   = asc.slice().reverse();  // новые сверху
+        const stTip  = { ok: "норматив выполнен", mid: "выполнен частично (≥50%)",
+                         low: "мало (<50% нормы)", afk: "не оценивалась (АФК/новичок)" };
         popover.querySelector(".body").innerHTML = `
-          <div class="vh-head">
-            <span>неделя</span>
-            <span>доблесть</span>
-            <span>Δ</span>
-            <span>%</span>
+          <div class="vh-sum">
+            <span title="Всего набрано доблести за все недели">Σ&nbsp;<b>${totSum}</b></span>
+            <span title="Недель, где норматив оценивался">${rated.length}&nbsp;нед.</span>
+            ${avg != null ? `<span title="В среднем за оценённую неделю">≈&nbsp;${avg}/нед</span>` : ""}
+            ${bestWk ? `<span class="vh-best" title="Лучшая неделя">★&nbsp;${best} · ${esc(WeekFmt.range(bestWk.week, { noYear: true }))}</span>` : ""}
           </div>
+          <div class="vh-list">
           ${desc.map(h => {
-            const cls = h._delta == null ? "n"
-              : h._delta > 0 ? "u" : h._delta < 0 ? "d" : "f";
-            const sign = h._delta > 0 ? "+" : "";
-            const pctTxt = h._pct == null ? ""
-              : `${sign}${h._pct}%`;
+            const fill = h._val == null ? 0 : Math.round((h._val / max) * 100);
+            const mark = (h._norm != null)
+              ? Math.min(100, Math.round((h._norm / max) * 100)) : null;
             const dTxt = h._delta == null ? ""
-              : `${sign}${h._delta}`;
-            const pct = h._val == null ? 0
-              : Math.round((h._val / max) * 100);
+              : (h._delta > 0 ? "▲+" + h._delta
+                 : h._delta < 0 ? "▼" + h._delta : "±0");
+            const dCls = h._delta == null ? "f"
+              : h._delta > 0 ? "u" : h._delta < 0 ? "d" : "f";
+            const fracTip = h._norm != null ? `${h._val ?? 0}/${h._norm}` : `${h._val ?? "—"}`;
             return `
-              <div class="vh-row vh-${cls}">
+              <div class="vh-row vh-${h._st}" title="${esc(WeekFmt.range(h.week) + " · " + fracTip + " · " + (stTip[h._st] || ""))}">
                 <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
-                <span class="v">${h._val ?? "—"}</span>
-                <span class="d">${dTxt}</span>
-                <span class="p">${pctTxt}</span>
-                <div class="bar" style="width:${pct}%"></div>
+                <span class="v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
+                <div class="track">
+                  <div class="fill" style="width:${fill}%"></div>
+                  ${mark != null ? `<div class="norm-mark" style="left:${mark}%" title="норматив ${h._norm}"></div>` : ""}
+                </div>
+                <span class="d vh-${dCls}">${dTxt}</span>
               </div>`;
           }).join("")}
+          </div>
+          <div class="vh-leg">
+            <span class="vh-dot ok"></span>норма
+            <span class="vh-dot mid"></span>частично
+            <span class="vh-dot low"></span>мало
+            <span class="vh-dot afk"></span>АФК/нов.
+            <span class="vh-legmark">┃ норматив</span>
+          </div>
         `;
       } else {
         popover.querySelector(".body").innerHTML = hist.map(h => `
