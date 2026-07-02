@@ -1143,13 +1143,30 @@
       return chip("trend-afk", "💤", "На паузе (АФК)",
         "Игрок в АФК — норматив не оценивается, серия не рвётся.");
     const im = m && m.immunity;
-    if (im && (im.status === "active" || im.status === "extended"))
+    if (im && (im.status === "active" || im.status === "extended" || im.status === "grace")) {
+      // Новичок под иммунитетом, но уже реально набирает — показываем ЭТО, а не
+      // бесстрастное «Осваивается». Оцениваем по СТАНДАРТНОЙ норме клана (не по
+      // сниженной иммунной), чтобы, напр., 95 при норме 18 читалось как мощный
+      // старт, а не как «осваивается». Кто ещё не дотянул — мягкий newcomer-ярлык.
+      const stdNorm = (DATA.snapshot && DATA.snapshot.valor_norm) || m.effective_norm || 0;
+      const curV    = m.valor != null ? m.valor : null;
+      const ratio   = (curV != null && stdNorm > 0) ? curV / stdNorm : 0;
+      const graceTxt = im.status === "grace"
+        ? "Иммунитет только что закончился (адаптационная неделя со сниженной нормой)."
+        : "Иммунитет новичка ещё действует — норматив пока формально не спрашивается.";
+      if (ratio >= 1.3)
+        return chip("trend-high", "🚀", "Мощный старт",
+          `Новичок, а уже с запасом бьёт норматив: ${curV}/${stdNorm} (×${ratio.toFixed(1)}). ${graceTxt}`);
+      if (ratio >= 1.0)
+        return chip("trend-up", "🛡", "Уверенный старт",
+          `Новичок и уже закрывает норматив: ${curV}/${stdNorm}. ${graceTxt}`);
+      if (im.status === "grace")
+        return chip("trend-immune", "🛡", "Осваивается",
+          "Иммунитет только что закончился — неделя со сниженной нормой (адаптация).");
       return chip("trend-immune", "🛡", "Новичок",
         "Под иммунитетом новичка — осваивается, норматив пока не спрашивается." +
         (im.immune_until ? ` Иммунитет до ${im.immune_until}.` : ""));
-    if (im && im.status === "grace")
-      return chip("trend-immune", "🛡", "Осваивается",
-        "Иммунитет только что закончился — неделя со сниженной нормой (адаптация).");
+    }
     if (t && t.kind === "lost")
       return chip("trend-dead", "✕", "Пропал",
         "Сейчас нет данных доблести — не был в последнем сборе.");
