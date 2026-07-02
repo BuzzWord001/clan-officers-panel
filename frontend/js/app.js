@@ -173,8 +173,32 @@
       `;
       tr.querySelector(".nick").textContent = r.game_nick;
       tr.querySelector(".title").textContent = r.title || "—";
-      tr.querySelector(".note").textContent = r.note || "—";
       tr.querySelector(".actor").textContent = r.created_by_name;
+
+      // Примечание — тот же «свиток», что и в таблице Доблести (общий модуль,
+      // общие данные). Клик открывает историю; правки синхронны с Доблестью.
+      const noteCell = tr.querySelector(".note");
+      const isAdmin = me.role === "admin";
+      function paintNote() {
+        noteCell.innerHTML = window.NoteScroll
+          ? NoteScroll.renderCell({
+              canon: r.nick_canon, nick: r.game_nick,
+              note: r.note || "", count: r.note_count || 0, isOfficer: true })
+          : (r.note ? esc(r.note) : "—");
+      }
+      paintNote();
+      noteCell.addEventListener("click", (e) => {
+        const b = e.target.closest(".cn-open, .cn-add");
+        if (!b || !r.nick_canon || !window.NoteScroll) return;
+        NoteScroll.open({
+          canon: r.nick_canon, nick: r.game_nick, isAdmin,
+          onChange: (data) => {
+            r.note = (data && data.current) || "";
+            r.note_count = (data && data.count) || 0;
+            if (editingId !== r.id) paintNote();
+          },
+        });
+      });
 
       tr.querySelector(".btn-del").addEventListener("click", () => onDelete(r));
       tr.querySelector(".btn-edit").addEventListener("click", () => onEdit(tr, r));

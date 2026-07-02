@@ -842,10 +842,27 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
         # Признак «Ветеран» по тегу в Доблести (для отображения и редактирования).
         vet = {r["nick_canon"] for r in conn.execute(
             "SELECT nick_canon FROM valor_tags WHERE tag = 'veteran'")}
+        # Число записей в «свитке» по канону (шум не считаем) — для бейджа, как в
+        # таблице Доблести. Реестр и Доблесть показывают примечание одинаково.
+        note_cnt: dict[str, int] = {}
+        for r in conn.execute("SELECT nick_canon, text FROM valor_note_history"):
+            if _is_note_noise(r["text"]):
+                continue
+            note_cnt[r["nick_canon"]] = note_cnt.get(r["nick_canon"], 0) + 1
         out = []
         for r in rows:
             d = _row_to_acceptance(r)
-            d["veteran"] = _valor_canon(d["game_nick"]) in vet
+            canon = _valor_canon(d["game_nick"])
+            d["veteran"] = canon in vet
+            d["nick_canon"] = canon
+            # Шум («Ветеран») в примечании не показываем — как в Доблести.
+            if _is_note_noise(d.get("note")):
+                d["note"] = ""
+            cnt = note_cnt.get(canon, 0)
+            # Нет истории, но есть непустая заметка реестра → это 1 (ленивый seed).
+            if not cnt and (d.get("note") or "").strip():
+                cnt = 1
+            d["note_count"] = cnt
             out.append(d)
         return out
 
