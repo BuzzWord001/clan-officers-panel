@@ -2410,6 +2410,35 @@
         const desc   = asc.slice().reverse();  // новые сверху
         const stTip  = { ok: "норматив выполнен", mid: "выполнен частично (≥50%)",
                          low: "мало (<50% нормы)", afk: "не оценивалась (АФК/новичок)" };
+        const rowHtml = (h) => {
+          const fill = h._val == null ? 0 : Math.round((h._val / max) * 100);
+          const mark = (h._norm != null)
+            ? Math.min(100, Math.round((h._norm / max) * 100)) : null;
+          const dTxt = h._delta == null ? ""
+            : (h._delta > 0 ? "▲+" + h._delta
+               : h._delta < 0 ? "▼" + h._delta : "±0");
+          const dCls = h._delta == null ? "f"
+            : h._delta > 0 ? "u" : h._delta < 0 ? "d" : "f";
+          const fracTip = h._norm != null ? `${h._val ?? 0}/${h._norm}` : `${h._val ?? "—"}`;
+          return `
+            <div class="vh-row vh-${h._st}" title="${esc(WeekFmt.range(h.week) + " · " + fracTip + " · " + (stTip[h._st] || ""))}">
+              <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
+              <span class="v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
+              <div class="track">
+                <div class="fill" style="width:${fill}%"></div>
+                ${mark != null ? `<div class="norm-mark" style="left:${mark}%" title="норматив ${h._norm}"></div>` : ""}
+              </div>
+              <span class="d vh-${dCls}">${dTxt}</span>
+            </div>`;
+        };
+        // По умолчанию показываем 4 последние недели. Остальное скрыто под кнопкой
+        // «развернуть всю историю» — раскрывается ВНИЗ до самого начала; длинный
+        // список ограничен по высоте и скроллится (можно промотать ещё ниже).
+        const SHOWN    = 4;
+        const headRows = desc.slice(0, SHOWN).map(rowHtml).join("");
+        const restRows = desc.slice(SHOWN).map(rowHtml).join("");
+        const moreN    = Math.max(0, desc.length - SHOWN);
+        const moreLbl  = (n) => `▾ Развернуть всю историю — ещё ${n} нед.`;
         popover.querySelector(".body").innerHTML = `
           <div class="vh-sum">
             <span title="Всего набрано доблести за все недели">Σ&nbsp;<b>${totSum}</b></span>
@@ -2418,28 +2447,10 @@
             ${bestWk ? `<span class="vh-best" title="Лучшая неделя">★&nbsp;${best} · ${esc(WeekFmt.range(bestWk.week, { noYear: true }))}</span>` : ""}
           </div>
           <div class="vh-list">
-          ${desc.map(h => {
-            const fill = h._val == null ? 0 : Math.round((h._val / max) * 100);
-            const mark = (h._norm != null)
-              ? Math.min(100, Math.round((h._norm / max) * 100)) : null;
-            const dTxt = h._delta == null ? ""
-              : (h._delta > 0 ? "▲+" + h._delta
-                 : h._delta < 0 ? "▼" + h._delta : "±0");
-            const dCls = h._delta == null ? "f"
-              : h._delta > 0 ? "u" : h._delta < 0 ? "d" : "f";
-            const fracTip = h._norm != null ? `${h._val ?? 0}/${h._norm}` : `${h._val ?? "—"}`;
-            return `
-              <div class="vh-row vh-${h._st}" title="${esc(WeekFmt.range(h.week) + " · " + fracTip + " · " + (stTip[h._st] || ""))}">
-                <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
-                <span class="v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
-                <div class="track">
-                  <div class="fill" style="width:${fill}%"></div>
-                  ${mark != null ? `<div class="norm-mark" style="left:${mark}%" title="норматив ${h._norm}"></div>` : ""}
-                </div>
-                <span class="d vh-${dCls}">${dTxt}</span>
-              </div>`;
-          }).join("")}
+            ${headRows}
+            ${moreN ? `<div class="vh-rest" hidden>${restRows}</div>` : ""}
           </div>
+          ${moreN ? `<button type="button" class="vh-toggle" aria-expanded="false">${moreLbl(moreN)}</button>` : ""}
           <div class="vh-leg">
             <span class="vh-dot ok"></span>норма
             <span class="vh-dot mid"></span>частично
@@ -2448,6 +2459,18 @@
             <span class="vh-legmark">┃ норматив</span>
           </div>
         `;
+        const tgl = popover.querySelector(".vh-toggle");
+        if (tgl) {
+          const list = popover.querySelector(".vh-list");
+          const rest = popover.querySelector(".vh-rest");
+          tgl.addEventListener("click", () => {
+            const willOpen = rest.hidden;
+            rest.hidden = !willOpen;
+            list.classList.toggle("vh-scroll", willOpen);
+            tgl.setAttribute("aria-expanded", willOpen ? "true" : "false");
+            tgl.textContent = willOpen ? "▴ Свернуть до 4 недель" : moreLbl(moreN);
+          });
+        }
       } else {
         popover.querySelector(".body").innerHTML = hist.map(h => `
           <div class="row"><span class="w">${esc(WeekFmt.range(h.week))}</span>

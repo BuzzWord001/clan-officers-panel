@@ -2886,6 +2886,19 @@ video.chat-media-thumb {
 .valor-popover.valor-history .vh-leg .vh-dot.low { background: #ff8080; }
 .valor-popover.valor-history .vh-leg .vh-dot.afk { background: #8fb0ff; }
 .valor-popover.valor-history .vh-leg .vh-legmark { color: rgba(255,255,255,0.75); letter-spacing: -1px; }
+/* Прогрессивное раскрытие истории: 4 недели по умолчанию, дальше — до начала.
+   При разворачивании список ограничен по высоте и скроллится (промотать ниже). */
+.valor-popover.valor-history .vh-list.vh-scroll {
+  max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.valor-popover.valor-history .vh-toggle {
+  display: block; width: 100%; margin-top: 6px; padding: 6px 8px;
+  background: rgba(224,162,74,0.10); border: 1px solid var(--accent-dim);
+  border-radius: 6px; color: var(--text); font-size: 12px; cursor: pointer;
+  text-align: center; transition: background .15s;
+}
+.valor-popover.valor-history .vh-toggle:hover { background: rgba(224,162,74,0.22); }
 
 /* Колонка «Данные VK / Telegram» */
 .socials-cell { font-size: 11px; line-height: 1.6; }
