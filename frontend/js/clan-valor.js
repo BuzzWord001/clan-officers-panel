@@ -1222,16 +1222,17 @@
     if (!IS_OFFICER) {
       return `<span class="cn-text" title="${esc(note)}">${esc(note)}</span>`;
     }
+    // Нет примечания → просто маленький «+» для добавления.
+    if (!note) {
+      return `<button type="button" class="cn-add" data-canon="${esc(m.nick_canon)}"
+        data-nick="${esc(m.nick)}" title="Добавить примечание" aria-label="Добавить примечание">+</button>`;
+    }
     const short = note.length > 64 ? note.slice(0, 64) + "…" : note;
-    const preview = note
-      ? `<span class="cn-preview">${esc(short)}</span>`
-      : `<span class="cn-empty">+ примечание</span>`;
     const badge = cnt > 1
       ? `<span class="cn-badge" title="${cnt} записей в истории">${cnt}</span>` : "";
     return `<button type="button" class="cn-open" data-canon="${esc(m.nick_canon)}"
-        data-nick="${esc(m.nick)}"
-        title="${note ? esc(note) + " · клик — история примечаний" : "Открыть свиток — история примечаний"}">
-        <span class="cn-scroll" aria-hidden="true">📜</span>${preview}${badge}</button>`;
+        data-nick="${esc(m.nick)}" title="${esc(note)} · клик — история примечаний">
+        <span class="cn-scroll" aria-hidden="true">📜</span><span class="cn-preview">${esc(short)}</span>${badge}</button>`;
   }
 
   // Объединённая ячейка «Оценка и тренд» (обе метрики — за последние 4 недели):
@@ -2119,7 +2120,7 @@
   }
 
   $("valor-tbody").addEventListener("click", (ev) => {
-    const b = ev.target.closest(".cn-open");
+    const b = ev.target.closest(".cn-open, .cn-add");
     if (b) openNoteScroll(b.dataset.canon, b.dataset.nick);
   });
   document.addEventListener("keydown", e => {

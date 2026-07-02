@@ -2913,6 +2913,16 @@ video.chat-media-thumb {
 .col-note .cn-scroll { font-size: 13px; filter: saturate(.85); }
 .col-note .cn-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 .col-note .cn-empty { color: #9a8b6a; font-style: italic; opacity: .85; }
+.col-note .cn-add {
+  width: 22px; height: 22px; padding: 0; cursor: pointer; line-height: 1;
+  font-size: 15px; font-weight: 700; color: #c9b483;
+  background: rgba(224,190,120,0.07); border: 1px dashed rgba(224,190,120,0.4);
+  border-radius: 50%; transition: background .15s, color .15s, border-color .15s;
+}
+.col-note .cn-add:hover {
+  background: rgba(224,190,120,0.22); color: #f2e5c2; border-style: solid;
+  border-color: rgba(224,190,120,0.7);
+}
 .col-note .cn-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;

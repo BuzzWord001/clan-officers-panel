@@ -1397,6 +1397,16 @@ def delete_acceptance(acc_id: int, *, actor: dict[str, str]) -> bool:
 # свежая запись. Офицеры и админ дополняют прямо из таблицы; правка заметки
 # в реестре тоже дописывается сюда (см. update_acceptance).
 
+# Слова-«шум»: роль/статус, случайно вписанные в поле примечания вместо реальной
+# заметки. Роль «Ветеран» уже есть отдельным тегом — в примечании она не нужна.
+# Точное совпадение (bare «Ветеран»), реальные заметки со словом внутри не трогаем.
+_NOTE_NOISE = {"ветеран", "вет", "veteran"}
+
+
+def _is_note_noise(text):
+    return (text or "").strip().lower() in _NOTE_NOISE
+
+
 def _note_hist_append_conn(conn, nick_canon, text, author, author_role, source="valor"):
     """Дописать запись в историю примечаний ВНУТРИ существующей транзакции."""
     text = (text or "").strip()
@@ -1429,7 +1439,7 @@ def _note_hist_seed_conn(conn, nick_canon):
     for r in conn.execute(
             "SELECT game_nick, note, accepted_date, updated_at FROM acceptances"):
         note = (r["note"] or "").strip()
-        if not note:
+        if not note or _is_note_noise(note):
             continue
         if any(_valor_canon(p) == nick_canon
                for p in (r["game_nick"] or "").split(",")):
@@ -6030,15 +6040,19 @@ def valor_get_current(with_reg_notes: bool = False,
                 for piece in (r["game_nick"] or "").split(","):
                     c = _valor_canon(piece)
                     if c:
-                        note_by_canon[c] = r["note"] or ""
+                        val = r["note"] or ""
+                        note_by_canon[c] = "" if _is_note_noise(val) else val
             # История «свитка»: последняя запись перекрывает реестр (они синхронны;
             # для valor-only участников без записи приёма — единственный источник).
+            # Записи-«шум» (bare «Ветеран») не учитываем ни в тексте, ни в счётчике.
             _cnt: dict[str, int] = {}
             _last: dict[str, str] = {}
             for r in conn.execute(
                 "SELECT nick_canon, text FROM valor_note_history "
                 "ORDER BY nick_canon, created_at, id"
             ):
+                if _is_note_noise(r["text"]):
+                    continue
                 c = r["nick_canon"]
                 _cnt[c] = _cnt.get(c, 0) + 1
                 _last[c] = r["text"]     # ASC → последняя перезапишет
