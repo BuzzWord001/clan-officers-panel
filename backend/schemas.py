@@ -38,6 +38,8 @@ class AcceptanceOut(BaseModel):
     archived_at: str = ""
     archived_by: str = ""
     archived_reason: str = ""
+    nick_canon: str = ""      # канон-ник — для «свитка» примечаний (общий с Доблестью)
+    note_count: int = 0       # число записей в истории примечаний (для бейджа)
 
 
 class ArchiveIn(BaseModel):
