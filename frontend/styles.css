@@ -2902,28 +2902,28 @@ video.chat-media-thumb {
 
 /* ═══════════ Примечание-«свиток» (папирус) ═══════════ */
 /* Ячейка «Примечание» в таблице доблести — триггер свитка */
-.col-note .cn-text { color: var(--text-dim); }
-.col-note .cn-open {
+.cn-text { color: var(--text-dim); }
+.cn-open {
   display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
   padding: 3px 7px; cursor: pointer; text-align: left; font: inherit; font-size: 12px;
   background: rgba(224,190,120,0.06); border: 1px solid rgba(224,190,120,0.22);
   border-radius: 6px; color: #e8dcc0; transition: background .15s, border-color .15s;
 }
-.col-note .cn-open:hover { background: rgba(224,190,120,0.17); border-color: rgba(224,190,120,0.55); }
-.col-note .cn-scroll { font-size: 13px; filter: saturate(.85); }
-.col-note .cn-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
-.col-note .cn-empty { color: #9a8b6a; font-style: italic; opacity: .85; }
-.col-note .cn-add {
+.cn-open:hover { background: rgba(224,190,120,0.17); border-color: rgba(224,190,120,0.55); }
+.cn-scroll { font-size: 13px; filter: saturate(.85); }
+.cn-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.cn-empty { color: #9a8b6a; font-style: italic; opacity: .85; }
+.cn-add {
   width: 22px; height: 22px; padding: 0; cursor: pointer; line-height: 1;
   font-size: 15px; font-weight: 700; color: #c9b483;
   background: rgba(224,190,120,0.07); border: 1px dashed rgba(224,190,120,0.4);
   border-radius: 50%; transition: background .15s, color .15s, border-color .15s;
 }
-.col-note .cn-add:hover {
+.cn-add:hover {
   background: rgba(224,190,120,0.22); color: #f2e5c2; border-style: solid;
   border-color: rgba(224,190,120,0.7);
 }
-.col-note .cn-badge {
+.cn-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
   background: #8a6a3a; color: #f5e9c8; font-size: 10px; font-weight: 700; flex: none;
@@ -3025,7 +3025,7 @@ video.chat-media-thumb {
 @media (max-width: 600px) {
   .ns-add { flex-direction: column; align-items: stretch; }
   .ns-save { width: 100%; }
-  .col-note .cn-preview { max-width: 110px; }
+  .cn-preview { max-width: 110px; }
 }
 
 /* Колонка «Данные VK / Telegram» */
