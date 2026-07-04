@@ -1553,7 +1553,7 @@
     if (insideZoom) return;
     hideZoom();
   });
-  window.addEventListener("scroll", hideZoom, true);
+  window.addEventListener("scroll", hideZoom, { capture: true, passive: true });
   window.addEventListener("blur", hideZoom);
 
   // Скачивание: перехватываем клик, шлём fetch с Authorization Bearer

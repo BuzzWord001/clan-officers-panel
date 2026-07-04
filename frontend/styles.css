@@ -4833,3 +4833,17 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 /* Тренд: стабильно, но НЕ выполняет норматив — негатив (а не похвала) */
 .trend-stale-bad { color: #ff9a5a; background: rgba(255,140,60,0.10);
   border-color: rgba(255,140,60,0.40); font-weight: 600; }
+
+/* ===== Доступность + производительность: уважаем «меньше движения» =====
+   Пользователи с системной настройкой prefers-reduced-motion (или слабым
+   железом) получают почти статичную страницу: гасим все бесконечные анимации
+   (в т.ч. инжектируемые из JS — chamber-door), убираем плавную прокрутку и
+   длинные переходы. Правило последнее в каскаде + !important — перекрывает всё. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
