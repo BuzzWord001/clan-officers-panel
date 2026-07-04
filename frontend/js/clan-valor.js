@@ -2404,7 +2404,7 @@
     const c = e.target.closest("[data-wtip]");
     if (c && !c.contains(e.relatedTarget)) hideWtip();
   });
-  window.addEventListener("scroll", hideWtip, true);
+  window.addEventListener("scroll", hideWtip, { capture: true, passive: true });
 
   // History popover (по клику на ячейки с историей)
   $("valor-tbody").addEventListener("click", async (ev) => {

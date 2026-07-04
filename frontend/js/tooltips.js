@@ -105,7 +105,7 @@
     if (el) show(el);
   });
   document.addEventListener("focusout", hide);
-  window.addEventListener("scroll", hide, true);
+  window.addEventListener("scroll", hide, { capture: true, passive: true });
   window.addEventListener("resize", hide);
   document.addEventListener("click", hide);
   document.addEventListener("keydown", function (e) {

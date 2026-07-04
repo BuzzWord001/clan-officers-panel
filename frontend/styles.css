@@ -4624,11 +4624,21 @@ body.guest-mode .warn-dismiss-btn { display: none !important; }
    ============================================================ */
 html, body { background-color: #140d07 !important; }
 body {
+  background: #140d07 !important;
+  color: var(--text);
+}
+/* Фон-арт как ОТДЕЛЬНЫЙ фикс-слой на своём compositor-слое (will-change).
+   Раньше был background-attachment:fixed на body — браузер перерисовывал ВЕСЬ
+   фон на КАЖДЫЙ кадр прокрутки → дикий лаг у пользователей (особенно на слабых
+   ПК/интегрированной графике). Отдельный fixed-слой не перерисовывается. */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
     linear-gradient(rgba(22,14,7,0.52), rgba(22,14,7,0.70)),
-    url("assets/market.jpg") center center / cover no-repeat fixed,
-    #140d07 !important;
-  color: var(--text);
+    url("assets/market.jpg") center center / cover no-repeat;
+  will-change: transform;
+  transform: translateZ(0);
 }
 /* Зелёные matrix-эффекты убираем — не в тему дневного рынка. */
 #matrix-canvas, .bg-girl, .scanlines { display: none !important; }
@@ -4645,6 +4655,7 @@ body::after {
   border: 9px solid transparent;
   border-image: linear-gradient(135deg,#7a5430,#3c2613,#7a5430,#3c2613) 1;
   opacity: 0.7;
+  will-change: transform; transform: translateZ(0);   /* свой слой — не репейнтить при скролле */
 }
 
 /* Заголовки — сериф, как резная вывеска на рынке. */

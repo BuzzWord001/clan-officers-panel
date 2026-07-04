@@ -345,7 +345,7 @@
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closePop();
     });
-    window.addEventListener("scroll", closePop, true);
+    window.addEventListener("scroll", closePop, { capture: true, passive: true });
     window.addEventListener("resize", closePop);
   }
 
