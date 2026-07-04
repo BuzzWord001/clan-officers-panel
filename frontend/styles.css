@@ -4633,7 +4633,11 @@ body {
    ПК/интегрированной графике). Отдельный fixed-слой не перерисовывается. */
 body::before {
   content: "";
-  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  /* z-index:0 (НЕ -1): промотанный в GPU-слой отрицательный z-index уходит за
+     корневой фон #140d07 и фон-рынок исчезает (весь экран коричневый). На z-index:0
+     слой над корневым фоном, но под контентом (.shell z-index:2). translateZ держит
+     слой на композиторе → фон не перерисовывается при скролле (нет лагов). */
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
     linear-gradient(rgba(22,14,7,0.52), rgba(22,14,7,0.70)),
     url("assets/market.jpg") center center / cover no-repeat;
