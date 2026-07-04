@@ -26,7 +26,7 @@ html {
 :root {
   /* Тёплая «рыночная» тема под арт SanTDeviL (уютный аниме-городок). */
   --bg:        #140d07;
-  --bg-panel:  rgba(26, 17, 9, 0.66);
+  --bg-panel:  rgba(24, 16, 8, 0.80);
   --accent:    #e0a24a;          /* тёплый янтарь (свет рынка) */
   --accent-dim:#9c6b2e;          /* дерево */
   --accent-soft:rgba(224, 162, 74, 0.22);
@@ -377,8 +377,8 @@ main {
     inset 0 0 60px rgba(224, 162, 74, 0.04);
   padding: 22px 26px;
   margin-bottom: 20px;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  /* blur убран: перерисовывался каждый кадр скролла (лаги на слабых GPU).
+     Фон и так тёмный+затемнён, панель 0.80 непрозрачна — вид тот же. */
 }
 
 .panel h2 {
@@ -424,8 +424,8 @@ thead th {
   text-align: left;
   padding: 10px 12px;
   border-bottom: 1px solid var(--accent-soft);
-  background: rgba(0, 20, 5, 0.85);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 18, 5, 0.94);
+  /* blur убран: sticky-шапка размывала едущие под ней строки каждый кадр. */
   position: sticky;
   top: 0;
   z-index: 3;
