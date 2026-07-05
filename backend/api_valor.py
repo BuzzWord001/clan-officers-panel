@@ -50,6 +50,8 @@ class ValorSnapshotIn(BaseModel):
     notes:          str = ""
     actual_members: int | None = None   # реально людей в клане на момент сбора
     members:        list[ValorMemberIn]
+    grid:           dict | None = None   # сетка колонок/строк с десктопа (доли):
+    #                                      {x,y,w,h,rh,cols:[{x,key}]} → калибровка недели
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────
@@ -73,6 +75,15 @@ def valor_snapshot(payload: ValorSnapshotIn,
         notes=payload.notes,
         actual_members=payload.actual_members,
     )
+    # Точная сетка колонок/строк с десктопа → калибровка недели (frame=-1).
+    # Строки/столбцы источника в «Скринах» лягут по реальной калибровке сбора,
+    # а не по оценке. off не шлём — перекрытие сайт считает из данных (autoOverlap).
+    if payload.grid and payload.grid.get("cols"):
+        try:
+            db.valor_calib_set(payload.week, -1, payload.grid)
+            res["grid_saved"] = True
+        except Exception as e:
+            log.warning("grid calib save failed: %s", e)
     # Класс не меняется — пустой/сомнительный класс заполняем из прошлых сборов
     # и снимаем сомнение. Делается ПОСЛЕ коммита снапшота (отдельная транзакция).
     try:
