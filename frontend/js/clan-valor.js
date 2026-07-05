@@ -2301,17 +2301,51 @@
     const cur = btn.dataset.afk === "1";
     const note = btn.dataset.note || "";
     const until = btn.dataset.until || "";
+
+    // ── «АФК на N недель» → дата конца N-й недели (воскресенье, локальное время) ──
+    const RU_M = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+    const RU_WD = ["вс","пн","вт","ср","чт","пт","сб"];
+    const isoLocal = (d) => {
+      const t = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      return t.toISOString().slice(0, 10);
+    };
+    const fmtShort = (s) => {
+      if (!s) return "";
+      const d = new Date(s + "T00:00:00");
+      return RU_WD[d.getDay()] + " " + d.getDate() + " " + RU_M[d.getMonth()];
+    };
+    const sundayAfterWeeks = (n) => {          // n>=1 → вс, закрывающее n-ю неделю
+      const d = new Date(); d.setHours(0, 0, 0, 0);
+      const toSun = (7 - d.getDay()) % 7;      // дней до ближайшего вс (0 если сегодня вс)
+      d.setDate(d.getDate() + toSun + (n - 1) * 7);
+      return isoLocal(d);
+    };
+    const weeksFromUntil = (s) => {            // дата → сколько недель (для показа при открытии)
+      if (!s) return 0;
+      const t = new Date(s + "T00:00:00"), today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = Math.round((t - today) / 86400000);
+      return days <= 0 ? 0 : Math.ceil(days / 7);
+    };
+    let wkN = weeksFromUntil(until);
+
     const pop = document.createElement("div");
     pop.className = "warn-add-pop";
     pop.innerHTML =
       `<div class="wap-title">Статус АФК: <b>${esc(nick)}</b></div>` +
       `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px;cursor:pointer">` +
         `<input type="checkbox" class="afk-chk" ${cur ? "checked" : ""} style="transform:scale(1.3)"> в статусе АФК</label>` +
+      `<div class="afk-weeks-row" style="display:flex;align-items:center;gap:8px;margin:8px 0 2px;color:#cfe;font-size:13px">` +
+        `<span style="white-space:nowrap">АФК на:</span>` +
+        `<button type="button" class="afk-wk-minus" title="меньше недель" style="width:30px;height:30px;font-size:18px;line-height:1;padding:0">−</button>` +
+        `<span class="afk-wk-val" style="min-width:62px;text-align:center;font-weight:700;color:#ffd080">${wkN ? wkN + " нед." : "—"}</span>` +
+        `<button type="button" class="afk-wk-plus" title="больше недель" style="width:30px;height:30px;font-size:18px;line-height:1;padding:0">+</button>` +
+        `<span class="afk-wk-preview" style="font-size:11px;color:#9bb;flex:1">${wkN ? "до " + fmtShort(sundayAfterWeeks(wkN)) : ""}</span>` +
+      `</div>` +
       `<label class="afk-until-row" style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px">` +
-        `<span style="white-space:nowrap">АФК до:</span>` +
+        `<span style="white-space:nowrap">или до даты:</span>` +
         `<input class="afk-until-inp" type="date" value="${esc(until)}" style="flex:1">` +
         `<button type="button" class="afk-until-clear" title="бессрочно (без срока)" style="padding:2px 8px">✕</button></label>` +
-      `<div class="afk-until-hint" style="font-size:11px;color:#9bb;margin:-2px 0 6px">Пусто = бессрочно. После даты статус АФК снимется сам.</div>` +
+      `<div class="afk-until-hint" style="font-size:11px;color:#9bb;margin:-2px 0 6px">Кнопки + / − задают срок в неделях (снимется сам в конце недели). Пусто = бессрочно.</div>` +
       `<input class="afk-note-inp" type="text" maxlength="200" value="${esc(note)}" ` +
         `placeholder="причина (напр. «отпуск», «экзамены»)">` +
       `<div class="wap-actions">` +
@@ -2325,14 +2359,32 @@
       left = window.innerWidth - pop.offsetWidth - 8;
     pop.style.left = Math.max(8, left) + "px";
     pop.style.top = (r.bottom + 6) + "px";
+
+    const untilInp = pop.querySelector(".afk-until-inp");
+    const renderWk = () => {
+      pop.querySelector(".afk-wk-val").textContent = wkN ? wkN + " нед." : "—";
+      pop.querySelector(".afk-wk-preview").textContent = wkN ? "до " + fmtShort(sundayAfterWeeks(wkN)) : "";
+    };
+    pop.querySelector(".afk-wk-plus").addEventListener("click", () => {
+      wkN = Math.min(52, (wkN || 0) + 1);
+      untilInp.value = sundayAfterWeeks(wkN);
+      pop.querySelector(".afk-chk").checked = true;   // задаём срок = даём АФК
+      renderWk();
+    });
+    pop.querySelector(".afk-wk-minus").addEventListener("click", () => {
+      wkN = Math.max(0, (wkN || 0) - 1);
+      untilInp.value = wkN ? sundayAfterWeeks(wkN) : "";
+      renderWk();
+    });
+    untilInp.addEventListener("change", () => { wkN = weeksFromUntil(untilInp.value); renderWk(); });
     pop.querySelector(".wap-cancel").addEventListener("click", closeAfkPop);
     pop.querySelector(".afk-until-clear").addEventListener("click", () => {
-      pop.querySelector(".afk-until-inp").value = "";
+      untilInp.value = ""; wkN = 0; renderWk();
     });
     pop.querySelector(".wap-add").addEventListener("click", async () => {
       const is_afk = pop.querySelector(".afk-chk").checked;
       const afk_note = pop.querySelector(".afk-note-inp").value.trim();
-      const afk_until = pop.querySelector(".afk-until-inp").value || "";  // 'YYYY-MM-DD' или ''
+      const afk_until = untilInp.value || "";  // 'YYYY-MM-DD' или ''
       try {
         const res = await fetch((window.OFFICERS_CONFIG?.API_URL || "") + "/valor/afk/" + id,
           { method: "POST", credentials: "include",
