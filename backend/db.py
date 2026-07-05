@@ -6148,6 +6148,30 @@ def valor_get_current(with_reg_notes: bool = False,
                ORDER BY valor DESC NULLS LAST, nick""",
             (cur["id"],),
         ).fetchall()
+        # ── Кубки за место в ТОПе по неделям (накопительно за ВСЕ недели) ──
+        # По valor DESC внутри недели: места 1-10 → золото, 11-20 → серебро,
+        # 21-30 → бронза (один кубок за неделю). Историю зачитываем всю → всем,
+        # кто когда-либо был в топе, кубки засчитываются автоматически.
+        cup_map: dict = {}
+        _cw: dict = {}
+        for cr in conn.execute(
+                "SELECT vs.week AS wk, vm.nick_canon AS cn FROM valor_members vm "
+                "JOIN valor_snapshots vs ON vm.snapshot_id = vs.id "
+                "WHERE vm.valor IS NOT NULL "
+                "ORDER BY vs.week, vm.valor DESC, vm.nick"):
+            _cw.setdefault(cr["wk"], []).append(cr["cn"])
+        for _canons in _cw.values():
+            _seen = set(); _rank = 0
+            for _cn in _canons:
+                if _cn in _seen:
+                    continue
+                _seen.add(_cn)
+                _band = ("gold" if _rank < 10 else "silver" if _rank < 20
+                         else "bronze" if _rank < 30 else None)
+                if _band:
+                    cup_map.setdefault(_cn, {"gold": 0, "silver": 0, "bronze": 0})[_band] += 1
+                _rank += 1
+
         # W / _mult_cap / _soc_base_max уже получены выше (до цикла compliance).
         members = []
         for r in rows:
@@ -6163,6 +6187,7 @@ def valor_get_current(with_reg_notes: bool = False,
             if cn in force_archived:
                 continue
             m["socials"] = socials.get(cn) or None
+            m["cups"] = cup_map.get(cn)   # {gold,silver,bronze} за топ по неделям
             # Ручная коррекция ника админом (canon стабилен — держится из
             # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
             m["id"] = r["id"]

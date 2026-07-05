@@ -469,12 +469,27 @@
 
   // renderTags(m) — роли «за неделю» (m.tags) с кнопкой «+».
   // renderTagsAll(m) — роли «за всё время» (m.tags_all), без «+».
+  // Накопленные кубки за место в ТОПе по неделям: золото — топ-10, серебро —
+  // топ-20, бронза — топ-30. Циферка = за сколько недель набрано.
+  function cupsHtml(m) {
+    const c = m.cups;
+    if (!c || !((c.gold || 0) + (c.silver || 0) + (c.bronze || 0))) return "";
+    const one = (kind, n, lbl) => (n > 0)
+      ? `<span class="vcup vcup-${kind}" title="${lbl}: ${n} нед.">` +
+        `<img src="assets/cup-${kind}.png?v=1794800000" alt=""><b>${n}</b></span>` : "";
+    return `<span class="vcups" title="Кубки за место в топе доблести (за все недели): ` +
+      `золото — топ-10, серебро — топ-20, бронза — топ-30">` +
+      one("gold", c.gold, "🥇 Золото (топ-10)") +
+      one("silver", c.silver, "🥈 Серебро (топ-20)") +
+      one("bronze", c.bronze, "🥉 Бронза (топ-30)") + `</span>`;
+  }
+
   function renderTagsAll(m) { return renderTags(m, m.tags_all || [], false); }
   function renderTags(m, tagsOverride, withAdd) {
     const tags = tagsOverride || m.tags || [];
     const btn = (withAdd === false) ? "" :
       `<button class="tag-add-btn" data-nick="${esc(m.nick)}" title="Добавить роль">+</button>`;
-    if (!tags.length) return `<div class="tag-row">${btn || '<span style="color:#667">—</span>'}</div>`;
+    if (!tags.length) return `<div class="tag-row">${cupsHtml(m)}${btn || (cupsHtml(m) ? "" : '<span style="color:#667">—</span>')}</div>`;
     const c = m.compliance || null;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
@@ -528,7 +543,7 @@
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="tag-rune-ic" style="${icStyle}">${meta.icon}</span><span class="tag-rune-lb" style="color:${col}">${esc(lbl)}${multHtml}</span></span>`;
     }).join("");
-    return `<div class="tag-row">${chips}${btn}</div>`;
+    return `<div class="tag-row">${cupsHtml(m)}${chips}${btn}</div>`;
   }
 
   // ── Гайд «Все доступные роли» ──────────────────────────────────────
