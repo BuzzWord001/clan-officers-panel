@@ -84,6 +84,15 @@ def valor_snapshot(payload: ValorSnapshotIn,
             res["grid_saved"] = True
         except Exception as e:
             log.warning("grid calib save failed: %s", e)
+    # АВТО-снятие ложных «ИИ-ник» (flag_new_nick) у игроков, уже известных сайту
+    # (история Доблести др. недель ∪ реестр приёма ∪ архив ушедших). Раньше это
+    # была ручная кнопка «Авто-проверка» — теперь известные ники (напр. Лисси!)
+    # исправляются САМИ при загрузке снимка, а не висят «требуют проверки».
+    try:
+        av = db.valor_auto_verify(payload.week)
+        res["auto_verified"] = av.get("cleared", 0)
+    except Exception as e:
+        log.warning("auto-verify on snapshot failed: %s", e)
     # Класс не меняется — пустой/сомнительный класс заполняем из прошлых сборов
     # и снимаем сомнение. Делается ПОСЛЕ коммита снапшота (отдельная транзакция).
     try:
