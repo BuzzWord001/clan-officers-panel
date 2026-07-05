@@ -117,13 +117,21 @@
     const shots = (!CALIB_MODE && lastF != null)
       ? DATA.screenshots.filter(s => s.idx <= lastF)
       : DATA.screenshots;
-    box.innerHTML = shots.map(s =>
+    box.innerHTML = shots.map(s => {
+      // Недобор: OCR распознал меньше строк, чем на полном кадре (эталон).
+      const short = (s.recognized != null && s.expected != null
+                     && s.recognized < s.expected);
+      const warn = short
+        ? `<span class="cmp-shot-warn" title="OCR распознал ${s.recognized} из ${s.expected} строк — на этом кадре не хватает людей, проверь его">⚠ ${s.recognized}/${s.expected}</span>`
+        : "";
       // data-idx — внутренний 0-based индекс (связка строка↔кадр, scrollToFrame).
       // Пользователю показываем номер с 1 (s.idx + 1).
-      `<figure class="cmp-shot" data-idx="${s.idx}">
+      return `<figure class="cmp-shot${short ? " cmp-shot-short" : ""}" data-idx="${s.idx}">
+         ${warn}
          <img loading="lazy" src="${esc(s.url)}" alt="кадр ${s.idx + 1}" data-full="${esc(s.url)}">
          <figcaption>кадр #${s.idx + 1}</figcaption>
-       </figure>`).join("");
+       </figure>`;
+    }).join("");
     box.querySelectorAll(".cmp-shot img").forEach(img =>
       img.addEventListener("click", () => { if (!CALIB_MODE) openLightbox(img.dataset.full); }));
     if (CALIB_MODE) renderCalibShots();   // вернуть рамки калибровки после перерисовки

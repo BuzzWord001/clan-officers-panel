@@ -536,12 +536,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
             r2_key      TEXT    NOT NULL DEFAULT '',
             uploaded_at TEXT    NOT NULL DEFAULT '',
             uploaded_by TEXT    NOT NULL DEFAULT '',
+            recognized  INTEGER,   -- сколько строк OCR распознал на этом кадре
+            expected    INTEGER,   -- эталон (типичный полный кадр, обычно 9)
             UNIQUE(week, idx)
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_valor_screens_week "
                      "ON valor_screenshots(week)")
     except sqlite3.OperationalError:
         pass
+    # Миграция для существующих БД: колонки распознанных/ожидаемых строк.
+    for _col in ("recognized INTEGER", "expected INTEGER"):
+        try:
+            conn.execute(f"ALTER TABLE valor_screenshots ADD COLUMN {_col}")
+        except sqlite3.OperationalError:
+            pass
 
     # 2026-06-07: комментарий к статусу АФК (причина, до какого числа) — по
     # canon, переживает недельные снимки. Заполняет админ в правке участника.
@@ -884,11 +892,15 @@ def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = Non
             url = (s.get("url") or "").strip()
             if not url:
                 continue
+            rec = s.get("recognized")
+            exp = s.get("expected")
             conn.execute(
                 "INSERT OR REPLACE INTO valor_screenshots "
-                "(week, idx, r2_url, r2_key, uploaded_at, uploaded_by) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (week, int(s.get("idx", n)), url, s.get("key", ""), now, by))
+                "(week, idx, r2_url, r2_key, uploaded_at, uploaded_by, recognized, expected) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (week, int(s.get("idx", n)), url, s.get("key", ""), now, by,
+                 int(rec) if isinstance(rec, int) else None,
+                 int(exp) if isinstance(exp, int) else None))
             n += 1
     return {"ok": True, "week": week, "count": n}
 
@@ -964,9 +976,11 @@ def valor_compare_data(week: str) -> dict:
             "force_archived": r["nick_canon"] in arch_info,
             "archive_info": arch_info.get(r["nick_canon"]),
         } for r in rows]
-        shots = [{"idx": r["idx"], "url": r["r2_url"]} for r in conn.execute(
-            "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
-            (week,))]
+        shots = [{"idx": r["idx"], "url": r["r2_url"],
+                  "recognized": r["recognized"], "expected": r["expected"]}
+                 for r in conn.execute(
+            "SELECT idx, r2_url, recognized, expected FROM valor_screenshots "
+            "WHERE week = ? ORDER BY idx", (week,))]
         # Ручная калибровка раскладки строк (если задана) — фронт точно
         # подсвечивает строку-источник вместо грубой оценки по высоте кадра.
         calib = {"default": None, "frames": {}}
@@ -1158,9 +1172,11 @@ def valor_screenshots_for(week: str) -> list[dict]:
     """Скрины конкретной недели по порядку: {idx, url}."""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT idx, r2_url FROM valor_screenshots WHERE week = ? ORDER BY idx",
-            ((week or "").strip(),)).fetchall()
-        return [{"idx": r["idx"], "url": r["r2_url"]} for r in rows]
+            "SELECT idx, r2_url, recognized, expected FROM valor_screenshots "
+            "WHERE week = ? ORDER BY idx", ((week or "").strip(),)).fetchall()
+        return [{"idx": r["idx"], "url": r["r2_url"],
+                 "recognized": r["recognized"], "expected": r["expected"]}
+                for r in rows]
 
 
 def valor_afk_notes() -> dict[str, str]:
