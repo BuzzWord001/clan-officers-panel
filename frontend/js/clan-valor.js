@@ -471,36 +471,40 @@
   // renderTagsAll(m) — роли «за всё время» (m.tags_all), без «+».
   // Накопленные кубки за место в ТОПе по неделям: золото — топ-10, серебро —
   // топ-20, бронза — топ-30. Циферка = за сколько недель набрано.
-  function cupsHtml(m) {
+  // Отдельная «полка наград» сверху ячейки Ролей — ТОЛЬКО у тех, кто получал
+  // кубки. Кубки крупнее, с металлическим свечением и счётчиком недель.
+  // Клик/тап/hover открывает детальный поповер (место·неделя·норматив).
+  function cupZoneHtml(m) {
     const c = m.cups;
     if (!c) return "";
-    const gl = c.gold || [], sl = c.silver || [], bl = c.bronze || [];
-    if (!(gl.length + sl.length + bl.length)) return "";
-    // Данные для кастомного поповера (место·неделя·норматив), а не нативный
-    // title: его нельзя стилизовать/скроллить и он не работает на телефоне.
-    // Кодируем через encodeURIComponent чтобы кавычки/юникод не ломали атрибут.
-    const one = (kind, list, head) => {
+    const TIERS = [["gold", "Золото (топ-10)"],
+                   ["silver", "Серебро (топ-20)"],
+                   ["bronze", "Бронза (топ-30)"]];
+    const items = TIERS.map(([kind, head]) => {
+      const list = c[kind] || [];
       if (!list.length) return "";
       const rows = list.slice()
         .sort((a, z) => (a.week < z.week ? -1 : a.week > z.week ? 1 : 0))
         .map(e => ({ p: e.place, w: WeekFmt.range(e.week), n: e.norm }));
+      // encodeURIComponent — чтобы кавычки/юникод не ломали data-атрибут.
       const payload = encodeURIComponent(JSON.stringify({ head, kind, rows }));
-      return `<span class="vcup vcup-${kind}" tabindex="0" role="button" ` +
+      return `<span class="vcup cz-cup cz-${kind}" tabindex="0" role="button" ` +
         `data-cup="${payload}" aria-label="${esc(head)} — ${list.length} нед.">` +
-        `<img src="assets/cup-${kind}.png?v=1794800000" alt=""><b>${list.length}</b></span>`;
-    };
-    return `<span class="vcups">` +
-      one("gold", gl, "🥇 Золото (топ-10)") +
-      one("silver", sl, "🥈 Серебро (топ-20)") +
-      one("bronze", bl, "🥉 Бронза (топ-30)") + `</span>`;
+        `<img src="assets/cup-${kind}.png?v=1794800000" alt="">` +
+        `<b class="cz-n">${list.length}</b></span>`;
+    }).join("");
+    return items ? `<div class="cup-zone" aria-label="Награды за ТОП недели">${items}</div>` : "";
   }
 
   function renderTagsAll(m) { return renderTags(m, m.tags_all || [], false); }
   function renderTags(m, tagsOverride, withAdd) {
     const tags = tagsOverride || m.tags || [];
+    const cupZone = cupZoneHtml(m);   // "" если кубков нет
+    const wrap = (row) => `<div class="tag-cell${cupZone ? " has-cups" : ""}">${cupZone}${row}</div>`;
     const btn = (withAdd === false) ? "" :
       `<button class="tag-add-btn" data-nick="${esc(m.nick)}" title="Добавить роль">+</button>`;
-    if (!tags.length) return `<div class="tag-row">${cupsHtml(m)}${btn || (cupsHtml(m) ? "" : '<span style="color:#667">—</span>')}</div>`;
+    if (!tags.length)
+      return wrap(`<div class="tag-row">${btn || (cupZone ? "" : '<span style="color:#667">—</span>')}</div>`);
     const c = m.compliance || null;
     const chips = tags.map(t => {
       const meta = TAG_META[t] || { label: t, icon: "·",
@@ -554,7 +558,7 @@
         data-nick="${esc(m.nick)}" data-tag="${esc(t)}"
         ><span class="tag-rune-ic" style="${icStyle}">${meta.icon}</span><span class="tag-rune-lb" style="color:${col}">${esc(lbl)}${multHtml}</span></span>`;
     }).join("");
-    return `<div class="tag-row">${cupsHtml(m)}${chips}${btn}</div>`;
+    return wrap(`<div class="tag-row">${chips}${btn}</div>`);
   }
 
   // ── Гайд «Все доступные роли» ──────────────────────────────────────
@@ -2644,13 +2648,19 @@
     closePopover();               // не держим одновременно с историей доблести
     const pop = document.createElement("div");
     pop.className = "cup-pop cup-pop-" + (data.kind || "gold");
+    const kind = data.kind || "gold";
     const rows = data.rows.map(r =>
-      `<div class="cp-row"><span class="cp-pl">${esc(String(r.p))} место</span>` +
+      `<div class="cp-row${r.p <= 3 ? " cp-top" : ""}">` +
+      `<span class="cp-pl"><i>${esc(String(r.p))}</i>место</span>` +
       `<span class="cp-wk">${esc(r.w)}</span>` +
       `<span class="cp-nm">${r.n != null ? "норма " + esc(String(r.n)) : "—"}</span></div>`
     ).join("");
-    pop.innerHTML = `<div class="cp-head">${esc(data.head)} — ${data.rows.length} нед.</div>` +
-                    `<div class="cp-list">${rows}</div>`;
+    pop.innerHTML =
+      `<div class="cp-head"><img class="cp-head-cup" `
+        + `src="assets/cup-${kind}.png?v=1794800000" alt="">`
+        + `<span class="cp-head-t">${esc(data.head)}</span>`
+        + `<span class="cp-cnt">${data.rows.length} нед.</span></div>`
+      + `<div class="cp-list">${rows}</div>`;
     document.body.appendChild(pop);
     // позиция: под бейджем, не вылезая за правый край; если снизу не влезает — сверху
     const r = anchor.getBoundingClientRect();

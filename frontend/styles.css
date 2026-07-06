@@ -4786,45 +4786,83 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 .nick-cup-bronze { filter: drop-shadow(0 0 6px rgba(222,150,84,.9)); }
 
 /* Накопленные кубки за место в топе (в столбце «Роли»): иконка + счётчик недель. */
-.vcups { display: inline-flex; align-items: center; gap: 6px; margin-right: 7px;
-  padding: 1px 6px 1px 2px; border-radius: 8px; background: rgba(0,0,0,0.22);
-  border: 1px solid rgba(224,162,74,0.18); vertical-align: middle; }
-.vcup { display: inline-flex; align-items: center; gap: 1px; cursor: pointer;
-  outline: none; border-radius: 6px; }
-.vcup:focus-visible { box-shadow: 0 0 0 2px rgba(255,210,74,.6); }
-.vcup img { width: 18px; height: 18px; display: block;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,.55)); -webkit-user-drag: none; }
-.vcup b { font-size: 11.5px; font-weight: 700; line-height: 1; }
-.vcup-gold b   { color: #ffd24a; }
-.vcup-silver b { color: #d7dee7; }
-.vcup-bronze b { color: #e0964f; }
+/* Ячейка «Роли»: сверху — полка наград (у кого есть кубки), снизу — ряд ролей */
+.tag-cell { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+
+/* «Полка наград» — отдельная светящаяся зона ТОЛЬКО у тех, кто получал кубки.
+   Кубки крупнее, с металлическим свечением и счётчиком недель. */
+.cup-zone { position: relative; display: inline-flex; align-items: center; gap: 14px;
+  padding: 5px 14px 5px 12px; border-radius: 12px;
+  background:
+    radial-gradient(130% 150% at 50% -25%, rgba(255,216,132,.16), transparent 62%),
+    linear-gradient(180deg, rgba(48,39,20,.62), rgba(20,17,10,.74));
+  border: 1px solid rgba(255,198,86,.32);
+  box-shadow: inset 0 1px 0 rgba(255,228,152,.16), 0 2px 10px rgba(0,0,0,.42); }
+/* Мягкое «дыхание» полки — ОДНА анимация opacity на игрока (композитор, дёшево),
+   а не по кубку. Сами кубки светятся статичным цветным drop-shadow (без анимации). */
+.cup-zone::before { content: ""; position: absolute; inset: -1px; border-radius: 12px;
+  pointer-events: none; z-index: 0;
+  background: radial-gradient(70% 130% at 50% 50%, rgba(255,216,130,.14), transparent 72%);
+  opacity: .5; animation: czGlow 3.6s ease-in-out infinite; }
+@keyframes czGlow { 0%, 100% { opacity: .34; } 50% { opacity: .72; } }
+@media (prefers-reduced-motion: reduce) { .cup-zone::before { animation: none; } }
+.vcup:focus-visible, .cz-cup:focus-visible { outline: none;
+  box-shadow: 0 0 0 2px rgba(255,210,74,.6); }
+.cz-cup { position: relative; z-index: 1; display: inline-flex; align-items: center;
+  gap: 4px; cursor: pointer; border-radius: 8px; padding: 1px 2px; outline: none; }
+.cz-cup img { width: 27px; height: 27px; display: block; -webkit-user-drag: none;
+  filter: drop-shadow(0 0 3px var(--cg)) drop-shadow(0 0 7px var(--cg))
+          drop-shadow(0 1px 2px rgba(0,0,0,.6)); transition: filter .15s; }
+.cz-cup .cz-n { font-size: 14px; font-weight: 800; line-height: 1; color: var(--cg);
+  text-shadow: 0 0 7px var(--cg), 0 1px 1px rgba(0,0,0,.75); }
+.cz-gold   { --cg: #ffd24a; }
+.cz-silver { --cg: #dbe6f2; }
+.cz-bronze { --cg: #f0a45f; }
+.cz-cup:hover img { filter: drop-shadow(0 0 5px var(--cg)) drop-shadow(0 0 11px var(--cg))
+          drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
 
 /* Детальный поповер кубков: место · неделя · норматив за каждую награду.
    Каждая строка — в ОДНУ строку (nowrap); много наград → список скроллится. */
-.cup-pop { position: absolute; z-index: 1200; min-width: 210px; max-width: 320px;
-  background: linear-gradient(180deg, #1c2230, #141924); color: #e8edf5;
-  border: 1px solid rgba(255,210,74,0.28); border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.55); padding: 8px 4px 6px;
-  font-size: 12.5px; animation: cupPopIn .12s ease-out; }
-@keyframes cupPopIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
-.cup-pop .cp-head { font-weight: 700; padding: 0 10px 6px; margin-bottom: 4px;
-  border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
-.cup-pop-gold   .cp-head { color: #ffd24a; }
-.cup-pop-silver .cp-head { color: #d7dee7; }
-.cup-pop-bronze .cp-head { color: #e0964f; }
-.cup-pop .cp-list { max-height: 232px; overflow-y: auto; overscroll-behavior: contain;
-  padding: 0 4px; }
+.cup-pop { position: absolute; z-index: 1200; min-width: 232px; max-width: 340px;
+  color: #e8edf5; border-radius: 12px; padding: 8px 5px 7px; font-size: 12.5px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.05), transparent 55%),
+    linear-gradient(180deg, #212736, #141924);
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 14px 36px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.02),
+              0 0 0 1px var(--pc-edge, transparent);
+  animation: cupPopIn .13s ease-out; }
+.cup-pop-gold   { --pc: #ffd24a; --pc-edge: rgba(255,210,74,.22); }
+.cup-pop-silver { --pc: #dbe6f2; --pc-edge: rgba(219,230,242,.2); }
+.cup-pop-bronze { --pc: #f0a45f; --pc-edge: rgba(240,164,95,.22); }
+@keyframes cupPopIn { from { opacity: 0; transform: translateY(-5px) scale(.98); }
+                      to { opacity: 1; transform: none; } }
+.cup-pop .cp-head { display: flex; align-items: center; gap: 8px; font-weight: 700;
+  padding: 2px 10px 8px; margin-bottom: 5px; white-space: nowrap;
+  border-bottom: 1px solid rgba(255,255,255,.09); }
+.cup-pop .cp-head-cup { width: 23px; height: 23px; flex: 0 0 auto;
+  filter: drop-shadow(0 0 5px var(--pc)) drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
+.cup-pop .cp-head-t { color: var(--pc); letter-spacing: .2px; }
+.cup-pop .cp-cnt { margin-left: auto; font-size: 11px; font-weight: 800; color: #10141f;
+  background: var(--pc); padding: 2px 9px; border-radius: 9px;
+  box-shadow: 0 0 8px rgba(0,0,0,.3); }
+.cup-pop .cp-list { max-height: 236px; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 5px; }
 .cup-pop .cp-list::-webkit-scrollbar { width: 8px; }
 .cup-pop .cp-list::-webkit-scrollbar-thumb {
-  background: rgba(255,210,74,.28); border-radius: 6px; }
+  background: rgba(255,210,74,.3); border-radius: 6px; }
 .cup-pop .cp-row { display: flex; align-items: center; gap: 10px; white-space: nowrap;
-  padding: 3px 6px; border-radius: 6px; }
+  padding: 4px 8px; border-radius: 7px; }
 .cup-pop .cp-row:nth-child(odd) { background: rgba(255,255,255,.03); }
-.cup-pop .cp-pl { min-width: 62px; font-weight: 700; color: #ffe9b0; }
-.cup-pop-silver .cp-pl { color: #e6edf6; }
-.cup-pop-bronze .cp-pl { color: #f0c79b; }
-.cup-pop .cp-wk { flex: 1 1 auto; color: #cdd6e2; }
-.cup-pop .cp-nm { flex: 0 0 auto; color: #93a1b5; font-size: 11.5px; text-align: right; }
+.cup-pop .cp-pl { display: inline-flex; align-items: baseline; gap: 5px;
+  min-width: 70px; color: #93a3b7; font-size: 11px; }
+.cup-pop .cp-pl i { font-style: normal; font-weight: 800; font-size: 12.5px;
+  min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 7px;
+  color: #10141f; background: var(--pc); box-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.cup-pop .cp-wk { flex: 1 1 auto; color: #d3dce8; }
+.cup-pop .cp-nm { flex: 0 0 auto; color: #8a98ac; font-size: 11px; text-align: right; }
+.cup-pop .cp-row.cp-top { background: rgba(255,255,255,.06);
+  box-shadow: inset 2px 0 0 var(--pc); }
 
 /* Тонкая светящаяся контур-линия строки в цвет кубка (фон НЕ красим) */
 #valor-table tr.row-cup-gold   { --cc: 255,206,92; }
