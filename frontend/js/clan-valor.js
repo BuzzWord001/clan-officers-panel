@@ -473,15 +473,26 @@
   // топ-20, бронза — топ-30. Циферка = за сколько недель набрано.
   function cupsHtml(m) {
     const c = m.cups;
-    if (!c || !((c.gold || 0) + (c.silver || 0) + (c.bronze || 0))) return "";
-    const one = (kind, n, lbl) => (n > 0)
-      ? `<span class="vcup vcup-${kind}" title="${lbl}: ${n} нед.">` +
-        `<img src="assets/cup-${kind}.png?v=1794800000" alt=""><b>${n}</b></span>` : "";
-    return `<span class="vcups" title="Кубки за место в топе доблести (за все недели): ` +
-      `золото — топ-10, серебро — топ-20, бронза — топ-30">` +
-      one("gold", c.gold, "🥇 Золото (топ-10)") +
-      one("silver", c.silver, "🥈 Серебро (топ-20)") +
-      one("bronze", c.bronze, "🥉 Бронза (топ-30)") + `</span>`;
+    if (!c) return "";
+    const gl = c.gold || [], sl = c.silver || [], bl = c.bronze || [];
+    if (!(gl.length + sl.length + bl.length)) return "";
+    // Данные для кастомного поповера (место·неделя·норматив), а не нативный
+    // title: его нельзя стилизовать/скроллить и он не работает на телефоне.
+    // Кодируем через encodeURIComponent чтобы кавычки/юникод не ломали атрибут.
+    const one = (kind, list, head) => {
+      if (!list.length) return "";
+      const rows = list.slice()
+        .sort((a, z) => (a.week < z.week ? -1 : a.week > z.week ? 1 : 0))
+        .map(e => ({ p: e.place, w: WeekFmt.range(e.week), n: e.norm }));
+      const payload = encodeURIComponent(JSON.stringify({ head, kind, rows }));
+      return `<span class="vcup vcup-${kind}" tabindex="0" role="button" ` +
+        `data-cup="${payload}" aria-label="${esc(head)} — ${list.length} нед.">` +
+        `<img src="assets/cup-${kind}.png?v=1794800000" alt=""><b>${list.length}</b></span>`;
+    };
+    return `<span class="vcups">` +
+      one("gold", gl, "🥇 Золото (топ-10)") +
+      one("silver", sl, "🥈 Серебро (топ-20)") +
+      one("bronze", bl, "🥉 Бронза (топ-30)") + `</span>`;
   }
 
   function renderTagsAll(m) { return renderTags(m, m.tags_all || [], false); }
@@ -2614,6 +2625,89 @@
     if (!e.target.closest(".valor-popover") &&
         !e.target.closest(".hist-cell")) closePopover();
   });
+
+  // ── Детальный поповер кубков: место · неделя · норматив за каждую награду.
+  // Каждая строка — в ОДНУ строку без переносов; если наград много — список
+  // скроллится (max-height). Работает и на десктопе (hover с «мостом», чтобы
+  // успеть увести курсор в поповер и промотать), и на телефоне (тап).
+  let CUP_POP = null, CUP_ANCHOR = null, CUP_T = null;
+  function closeCupPop() {
+    if (CUP_T) { clearTimeout(CUP_T); CUP_T = null; }
+    if (CUP_POP) { CUP_POP.remove(); CUP_POP = null; CUP_ANCHOR = null; }
+  }
+  function openCupPop(anchor) {
+    let data;
+    try { data = JSON.parse(decodeURIComponent(anchor.dataset.cup || "")); }
+    catch (_) { return; }
+    if (!data || !data.rows || !data.rows.length) return;
+    closeCupPop();
+    closePopover();               // не держим одновременно с историей доблести
+    const pop = document.createElement("div");
+    pop.className = "cup-pop cup-pop-" + (data.kind || "gold");
+    const rows = data.rows.map(r =>
+      `<div class="cp-row"><span class="cp-pl">${esc(String(r.p))} место</span>` +
+      `<span class="cp-wk">${esc(r.w)}</span>` +
+      `<span class="cp-nm">${r.n != null ? "норма " + esc(String(r.n)) : "—"}</span></div>`
+    ).join("");
+    pop.innerHTML = `<div class="cp-head">${esc(data.head)} — ${data.rows.length} нед.</div>` +
+                    `<div class="cp-list">${rows}</div>`;
+    document.body.appendChild(pop);
+    // позиция: под бейджем, не вылезая за правый край; если снизу не влезает — сверху
+    const r = anchor.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const vw = document.documentElement.clientWidth;
+    let left = window.scrollX + r.left;
+    const maxLeft = window.scrollX + vw - pw - 8;
+    if (left > maxLeft) left = Math.max(window.scrollX + 8, maxLeft);
+    let top = window.scrollY + r.bottom + 6;
+    if (r.bottom + 6 + ph > window.innerHeight && r.top - 6 - ph > 0)
+      top = window.scrollY + r.top - ph - 6;
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    pop.addEventListener("mouseenter", () => { if (CUP_T) { clearTimeout(CUP_T); CUP_T = null; } });
+    pop.addEventListener("mouseleave", () => { CUP_T = setTimeout(closeCupPop, 180); });
+    CUP_POP = pop; CUP_ANCHOR = anchor;
+  }
+  const cupBody = $("valor-tbody");
+  // На тач-экране браузер шлёт «призрачные» mouseover/mouseout перед click.
+  // Без этого тап открывал бы поповер (mouseover) и тут же закрывал (click).
+  // Помечаем недавний touch и игнорируем mouse-события сразу после него.
+  let CUP_LAST_TOUCH = 0;
+  document.addEventListener("touchstart", () => { CUP_LAST_TOUCH = Date.now(); },
+                            { passive: true });
+  const cupGhost = () => (Date.now() - CUP_LAST_TOUCH) < 700;
+  if (cupBody) {
+    cupBody.addEventListener("mouseover", (e) => {
+      if (cupGhost()) return;
+      const cup = e.target.closest(".vcup");
+      if (!cup) return;
+      if (CUP_T) { clearTimeout(CUP_T); CUP_T = null; }
+      if (CUP_ANCHOR === cup) return;
+      openCupPop(cup);
+    });
+    cupBody.addEventListener("mouseout", (e) => {
+      if (cupGhost()) return;
+      if (!e.target.closest(".vcup")) return;
+      CUP_T = setTimeout(closeCupPop, 180);   // «мост»: успеть уйти в поповер
+    });
+    cupBody.addEventListener("click", (e) => {
+      const cup = e.target.closest(".vcup");
+      if (!cup) return;
+      e.stopPropagation();
+      if (CUP_ANCHOR === cup) { closeCupPop(); return; }  // повторный тап — закрыть
+      openCupPop(cup);
+    });
+    cupBody.addEventListener("keydown", (e) => {
+      const cup = e.target.closest(".vcup");
+      if (!cup) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCupPop(cup); }
+      else if (e.key === "Escape") closeCupPop();
+    });
+  }
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".cup-pop") && !e.target.closest(".vcup")) closeCupPop();
+  });
+  window.addEventListener("scroll", closeCupPop);   // страница проскроллилась — прячем
 
   // ── Timeline-график доблести ──
   let CHART = null;

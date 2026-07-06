@@ -199,6 +199,7 @@
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),
     valorMemberVerify: (id) => request("POST", "/valor/verify/" + id),
     valorAutoVerify: (week) => request("POST", "/valor/auto-verify", { week }),
+    valorRequestPublish: () => request("POST", "/valor/request-publish", {}),
     valorSnapshotMeta: (body) => request("PATCH", "/valor/snapshot-meta", body),
     valorEditLog: (week) => request("GET", "/valor/editlog?week=" + encodeURIComponent(week)),
     valorEditUndo: (id) => request("POST", "/valor/editlog/undo", { id }),

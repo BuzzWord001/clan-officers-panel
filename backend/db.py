@@ -542,6 +542,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_valor_screens_week "
                      "ON valor_screenshots(week)")
+        # Запрос на авто-публикацию топа (кнопка «Готово»): 1 строка. Локальный
+        # поллер видит requested_at, ждёт 5 мин и публикует, ставит published_at.
+        conn.execute("""CREATE TABLE IF NOT EXISTS valor_publish_request (
+            id           INTEGER PRIMARY KEY CHECK (id = 1),
+            week         TEXT,
+            requested_at TEXT,
+            published_at TEXT
+        )""")
     except sqlite3.OperationalError:
         pass
     # Миграция для существующих БД: колонки распознанных/ожидаемых строк.
@@ -791,6 +799,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-07-06: valor_history копил ДУБЛИ (одна неделя/поле у одного канона
+    # дважды) — из-за merge ников (UPDATE nick_canon сливал строки двух канонов
+    # без дедупа) и повторной загрузки прошлой недели/ручного добавления.
+    # В попапе истории это давало дважды одну и ту же неделю. Чистим дубли
+    # (оставляем самую свежую строку = max id) и ставим UNIQUE-индекс, чтобы
+    # впредь дубли были невозможны (вставки идут через INSERT OR REPLACE).
+    conn.execute(
+        """DELETE FROM valor_history WHERE id NOT IN (
+               SELECT MAX(id) FROM valor_history
+               GROUP BY nick_canon, field, week)""")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_valor_history_uniq "
+        "ON valor_history(nick_canon, field, week)")
+
 
 def init_db() -> None:
     db_path = Path(settings.db_path)
@@ -903,6 +925,48 @@ def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = Non
                  int(exp) if isinstance(exp, int) else None))
             n += 1
     return {"ok": True, "week": week, "count": n}
+
+
+def valor_request_publish(week: str) -> dict:
+    """Кнопка «Готово»: заявка на авто-публикацию топа за неделю. Сброс
+    published_at → поллер опубликует через 5 мин."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO valor_publish_request (id, week, requested_at, published_at) "
+            "VALUES (1, ?, ?, NULL) "
+            "ON CONFLICT(id) DO UPDATE SET week = ?, requested_at = ?, published_at = NULL",
+            ((week or "").strip(), now, (week or "").strip(), now))
+    return {"ok": True, "week": week, "requested_at": now}
+
+
+def valor_get_publish_request() -> dict:
+    """Текущая заявка на публикацию (для локального поллера)."""
+    with connection() as conn:
+        r = conn.execute(
+            "SELECT week, requested_at, published_at FROM valor_publish_request "
+            "WHERE id = 1").fetchone()
+    if not r:
+        return {"week": None, "requested_at": None, "published_at": None}
+    return {"week": r["week"], "requested_at": r["requested_at"],
+            "published_at": r["published_at"]}
+
+
+def valor_mark_published(week: str) -> dict:
+    """Поллер отметил, что опубликовал за неделю."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            "UPDATE valor_publish_request SET published_at = ? "
+            "WHERE id = 1 AND week = ?", (now, (week or "").strip()))
+    return {"ok": True, "published_at": now}
+
+
+def valor_latest_week() -> str | None:
+    with connection() as conn:
+        r = conn.execute(
+            "SELECT week FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+    return r["week"] if r else None
 
 
 def valor_compare_data(week: str) -> dict:
@@ -5337,7 +5401,7 @@ def valor_save_snapshot(
                         (canon, fld, week),
                     )
                     conn.execute(
-                        """INSERT INTO valor_history
+                        """INSERT OR REPLACE INTO valor_history
                            (nick_canon, field, value, week, captured_at)
                            VALUES (?, ?, ?, ?, ?)""",
                         (canon, fld, val, week, now),
@@ -5353,7 +5417,7 @@ def valor_save_snapshot(
                 ).fetchone()
                 if prev is None or prev["value"] != val:
                     conn.execute(
-                        """INSERT INTO valor_history
+                        """INSERT OR REPLACE INTO valor_history
                            (nick_canon, field, value, week, captured_at)
                            VALUES (?, ?, ?, ?, ?)""",
                         (canon, fld, val, week, now),
@@ -6150,8 +6214,10 @@ def valor_get_current(with_reg_notes: bool = False,
         ).fetchall()
         # ── Кубки за место в ТОПе по неделям (накопительно за ВСЕ недели) ──
         # По valor DESC внутри недели: места 1-10 → золото, 11-20 → серебро,
-        # 21-30 → бронза (один кубок за неделю). Историю зачитываем всю → всем,
-        # кто когда-либо был в топе, кубки засчитываются автоматически.
+        # 21-30 → бронза (один кубок за неделю). Для КАЖДОГО кубка храним ДЕТАЛИ
+        # {week, place, norm} — тултип покажет за какие недели/места/норматив.
+        _norms = {r["week"]: r["valor_norm"] for r in conn.execute(
+            "SELECT week, valor_norm FROM valor_snapshots")}
         cup_map: dict = {}
         _cw: dict = {}
         for cr in conn.execute(
@@ -6160,16 +6226,18 @@ def valor_get_current(with_reg_notes: bool = False,
                 "WHERE vm.valor IS NOT NULL "
                 "ORDER BY vs.week, vm.valor DESC, vm.nick"):
             _cw.setdefault(cr["wk"], []).append(cr["cn"])
-        for _canons in _cw.values():
+        for _wk in sorted(_cw):
             _seen = set(); _rank = 0
-            for _cn in _canons:
+            for _cn in _cw[_wk]:
                 if _cn in _seen:
                     continue
                 _seen.add(_cn)
                 _band = ("gold" if _rank < 10 else "silver" if _rank < 20
                          else "bronze" if _rank < 30 else None)
                 if _band:
-                    cup_map.setdefault(_cn, {"gold": 0, "silver": 0, "bronze": 0})[_band] += 1
+                    e = cup_map.setdefault(_cn, {"gold": [], "silver": [], "bronze": []})
+                    e[_band].append({"week": _wk, "place": _rank + 1,
+                                     "norm": _norms.get(_wk)})
                 _rank += 1
 
         # W / _mult_cap / _soc_base_max уже получены выше (до цикла compliance).
@@ -6969,11 +7037,11 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
                     "DELETE FROM valor_history WHERE nick_canon = ? AND field = ? AND week = ?",
                     (canon, fld, wk))
                 conn.execute(
-                    "INSERT INTO valor_history (nick_canon, field, value, week, captured_at) "
+                    "INSERT OR REPLACE INTO valor_history (nick_canon, field, value, week, captured_at) "
                     "VALUES (?, ?, ?, ?, ?)", (canon, fld, val, wk, now))
             elif val:
                 conn.execute(
-                    "INSERT INTO valor_history (nick_canon, field, value, week, captured_at) "
+                    "INSERT OR REPLACE INTO valor_history (nick_canon, field, value, week, captured_at) "
                     "VALUES (?, ?, ?, ?, ?)", (canon, fld, val, wk, now))
 
         out = conn.execute("SELECT * FROM valor_members WHERE id = ?", (mid,)).fetchone()
@@ -7016,7 +7084,7 @@ def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str) 
     target = _resolve_canon(_valor_canon(new_nick), amap)
     if target and src and target != src:
         conn.execute("UPDATE valor_members SET nick_canon=? WHERE nick_canon=?", (target, src))
-        conn.execute("UPDATE valor_history SET nick_canon=? WHERE nick_canon=?", (target, src))
+        conn.execute("UPDATE OR REPLACE valor_history SET nick_canon=? WHERE nick_canon=?", (target, src))
         for tbl in ("valor_tags", "valor_manual_warnings"):
             try:
                 conn.execute(f"UPDATE OR IGNORE {tbl} SET nick_canon=? WHERE nick_canon=?", (target, src))
@@ -7068,7 +7136,7 @@ def valor_merge(source_canon: str, target_nick: str, actor: dict) -> dict:
         moved = conn.execute(
             "UPDATE valor_members SET nick_canon = ? WHERE nick_canon = ?",
             (target, source)).rowcount
-        conn.execute("UPDATE valor_history SET nick_canon = ? WHERE nick_canon = ?",
+        conn.execute("UPDATE OR REPLACE valor_history SET nick_canon = ? WHERE nick_canon = ?",
                      (target, source))
         for tbl in ("valor_tags", "valor_manual_warnings"):
             try:

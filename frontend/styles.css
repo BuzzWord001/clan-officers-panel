@@ -4789,13 +4789,42 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 .vcups { display: inline-flex; align-items: center; gap: 6px; margin-right: 7px;
   padding: 1px 6px 1px 2px; border-radius: 8px; background: rgba(0,0,0,0.22);
   border: 1px solid rgba(224,162,74,0.18); vertical-align: middle; }
-.vcup { display: inline-flex; align-items: center; gap: 1px; cursor: default; }
+.vcup { display: inline-flex; align-items: center; gap: 1px; cursor: pointer;
+  outline: none; border-radius: 6px; }
+.vcup:focus-visible { box-shadow: 0 0 0 2px rgba(255,210,74,.6); }
 .vcup img { width: 18px; height: 18px; display: block;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,.55)); -webkit-user-drag: none; }
 .vcup b { font-size: 11.5px; font-weight: 700; line-height: 1; }
 .vcup-gold b   { color: #ffd24a; }
 .vcup-silver b { color: #d7dee7; }
 .vcup-bronze b { color: #e0964f; }
+
+/* Детальный поповер кубков: место · неделя · норматив за каждую награду.
+   Каждая строка — в ОДНУ строку (nowrap); много наград → список скроллится. */
+.cup-pop { position: absolute; z-index: 1200; min-width: 210px; max-width: 320px;
+  background: linear-gradient(180deg, #1c2230, #141924); color: #e8edf5;
+  border: 1px solid rgba(255,210,74,0.28); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); padding: 8px 4px 6px;
+  font-size: 12.5px; animation: cupPopIn .12s ease-out; }
+@keyframes cupPopIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+.cup-pop .cp-head { font-weight: 700; padding: 0 10px 6px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+.cup-pop-gold   .cp-head { color: #ffd24a; }
+.cup-pop-silver .cp-head { color: #d7dee7; }
+.cup-pop-bronze .cp-head { color: #e0964f; }
+.cup-pop .cp-list { max-height: 232px; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 4px; }
+.cup-pop .cp-list::-webkit-scrollbar { width: 8px; }
+.cup-pop .cp-list::-webkit-scrollbar-thumb {
+  background: rgba(255,210,74,.28); border-radius: 6px; }
+.cup-pop .cp-row { display: flex; align-items: center; gap: 10px; white-space: nowrap;
+  padding: 3px 6px; border-radius: 6px; }
+.cup-pop .cp-row:nth-child(odd) { background: rgba(255,255,255,.03); }
+.cup-pop .cp-pl { min-width: 62px; font-weight: 700; color: #ffe9b0; }
+.cup-pop-silver .cp-pl { color: #e6edf6; }
+.cup-pop-bronze .cp-pl { color: #f0c79b; }
+.cup-pop .cp-wk { flex: 1 1 auto; color: #cdd6e2; }
+.cup-pop .cp-nm { flex: 0 0 auto; color: #93a1b5; font-size: 11.5px; text-align: right; }
 
 /* Тонкая светящаяся контур-линия строки в цвет кубка (фон НЕ красим) */
 #valor-table tr.row-cup-gold   { --cc: 255,206,92; }

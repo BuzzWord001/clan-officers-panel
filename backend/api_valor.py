@@ -146,6 +146,34 @@ def valor_screenshots_save(payload: ScreenshotsIn,
     return db.valor_screenshots_set(payload.week, payload.shots)
 
 
+# ── Триггер авто-публикации топа кнопкой «Готово» ──
+@router.post("/request-publish")
+def valor_request_publish_ep(_: dict = Depends(require_officer)) -> dict:
+    """Кнопка «Готово — обновить доблесть»: заявка на публикацию топа. Локальный
+    поллер увидит её и через 5 минут опубликует пост во все соцсети."""
+    week = db.valor_latest_week()
+    if not week:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_snapshot")
+    return db.valor_request_publish(week)
+
+
+@router.get("/publish-request")
+def valor_publish_request_get(_=Depends(require_bot_token)) -> dict:
+    """Статус заявки на публикацию (для локального поллера weekly_top)."""
+    return db.valor_get_publish_request()
+
+
+class PublishDoneIn(BaseModel):
+    week: str
+
+
+@router.post("/publish-done")
+def valor_publish_done_ep(payload: PublishDoneIn,
+                          _=Depends(require_bot_token)) -> dict:
+    """Поллер отметил, что топ за неделю опубликован (чтобы не постить дважды)."""
+    return db.valor_mark_published(payload.week)
+
+
 class FramesIn(BaseModel):
     week:   str
     frames: list[dict]   # [{nick, frame}]
