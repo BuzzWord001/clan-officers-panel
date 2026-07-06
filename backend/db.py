@@ -5815,15 +5815,36 @@ def valor_get_departed() -> list[dict[str, Any]]:
     """Список ушедших из клана с последними известными данными.
     Если человека увели в архив вручную (кик) — добавляем пометку (причину)
     и кто это сделал из valor_force_archived (LEFT JOIN: у самостоятельно
-    ушедших пометки нет → NULL)."""
+    ушедших пометки нет → NULL).
+
+    Для АВТО-ушедших (пропал из сбора, вручную не кикали) добавляем:
+      first_week   — первая неделя, где человек был в сборе;
+      missing_week — первый сбор, где его УЖЕ НЕ было (следующий после last_week)
+                     = неделя, из-за которой он авто-кикнут в архив.
+    Фронт лепит пометку «был в сборах X…Y, нет в сборе Z → авто-архив»."""
     with connection() as conn:
+        # Первая неделя присутствия каждого (по всем снимкам) — для диапазона.
+        first_seen = {r["cn"]: r["fw"] for r in conn.execute(
+            "SELECT vm.nick_canon AS cn, MIN(vs.week) AS fw "
+            "FROM valor_members vm JOIN valor_snapshots vs ON vs.id = vm.snapshot_id "
+            "GROUP BY vm.nick_canon")}
+        all_weeks = [r["week"] for r in conn.execute(
+            "SELECT week FROM valor_snapshots ORDER BY week")]
         rows = conn.execute(
             "SELECT d.*, fa.reason AS archive_reason, fa.archived_by AS archive_by "
             "FROM valor_departed d "
             "LEFT JOIN valor_force_archived fa ON fa.nick_canon = d.nick_canon "
             "ORDER BY d.departed_at DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            lw = d.get("last_week") or ""
+            d["first_week"] = first_seen.get(d["nick_canon"], lw)
+            nxt = [w for w in all_weeks if w > lw]   # первый сбор без него
+            d["missing_week"] = nxt[0] if nxt else ""
+            out.append(d)
+        return out
 
 
 def valor_departed_match(game_nick: str) -> list[dict]:

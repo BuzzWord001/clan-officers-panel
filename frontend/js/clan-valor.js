@@ -2857,6 +2857,18 @@
 
   // ── Departed ────────────────────────────────────────────────────
   let DEPARTED = [];
+  // Пометка для АВТО-ушедших (пропал из нового сбора, вручную НЕ кикали):
+  // показываем, в каких сборах он был и с какого сбора его уже нет → авто-архив.
+  function depAutoNote(d) {
+    if (!d.missing_week) return '<span style="color:var(--text-dim)">—</span>';
+    const span = (d.first_week && d.first_week !== d.last_week)
+      ? `${WeekFmt.range(d.first_week)} … ${WeekFmt.range(d.last_week)}`
+      : WeekFmt.range(d.last_week);
+    const tip = `Был(а) в сборах: ${span}.\nНет в сборе ${WeekFmt.range(d.missing_week)}`
+      + ` — вручную не кикали, ушёл(ла) в архив автоматически.`;
+    return `<span class="dep-note-auto" title="${esc(tip)}">📦 авто-архив`
+      + `<br><small>нет с ${esc(WeekFmt.range(d.missing_week, { noYear: true }))}</small></span>`;
+  }
   async function loadDeparted() {
     try {
       DEPARTED = await API.valorDeparted();
@@ -2884,7 +2896,7 @@
         <td class="dep-note">${d.archive_reason
             ? `<span class="dep-note-txt" title="${esc(d.archive_reason)}${d.archive_by ? ' — ' + esc(d.archive_by) : ''}">${esc(d.archive_reason)}</span>`
             + (d.archive_by ? `<br><small style="color:var(--text-dim)">${esc(d.archive_by)}</small>` : "")
-            : '<span style="color:var(--text-dim)">—</span>'}</td>
+            : depAutoNote(d)}</td>
         ${IS_OFFICER
           ? `<td><button class="dep-restore" data-canon="${esc(d.nick_canon)}" data-nick="${esc(d.nick)}" title="↩ Вернуть в основной список — если игрок ушёл/был кикнут по ошибке. Можно добавить пометку (причину возврата). Вернётся, если он есть в текущем снимке.">↩ вернуть</button></td>`
           : ""}

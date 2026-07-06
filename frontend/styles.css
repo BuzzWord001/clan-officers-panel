@@ -4864,6 +4864,10 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 .cup-pop .cp-row.cp-top { background: rgba(255,255,255,.06);
   box-shadow: inset 2px 0 0 var(--pc); }
 
+/* Пометка АВТО-ушедшего в архив (пропал из сбора, вручную не кикали) */
+.dep-note-auto { color: #b9a06a; font-size: 11.5px; white-space: nowrap; cursor: help; }
+.dep-note-auto small { color: var(--text-dim); }
+
 /* Тонкая светящаяся контур-линия строки в цвет кубка (фон НЕ красим) */
 #valor-table tr.row-cup-gold   { --cc: 255,206,92; }
 #valor-table tr.row-cup-silver { --cc: 212,226,246; }
