@@ -215,6 +215,7 @@
     valorSkipWeek:  (body) => request("POST", "/valor/skip-week", body),
     valorDeparted:  () => request("GET", "/valor/departed"),
     valorDepartedCheck: (nick) => request("GET", "/valor/departed-check?nick=" + encodeURIComponent(nick)),
+    valorReturnFromArchive: (payload) => request("POST", "/valor/return-from-archive", payload),
     valorArchive:   (canon, reason) => request("POST", "/valor/archive", { canon, reason: reason || "" }),
     valorRestore:   (canon, reason) => request("POST", "/valor/restore", { canon, reason: reason || "" }),
     valorByCanon:   (weeks = 0) => request("GET", "/valor/by-canon?weeks=" + weeks),

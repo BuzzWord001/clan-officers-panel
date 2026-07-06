@@ -7348,6 +7348,34 @@ def valor_restore(canon: str, actor: dict, reason: str = "") -> dict:
     return {"ok": True}
 
 
+def valor_return_from_archive(*, game_nick: str, title: str, note: str,
+                              accepted_date: str, veteran: bool,
+                              actor: dict) -> dict:
+    """Повторный приём человека, который был в архиве доблести. Одним действием:
+      1) регистрируем в реестре (свежая дата → недельный ИММУН новичка);
+      2) возвращаем из архива (departed + force_archived);
+      3) УБИРАЕМ все предупреждения (норматив + титульные + ручные) — чистый лист.
+    """
+    game_nick = (game_nick or "").strip()
+    if not game_nick:
+        return {"ok": False, "error": "bad_nick"}
+    # 1) Регистрация — create_acceptance даёт свежий иммун новичка (IMMUNITY_DAYS).
+    acc = create_acceptance(game_nick=game_nick, title=(title or ""),
+                            accepted_date=accepted_date, note=(note or ""),
+                            veteran=bool(veteran), actor=actor)
+    canon = _valor_canon(game_nick)
+    # 2) Вернуть из архива доблести (снять кик / убрать из «покинули»).
+    valor_restore(canon, actor, reason="повторный приём из архива")
+    # 3) Убрать ВСЕ предупреждения (по требованию Лира — чистый лист).
+    valor_dismiss_warnings(canon, "norm", actor,
+                           reason="возврат из архива — чистый лист")
+    valor_dismiss_warnings(canon, "title", actor,
+                           reason="возврат из архива — чистый лист")
+    with connection() as conn:
+        conn.execute("DELETE FROM valor_manual_warnings WHERE nick_canon = ?", (canon,))
+    return {"ok": True, "acceptance": acc, "canon": canon}
+
+
 def valor_delete_member(member_id: int, actor: dict | None = None) -> dict:
     """Удалить ошибочную строку (фантом OCR) из текущего снимка."""
     with connection() as conn:

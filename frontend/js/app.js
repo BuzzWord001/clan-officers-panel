@@ -92,11 +92,44 @@
           return `⚠ <b>${who}</b> — в архиве <b>кикнутых</b>. ${reason}${by}.${week}`;
         }
         return `⚠ <b>${who}</b> — ранее <b>покинул клан</b> (в архиве «Покинули клан»).${week}`;
-      }).join("<br>");
+      }).join("<br>") +
+      `<br><button type="button" class="return-archive-btn" title="Зарегистрировать в реестре, вернуть из архива Доблести, дать иммунитет на неделю и снять все предупреждения">` +
+      `↩ Вернуть из архива <small>(+ иммунитет на неделю, снять все предупреждения)</small></button>`;
       note.hidden = false;
     }, 400);
   }
   $("f-nick").addEventListener("input", checkNickKicked);
+
+  // Кнопка «Вернуть из архива» прямо в подсказке: регистрирует + возвращает из
+  // архива + даёт недельный иммун новичка + убирает ВСЕ предупреждения.
+  if ($("nick-kicked-note"))
+    $("nick-kicked-note").addEventListener("click", async (ev) => {
+      const btn = ev.target.closest(".return-archive-btn");
+      if (!btn) return;
+      const nick = $("f-nick").value.trim();
+      const title = $("f-title").value.trim();
+      const note = $("f-note").value.trim();
+      const veteran = $("f-veteran") ? $("f-veteran").checked : false;
+      const iso = DateRu.parseRus($("f-date").value.trim());
+      if (!nick) return;
+      if (!iso) { setStatus("✗ Неверная дата — ожидаю ДД.ММ.ГГГГ"); return; }
+      btn.disabled = true;
+      setStatus("Возвращаю из архива…");
+      try {
+        await API.valorReturnFromArchive({ game_nick: nick, title, note,
+          accepted_date: iso, veteran });
+        $("f-nick").value = ""; $("f-title").value = ""; $("f-note").value = "";
+        $("f-date").value = DateRu.today();
+        if ($("f-veteran")) $("f-veteran").checked = false;
+        if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
+        $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = "";
+        setStatus(`✓ Возвращён из архива: ${nick} — иммунитет на неделю выдан, предупреждения сняты`);
+        await reload();
+      } catch (e) {
+        setStatus(`✗ Ошибка: ${e.detail || e.message}`);
+        btn.disabled = false;
+      }
+    });
 
   // ── Поиск по реестру ──
   if ($("reg-search")) $("reg-search").addEventListener("input", applyFilter);

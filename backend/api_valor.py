@@ -317,6 +317,26 @@ def valor_departed_check(nick: str = Query(..., min_length=1),
     return {"matches": db.valor_departed_match(nick)}
 
 
+class ReturnFromArchiveIn(BaseModel):
+    game_nick:     str = Field(..., min_length=1)
+    title:         str = ""
+    note:          str = ""
+    accepted_date: str = Field(..., min_length=1)   # 'YYYY-MM-DD'
+    veteran:       bool = False
+
+
+@router.post("/return-from-archive")
+def valor_return_from_archive(payload: ReturnFromArchiveIn,
+                              _: dict = Depends(require_officer),
+                              actor: dict = Depends(current_actor)) -> dict:
+    """Повторный приём из архива (офицер/админ) одним действием: регистрирует в
+    реестре (свежий недельный иммун новичка), возвращает из архива доблести и
+    убирает ВСЕ предупреждения (чистый лист)."""
+    return db.valor_return_from_archive(
+        game_nick=payload.game_nick, title=payload.title, note=payload.note,
+        accepted_date=payload.accepted_date, veteran=payload.veteran, actor=actor)
+
+
 @router.get("/by-canon")
 def valor_by_canon(weeks: int = Query(default=0, ge=0, le=52),
                    _: dict = Depends(require_officer)) -> dict:
