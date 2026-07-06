@@ -71,6 +71,17 @@ async def publish_now(*, force_repost: bool = False,
     например когда listener видит join только в одной площадке, не нужно
     спамить вторую.
     """
+    # ОТКЛЮЧЕНО (Лир, 2026-07): офицерский манифест-закреп (сайт + общий пароль)
+    # больше не нужен. Теперь во ВСЕ каналы публикуется только еженедельная
+    # таблица доблести — по кнопке «Готово» (weekly_top.py), отдельный механизм.
+    # Ничего не постим/не пиним и не редактируем закреп. Сбрасываем dirty, чтобы
+    # планировщик не крутил публикацию впустую каждую минуту.
+    db.update_render_state(
+        dirty=0, last_render_at=datetime.utcnow().isoformat(timespec="seconds"))
+    log.info("officer manifest publishing DISABLED — skip (force_repost=%s, platforms=%s)",
+             force_repost, platforms)
+    return {"disabled": True}
+
     targets = set(platforms) if platforms else {"tg", "vk"}
     state = db.get_render_state()
     image = await asyncio.to_thread(renderer.render_png)
