@@ -787,7 +787,9 @@
       const bh = Math.max(1.5, (r / scale) * H);
       const x = +(i * (bw + gap)).toFixed(1);
       const y = +(H - bh).toFixed(1);
-      const cls = p.e ? "afk" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
+      // АФК-неделя (a) — фиолетовая; иммунитет/новичок (e без a) — синяя;
+      // иначе по доле нормы. Так «был в АФК» сразу видно и в мини-графике.
+      const cls = p.a ? "afk" : p.e ? "imm" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
       return `<rect x="${x}" y="${y}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="0.8" class="sp-${cls}"/>`;
     }).join("");
     const tip = `Набор доблести по неделям (${n}): столбик — доля нормы, ` +
@@ -797,12 +799,23 @@
       `${bars}<line class="sp-normline" x1="0" y1="${normY}" x2="${W}" y2="${normY}"/></svg>`;
   }
 
+  // «Сейчас РЕАЛЬНО в АФК» (на паузе) — показываем плитку-статус «На паузе».
+  // Отличаем от тех, кто БЫЛ в АФК и вернулся: у вернувшихся недели помечены
+  // is_afk (для покраски столбиков), но в игровом титуле уже НЕТ «афк» и нет
+  // активного АФК-срока/заметки. У них статус-плитку не пишем — только красим
+  // столбики фиолетовым.
+  function isCurrentlyAfk(m) {
+    if (!m || !m.is_afk) return false;
+    if (m.afk_until || m.afk_note) return true;
+    return /(афк|afk)/i.test(m.title || "");
+  }
+
   // Статус текущей недели для акцента стат-тайла (цвет верхней кромки).
   function normStatus(m) {
     const im = m.immunity;
     // АФК и иммунитет — РАЗНЫЕ состояния и разные цвета кромки тайла:
     // АФК = сиреневый (пауза), иммунитет новичка = синий (щит).
-    if (m.is_afk) return "afk";
+    if (m.is_afk) return "afk";  // фиолетовая кромка и у бывших АФК (недели помечены)
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace"))
       return "immune";
     if (m.norm_met === true) return "ok";
@@ -821,7 +834,15 @@
       ? `<span class="norm-pct">${_pct}%</span> <span class="norm-frac">${_v}/${_en}</span>`
       : "";
     const _sep = _pct != null ? " · " : "";
-    if (m.is_afk) {
+    // Вернулся из АФК (неделя помечена, но сейчас не на паузе) — НЕ пишем «АФК ·
+    // N нед. пауза», а показываем нейтральную приписку «был в АФК» + набранное.
+    // Столбики за эти недели красятся фиолетовым (spark/история). Не провал!
+    if (m.is_afk && !isCurrentlyAfk(m)) {
+      return `<span class="norm-cell norm-afk-was"
+        title="${esc("Эта неделя была в АФК — норматив не требовался. Набрано: " + _v)}"
+        >${_pctHtml}<small class="norm-note">${_sep}<span class="afk-was-tag">был(а) в АФК</span></small></span>`;
+    }
+    if (isCurrentlyAfk(m)) {
       const a = m.afk_info;
       const note = m.afk_note || "";
       const until = m.afk_until || "";                       // 'YYYY-MM-DD' или ''
@@ -1169,9 +1190,14 @@
       `<span class="trend ${cls}" title="${esc(tip)}">${icon} ${label}</span>`;
 
     // ── 1. Особые состояния (текущая неделя) ──
-    if (m && m.is_afk)
+    if (isCurrentlyAfk(m))
       return chip("trend-afk", "💤", "На паузе (АФК)",
         "Игрок в АФК — норматив не оценивается, серия не рвётся.");
+    // Вернулся из АФК: недели помечены (столбики фиолетовые), но статус-паузу
+    // не пишем — лишь напоминаем, что был в АФК.
+    if (m && m.is_afk)
+      return chip("trend-afk", "💤", "Был в АФК",
+        "Эти недели были в АФК (норматив не требовался). Сейчас уже не на паузе.");
     const im = m && m.immunity;
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace")) {
       // Новичок под иммунитетом, но уже реально набирает — показываем ЭТО, а не

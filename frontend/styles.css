@@ -3156,7 +3156,8 @@ video.chat-media-thumb {
 .valor-spark .sp-ok  { fill: #66d47f; }
 .valor-spark .sp-mid { fill: #ffcc66; }
 .valor-spark .sp-low { fill: #ff8080; }
-.valor-spark .sp-afk { fill: #8fb0ff; opacity: 0.5; }
+.valor-spark .sp-afk { fill: #c3a2ee; opacity: 0.9; }   /* АФК — фиолетовый (как в истории) */
+.valor-spark .sp-imm { fill: #8fb0ff; opacity: 0.55; }  /* иммунитет/новичок — синий */
 
 /* ── Объединённая ячейка «Оценка и тренд» ────────────────────────────────
    Сверху — оценка всех недель (форма), под ней — динамика к прошлой неделе.
@@ -3177,6 +3178,12 @@ video.chat-media-thumb {
 .norm-cell.norm-p20    { color: #e07070; background: rgba(224,112,112,0.10);border-color: rgba(224,112,112,0.35); }
 .norm-cell.norm-p0     { color: #ff5070; background: rgba(255,80,112,0.14); border-color: rgba(255,80,112,0.45); }
 .norm-cell.norm-afk    { color: #d5b3f2; background: rgba(198,150,235,0.10);border-color: rgba(198,150,235,0.30); }
+/* Был в АФК (вернулся) — фиолетовая приписка, не провал */
+.norm-cell.norm-afk-was { color: #cbb8ff; }
+.norm-cell.norm-afk-was .afk-was-tag {
+  color: #cbb8ff; background: rgba(150,120,220,0.18);
+  border: 1px solid rgba(170,140,235,0.34); border-radius: 5px;
+  padding: 0 5px; font-weight: 600; }
 .norm-cell.norm-unknown { color: #888; }
 .comp-cell small { font-size: 9px; }
 
