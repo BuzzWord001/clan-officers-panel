@@ -30,8 +30,9 @@
     return { mon: mon, sun: sun, year: +m[1], week: +m[2] };
   }
 
-  // Диапазон дат: «23–29 июня 2026» (или «28 июня – 4 июля 2026» через месяц).
-  // opt.noYear — без года.
+  // Диапазон дат ЕДИНЫМ форматом «23 июня – 29 июня 2026» (месяц у ОБЕИХ дат,
+  // тире с пробелами) — одинаково и в один месяц, и через месяц, и как на
+  // постере ТОПа (gen_top.week_dates). opt.noYear — без года.
   function range(wk, opt) {
     var s = span(wk);
     if (!s) return String(wk || "");
@@ -39,9 +40,7 @@
     var d1 = s.mon.getUTCDate(), m1 = s.mon.getUTCMonth();
     var d2 = s.sun.getUTCDate(), m2 = s.sun.getUTCMonth();
     var y = opt.noYear ? "" : " " + s.year;
-    return (m1 === m2)
-      ? d1 + "–" + d2 + " " + MON[m2] + y
-      : d1 + " " + MON[m1] + " – " + d2 + " " + MON[m2] + y;
+    return d1 + " " + MON[m1] + " – " + d2 + " " + MON[m2] + y;
   }
 
   // Короткий номер недели для человека: «нед. 25».
