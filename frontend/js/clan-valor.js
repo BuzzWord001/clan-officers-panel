@@ -826,6 +826,7 @@
     // Фиолетовая кромка — ТОЛЬКО у реально-текущих АФК (на паузе). У вернувшихся
     // рамка обычная (по их форме) — фиолетовыми будут лишь столбики АФК-недель.
     if (isCurrentlyAfk(m)) return "afk";
+    if (m.manual_immune && m.manual_immune.current) return "immune";
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace"))
       return "immune";
     if (m.norm_met === true) return "ok";
@@ -885,6 +886,15 @@
       }
       return `<span class="norm-cell norm-afk" ${wtipAttr}
         >${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
+    }
+    // ── РУЧНОЙ иммунитет офицера на ОТОБРАЖАЕМУЮ неделю — норматив не требуется ──
+    if (m.manual_immune && m.manual_immune.current) {
+      const rsn = m.manual_immune.reason || "";
+      const wtip = `📌 Иммунитет выдан вручную${rsn ? ": " + rsn : ""}\n` +
+        `Норматив на эту неделю не требуется (доблесть, если набрал, засчитана).`;
+      return `<span class="norm-cell norm-immune norm-immune-manual"
+        data-wtip="${esc(wtip)}" data-wtipcolor="#6fa8dc"
+        ><span class="shield">🛡</span> ${_pctHtml}<small class="norm-note">${_sep}Иммун (вручную)${rsn ? ` <span class="afk-note-mark">💬</span>` : ""}</small></span>`;
     }
     // ── Иммунитет имеет приоритет над обычной оценкой ──
     const imm = m.immunity;
@@ -1208,6 +1218,10 @@
     if (isCurrentlyAfk(m))
       return chip("trend-afk", "💤", "На паузе (АФК)",
         "Игрок в АФК — норматив не оценивается, серия не рвётся.");
+    if (m && m.manual_immune && m.manual_immune.current)
+      return chip("trend-immune", "🛡", "Иммунитет",
+        "Офицер выдал иммунитет на эту неделю — норматив не требуется." +
+        (m.manual_immune.reason ? "\nПричина: " + m.manual_immune.reason : ""));
     const im = m && m.immunity;
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace")) {
       // Новичок под иммунитетом, но уже реально набирает — показываем ЭТО, а не
@@ -1422,6 +1436,7 @@
       const adminBtns = IS_OFFICER
         ? ` <span class="row-admin">`
           + afkBtn(m)            // 💤 АФК — в той же группе, что и админ-кнопки (единое место)
+          + immuneBtn(m)         // 🛡 ручной иммунитет на неделю
           + archiveBtnHtml
           + (IS_ADMIN
             ? `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
@@ -2473,6 +2488,66 @@
     if (!b || !IS_OFFICER) return;
     ev.stopPropagation();
     openAfkPop(b);
+  });
+
+  // ── Ручной ИММУНИТЕТ на неделю: дать/снять + причина (офицер/админ) ──
+  function immuneBtn(m) {
+    if (!IS_OFFICER) return "";
+    const on = !!m.manual_immune;
+    const reason = (m.manual_immune && m.manual_immune.reason) || "";
+    const cls = "imm-set-btn" + (on ? " imm-set-btn-on" : "");
+    return `<button class="${cls}" data-nick="${esc(m.nick)}" data-on="${on ? 1 : 0}" ` +
+      `data-reason="${esc(reason)}" ` +
+      `title="${on ? "Иммунитет на неделю выдан — изменить причину или снять" : "Дать иммунитет на эту неделю (норматив не потребуется) — с причиной"}">🛡</button>`;
+  }
+  let IMM_POP = null;
+  function closeImmPop() { if (IMM_POP) { IMM_POP.remove(); IMM_POP = null; } }
+  function openImmPop(btn) {
+    closeImmPop();
+    const nick = btn.dataset.nick;
+    const on = btn.dataset.on === "1";
+    const reason = btn.dataset.reason || "";
+    const pop = document.createElement("div");
+    pop.className = "warn-add-pop";
+    pop.innerHTML =
+      `<div class="wap-title">Иммунитет на неделю: <b>${esc(nick)}</b></div>` +
+      `<div style="font-size:12px;color:#bcd;margin:2px 0 8px">На эту неделю с игрока НЕ требуется норматив (как у новичка). Доблесть, если наберёт, всё равно засчитается.</div>` +
+      `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;color:#cfe;font-size:13px;cursor:pointer">` +
+        `<input type="checkbox" class="imm-chk" ${on ? "checked" : ""} style="transform:scale(1.3)"> дать иммунитет на текущую неделю</label>` +
+      `<input class="imm-reason-inp" type="text" maxlength="200" value="${esc(reason)}" ` +
+        `placeholder="причина (напр. «бан на базе клана», «кикнули по ошибке»)">` +
+      `<div class="wap-actions">` +
+        `<button type="button" class="wap-add">Сохранить</button>` +
+        `<button type="button" class="wap-cancel">Отмена</button>` +
+      `</div>`;
+    document.body.appendChild(pop);
+    const r = btn.getBoundingClientRect();
+    let left = r.left;
+    if (left + pop.offsetWidth > window.innerWidth - 8)
+      left = window.innerWidth - pop.offsetWidth - 8;
+    pop.style.left = Math.max(8, left) + "px";
+    pop.style.top = (r.bottom + 6) + "px";
+    pop.querySelector(".wap-cancel").addEventListener("click", closeImmPop);
+    pop.querySelector(".wap-add").addEventListener("click", async () => {
+      const give = pop.querySelector(".imm-chk").checked;
+      const reasonV = pop.querySelector(".imm-reason-inp").value.trim();
+      try {
+        await API.valorManualImmunity(nick, reasonV, give);
+        closeImmPop(); await load();
+      } catch (e) { alert("Ошибка: " + (e.detail || e.message || e)); }
+    });
+    pop.querySelector(".imm-reason-inp").focus();
+    IMM_POP = pop;
+  }
+  document.addEventListener("click", (e) => {
+    if (IMM_POP && !e.target.closest(".warn-add-pop")
+        && !e.target.closest(".imm-set-btn")) closeImmPop();
+  });
+  $("valor-tbody").addEventListener("click", (ev) => {
+    const b = ev.target.closest(".imm-set-btn");
+    if (!b || !IS_OFFICER) return;
+    ev.stopPropagation();
+    openImmPop(b);
   });
 
   // ── Красивый тултип предупреждений (в стиле сайта) ──

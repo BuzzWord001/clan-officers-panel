@@ -347,6 +347,19 @@ CREATE TABLE IF NOT EXISTS valor_manual_warnings (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_mwarn ON valor_manual_warnings(nick_canon);
 
+-- Ручной ИММУНИТЕТ на конкретную неделю (офицер/админ). Освобождает от нормы
+-- на эту неделю (как иммунитет новичка): нет предупреждений, форма не падает,
+-- набранная доблесть всё равно засчитывается. Пример: человека по ошибке
+-- кикнули и приняли обратно → бан на базе клана неделю, играть не мог.
+CREATE TABLE IF NOT EXISTS valor_manual_immunity (
+    nick_canon  TEXT    NOT NULL,
+    week        TEXT    NOT NULL,          -- '2026-W28'
+    reason      TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL,
+    created_by  TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (nick_canon, week)
+);
+
 -- История примечаний о человеке (append-only «свиток»). Синхронизируется с
 -- примечанием реестра (acceptances.note): и офицер/админ дополняют прямо из
 -- таблицы Доблести, и правка заметки в реестре дописывается сюда. Текущее
@@ -4723,6 +4736,7 @@ def valor_active_warnings() -> dict[str, list[dict]]:
     [{week, valor, norm, pct}] (в порядке появления).
     """
     accepted = valor_accepted_date_per_canon()
+    man_imm = valor_manual_immunity_map()   # ручной иммунитет: {canon:{week:reason}}
     grouped: dict[str, list] = {}
     dismissed_norm: dict[str, set] = {}   # canon → {прощённые недели}
     with connection() as conn:
@@ -4743,7 +4757,10 @@ def valor_active_warnings() -> dict[str, list[dict]]:
     for cn, weeks in grouped.items():
         acc = accepted.get(cn)
         active: list[dict] = []
+        cimm = man_imm.get(cn, {})
         for r in weeks:
+            if r["week"] in cimm:
+                continue  # РУЧНОЙ иммунитет на эту неделю — не оцениваем
             imm = _compute_immunity(acc, r["week"]) if acc else None
             if imm and imm["status"] in ("active", "extended"):
                 continue  # иммунная неделя целиком — не оцениваем
@@ -5516,6 +5533,56 @@ def valor_remove_manual_warning(warning_id: int, actor: dict | None = None) -> b
         return cur.rowcount > 0
 
 
+def valor_manual_immunity_map() -> dict[str, dict[str, str]]:
+    """{nick_canon: {week: reason}} — ручной иммунитет по неделям."""
+    out: dict[str, dict[str, str]] = {}
+    with connection() as conn:
+        for r in conn.execute(
+                "SELECT nick_canon, week, reason FROM valor_manual_immunity"):
+            out.setdefault(r["nick_canon"], {})[r["week"]] = r["reason"]
+    return out
+
+
+def valor_manual_immunity_set(nick: str, week: str, reason: str,
+                              actor: dict | None = None) -> dict:
+    """Дать ручной иммунитет нику на конкретную неделю (офицер/админ) + причина.
+    Освобождает от нормы на эту неделю (нет предупреждений, форма не падает)."""
+    canon = _valor_canon(nick)
+    week = (week or "").strip()
+    if not canon or not week:
+        return {"ok": False, "error": "bad nick/week"}
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO valor_manual_immunity
+               (nick_canon, week, reason, created_at, created_by)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(nick_canon, week) DO UPDATE SET
+                 reason=excluded.reason, created_at=excluded.created_at,
+                 created_by=excluded.created_by""",
+            (canon, week, (reason or "").strip()[:200], now, actor.get("name", "")))
+        _write_audit(conn, "immune_manual_on", None, nick, None,
+                     {"week": week, "reason": (reason or "").strip()[:200]}, actor)
+    return {"ok": True, "week": week}
+
+
+def valor_manual_immunity_remove(nick: str, week: str,
+                                 actor: dict | None = None) -> dict:
+    """Снять ручной иммунитет нику на неделю."""
+    canon = _valor_canon(nick)
+    week = (week or "").strip()
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    with connection() as conn:
+        cur = conn.execute(
+            "DELETE FROM valor_manual_immunity WHERE nick_canon=? AND week=?",
+            (canon, week))
+        if cur.rowcount:
+            _write_audit(conn, "immune_manual_off", None, nick, None,
+                         {"week": week}, actor)
+    return {"ok": True, "removed": cur.rowcount}
+
+
 def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
                   actor: dict | None = None, afk_until: str | None = None) -> dict | None:
     """Дать/снять статус АФК + комментарий + СРОК (офицер/админ). Лог в audit_log.
@@ -5936,6 +6003,7 @@ def valor_get_current(with_reg_notes: bool = False,
         #   • per-week иммунитет (для старых снапшотов где norm_met
         #     записывалась до фикса) — определяем по accepted_date
         accepted_by_canon = valor_accepted_date_per_canon()
+        man_imm = valor_manual_immunity_map()   # ручной иммунитет {canon:{week:reason}}
         # Веса категорий (нужны уже в цикле — для накопительной ценности).
         _wr = conn.execute(
             "SELECT w_base, w_streak, w_officer, w_veteran, w_social "
@@ -5973,6 +6041,10 @@ def valor_get_current(with_reg_notes: bool = False,
                 elif imm and imm["status"] == "grace":
                     is_grace = True
                     _gfactor = imm["effective_norm_factor"]
+            # РУЧНОЙ иммунитет (офицер выдал на эту неделю) — тоже освобождает.
+            if r["week"] in man_imm.get(cn, {}):
+                is_immune = True
+                is_grace = False
             # Неоценённая (norm_met None) и НЕ освобождённая неделя — пропуск (legacy).
             if r["norm_met"] is None and not is_afk and not is_immune:
                 continue
@@ -6099,6 +6171,10 @@ def valor_get_current(with_reg_notes: bool = False,
         tag_dates_map = valor_tag_dates()
         afk_info_map = valor_afk_info()     # {canon: {note, until}} — коммент + срок
         afk_notes_map = {c: v["note"] for c, v in afk_info_map.items() if v["note"]}
+        man_imm_map = valor_manual_immunity_map()   # ручной иммун {canon:{week:reason}}
+        _iy, _iw, _iwd = datetime.utcnow().isocalendar()
+        _cur_iso_week = f"{_iy}-W{_iw:02d}"         # текущая ISO-неделя (в игре сейчас)
+        _latest_week = cur["week"]                  # неделя отображаемого снапшота
         # Активность в чатах по canon — для финального score.
         chat_msgs = valor_chat_activity_by_canon()
         # Top-rank когда-либо (для авто-тега «Офицер» + score).
@@ -6626,6 +6702,15 @@ def valor_get_current(with_reg_notes: bool = False,
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
             m["afk_until"] = (afk_info_map.get(cn) or {}).get("until", "")
+            # Ручной иммунитет: если выдан на ОТОБРАЖАЕМУЮ неделю → ячейка станет
+            # иммунной; если на текущую/будущую (ещё не в снимке) → бейдж «выдан».
+            _cimm = man_imm_map.get(cn)
+            if _cimm:
+                _iw_wk = (_latest_week if _latest_week in _cimm
+                          else _cur_iso_week if _cur_iso_week in _cimm
+                          else max(_cimm))
+                m["manual_immune"] = {"week": _iw_wk, "reason": _cimm[_iw_wk],
+                                      "current": _iw_wk == _latest_week}
             # АФК — снимаем ВСЕ предупреждения (по требованию Лира): пока человек
             # в АФК, на сайте у него нет ни норматив-, ни титульных, ни ручных
             # предупреждений. Вернётся из АФК — реальные провалы прошлых недель

@@ -442,6 +442,30 @@ def valor_afk_set(member_id: int, payload: ValorAfkIn,
     return res
 
 
+class ValorManualImmunityIn(BaseModel):
+    nick:   str = Field(..., min_length=1)
+    week:   str | None = None       # 'YYYY-Wnn'; пусто → текущая ISO-неделя
+    reason: str | None = None
+    on:     bool = True             # True — дать, False — снять
+
+
+@router.post("/manual-immunity")
+def valor_manual_immunity(payload: ValorManualImmunityIn,
+                          _: dict = Depends(require_officer),
+                          actor: dict = Depends(current_actor)) -> dict:
+    """Дать/снять РУЧНОЙ иммунитет на неделю (офицер/админ) + причина.
+    Освобождает от нормы на эту неделю (как иммунитет новичка). Пустая week →
+    текущая ISO-неделя (та, что играется сейчас)."""
+    week = (payload.week or "").strip()
+    if not week:
+        import datetime as _dt
+        y, w, _wd = _dt.datetime.utcnow().isocalendar()
+        week = f"{y}-W{w:02d}"
+    if payload.on:
+        return db.valor_manual_immunity_set(payload.nick, week, payload.reason or "", actor)
+    return db.valor_manual_immunity_remove(payload.nick, week, actor)
+
+
 # ── Примечания-«свиток» (история заметок о человеке) ──────────────────────
 class ValorNoteIn(BaseModel):
     canon: str = Field(..., min_length=1)   # nick_canon участника

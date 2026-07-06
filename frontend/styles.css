@@ -4437,6 +4437,18 @@ body:not([data-role="officer"]):not([data-role="admin"]) #valor-table td.col-not
 .afk-until-clear:hover { background: rgba(90,60,30,.7); }
 body.guest-mode .afk-set-btn { display: none; }
 
+/* Кнопка ручного иммунитета на неделю (🛡) — синяя, в тон иммунитета */
+.imm-set-btn {
+  background: none; border: 1px solid #3a6a9a; color: #9ac8ee;
+  border-radius: 4px; cursor: pointer; font-size: 11px; line-height: 1;
+  padding: 1px 4px; margin-left: 3px; opacity: 0.6; vertical-align: middle;
+}
+.imm-set-btn:hover { opacity: 1; background: #0c1a2a; }
+.imm-set-btn-on { opacity: 1; border-color: #6fa8dc; color: #cfe6ff;
+  background: rgba(111,168,220,0.18); }
+.imm-set-btn-on:hover { background: rgba(111,168,220,0.30); }
+body.guest-mode .imm-set-btn { display: none; }
+
 .warn-add-btn {
   width: 16px; height: 16px;
   padding: 0; line-height: 1;

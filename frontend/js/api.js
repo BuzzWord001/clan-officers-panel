@@ -206,6 +206,7 @@
     valorEditUndoActor: (week, actor) => request("POST", "/valor/editlog/undo-actor", { week, actor }),
     valorWarningDismiss: (canon, kind, reason, ref) => request("POST", "/valor/warning/dismiss", { canon, kind, reason: reason || "", ref: ref || null }),
     valorWarningRestore: (canon) => request("POST", "/valor/warning/restore", { canon }),
+    valorManualImmunity: (nick, reason, on) => request("POST", "/valor/manual-immunity", { nick, reason: reason || "", on: on !== false }),
     valorDismissedHistory: (canon) => request("GET", "/valor/warning/dismissed?canon=" + encodeURIComponent(canon)),
     valorWeights:    () => request("GET", "/valor/weights"),
     valorWeightsSet: (w) => request("PUT", "/valor/weights", w),
