@@ -771,32 +771,42 @@
   // Каждый столбик = неделя, высота ∝ отношению к норме (ratio), пунктирная
   // линия = норма (1.0). Цвет: выполнил (зелёный) / частично / мало / АФК.
   // Сразу видно, как человек держит норматив во времени.
+  let _sparkSeq = 0;
   function renderValorSpark(m) {
     const sp = m.compliance && m.compliance.spark;
     if (!sp || !sp.length) return "";
     const W = 100, H = 20, gap = 1.4;
     const n = sp.length;
     const bw = Math.max(2, (W - (n - 1) * gap) / n);
-    // Масштаб: норма всегда видна, пики выше 2.5× клипаем (чтобы не сплющить
-    // остальные недели). Минимум 1.3×, чтобы столбики нормы не упирались в верх.
     const maxR = Math.max(1.3, ...sp.map(p => p.r));
     const scale = Math.min(maxR, 2.5);
     const normY = +(H - (1 / scale) * H).toFixed(1);   // Y линии нормы (ratio=1)
+    const hid = "afkh" + (_sparkSeq++);                 // уникальный id штриховки
     const bars = sp.map((p, i) => {
       const r = Math.min(p.r, scale);
       const bh = Math.max(1.5, (r / scale) * H);
       const x = +(i * (bw + gap)).toFixed(1);
       const y = +(H - bh).toFixed(1);
-      // АФК-неделя (a) — фиолетовая; иммунитет/новичок (e без a) — синяя;
-      // иначе по доле нормы. Так «был в АФК» сразу видно и в мини-графике.
-      const cls = p.a ? "afk" : p.e ? "imm" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
-      return `<rect x="${x}" y="${y}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="0.8" class="sp-${cls}"/>`;
+      const bwf = bw.toFixed(1);
+      if (p.a) {
+        // АФК-неделя — фиолетовая. Что реально набрал — сплошной столбик; при
+        // НЕДОБОРЕ от факта до линии нормы дорисовываем фиолетовую ШТРИХОВКУ
+        // (неделя освобождена — столбик не на 0, но и не «провал»).
+        const solid = `<rect x="${x}" y="${y}" width="${bwf}" height="${bh.toFixed(1)}" rx="0.8" class="sp-afk"/>`;
+        const hh = +(y - normY).toFixed(1);   // > 0, если факт ниже нормы
+        if (p.r < 1 && hh > 0.5)
+          return `<rect x="${x}" y="${normY}" width="${bwf}" height="${hh}" rx="0.8" fill="url(#${hid})" stroke="rgba(150,120,220,0.5)" stroke-width="0.4"/>` + solid;
+        return solid;
+      }
+      const cls = p.e ? "imm" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
+      return `<rect x="${x}" y="${y}" width="${bwf}" height="${bh.toFixed(1)}" rx="0.8" class="sp-${cls}"/>`;
     }).join("");
     const tip = `Набор доблести по неделям (${n}): столбик — доля нормы, ` +
-                `пунктир — норматив. Выше линии = норма выполнена.`;
-    // Линию нормы рисуем ПОВЕРХ столбиков — чтобы она была видна и на высоких.
+                `пунктир — норматив. Фиолетовые (в т.ч. штриховка) — недели АФК.`;
+    // Диагональная фиолетовая штриховка для АФК-недель с недобором.
+    const defs = `<defs><pattern id="${hid}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.4" stroke="#c3a2ee" stroke-width="1.1" opacity="0.85"/></pattern></defs>`;
     return `<svg class="valor-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="график набора доблести"><title>${tip}</title>` +
-      `${bars}<line class="sp-normline" x1="0" y1="${normY}" x2="${W}" y2="${normY}"/></svg>`;
+      `${defs}${bars}<line class="sp-normline" x1="0" y1="${normY}" x2="${W}" y2="${normY}"/></svg>`;
   }
 
   // «Сейчас РЕАЛЬНО в АФК» (на паузе) — показываем плитку-статус «На паузе».
@@ -813,9 +823,9 @@
   // Статус текущей недели для акцента стат-тайла (цвет верхней кромки).
   function normStatus(m) {
     const im = m.immunity;
-    // АФК и иммунитет — РАЗНЫЕ состояния и разные цвета кромки тайла:
-    // АФК = сиреневый (пауза), иммунитет новичка = синий (щит).
-    if (m.is_afk) return "afk";  // фиолетовая кромка и у бывших АФК (недели помечены)
+    // Фиолетовая кромка — ТОЛЬКО у реально-текущих АФК (на паузе). У вернувшихся
+    // рамка обычная (по их форме) — фиолетовыми будут лишь столбики АФК-недель.
+    if (isCurrentlyAfk(m)) return "afk";
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace"))
       return "immune";
     if (m.norm_met === true) return "ok";
@@ -834,13 +844,13 @@
       ? `<span class="norm-pct">${_pct}%</span> <span class="norm-frac">${_v}/${_en}</span>`
       : "";
     const _sep = _pct != null ? " · " : "";
-    // Вернулся из АФК (неделя помечена, но сейчас не на паузе) — НЕ пишем «АФК ·
-    // N нед. пауза», а показываем нейтральную приписку «был в АФК» + набранное.
-    // Столбики за эти недели красятся фиолетовым (spark/история). Не провал!
+    // Вернулся из АФК, а последняя неделя была АФК — НЕ пишем ни «На паузе», ни
+    // «был в АФК» (никаких статусов в рамке): просто нейтральная дробь набранного
+    // (фиолетовым, НЕ красный провал). Столбик этой недели красится фиолетовым.
     if (m.is_afk && !isCurrentlyAfk(m)) {
       return `<span class="norm-cell norm-afk-was"
         title="${esc("Эта неделя была в АФК — норматив не требовался. Набрано: " + _v)}"
-        >${_pctHtml}<small class="norm-note">${_sep}<span class="afk-was-tag">был(а) в АФК</span></small></span>`;
+        ><span class="norm-frac">${_v}/${_en}</span></span>`;
     }
     if (isCurrentlyAfk(m)) {
       const a = m.afk_info;
@@ -1190,14 +1200,12 @@
       `<span class="trend ${cls}" title="${esc(tip)}">${icon} ${label}</span>`;
 
     // ── 1. Особые состояния (текущая неделя) ──
+    // ТОЛЬКО реально-текущий АФК показывает «На паузе». Вернувшиеся из АФК идут
+    // по обычному тренду (Взлёт / Уже лучше / …): АФК-недели с недобором в форму
+    // не считаются (не тянут вниз), а выполненные в АФК — считаются в плюс.
     if (isCurrentlyAfk(m))
       return chip("trend-afk", "💤", "На паузе (АФК)",
         "Игрок в АФК — норматив не оценивается, серия не рвётся.");
-    // Вернулся из АФК: недели помечены (столбики фиолетовые), но статус-паузу
-    // не пишем — лишь напоминаем, что был в АФК.
-    if (m && m.is_afk)
-      return chip("trend-afk", "💤", "Был в АФК",
-        "Эти недели были в АФК (норматив не требовался). Сейчас уже не на паузе.");
     const im = m && m.immunity;
     if (im && (im.status === "active" || im.status === "extended" || im.status === "grace")) {
       // Новичок под иммунитетом, но уже реально набирает — показываем ЭТО, а не
