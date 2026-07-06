@@ -2526,9 +2526,11 @@
           h._norm = (h.norm != null) ? parseInt(h.norm, 10) : null;
           const prev = i > 0 ? asc[i - 1]._val : null;
           h._delta = (prev != null && h._val != null) ? h._val - prev : null;
-          // Статус недели: АФК/новичок не оценивается; иначе норма/частично/мало.
-          // norm_met/is_afk из SQLite приходят как 1/0/null — проверяем truthy.
-          if (h.is_afk || h.norm_met == null)               h._st = "afk";
+          // Статус недели. АФК выделяем ОТДЕЛЬНО от иммунитета/новичка — чтобы
+          // сразу было видно «был в АФК, ничего не требовалось». norm_met/is_afk
+          // из SQLite приходят как 1/0/null — проверяем truthy.
+          if (h.is_afk)                                     h._st = "afk";  // был в АФК
+          else if (h.norm_met == null)                      h._st = "imm";  // иммун./новичок
           else if (h.norm_met ||
                    (h._norm && h._val != null && h._val >= h._norm)) h._st = "ok";
           else if (h._norm && h._val != null && h._val >= h._norm * 0.5) h._st = "mid";
@@ -2537,15 +2539,28 @@
         const vals   = asc.map(h => h._val || 0);
         const max    = Math.max(1, ...vals);
         const totSum = vals.reduce((a, b) => a + b, 0);
-        const rated  = asc.filter(h => h._st !== "afk" && h._val != null);
+        const rated  = asc.filter(h => h._st !== "afk" && h._st !== "imm" && h._val != null);
         const avg    = rated.length
           ? Math.round(rated.reduce((a, h) => a + h._val, 0) / rated.length) : null;
         const best   = Math.max(0, ...vals);
         const bestWk = best > 0 ? asc.find(h => (h._val || 0) === best) : null;
         const desc   = asc.slice().reverse();  // новые сверху
         const stTip  = { ok: "норматив выполнен", mid: "выполнен частично (≥50%)",
-                         low: "мало (<50% нормы)", afk: "не оценивалась (АФК/новичок)" };
+                         low: "мало (<50% нормы)",
+                         afk: "был(а) в АФК — норматив не требовался",
+                         imm: "не оценивалась (иммунитет/новичок)" };
         const rowHtml = (h) => {
+          // АФК-неделя — ОСОБАЯ закраска: сразу видно, что человек был в АФК и с
+          // него ничего не требовалось (обычной дорожки-норматива тут нет).
+          if (h._st === "afk") {
+            return `
+            <div class="vh-row vh-afk" title="${esc(WeekFmt.range(h.week) + " · был(а) в АФК — норматив не требовался")}">
+              <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
+              <span class="v vh-afk-tag">АФК</span>
+              <div class="vh-afk-band">💤 в АФК · норматив не требовался</div>
+              <span class="d"></span>
+            </div>`;
+          }
           const fill = h._val == null ? 0 : Math.round((h._val / max) * 100);
           const mark = (h._norm != null)
             ? Math.min(100, Math.round((h._norm / max) * 100)) : null;
@@ -2590,7 +2605,8 @@
             <span class="vh-dot ok"></span>норма
             <span class="vh-dot mid"></span>частично
             <span class="vh-dot low"></span>мало
-            <span class="vh-dot afk"></span>АФК/нов.
+            <span class="vh-dot afk"></span>АФК
+            <span class="vh-dot imm"></span>иммун./нов.
             <span class="vh-legmark">┃ норматив</span>
           </div>
         `;

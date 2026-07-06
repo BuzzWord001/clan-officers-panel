@@ -2863,8 +2863,29 @@ video.chat-media-thumb {
 .valor-popover.valor-history .vh-row.vh-ok  .fill { background: linear-gradient(90deg,#3ea55a,#66d47f); }
 .valor-popover.valor-history .vh-row.vh-mid .fill { background: linear-gradient(90deg,#c79a3a,#ffcc66); }
 .valor-popover.valor-history .vh-row.vh-low .fill { background: linear-gradient(90deg,#b04a4a,#ff8080); }
-.valor-popover.valor-history .vh-row.vh-afk .fill { background: linear-gradient(90deg,#4a6ab0,#8fb0ff); opacity: .65; }
+/* иммунитет/новичок — синяя приглушённая заливка (неделя не оценивалась) */
+.valor-popover.valor-history .vh-row.vh-imm .fill { background: linear-gradient(90deg,#3a6a9a,#6fa8dc); opacity: .6; }
 .valor-popover.valor-history .vh-row.vh-ok  .v { color: #a6f0b8; }
+/* АФК-неделя — ОСОБАЯ фиолетовая закраска строки + плашка «был в АФК»,
+   чтобы сразу было видно: человек был в АФК и норматив с него не требовался. */
+.valor-popover.valor-history .vh-row.vh-afk {
+  background: repeating-linear-gradient(-45deg,
+    rgba(150,120,220,0.18) 0 9px, rgba(150,120,220,0.07) 9px 18px);
+  border-radius: 5px; border-bottom-color: rgba(160,130,230,0.18);
+}
+.valor-popover.valor-history .vh-row.vh-afk .w { color: #b9a9e6; }
+.valor-popover.valor-history .vh-row.vh-afk .vh-afk-tag {
+  color: #cbb8ff; font-weight: 800; text-align: right; letter-spacing: .5px;
+}
+.valor-popover.valor-history .vh-afk-band {
+  grid-column: 3 / 5;                 /* дорожка + колонка дельты */
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; height: 16px; padding: 0 9px; border-radius: 4px;
+  background: linear-gradient(90deg, rgba(150,120,220,0.30), rgba(150,120,220,0.12));
+  border: 1px solid rgba(170,140,235,0.38);
+  color: #ddd2ff; font-size: 10.5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
 /* Метка норматива поверх дорожки — вертикальная риска */
 .valor-popover.valor-history .vh-row .norm-mark {
   position: absolute; top: -1px; bottom: -1px; width: 0;
@@ -2884,7 +2905,8 @@ video.chat-media-thumb {
 .valor-popover.valor-history .vh-leg .vh-dot.ok  { background: #66d47f; }
 .valor-popover.valor-history .vh-leg .vh-dot.mid { background: #ffcc66; }
 .valor-popover.valor-history .vh-leg .vh-dot.low { background: #ff8080; }
-.valor-popover.valor-history .vh-leg .vh-dot.afk { background: #8fb0ff; }
+.valor-popover.valor-history .vh-leg .vh-dot.afk { background: #b39ddf; }
+.valor-popover.valor-history .vh-leg .vh-dot.imm { background: #6fa8dc; }
 .valor-popover.valor-history .vh-leg .vh-legmark { color: rgba(255,255,255,0.75); letter-spacing: -1px; }
 /* Прогрессивное раскрытие истории: 4 недели по умолчанию, дальше — до начала.
    При разворачивании список ограничен по высоте и скроллится (промотать ниже). */
