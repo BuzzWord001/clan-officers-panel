@@ -2889,6 +2889,38 @@ video.chat-media-thumb {
   color: #ddd2ff; font-size: 10.5px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
+/* Неделя «прошлой жизни» возвращенца (до возврата в клан) — СИНЯЯ закраска
+   строки + плашка «до возврата · с чистого листа». Тот же приём, что у АФК,
+   но цвет иммунный (синий): норматив не требовался, недобор — не «провал». */
+.valor-popover.valor-history .vh-row.vh-pre {
+  background: repeating-linear-gradient(-45deg,
+    rgba(110,150,225,0.18) 0 9px, rgba(110,150,225,0.07) 9px 18px);
+  border-radius: 5px; border-bottom-color: rgba(120,160,235,0.18);
+}
+.valor-popover.valor-history .vh-row.vh-pre .w { color: #a9c2ee; }
+.valor-popover.valor-history .vh-row.vh-pre .vh-pre-v {
+  color: #bcd2ff; font-weight: 700; text-align: right;
+}
+.valor-popover.valor-history .vh-row.vh-pre .vh-pre-v i {
+  color: #86a2c8; font-weight: 400; font-style: normal; font-size: 10.5px;
+}
+.valor-popover.valor-history .vh-pre-band {
+  grid-column: 3 / 5;
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; height: 16px; padding: 0 9px; border-radius: 4px;
+  background: linear-gradient(90deg, rgba(110,150,225,0.30), rgba(110,150,225,0.12));
+  border: 1px solid rgba(130,165,235,0.38);
+  color: #d2e0ff; font-size: 10.5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Шапка-пометка «возвращён в клан — с чистого листа» над историей доблести */
+.valor-popover.valor-history .vh-returned {
+  margin: 0 0 7px; padding: 6px 9px; border-radius: 5px;
+  background: linear-gradient(90deg, rgba(110,150,225,0.20), rgba(110,150,225,0.07));
+  border: 1px solid rgba(130,165,235,0.34); border-left: 3px solid #6fa8dc;
+  color: #d2e0ff; font-size: 11px; line-height: 1.4;
+}
+.valor-popover.valor-history .vh-returned b { color: #eaf1ff; }
 /* Метка норматива поверх дорожки — вертикальная риска */
 .valor-popover.valor-history .vh-row .norm-mark {
   position: absolute; top: -1px; bottom: -1px; width: 0;
@@ -2910,6 +2942,7 @@ video.chat-media-thumb {
 .valor-popover.valor-history .vh-leg .vh-dot.low { background: #ff8080; }
 .valor-popover.valor-history .vh-leg .vh-dot.afk { background: #b39ddf; }
 .valor-popover.valor-history .vh-leg .vh-dot.imm { background: #6fa8dc; }
+.valor-popover.valor-history .vh-leg .vh-dot.pre { background: #8fb0ff; }
 .valor-popover.valor-history .vh-leg .vh-legmark { color: rgba(255,255,255,0.75); letter-spacing: -1px; }
 /* Прогрессивное раскрытие истории: 4 недели по умолчанию, дальше — до начала.
    При разворачивании список ограничен по высоте и скроллится (промотать ниже). */

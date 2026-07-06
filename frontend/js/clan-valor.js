@@ -781,7 +781,9 @@
     const maxR = Math.max(1.3, ...sp.map(p => p.r));
     const scale = Math.min(maxR, 2.5);
     const normY = +(H - (1 / scale) * H).toFixed(1);   // Y линии нормы (ratio=1)
-    const hid = "afkh" + (_sparkSeq++);                 // уникальный id штриховки
+    const hid = "afkh" + (_sparkSeq++);                 // id фиолетовой штриховки (АФК)
+    const bhid = "preh" + (_sparkSeq++);                // id синей штриховки (возврат)
+    let hasPre = false;
     const bars = sp.map((p, i) => {
       const r = Math.min(p.r, scale);
       const bh = Math.max(1.5, (r / scale) * H);
@@ -798,13 +800,26 @@
           return `<rect x="${x}" y="${normY}" width="${bwf}" height="${hh}" rx="0.8" fill="url(#${hid})" stroke="rgba(150,120,220,0.5)" stroke-width="0.4"/>` + solid;
         return solid;
       }
+      if (p.p) {
+        // «Прошлая жизнь» возвращенца из архива — СИНЯЯ (как иммун). Набранное —
+        // сплошной синий столбик; при НЕДОБОРЕ от факта до нормы синяя ШТРИХОВКА
+        // (норматив не требовался — чистый лист, это не «провал»).
+        hasPre = true;
+        const solid = `<rect x="${x}" y="${y}" width="${bwf}" height="${bh.toFixed(1)}" rx="0.8" class="sp-imm"/>`;
+        const hh = +(y - normY).toFixed(1);
+        if (p.r < 1 && hh > 0.5)
+          return `<rect x="${x}" y="${normY}" width="${bwf}" height="${hh}" rx="0.8" fill="url(#${bhid})" stroke="rgba(120,160,235,0.5)" stroke-width="0.4"/>` + solid;
+        return solid;
+      }
       const cls = p.e ? "imm" : p.r >= 1 ? "ok" : p.r >= 0.5 ? "mid" : "low";
       return `<rect x="${x}" y="${y}" width="${bwf}" height="${bh.toFixed(1)}" rx="0.8" class="sp-${cls}"/>`;
     }).join("");
     const tip = `Набор доблести по неделям (${n}): столбик — доля нормы, ` +
-                `пунктир — норматив. Фиолетовые (в т.ч. штриховка) — недели АФК.`;
-    // Диагональная фиолетовая штриховка для АФК-недель с недобором.
-    const defs = `<defs><pattern id="${hid}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.4" stroke="#c3a2ee" stroke-width="1.1" opacity="0.85"/></pattern></defs>`;
+                `пунктир — норматив. Фиолетовые — недели АФК.` +
+                (hasPre ? " Синяя штриховка — недели до возврата в клан (с чистого листа)." : "");
+    // Штриховка: фиолетовая — АФК; синяя — недели «прошлой жизни» возвращенца.
+    const defs = `<defs><pattern id="${hid}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.4" stroke="#c3a2ee" stroke-width="1.1" opacity="0.85"/></pattern>` +
+                 `<pattern id="${bhid}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.4" stroke="#8fb0ff" stroke-width="1.1" opacity="0.85"/></pattern></defs>`;
     return `<svg class="valor-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="график набора доблести"><title>${tip}</title>` +
       `${defs}${bars}<line class="sp-normline" x1="0" y1="${normY}" x2="${W}" y2="${normY}"/></svg>`;
   }
@@ -2622,6 +2637,7 @@
     popover.style.left = (window.scrollX + r.left)        + "px";
     try {
       const data = await API.valorHistory(nick, field);
+      const returned = data.returned || null;   // {week, at} — возвращён из архива
       const hist = (data[field] || []).slice();
       if (!hist.length) {
         popover.querySelector(".body").textContent = "(пусто)";
@@ -2640,7 +2656,8 @@
           // Статус недели. АФК выделяем ОТДЕЛЬНО от иммунитета/новичка — чтобы
           // сразу было видно «был в АФК, ничего не требовалось». norm_met/is_afk
           // из SQLite приходят как 1/0/null — проверяем truthy.
-          if (h.is_afk)                                     h._st = "afk";  // был в АФК
+          if (h.pre_return)                                 h._st = "pre";  // до возврата — чистый лист
+          else if (h.is_afk)                                h._st = "afk";  // был в АФК
           else if (h.norm_met == null)                      h._st = "imm";  // иммун./новичок
           else if (h.norm_met ||
                    (h._norm && h._val != null && h._val >= h._norm)) h._st = "ok";
@@ -2650,7 +2667,7 @@
         const vals   = asc.map(h => h._val || 0);
         const max    = Math.max(1, ...vals);
         const totSum = vals.reduce((a, b) => a + b, 0);
-        const rated  = asc.filter(h => h._st !== "afk" && h._st !== "imm" && h._val != null);
+        const rated  = asc.filter(h => h._st !== "afk" && h._st !== "imm" && h._st !== "pre" && h._val != null);
         const avg    = rated.length
           ? Math.round(rated.reduce((a, h) => a + h._val, 0) / rated.length) : null;
         const best   = Math.max(0, ...vals);
@@ -2659,7 +2676,8 @@
         const stTip  = { ok: "норматив выполнен", mid: "выполнен частично (≥50%)",
                          low: "мало (<50% нормы)",
                          afk: "был(а) в АФК — норматив не требовался",
-                         imm: "не оценивалась (иммунитет/новичок)" };
+                         imm: "не оценивалась (иммунитет/новичок)",
+                         pre: "до возврата в клан — с чистого листа, норматив не требовался" };
         const rowHtml = (h) => {
           // АФК-неделя — ОСОБАЯ закраска: сразу видно, что человек был в АФК и с
           // него ничего не требовалось (обычной дорожки-норматива тут нет).
@@ -2671,6 +2689,17 @@
               <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
               <span class="v vh-afk-v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
               <div class="vh-afk-band">💤 в АФК · норматив не требовался</div>
+              <span class="d"></span>
+            </div>`;
+          }
+          if (h._st === "pre") {
+            // Неделя «прошлой жизни» до возврата в клан — СИНЯЯ (как иммун).
+            // Норматив не требовался (чистый лист), недобор — не «провал».
+            return `
+            <div class="vh-row vh-pre" title="${esc(WeekFmt.range(h.week) + " · до возврата в клан — с чистого листа, норматив не требовался · набрал(а) " + (h._val ?? 0))}">
+              <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
+              <span class="v vh-pre-v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
+              <div class="vh-pre-band">🔄 до возврата · с чистого листа</div>
               <span class="d"></span>
             </div>`;
           }
@@ -2702,7 +2731,14 @@
         const restRows = desc.slice(SHOWN).map(rowHtml).join("");
         const moreN    = Math.max(0, desc.length - SHOWN);
         const moreLbl  = (n) => `▾ Развернуть всю историю — ещё ${n} нед.`;
+        const retNote = returned ? `
+          <div class="vh-returned" title="Человек возвращён из архива Доблести — прошлые недели не требуют норматива">
+            🔄 <b>Возвращён(а) в клан</b> — набирает доблесть с чистого листа.
+            Недели до ${esc(WeekFmt.range(returned.week, { noYear: true }))} — прошлая
+            история (норматив не требовался, недоборы не в счёт).
+          </div>` : "";
         popover.querySelector(".body").innerHTML = `
+          ${retNote}
           <div class="vh-sum">
             <span title="Всего набрано доблести за все недели">Σ&nbsp;<b>${totSum}</b></span>
             <span title="Недель, где норматив оценивался">${rated.length}&nbsp;нед.</span>
@@ -2720,6 +2756,7 @@
             <span class="vh-dot low"></span>мало
             <span class="vh-dot afk"></span>АФК
             <span class="vh-dot imm"></span>иммун./нов.
+            ${returned ? `<span class="vh-dot pre"></span>до возврата` : ""}
             <span class="vh-legmark">┃ норматив</span>
           </div>
         `;

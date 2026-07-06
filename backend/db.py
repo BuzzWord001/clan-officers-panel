@@ -360,6 +360,19 @@ CREATE TABLE IF NOT EXISTS valor_manual_immunity (
     PRIMARY KEY (nick_canon, week)
 );
 
+-- «Чистый лист» возвращенца из архива. Когда человека возвращают из архива
+-- Доблести (valor_return_from_archive), фиксируем неделю возврата. Все недели
+-- СТРОГО ДО slate_week — «прошлая жизнь»: норматив с них не требуется (недоборы
+-- не считаются негативом), но набранная доблесть/титулы/история сохраняются.
+-- В UI прошлые недели с недобором штрихуются синим (как иммун), а в разворот
+-- истории добавляется пометка «возвращён — с чистого листа».
+CREATE TABLE IF NOT EXISTS valor_return_slate (
+    nick_canon   TEXT    NOT NULL PRIMARY KEY,
+    slate_week   TEXT    NOT NULL,         -- '2026-W28' (неделя возврата)
+    returned_at  TEXT    NOT NULL DEFAULT '',
+    returned_by  TEXT    NOT NULL DEFAULT ''
+);
+
 -- История примечаний о человеке (append-only «свиток»). Синхронизируется с
 -- примечанием реестра (acceptances.note): и офицер/админ дополняют прямо из
 -- таблицы Доблести, и правка заметки в реестре дописывается сюда. Текущее
@@ -5583,6 +5596,46 @@ def valor_manual_immunity_remove(nick: str, week: str,
     return {"ok": True, "removed": cur.rowcount}
 
 
+# ── «Чистый лист» возвращенца из архива ───────────────────────────────
+def valor_return_slate_map() -> dict[str, dict[str, str]]:
+    """{nick_canon: {slate_week, returned_at, returned_by}} — недели возврата
+    из архива. Недели СТРОГО ДО slate_week — прошлая жизнь (норматив не требуется,
+    недоборы не считаются, но доблесть/титулы/история сохраняются)."""
+    out: dict[str, dict[str, str]] = {}
+    with connection() as conn:
+        for r in conn.execute(
+                "SELECT nick_canon, slate_week, returned_at, returned_by "
+                "FROM valor_return_slate"):
+            out[r["nick_canon"]] = {
+                "slate_week":  r["slate_week"],
+                "returned_at": r["returned_at"],
+                "returned_by": r["returned_by"],
+            }
+    return out
+
+
+def valor_return_slate_set(nick: str, slate_week: str,
+                           actor: dict | None = None) -> dict:
+    """Отметить неделю возврата человека из архива (чистый лист)."""
+    canon = _valor_canon(nick)
+    slate_week = (slate_week or "").strip()
+    if not canon or not slate_week:
+        return {"ok": False, "error": "bad nick/week"}
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO valor_return_slate
+               (nick_canon, slate_week, returned_at, returned_by)
+               VALUES (?,?,?,?)
+               ON CONFLICT(nick_canon) DO UPDATE SET
+                 slate_week=excluded.slate_week,
+                 returned_at=excluded.returned_at,
+                 returned_by=excluded.returned_by""",
+            (canon, slate_week, now, actor.get("name", "")))
+    return {"ok": True, "slate_week": slate_week}
+
+
 def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
                   actor: dict | None = None, afk_until: str | None = None) -> dict | None:
     """Дать/снять статус АФК + комментарий + СРОК (офицер/админ). Лог в audit_log.
@@ -6004,6 +6057,7 @@ def valor_get_current(with_reg_notes: bool = False,
         #     записывалась до фикса) — определяем по accepted_date
         accepted_by_canon = valor_accepted_date_per_canon()
         man_imm = valor_manual_immunity_map()   # ручной иммунитет {canon:{week:reason}}
+        ret_slate = valor_return_slate_map()    # {canon:{slate_week,...}} — возвращенцы
         # Веса категорий (нужны уже в цикле — для накопительной ценности).
         _wr = conn.execute(
             "SELECT w_base, w_streak, w_officer, w_veteran, w_social "
@@ -6043,6 +6097,15 @@ def valor_get_current(with_reg_notes: bool = False,
                     _gfactor = imm["effective_norm_factor"]
             # РУЧНОЙ иммунитет (офицер выдал на эту неделю) — тоже освобождает.
             if r["week"] in man_imm.get(cn, {}):
+                is_immune = True
+                is_grace = False
+            # «ЧИСТЫЙ ЛИСТ» возвращенца: неделя СТРОГО ДО недели возврата — прошлая
+            # жизнь. Освобождаем от нормы (недобор не считается негативом), но
+            # набранную доблесть/серии/ценность оставляем. Помечаем для UI (синяя
+            # штриховка + пометка в истории).
+            _slate = ret_slate.get(cn)
+            is_pre_return = bool(_slate) and r["week"] < _slate["slate_week"]
+            if is_pre_return:
                 is_immune = True
                 is_grace = False
             # Неоценённая (norm_met None) и НЕ освобождённая неделя — пропуск (legacy).
@@ -6122,8 +6185,11 @@ def valor_get_current(with_reg_notes: bool = False,
             # excused-continue, чтобы график был непрерывным по всем неделям.
             # a=1 — именно АФК-неделя (для фиолетовой покраски столбика, как в
             # истории). e без a = иммунитет/новичок (синий).
+            # p=1 — неделя «прошлой жизни» возвращенца (до недели возврата):
+            # рисуем как иммун (синий), недобор штрихуем синим (не «провал»).
             d["spark"].append({"r": round(ratio, 2), "e": 1 if excused else 0,
-                               "a": 1 if is_afk else 0})
+                               "a": 1 if is_afk else 0,
+                               "p": 1 if is_pre_return else 0})
 
             # ── Оценка НОРМЫ и «форма» ──
             #  • Иммунитет/новичок — освобождён полностью (пропуск).
@@ -6365,6 +6431,10 @@ def valor_get_current(with_reg_notes: bool = False,
                 continue
             m["socials"] = socials.get(cn) or None
             m["cups"] = cup_map.get(cn)   # {gold,silver,bronze} за топ по неделям
+            # Возвращён из архива — «чистый лист» (для пометки в истории/штриховки).
+            _rs = ret_slate.get(cn)
+            m["returned"] = ({"week": _rs["slate_week"], "at": _rs["returned_at"]}
+                             if _rs else None)
             # Ручная коррекция ника админом (canon стабилен — держится из
             # недели в неделю). ai_nick = ник распознан ИИ и ещё не проверен.
             m["id"] = r["id"]
@@ -7373,6 +7443,14 @@ def valor_return_from_archive(*, game_nick: str, title: str, note: str,
                            reason="возврат из архива — чистый лист")
     with connection() as conn:
         conn.execute("DELETE FROM valor_manual_warnings WHERE nick_canon = ?", (canon,))
+    # 4) Отметить «чистый лист»: неделя возврата = ISO-неделя даты приёма. Все
+    #    недели ДО неё — прошлая жизнь (недоборы не в счёт, история сохраняется).
+    try:
+        _ad = date.fromisoformat(accepted_date)
+        _y, _w, _ = _ad.isocalendar()
+        valor_return_slate_set(game_nick, f"{_y}-W{_w:02d}", actor)
+    except Exception:
+        pass
     return {"ok": True, "acceptance": acc, "canon": canon}
 
 
@@ -7688,6 +7766,12 @@ def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:
         return {}
     if field and field not in _HIST_FIELDS:
         raise ValueError(f"unknown field: {field!r}")
+    # Возвращенец из архива: неделя «чистого листа» — недели ДО неё помечаем
+    # pre_return (для синей штриховки + пометки «с чистого листа» в разворот).
+    _slate = valor_return_slate_map().get(canon)
+    _slate_wk = _slate["slate_week"] if _slate else None
+    _returned = ({"week": _slate["slate_week"], "at": _slate["returned_at"]}
+                 if _slate else None)
     with connection() as conn:
         if field == "valor":
             # Обогащаем историю доблести нормой/АФК/выполнением той недели —
@@ -7707,7 +7791,12 @@ def valor_get_history(nick: str, field: str | None = None) -> dict[str, Any]:
                    ORDER BY vh.week DESC""",
                 (canon,),
             ).fetchall()
-            return {"valor": [dict(r) for r in rows]}
+            out_rows = []
+            for r in rows:
+                d = dict(r)
+                d["pre_return"] = 1 if (_slate_wk and d["week"] < _slate_wk) else 0
+                out_rows.append(d)
+            return {"valor": out_rows, "returned": _returned}
         if field:
             rows = conn.execute(
                 """SELECT week, value, captured_at FROM valor_history
