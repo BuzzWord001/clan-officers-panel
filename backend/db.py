@@ -6702,15 +6702,18 @@ def valor_get_current(with_reg_notes: bool = False,
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
             m["afk_until"] = (afk_info_map.get(cn) or {}).get("until", "")
-            # Ручной иммунитет: если выдан на ОТОБРАЖАЕМУЮ неделю → ячейка станет
-            # иммунной; если на текущую/будущую (ещё не в снимке) → бейдж «выдан».
+            # Ручной иммунитет: показываем только АКТУАЛЬНЫЙ — на ОТОБРАЖАЕМУЮ
+            # неделю (тогда ячейка станет иммунной) ИЛИ на текущую/будущую ISO-
+            # неделю (тогда кнопка подсвечена, «выдан наперёд»). Прошедшие
+            # иммунитеты кнопку НЕ подсвечивают — иммун «спадает» через неделю сам
+            # (в оценке каждая неделя проверяется отдельно, запись остаётся историей).
             _cimm = man_imm_map.get(cn)
             if _cimm:
-                _iw_wk = (_latest_week if _latest_week in _cimm
-                          else _cur_iso_week if _cur_iso_week in _cimm
-                          else max(_cimm))
-                m["manual_immune"] = {"week": _iw_wk, "reason": _cimm[_iw_wk],
-                                      "current": _iw_wk == _latest_week}
+                _rel = [w for w in _cimm if w == _latest_week or w >= _cur_iso_week]
+                if _rel:
+                    _iw_wk = _latest_week if _latest_week in _cimm else min(_rel)
+                    m["manual_immune"] = {"week": _iw_wk, "reason": _cimm[_iw_wk],
+                                          "current": _iw_wk == _latest_week}
             # АФК — снимаем ВСЕ предупреждения (по требованию Лира): пока человек
             # в АФК, на сайте у него нет ни норматив-, ни титульных, ни ручных
             # предупреждений. Вернётся из АФК — реальные провалы прошлых недель
