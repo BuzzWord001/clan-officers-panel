@@ -3077,8 +3077,13 @@
     const reason = prompt(`Вернуть «${b.dataset.nick}» из архива в основной список?\nПометка (причина возврата, необязательно):`, "");
     if (reason === null) return;
     try {
-      await adminCall("POST", "/valor/restore", { canon: b.dataset.canon, reason });
+      const res = await adminCall("POST", "/valor/restore", { canon: b.dataset.canon, reason });
       await load(); await loadDeparted();
+      // Прозрачно объясняем результат: если человека нет на последнем скрине —
+      // он просто возвращён в ростер, в таблице появится (и доблесть учтётся),
+      // когда попадёт на скрин. Доблесть за неделю считается ТОЛЬКО со скрина.
+      if (res && res.in_snapshot === false)
+        alert(`«${res.nick || b.dataset.nick}» возвращён(а) в ростер, но его(её) НЕТ на последнем скрине.\n\nВ таблице доблести он(а) появится, когда попадёт на скрин. Доблесть за текущую неделю считается только по тем, кто есть на скрине.`);
     } catch (_) { /* alert уже показан */ }
   });
 

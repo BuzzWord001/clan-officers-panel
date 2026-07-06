@@ -7404,7 +7404,12 @@ def valor_archive_member(canon: str, actor: dict, reason: str = "") -> dict:
 def valor_restore(canon: str, actor: dict, reason: str = "") -> dict:
     """Вернуть человека из архива в основной список (снять ручной кик и убрать
     из departed). Если он есть в текущем снимке — снова появится в списке.
-    Причина возврата (пометка) пишется в журнал действий."""
+    Причина возврата (пометка) пишется в журнал действий.
+
+    in_snapshot в ответе: True — человек есть на ПОСЛЕДНЕМ скрине (сразу виден в
+    таблице, его доблесть уже учтена); False — на последнем скрине его нет, он
+    просто возвращён в ростер и появится в таблице, когда попадёт на скрин
+    (его доблесть за текущую неделю НЕ учитывается, пока он не на скрине)."""
     with connection() as conn:
         canon = _resolve_canon(canon, _alias_map(conn))
         row = conn.execute(
@@ -7413,9 +7418,15 @@ def valor_restore(canon: str, actor: dict, reason: str = "") -> dict:
         disp_nick = row["nick"] if row else canon
         conn.execute("DELETE FROM valor_force_archived WHERE nick_canon = ?", (canon,))
         conn.execute("DELETE FROM valor_departed WHERE nick_canon = ?", (canon,))
+        # Есть ли человек на последнем скрине (текущий снапшот)?
+        _snap = conn.execute(
+            "SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+        in_snapshot = bool(_snap and conn.execute(
+            "SELECT 1 FROM valor_members WHERE snapshot_id = ? AND nick_canon = ? LIMIT 1",
+            (_snap["id"], canon)).fetchone())
         _write_audit(conn, "valor_restore", None, disp_nick,
                      {"reason": (reason or "").strip()[:200]}, None, actor)
-    return {"ok": True}
+    return {"ok": True, "nick": disp_nick, "in_snapshot": in_snapshot}
 
 
 def valor_return_from_archive(*, game_nick: str, title: str, note: str,
@@ -7435,7 +7446,7 @@ def valor_return_from_archive(*, game_nick: str, title: str, note: str,
                             veteran=bool(veteran), actor=actor)
     canon = _valor_canon(game_nick)
     # 2) Вернуть из архива доблести (снять кик / убрать из «покинули»).
-    valor_restore(canon, actor, reason="повторный приём из архива")
+    _rest = valor_restore(canon, actor, reason="повторный приём из архива")
     # 3) Убрать ВСЕ предупреждения (по требованию Лира — чистый лист).
     valor_dismiss_warnings(canon, "norm", actor,
                            reason="возврат из архива — чистый лист")
@@ -7451,7 +7462,8 @@ def valor_return_from_archive(*, game_nick: str, title: str, note: str,
         valor_return_slate_set(game_nick, f"{_y}-W{_w:02d}", actor)
     except Exception:
         pass
-    return {"ok": True, "acceptance": acc, "canon": canon}
+    return {"ok": True, "acceptance": acc, "canon": canon,
+            "in_snapshot": bool(_rest.get("in_snapshot"))}
 
 
 def valor_delete_member(member_id: int, actor: dict | None = None) -> dict:

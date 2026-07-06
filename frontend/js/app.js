@@ -116,14 +116,20 @@
       btn.disabled = true;
       setStatus("Возвращаю из архива…");
       try {
-        await API.valorReturnFromArchive({ game_nick: nick, title, note,
+        const res = await API.valorReturnFromArchive({ game_nick: nick, title, note,
           accepted_date: iso, veteran });
         $("f-nick").value = ""; $("f-title").value = ""; $("f-note").value = "";
         $("f-date").value = DateRu.today();
         if ($("f-veteran")) $("f-veteran").checked = false;
         if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
         $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = "";
-        setStatus(`✓ Возвращён из архива: ${nick} — иммунитет на неделю выдан, предупреждения сняты`);
+        // В таблице доблести появится только если он есть на последнем скрине;
+        // иначе просто вернулся в ростер (доблесть считается только по скрину).
+        const onScreen = res && res.in_snapshot;
+        setStatus(`✓ Возвращён из архива: ${nick} — иммунитет на неделю выдан, предупреждения сняты. ` +
+          (onScreen
+            ? "Есть на последнем скрине — уже в таблице доблести."
+            : "В таблице доблести появится, когда попадёт на скрин (доблесть за неделю считается только по тем, кто на скрине)."));
         await reload();
       } catch (e) {
         setStatus(`✗ Ошибка: ${e.detail || e.message}`);
