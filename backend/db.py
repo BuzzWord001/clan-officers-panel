@@ -6090,18 +6090,19 @@ def valor_get_current(with_reg_notes: bool = False,
             title_hist_week[r["nick_canon"]] = r["week"]
 
         # ── АФК-история по неделям (для подсчёта недель подряд и доблести,
-        # набранной за время статуса). is_afk берём из БД ИЛИ из титула —
-        # на случай старых снимков, где флаг не проставился, а в титуле «АФК».
+        # набранной за время статуса). is_afk берём РОВНО как сохранён — при
+        # загрузке снимка он уже проставляется из титула/флага. Отдельный
+        # fallback по титулу здесь ломал РУЧНОЕ снятие АФК у вернувшихся
+        # (ник с «АФК» в титуле держал бы серию АФК даже после снятия).
         afk_hist: dict[str, list] = {}
         for r in conn.execute(
-            """SELECT vm.nick_canon, vs.week, vm.is_afk, vm.title, vm.valor
+            """SELECT vm.nick_canon, vs.week, vm.is_afk, vm.valor
                FROM valor_members vm
                JOIN valor_snapshots vs ON vm.snapshot_id = vs.id
                ORDER BY vm.nick_canon, vs.week"""
         ):
-            afk_eff = bool(r["is_afk"]) or _title_is_afk(r["title"])
             afk_hist.setdefault(r["nick_canon"], []).append(
-                (r["week"], afk_eff, r["valor"]))
+                (r["week"], bool(r["is_afk"]), r["valor"]))
 
         # Ручная коррекция написания ников (админ) — применяется к отображению.
         nick_override: dict[str, str] = {
@@ -6244,7 +6245,11 @@ def valor_get_current(with_reg_notes: bool = False,
         members = []
         for r in rows:
             m = dict(r)
-            m["is_afk"] = bool(m["is_afk"]) or _title_is_afk(m.get("title"))
+            # АФК — РОВНО как сохранён. При загрузке снимка is_afk уже ставится
+            # из титула/флага (valor_add_snapshot). НЕ пересчитываем из титула
+            # здесь: иначе РУЧНОЕ снятие АФК не срабатывает, пока в титуле
+            # осталось «АФК» (напр. ник «ЛюбаАФК» у вернувшегося из архива).
+            m["is_afk"] = bool(m["is_afk"])
             m["flag_new_nick"] = bool(m["flag_new_nick"])
             m["flag_ocr_suspect"] = bool(m["flag_ocr_suspect"])
             if m["norm_met"] is not None:
