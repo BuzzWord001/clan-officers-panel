@@ -2553,10 +2553,12 @@
           // АФК-неделя — ОСОБАЯ закраска: сразу видно, что человек был в АФК и с
           // него ничего не требовалось (обычной дорожки-норматива тут нет).
           if (h._st === "afk") {
+            // Показываем НАБРАННОЕ за неделю (даже 0) — но неделя помечена АФК,
+            // т.е. норматив не требовался. Значение фиолетовое (не «провал»).
             return `
-            <div class="vh-row vh-afk" title="${esc(WeekFmt.range(h.week) + " · был(а) в АФК — норматив не требовался")}">
+            <div class="vh-row vh-afk" title="${esc(WeekFmt.range(h.week) + " · был(а) в АФК — норматив не требовался · набрал(а) " + (h._val ?? 0))}">
               <span class="w">${esc(WeekFmt.range(h.week, { noYear: true }))}</span>
-              <span class="v vh-afk-tag">АФК</span>
+              <span class="v vh-afk-v">${h._val ?? "—"}${h._norm != null ? `<i>/${h._norm}</i>` : ""}</span>
               <div class="vh-afk-band">💤 в АФК · норматив не требовался</div>
               <span class="d"></span>
             </div>`;
