@@ -857,32 +857,34 @@
       const note = m.afk_note || "";
       const until = m.afk_until || "";                       // 'YYYY-MM-DD' или ''
       const untilTxt = until ? until.split("-").reverse().join(".") : "";  // → ДД.ММ.ГГГГ
-      const untilTip = until ? `\n⏳ АФК до ${untilTxt} (затем снимется автоматически)` : "";
-      const untilMark = until ? ` <span class="afk-until-mark" title="${esc("АФК до " + untilTxt + " — снимется сам")}">⏳ ${esc(untilTxt.slice(0, 5))}</span>` : "";
-      const noteTip = note ? `\n💬 Комментарий: ${note}` : "";
-      const noteMark = (note ? ` <span class="afk-note-mark" title="${esc(note)}">💬</span>` : "") + untilMark;
+      const total = (a && a.valor_total) || 0;
+      // «Общее окошко» (кастомный тултип data-wtip): ПОМЕТКА — почему человек в
+      // АФК — ВЫДЕЛЕНА жирной фиолетовой 1-й строкой; ниже — детали. Так сразу
+      // понятно, что это причина АФК, а не просто статус.
+      const wl = [];
+      wl.push(note ? `📌 Почему в АФК: ${note}`
+                   : `💤 В АФК — норматив не требуется`);
+      if (a && a.weeks)
+        wl.push(`АФК ${a.weeks} нед. (с ${WeekFmt.range(a.since_week, { noYear: true })}). Норматив не оценивается.`);
+      else
+        wl.push(`Норматив не оценивается.`);
+      wl.push(total > 0 ? `Набрано за время АФК: +${total}`
+                        : `За время АФК доблесть не набиралась`);
+      if (until) wl.push(`⏳ АФК до ${untilTxt} — снимется автоматически`);
+      const wtipAttr = `data-wtip="${esc(wl.join("\n"))}" data-wtipcolor="#c3a2ee"`;
+      // Значки в самой ячейке (💬 — есть пометка, ⏳ — срок). Свой title им НЕ
+      // даём: наведение на ячейку и так открывает общее окошко с пометкой.
+      const untilMark = until ? ` <span class="afk-until-mark">⏳ ${esc(untilTxt.slice(0, 5))}</span>` : "";
+      const noteMark = (note ? ` <span class="afk-note-mark">💬</span>` : "") + untilMark;
       if (a && a.weeks) {
-        // Доблесть недельная (сброс по понедельникам), поэтому за время АФК
-        // суммируем недельные значения — кто фармил даже в АФК.
-        const total = a.valor_total || 0;
         const gainHtml = total > 0
           ? ` · <b style="color:#7CFC00">+${total}</b>`
           : ` · <b style="color:#888">0</b>`;
-        let tip = `АФК ${a.weeks} нед. (с ${a.since_week}). Норматив не оценивается.\n`;
-        tip += total > 0
-          ? `Набрал(а) доблести за время АФК суммарно: ${total}.`
-          : `Доблесть за время АФК не набиралась.`;
-        if (a.weekly && a.weekly.length) {
-          tip += "\nПо неделям (набрано за неделю):";
-          for (const w of a.weekly) {
-            tip += `\n  ${WeekFmt.range(w.week)}: ${w.valor == null ? "—" : w.valor}`;
-          }
-        }
-        return `<span class="norm-cell norm-afk" title="${esc(tip + untilTip + noteTip)}"
+        return `<span class="norm-cell norm-afk" ${wtipAttr}
           >${_pctHtml}<small class="norm-note">${_sep}АФК · ${a.weeks} нед.${gainHtml}${noteMark}</small></span>`;
       }
-      return `<span class="norm-cell norm-afk"
-        title="${esc("АФК — норматив не оценивается" + untilTip + noteTip)}">${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
+      return `<span class="norm-cell norm-afk" ${wtipAttr}
+        >${_pctHtml}<small class="norm-note">${_sep}АФК${noteMark}</small></span>`;
     }
     // ── Иммунитет имеет приоритет над обычной оценкой ──
     const imm = m.immunity;
@@ -1448,7 +1450,7 @@
           <td class="hist-cell" data-field="class">${esc(cls)}</td>
           <td class="m-cell-warn">${warnCell}</td>
           <td class="tags-cell">${renderTags(m, m.tags_all || [], true)}</td>
-          <td class="m-cell-num hist-cell m-norm-cell" data-field="valor" title="Клик — история набора доблести по неделям">
+          <td class="m-cell-num hist-cell m-norm-cell" data-field="valor">
             <div class="mnc-tile mnc-${normStatus(m)}"><span class="mnc-head">${normLabel}</span>${renderValorSpark(m)}<div class="mnc-trend">${renderTrend(m.trend, m)}</div></div></td>
           <td class="m-cell-num">${renderScoreAll(m.score)}</td>
         </tr>`;
