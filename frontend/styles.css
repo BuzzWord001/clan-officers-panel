@@ -4974,6 +4974,68 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
               inset -2px 0 0 rgba(var(--cc),.9);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Роль «ЭЛИТА» (Топ по урону) — вся строка в роскошной золотой рамке
+   с тёплым свечением и мягким «дыханием». Работает и в таблице Доблести
+   (#valor-table), и в реестре (#acceptances-table), и в любом списке,
+   где строке добавлен класс .row-elite. Рамка рисуется box-shadow'ами
+   (как у кубков), поэтому НЕ конфликтует с покраской строк good/bad/immune.
+   ═══════════════════════════════════════════════════════════════════════ */
+#valor-table tr.row-elite,
+#acceptances-table tr.row-elite,
+tr.row-elite { --eg: 255,209,99; --eg2: 255,168,48; }
+
+/* Верх/низ строки — золотой кант + тёплое внутреннее свечение (тон на всю
+   ячейку поверх любого фона) + едва заметный золотой градиент. */
+#valor-table tr.row-elite > td,
+#acceptances-table tr.row-elite > td,
+tr.row-elite > td {
+  background-image: linear-gradient(180deg,
+      rgba(var(--eg), .10), rgba(var(--eg2), .045) 60%, rgba(var(--eg), .085));
+  box-shadow:
+    inset 0  2px 0 0 rgba(var(--eg), .95),
+    inset 0 -2px 0 0 rgba(var(--eg), .95),
+    inset 0 0 26px rgba(var(--eg2), .17);
+  animation: eliteBreathe 3.2s ease-in-out infinite;
+}
+/* Левый край — скруглённый угол + яркая золотая грань + внешний ореол. */
+#valor-table tr.row-elite > td:first-child,
+#acceptances-table tr.row-elite > td:first-child,
+tr.row-elite > td:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  box-shadow:
+    inset 0  2px 0 0 rgba(var(--eg), .95),
+    inset 0 -2px 0 0 rgba(var(--eg), .95),
+    inset 3px 0 0 0 rgba(var(--eg2), 1),
+    inset 0 0 26px rgba(var(--eg2), .17),
+    -6px 0 16px -6px rgba(var(--eg2), .55);
+}
+/* Правый край — скруглённый угол + яркая золотая грань + внешний ореол. */
+#valor-table tr.row-elite > td:last-child,
+#acceptances-table tr.row-elite > td:last-child,
+tr.row-elite > td:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+  box-shadow:
+    inset 0  2px 0 0 rgba(var(--eg), .95),
+    inset 0 -2px 0 0 rgba(var(--eg), .95),
+    inset -3px 0 0 0 rgba(var(--eg2), 1),
+    inset 0 0 26px rgba(var(--eg2), .17),
+    6px 0 16px -6px rgba(var(--eg2), .55);
+}
+/* Мягкое «дыхание» золотого ореола — благородно, ненавязчиво. */
+@keyframes eliteBreathe {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 190, 80, 0)); }
+  50%      { filter: drop-shadow(0 0 5px rgba(255, 190, 80, .5)); }
+}
+/* Уважаем «уменьшить движение» — без анимации, рамка остаётся. */
+@media (prefers-reduced-motion: reduce) {
+  #valor-table tr.row-elite > td,
+  #acceptances-table tr.row-elite > td,
+  tr.row-elite > td { animation: none; }
+}
+
 /* ── Активный столбец сортировки: тонкая «бегущая» светящаяся линия по контуру ── */
 @property --msang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
 #valor-table th.sort-asc, #valor-table th.sort-desc { position: relative; }

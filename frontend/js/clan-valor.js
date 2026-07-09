@@ -1434,6 +1434,9 @@
       else if (m.norm_met === false) rowCls += " row-bad";
       else if (m.norm_met === true)  rowCls += " row-good";
       if (cup) rowCls += " row-cup-" + cup;
+      // Роль «Элита» (Топ по урону) — вся строка в роскошной золотой рамке.
+      if ((m.tags_all || []).includes("elite") || (m.tags || []).includes("elite"))
+        rowCls += " row-elite";
       // Столбцы «Доблесть» и «Норматив» объединены в один (на месте Норматива):
       // ячейка показывает % выполнения (renderNorm), а клик раскрывает историю
       // набора доблести по неделям. Поэтому отдельной ячейки valorCell больше нет.

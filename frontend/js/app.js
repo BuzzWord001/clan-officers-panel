@@ -198,6 +198,8 @@
     rows.forEach((r, i) => {
       const tr = document.createElement("tr");
       tr.dataset.id = r.id;
+      // Роль «Элита» (Топ по урону) — вся строка в роскошной золотой рамке.
+      if (r.elite) tr.classList.add("row-elite");
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td class="nick"></td>
