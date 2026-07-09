@@ -5062,22 +5062,29 @@ tr.row-elite > td {
     1px 0 1px rgba(16,9,0,.7),
     -1px 0 1px rgba(16,9,0,.7);
 }
-/* ПРИМЕЧАНИЕ на золоте — отдельным цветом: тёмно-коричневое «выгравированное»
-   со светлым бликом. Попадает на самую яркую часть слитка («ЭЛИТА»), поэтому
-   светлый текст там сливался — тёмный контрастнее и заметнее. */
+/* ПРИМЕЧАНИЕ Элиты — отдельной ТЁМНОЙ ПЛАШКОЙ с золотой рамкой: чётко видно на
+   слитке (сама рамка примечания заметная), а текст на плашке светлый и читаемый.
+   Попадает на самую яркую часть слитка («ЭЛИТА»), где раньше сливался. */
+#valor-table tr.row-elite .col-note .cn-open,
+#valor-table tr.row-elite .col-note .cn-add,
+#acceptances-table tr.row-elite .note .cn-open,
+#acceptances-table tr.row-elite .note .cn-add {
+  background: rgba(18,11,2,.78);
+  border: 1px solid rgba(255,216,124,.78);
+  border-radius: 7px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.55), inset 0 0 7px rgba(0,0,0,.4);
+}
+#valor-table tr.row-elite .col-note .cn-open:hover,
+#acceptances-table tr.row-elite .note .cn-open:hover {
+  background: rgba(30,18,3,.88);
+  border-color: rgba(255,228,152,.98);
+}
 #valor-table tr.row-elite .col-note .cn-preview,
 #valor-table tr.row-elite .col-note .cn-text,
 #acceptances-table tr.row-elite .note .cn-preview,
 #acceptances-table tr.row-elite .note .cn-text {
-  color: #2b1704;
-  font-weight: 600;
-  text-shadow: 0 1px 0 rgba(255,248,214,.6), 0 0 2px rgba(255,246,206,.45);
-}
-/* Ячейка примечания Элиты — почти БЕЗ затемняющей подложки: золото ярче →
-   тёмный текст примечания читается как гравировка по золоту. */
-#valor-table tr.row-elite td.col-note {
-  background: linear-gradient(180deg,
-    rgba(10,6,0,0) 34%, rgba(10,6,0,.12) 50%, rgba(10,6,0,0) 66%);
+  color: #fbf3dc;
+  text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.7);
 }
 /* Левый край — скруглённый угол + яркая золотая грань + внешний ореол. */
 #valor-table tr.row-elite > td:first-child,
