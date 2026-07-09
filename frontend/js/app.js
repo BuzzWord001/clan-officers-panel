@@ -216,7 +216,20 @@
           <button class="btn-del danger">Удалить</button>
         </td>
       `;
-      tr.querySelector(".nick").textContent = r.game_nick;
+      // Ник + заметные бейджи ролей (Элита/Ветеран), чтобы прямо в реестре было
+      // видно, что человек — Элита. Через DOM (без innerHTML) — безопасно к нику.
+      const nickCell = tr.querySelector(".nick");
+      nickCell.textContent = r.game_nick;
+      const addRole = (cls, txt, title) => {
+        nickCell.appendChild(document.createTextNode(" "));
+        const b = document.createElement("span");
+        b.className = "reg-role " + cls;
+        b.textContent = txt;
+        b.title = title;
+        nickCell.appendChild(b);
+      };
+      if (r.elite)   addRole("reg-role-elite", "⚔ Элита", "Роль Элита (Топ по урону)");
+      if (r.veteran) addRole("reg-role-vet", "★ Ветеран", "Роль Ветеран");
       tr.querySelector(".title").textContent = r.title || "—";
       tr.querySelector(".actor").textContent = r.created_by_name;
 

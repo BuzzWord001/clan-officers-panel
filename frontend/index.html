@@ -35,6 +35,12 @@
     .ed-vet-lbl { margin-right:8px; }
     .elite-chk, .ed-elite-lbl { font-size:12px; color:#ff8a94; cursor:pointer; white-space:nowrap; user-select:none; margin-left:10px; }
     .ed-elite-lbl { margin-right:8px; margin-left:0; }
+    /* Бейджи ролей в реестре рядом с ником — чтобы сразу было видно Элиту/Ветерана */
+    .reg-role { display:inline-block; vertical-align:middle; margin-left:6px;
+      font-size:11px; font-weight:700; line-height:1.5; padding:0 8px; border-radius:10px;
+      border:1px solid currentColor; white-space:nowrap; letter-spacing:.2px; }
+    .reg-role-elite { color:#ff8a94; background:rgba(255,90,106,.16); text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    .reg-role-vet   { color:#ffd24a; background:rgba(255,200,80,.15); text-shadow:0 1px 2px rgba(0,0,0,.6); }
   </style>
   <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
        устаревшую вкладку из кэша (старые иконки/разметку). -->
@@ -206,7 +212,7 @@
   <script src="js/dateutil.js?v=1795930000"></script>
   <script src="js/help-tips.js?v=1802000000"></script>
   <script src="js/note-scroll.js?v=1801400000"></script>
-  <script src="js/app.js?v=1812000000"></script>
+  <script src="js/app.js?v=1828000000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
   <script src="js/chamber-door.js?v=1791800000"></script>
