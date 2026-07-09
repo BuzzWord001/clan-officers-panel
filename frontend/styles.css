@@ -5013,19 +5013,14 @@ tr.row-elite {
      (свет+тень) поверх литого золота с фаской — ярко по краям, темнее в
      центре, чтобы светлый текст строки читался. Сплошной, НЕ прозрачный. */
   --elite-gold:
-    /* ЧЕКАНКА: тиснёная надпись «ЭЛИТА» повторяется рельефом по всему золоту
-       (SVG: светлая+тёмная копии со смещением = выпуклый оттиск). */
-    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNzYiIHZpZXdCb3g9IjAgMCAzMDAgNzYiPgo8ZyB0cmFuc2Zvcm09InJvdGF0ZSgtMTUgMTUwIDM4KSIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSIzMCIgbGV0dGVyLXNwYWNpbmc9IjQiPgo8dGV4dCB4PSItMzAiIHk9IjI2IiBmaWxsPSJyZ2JhKDI1NSwyNDYsMjA2LDAuNTUpIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSItMzEiIHk9IjI1IiBmaWxsPSJyZ2JhKDcwLDQ0LDMsMC40MikiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE2MCIgeT0iMjYiIGZpbGw9InJnYmEoMjU1LDI0NiwyMDYsMC41NSkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE1OSIgeT0iMjUiIGZpbGw9InJnYmEoNzAsNDQsMywwLjQyKSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iNzAiIHk9IjY2IiBmaWxsPSJyZ2JhKDI1NSwyNDYsMjA2LDAuNTUpIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSI2OSIgeT0iNjUiIGZpbGw9InJnYmEoNzAsNDQsMywwLjQyKSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iLTEyMCIgeT0iNjYiIGZpbGw9InJnYmEoMjU1LDI0NiwyMDYsMC41NSkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9Ii0xMjEiIHk9IjY1IiBmaWxsPSJyZ2JhKDcwLDQ0LDMsMC40MikiPtCt0JvQmNCi0JA8L3RleHQ+CjwvZz48L3N2Zz4=")
-      center / 205px 52px,
-    /* тонкая гравированная рамка вдоль верха и низа (тёмная линия + светлый блик) */
-    linear-gradient(rgba(66,42,3,.5), rgba(66,42,3,.5)) center top 5px / 100% 1px repeat-x,
-    linear-gradient(rgba(255,246,206,.5), rgba(255,246,206,.5)) center top 6px / 100% 1px repeat-x,
-    linear-gradient(rgba(66,42,3,.5), rgba(66,42,3,.5)) center bottom 5px / 100% 1px repeat-x,
-    linear-gradient(rgba(255,246,206,.5), rgba(255,246,206,.5)) center bottom 6px / 100% 1px repeat-x,
-    /* БОГАТОЕ тёплое литое золото (насыщеннее прежнего бледного) */
+    /* ЧЕКАНКА: деликатная тиснёная «ЭЛИТА» как фактура металла (не мешает тексту). */
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCAzMjAgODAiPgo8ZyB0cmFuc2Zvcm09InJvdGF0ZSgtMTQgMTYwIDQwKSIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSIzMCIgbGV0dGVyLXNwYWNpbmc9IjUiPgo8dGV4dCB4PSItMzAiIHk9IjI2IiBmaWxsPSJyZ2JhKDI1NSwyNDcsMjEwLDAuMzApIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSItMzEiIHk9IjI1IiBmaWxsPSJyZ2JhKDY2LDQyLDMsMC4yNCkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE3NSIgeT0iMjYiIGZpbGw9InJnYmEoMjU1LDI0NywyMTAsMC4zMCkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE3NCIgeT0iMjUiIGZpbGw9InJnYmEoNjYsNDIsMywwLjI0KSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iNzUiIHk9IjY4IiBmaWxsPSJyZ2JhKDI1NSwyNDcsMjEwLDAuMzApIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSI3NCIgeT0iNjciIGZpbGw9InJnYmEoNjYsNDIsMywwLjI0KSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iLTEzMCIgeT0iNjgiIGZpbGw9InJnYmEoMjU1LDI0NywyMTAsMC4zMCkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9Ii0xMzEiIHk9IjY3IiBmaWxsPSJyZ2JhKDY2LDQyLDMsMC4yNCkiPtCt0JvQmNCi0JA8L3RleHQ+CjwvZz48L3N2Zz4=")
+      center / 215px 54px,
+    /* БОГАТОЕ золото: яркие полированные КРАЯ + тёмный гравированный КАНАЛ по
+       центру (под текстом) — светлый текст на нём читается при любых бликах. */
     linear-gradient(180deg,
-      #f2d16e 0%, #d8ac40 12%, #bd9026 32%,
-      #a67c1a 50%, #bd9026 68%, #d8ac40 88%, #f2d16e 100%);
+      #f6d778 0%, #e2b64c 14%, #a3781c 32%,
+      #5e440f 46%, #4f390c 50%, #5e440f 54%, #a3781c 68%, #e2b64c 86%, #f6d778 100%);
 }
 
 /* СПЛОШНОЕ узорчатое золото на всю строку: литой золотой фон с рифлением +
@@ -5048,16 +5043,21 @@ tr.row-elite > td {
 #valor-table tr.row-elite td:nth-child(2) {
   background: var(--elite-gold);
 }
-/* Текст на золоте — почти чёрно-коричневый «гравированный», со светлым
-   бликом снизу (эффект выбитых на золоте букв). Высокий контраст на ярком
-   золоте — по best practice для читаемости. */
+/* Текст на золоте — СВЕТЛЫЙ с плотной ТЁМНОЙ обводкой (halo). По best practice
+   для текста на неоднородном металле: светлая заливка читается на тёмном
+   канале-центре, а тёмная обводка отделяет буквы от ярких бликов золота.
+   Работает при ЛЮБЫХ переливах фона. */
 #valor-table tr.row-elite > td,
-#valor-table tr.row-elite > td b,
 #valor-table tr.row-elite .m-name,
+#valor-table tr.row-elite .m-name *,
 #acceptances-table tr.row-elite > td,
 #acceptances-table tr.row-elite .nick {
-  color: #231604;
-  text-shadow: 0 1px 0 rgba(255,252,228,.45);
+  color: #fbf3dc;
+  text-shadow:
+    0 1px 2px rgba(16,9,0,.95),
+    0 0 3px rgba(16,9,0,.85),
+    1px 0 1px rgba(16,9,0,.7),
+    -1px 0 1px rgba(16,9,0,.7);
 }
 /* Левый край — скруглённый угол + яркая золотая грань + внешний ореол. */
 #valor-table tr.row-elite > td:first-child,
