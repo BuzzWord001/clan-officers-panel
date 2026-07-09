@@ -5012,7 +5012,7 @@ tr.row-elite {
   /* ФОН-СЛИТОК: настоящий резной прямоугольный слиток «ЭЛИТА 999.9 FINE GOLD»
      с картинки — на ВСЮ строку целиком (фон на tr, не на ячейках, иначе шёл бы
      кусками по колонкам). 100%×100% = виден весь слиток с филигранью. */
-  background: url("assets/elite-bar.webp?v=4") center / 100% 100% no-repeat;
+  background: url("assets/elite-bar.webp?v=5") center / 100% 100% no-repeat;
   /* ЛЁГКАЯ тёмная подложка под текстом: приглушает золото ровно настолько,
      чтобы читались надписи/значки — но слиток, резьба и «ЭЛИТА» остаются видны. */
   --elite-plate:
@@ -5104,7 +5104,7 @@ tr.row-elite > td:last-child {
    СОХРАНЯЕМ фон-слиток — поверх остаётся только жёлтая рамка выделения. */
 .members-table tbody tr.m-row.row-elite.m-row-focus,
 .members-table tbody tr.m-row.row-elite.m-row-flash {
-  background: url("assets/elite-bar.webp?v=4") center / 100% 100% no-repeat !important;
+  background: url("assets/elite-bar.webp?v=5") center / 100% 100% no-repeat !important;
   animation: none !important;
 }
 #valor-table tr.row-elite.m-row-focus td:nth-child(1),
