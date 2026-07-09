@@ -4489,6 +4489,30 @@ body.guest-mode .afk-set-btn { display: none; }
 .imm-set-btn-on:hover { background: rgba(111,168,220,0.30); }
 body.guest-mode .imm-set-btn { display: none; }
 
+/* Кнопка роли «Ветеран» (★) — золотая, в тон значка ветерана */
+.vet-set-btn {
+  background: none; border: 1px solid #a8842e; color: #ffd24a;
+  border-radius: 4px; cursor: pointer; font-size: 11px; line-height: 1;
+  padding: 1px 4px; margin-left: 3px; opacity: 0.6; vertical-align: middle;
+}
+.vet-set-btn:hover { opacity: 1; background: rgba(255,200,80,0.14); }
+.vet-set-btn-on { opacity: 1; border-color: #ffd24a; color: #fff0b0;
+  background: rgba(255,200,80,0.20); }
+.vet-set-btn-on:hover { background: rgba(255,200,80,0.32); }
+body.guest-mode .vet-set-btn { display: none; }
+
+/* Кнопка роли «Элита» (⚔ Топ по урону) — багрово-красная, в тон значка элиты */
+.elite-set-btn {
+  background: none; border: 1px solid #9a3a45; color: #ff8a94;
+  border-radius: 4px; cursor: pointer; font-size: 11px; line-height: 1;
+  padding: 1px 4px; margin-left: 3px; opacity: 0.6; vertical-align: middle;
+}
+.elite-set-btn:hover { opacity: 1; background: rgba(255,90,106,0.16); }
+.elite-set-btn-on { opacity: 1; border-color: #ff6470; color: #ffd0d5;
+  background: rgba(255,90,106,0.22); }
+.elite-set-btn-on:hover { background: rgba(255,90,106,0.34); }
+body.guest-mode .elite-set-btn { display: none; }
+
 .warn-add-btn {
   width: 16px; height: 16px;
   padding: 0; line-height: 1;

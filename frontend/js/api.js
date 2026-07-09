@@ -216,6 +216,8 @@
     valorDeparted:  () => request("GET", "/valor/departed"),
     valorDepartedCheck: (nick) => request("GET", "/valor/departed-check?nick=" + encodeURIComponent(nick)),
     valorReturnFromArchive: (payload) => request("POST", "/valor/return-from-archive", payload),
+    valorTagAdd:    (nick, tag) => request("POST", "/valor/tags", { nick, tag }),
+    valorTagRemove: (nick, tag) => request("DELETE", "/valor/tags?nick=" + encodeURIComponent(nick) + "&tag=" + encodeURIComponent(tag)),
     valorArchive:   (canon, reason) => request("POST", "/valor/archive", { canon, reason: reason || "" }),
     valorRestore:   (canon, reason) => request("POST", "/valor/restore", { canon, reason: reason || "" }),
     valorByCanon:   (weeks = 0) => request("GET", "/valor/by-canon?weeks=" + weeks),

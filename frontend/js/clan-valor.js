@@ -1459,6 +1459,8 @@
         ? ` <span class="row-admin">`
           + afkBtn(m)            // 💤 АФК — в той же группе, что и админ-кнопки (единое место)
           + immuneBtn(m)         // 🛡 ручной иммунитет на неделю
+          + veteranBtn(m)        // ★ роль Ветеран
+          + eliteBtn(m)          // ⚔ роль Элита (Топ по урону)
           + archiveBtnHtml
           + (IS_ADMIN
             ? `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
@@ -2570,6 +2572,42 @@
     if (!b || !IS_OFFICER) return;
     ev.stopPropagation();
     openImmPop(b);
+  });
+
+  // ── Кнопки-переключатели ролей Ветеран (★) и Элита (⚔) ──
+  // Рядом с 💤 АФК и 🛡 иммунитетом. Клик = выдать/снять роль-тег в Доблести.
+  // Роль хранится в valor_tags по канону → синхронна с реестром и подсветкой.
+  function _hasRole(m, tag) {
+    return (m.tags_all || []).includes(tag) || (m.tags || []).includes(tag);
+  }
+  function veteranBtn(m) {
+    if (!IS_OFFICER) return "";
+    const on = _hasRole(m, "veteran");
+    return `<button class="vet-set-btn${on ? " vet-set-btn-on" : ""}" ` +
+      `data-nick="${esc(m.nick)}" data-tag="veteran" data-on="${on ? 1 : 0}" ` +
+      `title="${on ? "Роль Ветеран выдана — нажми, чтобы снять" : "Выдать роль Ветеран"}">★</button>`;
+  }
+  function eliteBtn(m) {
+    if (!IS_OFFICER) return "";
+    const on = _hasRole(m, "elite");
+    return `<button class="elite-set-btn${on ? " elite-set-btn-on" : ""}" ` +
+      `data-nick="${esc(m.nick)}" data-tag="elite" data-on="${on ? 1 : 0}" ` +
+      `title="${on ? "Роль Элита (Топ по урону) выдана — нажми, чтобы снять" : "Выдать роль Элита (Топ по урону)"}">⚔</button>`;
+  }
+  $("valor-tbody").addEventListener("click", async (ev) => {
+    const b = ev.target.closest(".vet-set-btn, .elite-set-btn");
+    if (!b || !IS_OFFICER) return;
+    ev.stopPropagation();
+    const nick = b.dataset.nick, tag = b.dataset.tag, on = b.dataset.on === "1";
+    b.disabled = true;
+    try {
+      if (on) await API.valorTagRemove(nick, tag);
+      else    await API.valorTagAdd(nick, tag);
+      await load();
+    } catch (e) {
+      alert("Ошибка: " + (e.detail || e.message || e));
+      b.disabled = false;
+    }
   });
 
   // ── Красивый тултип предупреждений (в стиле сайта) ──
