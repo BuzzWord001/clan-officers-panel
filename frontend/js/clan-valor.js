@@ -1382,7 +1382,11 @@
     let items = DATA.members.slice();
     if (q) {
       items = items.filter(m => {
-        const hay = [m.nick, m.true_name, m.rank, m.title, m.class_, m.reg_note]
+        // Роли (звёзды/руны) — по русским подписям И по ключам, чтобы искать
+        // «элита», «ветеран», «офицер», «титан» и т.п.
+        const roleText = (m.tags_all || []).concat(m.tags || [])
+          .map(t => ((TAG_META[t] || {}).label || "") + " " + t).join(" ");
+        const hay = [m.nick, m.true_name, m.rank, m.title, m.class_, m.reg_note, roleText]
           .join(" ").toLowerCase();
         return hay.indexOf(q) >= 0;
       });

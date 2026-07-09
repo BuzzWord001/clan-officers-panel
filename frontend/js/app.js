@@ -315,7 +315,10 @@
     if (q) {
       rows = allRows.filter((r) =>
         [r.game_nick, r.title, r.note, r.created_by_name,
-         DateRu.fmtRus(r.accepted_date)]
+         DateRu.fmtRus(r.accepted_date),
+         // Роли — чтобы искать по «ветеран» / «элита» (топ по урону).
+         r.veteran ? "ветеран veteran" : "",
+         r.elite ? "элита elite топ по урону" : ""]
           .join(" ").toLowerCase().includes(q));
     }
     renderTable(rows);

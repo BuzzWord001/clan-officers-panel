@@ -309,6 +309,15 @@ def valor_departed(_: dict = Depends(require_viewer)) -> list[dict]:
     return db.valor_get_departed()
 
 
+@router.get("/global-search")
+def valor_global_search(q: str = Query(..., min_length=2),
+                        _: dict = Depends(require_officer)) -> dict:
+    """Единый поиск по всем разделам сайта: реестр, Доблесть (сейчас/был),
+    архив «Покинули клан», кики, чаты, роли. Показывает, есть ли человек на
+    сайте вообще и в каких разделах он сейчас."""
+    return {"results": db.global_search(q)}
+
+
 @router.get("/departed-check")
 def valor_departed_check(nick: str = Query(..., min_length=1),
                          _: dict = Depends(require_officer)) -> dict:
