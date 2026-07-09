@@ -187,6 +187,11 @@
       }
     }
     const totalValor = m.reduce((a, x) => a + (x.valor || 0), 0);
+    // Сколько СЕЙЧАС в клане людей с ролью Элита (Топ по урону) — в текущем снимке.
+    const eliteCount = m.filter(
+      (x) => (x.tags_all || []).includes("elite") || (x.tags || []).includes("elite")
+    ).length;
+    const eliteChip = `<span class="val-elite-count" title="Игроков с ролью Элита (Топ по урону) в текущем составе">⚔ Элита: <b>${eliteCount}</b></span>`;
     const immChip = immActive
       ? `<span>иммун. новички: <b style="color:#7bc7ff">🛡 ${immActive}</b></span>`
       : "";
@@ -197,6 +202,7 @@
       <span>неделя: <b>${esc(WeekFmt.range(s.week))}</b> <small style="opacity:.6">· ${esc(WeekFmt.num(s.week))}</small></span>
       <span>норматив: <b>${esc(s.valor_norm)}</b></span>
       <span>всего: <b>${m.length}</b></span>
+      ${eliteChip}
       <span>выполнили: <b style="color:#88ff88">${metGood}</b></span>
       <span>частично (≥${PARTIAL_THRESHOLD}%): <b style="color:#ffcc66">${metPartial}</b></span>
       <span>не выполнили: <b style="color:#ff8080">${metBad}</b></span>

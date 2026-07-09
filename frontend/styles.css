@@ -5185,3 +5185,18 @@ tr.row-elite > td:last-child {
 @media (max-width: 720px) {
   .gs-wrap { order: 3; flex: 1 1 100%; margin: 8px 0 0; }
 }
+
+/* Счётчик Элиты в сводке таблицы Доблести — золотыми буквами со свечением.
+   Специфичность через .members-stats — перебить .members-stats span b. */
+.members-stats .val-elite-count,
+.val-elite-count {
+  color: #ffd24a;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 200, 80, .55);
+}
+.members-stats .val-elite-count b,
+.val-elite-count b {
+  color: #fff0b0;
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(255, 210, 90, .85);
+}
