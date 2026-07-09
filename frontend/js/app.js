@@ -216,20 +216,28 @@
           <button class="btn-del danger">Удалить</button>
         </td>
       `;
-      // Ник + заметные бейджи ролей (Элита/Ветеран), чтобы прямо в реестре было
-      // видно, что человек — Элита. Через DOM (без innerHTML) — безопасно к нику.
+      // Ник + бейджи ролей (Элита/Ветеран) ВСЕГДА на отдельной строке ПОД ником
+      // с небольшим отступом — единообразно для всех ников (не зависит от длины).
+      // Через DOM (без innerHTML) — безопасно к нику.
       const nickCell = tr.querySelector(".nick");
-      nickCell.textContent = r.game_nick;
-      const addRole = (cls, txt, title) => {
-        nickCell.appendChild(document.createTextNode(" "));
-        const b = document.createElement("span");
-        b.className = "reg-role " + cls;
-        b.textContent = txt;
-        b.title = title;
-        nickCell.appendChild(b);
-      };
-      if (r.elite)   addRole("reg-role-elite", "⚔ Элита", "Роль Элита (Топ по урону)");
-      if (r.veteran) addRole("reg-role-vet", "★ Ветеран", "Роль Ветеран");
+      const nameEl = document.createElement("span");
+      nameEl.className = "reg-nick-name";
+      nameEl.textContent = r.game_nick;
+      nickCell.appendChild(nameEl);
+      if (r.elite || r.veteran) {
+        const box = document.createElement("div");
+        box.className = "reg-roles";
+        const addRole = (cls, txt, title) => {
+          const b = document.createElement("span");
+          b.className = "reg-role " + cls;
+          b.textContent = txt;
+          b.title = title;
+          box.appendChild(b);
+        };
+        if (r.elite)   addRole("reg-role-elite", "⚔ Элита", "Роль Элита (Топ по урону)");
+        if (r.veteran) addRole("reg-role-vet", "★ Ветеран", "Роль Ветеран");
+        nickCell.appendChild(box);
+      }
       tr.querySelector(".title").textContent = r.title || "—";
       tr.querySelector(".actor").textContent = r.created_by_name;
 
