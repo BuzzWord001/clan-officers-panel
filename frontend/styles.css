@@ -5013,23 +5013,19 @@ tr.row-elite {
      (свет+тень) поверх литого золота с фаской — ярко по краям, темнее в
      центре, чтобы светлый текст строки читался. Сплошной, НЕ прозрачный. */
   --elite-gold:
-    /* Узор по краям — «бисер»/чеканка: ряд точек у верхней и нижней кромки,
-       посажен чуть внутрь на золото и обрамлён тонкой гравировкой (ниже). */
-    radial-gradient(circle at center, rgba(74,46,3,.62) 0 1.3px, transparent 1.9px)
-      center top 4px / 16px 8px repeat-x,
-    radial-gradient(circle at center, rgba(74,46,3,.62) 0 1.3px, transparent 1.9px)
-      center bottom 4px / 16px 8px repeat-x,
-    /* тонкая тёмная гравированная линия-рамка вдоль верха и низа (над/под бисером) */
-    linear-gradient(rgba(74,46,3,.45), rgba(74,46,3,.45)) center top 9px / 100% 1px repeat-x,
-    linear-gradient(rgba(74,46,3,.45), rgba(74,46,3,.45)) center bottom 9px / 100% 1px repeat-x,
-    /* очень мягкий диагональный блик полировки (не рябит) */
-    linear-gradient(103deg,
-      rgba(255,255,255,0) 38%, rgba(255,251,232,.18) 50%, rgba(255,255,255,0) 62%),
-    /* ГЛАДКОЕ ЯРКОЕ полированное золото (без рифления). Ровный светлый тон под
-       текстом → тёмный «гравированный» текст читается с высоким контрастом. */
+    /* ЧЕКАНКА: тиснёная надпись «ЭЛИТА» повторяется рельефом по всему золоту
+       (SVG: светлая+тёмная копии со смещением = выпуклый оттиск). */
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNzYiIHZpZXdCb3g9IjAgMCAzMDAgNzYiPgo8ZyB0cmFuc2Zvcm09InJvdGF0ZSgtMTUgMTUwIDM4KSIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSIzMCIgbGV0dGVyLXNwYWNpbmc9IjQiPgo8dGV4dCB4PSItMzAiIHk9IjI2IiBmaWxsPSJyZ2JhKDI1NSwyNDYsMjA2LDAuNTUpIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSItMzEiIHk9IjI1IiBmaWxsPSJyZ2JhKDcwLDQ0LDMsMC40MikiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE2MCIgeT0iMjYiIGZpbGw9InJnYmEoMjU1LDI0NiwyMDYsMC41NSkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9IjE1OSIgeT0iMjUiIGZpbGw9InJnYmEoNzAsNDQsMywwLjQyKSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iNzAiIHk9IjY2IiBmaWxsPSJyZ2JhKDI1NSwyNDYsMjA2LDAuNTUpIj7QrdCb0JjQotCQPC90ZXh0Pgo8dGV4dCB4PSI2OSIgeT0iNjUiIGZpbGw9InJnYmEoNzAsNDQsMywwLjQyKSI+0K3Qm9CY0KLQkDwvdGV4dD4KPHRleHQgeD0iLTEyMCIgeT0iNjYiIGZpbGw9InJnYmEoMjU1LDI0NiwyMDYsMC41NSkiPtCt0JvQmNCi0JA8L3RleHQ+Cjx0ZXh0IHg9Ii0xMjEiIHk9IjY1IiBmaWxsPSJyZ2JhKDcwLDQ0LDMsMC40MikiPtCt0JvQmNCi0JA8L3RleHQ+CjwvZz48L3N2Zz4=")
+      center / 205px 52px,
+    /* тонкая гравированная рамка вдоль верха и низа (тёмная линия + светлый блик) */
+    linear-gradient(rgba(66,42,3,.5), rgba(66,42,3,.5)) center top 5px / 100% 1px repeat-x,
+    linear-gradient(rgba(255,246,206,.5), rgba(255,246,206,.5)) center top 6px / 100% 1px repeat-x,
+    linear-gradient(rgba(66,42,3,.5), rgba(66,42,3,.5)) center bottom 5px / 100% 1px repeat-x,
+    linear-gradient(rgba(255,246,206,.5), rgba(255,246,206,.5)) center bottom 6px / 100% 1px repeat-x,
+    /* БОГАТОЕ тёплое литое золото (насыщеннее прежнего бледного) */
     linear-gradient(180deg,
-      #fff0be 0%, #f0d072 16%, #e6c256 42%,
-      #dcb746 50%, #e6c256 58%, #f0d072 84%, #fff0be 100%);
+      #f2d16e 0%, #d8ac40 12%, #bd9026 32%,
+      #a67c1a 50%, #bd9026 68%, #d8ac40 88%, #f2d16e 100%);
 }
 
 /* СПЛОШНОЕ узорчатое золото на всю строку: литой золотой фон с рифлением +
