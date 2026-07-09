@@ -5099,6 +5099,24 @@ tr.row-elite > td:last-child {
   #acceptances-table tr.row-elite > td,
   tr.row-elite > td { animation: none; }
 }
+/* При ВЫБОРЕ строки (.m-row-focus) и вспышке (.m-row-flash) обычным строкам
+   ставится жёлтая заливка !important, которая перекрывала бы слиток. Для Элиты
+   СОХРАНЯЕМ фон-слиток — поверх остаётся только жёлтая рамка выделения. */
+.members-table tbody tr.m-row.row-elite.m-row-focus,
+.members-table tbody tr.m-row.row-elite.m-row-flash {
+  background: url("assets/elite-bar.webp?v=2") center / 100% 100% no-repeat !important;
+  animation: none !important;
+}
+#valor-table tr.row-elite.m-row-focus td:nth-child(1),
+#valor-table tr.row-elite.m-row-focus td:nth-child(2),
+#valor-table tr.row-elite.m-row-flash td:nth-child(1),
+#valor-table tr.row-elite.m-row-flash td:nth-child(2) {
+  background:
+    linear-gradient(180deg, rgba(10,6,0,0) 12%, rgba(10,6,0,.34) 32%,
+      rgba(7,4,0,.46) 50%, rgba(10,6,0,.34) 68%, rgba(10,6,0,0) 88%),
+    linear-gradient(180deg, #8a6a1e 0%, #6e5314 50%, #4d380c 100%) !important;
+  animation: none !important;
+}
 
 /* ── Активный столбец сортировки: тонкая «бегущая» светящаяся линия по контуру ── */
 @property --msang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
