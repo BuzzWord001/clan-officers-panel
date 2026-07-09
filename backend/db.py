@@ -901,6 +901,9 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
         # Признак «Ветеран» по тегу в Доблести (для отображения и редактирования).
         vet = {r["nick_canon"] for r in conn.execute(
             "SELECT nick_canon FROM valor_tags WHERE tag = 'veteran'")}
+        # Признак «Элита» (Топ по урону) — тоже по тегу в Доблести.
+        elite_set = {r["nick_canon"] for r in conn.execute(
+            "SELECT nick_canon FROM valor_tags WHERE tag = 'elite'")}
         # Число записей в «свитке» по канону (шум не считаем) — для бейджа, как в
         # таблице Доблести. Реестр и Доблесть показывают примечание одинаково.
         note_cnt: dict[str, int] = {}
@@ -913,6 +916,7 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
             d = _row_to_acceptance(r)
             canon = _valor_canon(d["game_nick"])
             d["veteran"] = canon in vet
+            d["elite"] = canon in elite_set
             d["nick_canon"] = canon
             # Шум («Ветеран») в примечании не показываем — как в Доблести.
             if _is_note_noise(d.get("note")):
@@ -1394,6 +1398,7 @@ def create_acceptance(
     accepted_date: str,
     note: str,
     veteran: bool = False,
+    elite: bool = False,
     actor: dict[str, str],
 ) -> dict[str, Any]:
     now = datetime.utcnow().isoformat(timespec="seconds")
@@ -1432,6 +1437,13 @@ def create_acceptance(
                     "(nick_canon, tag, source, added_at) VALUES (?, 'veteran', 'registry', ?)",
                     (canon, now),
                 )
+            # Роль «Элита» (Топ по урону) — тоже сразу при добавлении.
+            if elite:
+                conn.execute(
+                    "INSERT OR IGNORE INTO valor_tags "
+                    "(nick_canon, tag, source, added_at) VALUES (?, 'elite', 'registry', ?)",
+                    (canon, now),
+                )
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)
         ).fetchone()
@@ -1448,6 +1460,7 @@ def update_acceptance(
     accepted_date: str | None,
     note: str | None,
     veteran: bool | None = None,
+    elite: bool | None = None,
     actor: dict[str, str],
 ) -> dict[str, Any] | None:
     with connection() as conn:
@@ -1491,6 +1504,19 @@ def update_acceptance(
                 else:
                     conn.execute(
                         "DELETE FROM valor_tags WHERE nick_canon = ? AND tag = 'veteran'",
+                        (canon,))
+        # Роль «Элита» (Топ по урону) при редактировании: ставим/снимаем тег.
+        if elite is not None:
+            canon = _valor_canon(new_nick)
+            if canon:
+                if elite:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO valor_tags "
+                        "(nick_canon, tag, source, added_at) VALUES (?, 'elite', 'registry', ?)",
+                        (canon, now))
+                else:
+                    conn.execute(
+                        "DELETE FROM valor_tags WHERE nick_canon = ? AND tag = 'elite'",
                         (canon,))
         # Синхрон примечания Реестр → «свиток»: если текст изменился и непустой,
         # дописываем в историю (source=registry), чтобы заметки реестра и таблицы
@@ -6515,6 +6541,10 @@ def valor_get_current(with_reg_notes: bool = False,
             _vd = m["tag_dates"].get("veteran")
             if "veteran" in manual_tags and _vd and _prev_cap and _vd > _prev_cap:
                 status_new.append("veteran")
+            # «Элита» (Топ по урону) — если метка проставлена на этой неделе.
+            _ed = m["tag_dates"].get("elite")
+            if "elite" in manual_tags and _ed and _prev_cap and _ed > _prev_cap:
+                status_new.append("elite")
             # Офицерство: показываем руну, если человек ПОВЫСИЛСЯ относительно
             # прошлой недели (Рядовой→Капитан ИЛИ Капитан→Майор и т.д.).
             if is_officer and _rank_score(top_rank) > _rank_score(prev_rank.get(cn, "")):
@@ -7431,6 +7461,7 @@ def valor_restore(canon: str, actor: dict, reason: str = "") -> dict:
 
 def valor_return_from_archive(*, game_nick: str, title: str, note: str,
                               accepted_date: str, veteran: bool,
+                              elite: bool = False,
                               actor: dict) -> dict:
     """Повторный приём человека, который был в архиве доблести. Одним действием:
       1) регистрируем в реестре (свежая дата → недельный ИММУН новичка);
@@ -7443,7 +7474,7 @@ def valor_return_from_archive(*, game_nick: str, title: str, note: str,
     # 1) Регистрация — create_acceptance даёт свежий иммун новичка (IMMUNITY_DAYS).
     acc = create_acceptance(game_nick=game_nick, title=(title or ""),
                             accepted_date=accepted_date, note=(note or ""),
-                            veteran=bool(veteran), actor=actor)
+                            veteran=bool(veteran), elite=bool(elite), actor=actor)
     canon = _valor_canon(game_nick)
     # 2) Вернуть из архива доблести (снять кик / убрать из «покинули»).
     _rest = valor_restore(canon, actor, reason="повторный приём из архива")

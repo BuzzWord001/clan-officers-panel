@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Реестр приёма в клан</title>
-  <link rel="stylesheet" href="styles.css?v=1804000000">
+  <link rel="stylesheet" href="styles.css?v=1809000000">
   <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .shell{visibility:hidden}</style>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
@@ -33,6 +33,8 @@
     .reg-search-count { font-size:12px; color:var(--text-dim,#888); white-space:nowrap; }
     .vet-chk, .ed-vet-lbl { font-size:12px; color:#ffd24a; cursor:pointer; white-space:nowrap; user-select:none; }
     .ed-vet-lbl { margin-right:8px; }
+    .elite-chk, .ed-elite-lbl { font-size:12px; color:#ff8a94; cursor:pointer; white-space:nowrap; user-select:none; margin-left:10px; }
+    .ed-elite-lbl { margin-right:8px; margin-left:0; }
   </style>
   <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
        устаревшую вкладку из кэша (старые иконки/разметку). -->
@@ -128,8 +130,9 @@
             <input type="text" id="f-note" name="note" placeholder="необязательно" maxlength="200">
           </div>
           <div class="ff optional">
-            <label for="f-veteran" title="Твин/возвращенец старичка клана — сразу выдать роль Ветеран в Доблести">Роль</label>
+            <label for="f-veteran" title="Роли в Доблести — можно отметить сразу при приёме">Роль</label>
             <label class="vet-chk"><input type="checkbox" id="f-veteran"> ★ Сразу Ветеран</label>
+            <label class="elite-chk" title="Топ по урону — сразу выдать роль Элита в Доблести"><input type="checkbox" id="f-elite"> ⚔ Сразу Элита</label>
           </div>
           <div class="ff">
             <button type="submit">Добавить</button>
@@ -202,7 +205,7 @@
   <script src="js/dateutil.js?v=1795930000"></script>
   <script src="js/help-tips.js?v=1802000000"></script>
   <script src="js/note-scroll.js?v=1801400000"></script>
-  <script src="js/app.js?v=1807000000"></script>
+  <script src="js/app.js?v=1809000000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1792200000"></script>
   <script src="js/chamber-door.js?v=1791800000"></script>

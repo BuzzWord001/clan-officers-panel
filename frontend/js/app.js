@@ -110,6 +110,7 @@
       const title = $("f-title").value.trim();
       const note = $("f-note").value.trim();
       const veteran = $("f-veteran") ? $("f-veteran").checked : false;
+      const elite = $("f-elite") ? $("f-elite").checked : false;
       const iso = DateRu.parseRus($("f-date").value.trim());
       if (!nick) return;
       if (!iso) { setStatus("✗ Неверная дата — ожидаю ДД.ММ.ГГГГ"); return; }
@@ -117,10 +118,11 @@
       setStatus("Возвращаю из архива…");
       try {
         const res = await API.valorReturnFromArchive({ game_nick: nick, title, note,
-          accepted_date: iso, veteran });
+          accepted_date: iso, veteran, elite });
         $("f-nick").value = ""; $("f-title").value = ""; $("f-note").value = "";
         $("f-date").value = DateRu.today();
         if ($("f-veteran")) $("f-veteran").checked = false;
+        if ($("f-elite")) $("f-elite").checked = false;
         if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
         $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = "";
         // В таблице доблести появится только если он есть на последнем скрине;
@@ -148,6 +150,7 @@
     const rusDate = $("f-date").value.trim();
     const note = $("f-note").value.trim();
     const veteran = $("f-veteran") ? $("f-veteran").checked : false;
+    const elite = $("f-elite") ? $("f-elite").checked : false;
 
     const iso = DateRu.parseRus(rusDate);
     if (!nick) return;
@@ -158,15 +161,16 @@
 
     setStatus("Добавляю…");
     try {
-      await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran });
+      await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran, elite });
       $("f-nick").value = "";
       $("f-title").value = "";
       $("f-note").value = "";
       $("f-date").value = DateRu.today();
       if ($("f-veteran")) $("f-veteran").checked = false;
+      if ($("f-elite")) $("f-elite").checked = false;
       if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
       if ($("nick-kicked-note")) { $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = ""; }
-      setStatus(`✓ Добавлен: ${nick}${veteran ? " (★ Ветеран)" : ""}`);
+      setStatus(`✓ Добавлен: ${nick}${veteran ? " (★ Ветеран)" : ""}${elite ? " (⚔ Элита)" : ""}`);
       await reload();
     } catch (e) {
       setStatus(`✗ Ошибка: ${e.detail || e.message}`);
@@ -356,6 +360,8 @@
     actions.innerHTML =
       `<label class="ed-vet-lbl" title="Роль Ветеран в Доблести">`
       + `<input type="checkbox" class="ed-vet" ${r.veteran ? "checked" : ""}> ★Вет</label>`
+      + `<label class="ed-elite-lbl" title="Роль Элита (Топ по урону) в Доблести">`
+      + `<input type="checkbox" class="ed-elite" ${r.elite ? "checked" : ""}> ⚔Элита</label>`
       + `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
 
     DateRu.bindDateInput(dateCell.querySelector("input"));
@@ -390,12 +396,14 @@
         return;
       }
       const vetBox = actions.querySelector(".ed-vet");
+      const eliteBox = actions.querySelector(".ed-elite");
       const payload = {
         game_nick:     nickCell.querySelector("input").value.trim(),
         title:         titleCell.querySelector("input").value.trim(),
         accepted_date: iso,
         note:          noteCell.querySelector("input").value.trim(),
         veteran:       vetBox ? vetBox.checked : undefined,
+        elite:         eliteBox ? eliteBox.checked : undefined,
       };
       try {
         await API.update(r.id, payload);

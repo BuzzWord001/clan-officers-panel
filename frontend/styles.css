@@ -3306,6 +3306,13 @@ body.show-valor .valor-col { display: table-cell; }
   border-color: rgba(255, 200, 100, 0.55);
   text-shadow: 0 0 8px rgba(255, 200, 80, 0.45);
 }
+/* «Элита» (Топ по урону) — багрово-красная, под цвет урона/силы */
+.tag-elite {
+  color: #ff8a94;
+  background: linear-gradient(135deg, rgba(255, 90, 106, 0.20), rgba(150, 30, 45, 0.22));
+  border-color: rgba(255, 100, 115, 0.60);
+  text-shadow: 0 0 8px rgba(255, 90, 106, 0.50);
+}
 /* ── Метки-достижения за доблесть (иерархия по престижу) ── */
 .tag-ach { font-weight: 800; }
 .tag-ach.tag-auto { border-style: solid; }   /* достижения — сплошная рамка */

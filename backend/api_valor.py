@@ -323,6 +323,7 @@ class ReturnFromArchiveIn(BaseModel):
     note:          str = ""
     accepted_date: str = Field(..., min_length=1)   # 'YYYY-MM-DD'
     veteran:       bool = False
+    elite:         bool = False
 
 
 @router.post("/return-from-archive")
@@ -334,7 +335,8 @@ def valor_return_from_archive(payload: ReturnFromArchiveIn,
     убирает ВСЕ предупреждения (чистый лист)."""
     return db.valor_return_from_archive(
         game_nick=payload.game_nick, title=payload.title, note=payload.note,
-        accepted_date=payload.accepted_date, veteran=payload.veteran, actor=actor)
+        accepted_date=payload.accepted_date, veteran=payload.veteran,
+        elite=payload.elite, actor=actor)
 
 
 @router.get("/by-canon")
