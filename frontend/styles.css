@@ -5022,7 +5022,7 @@ tr.row-elite {
        3) узорный фон (зелень+золото) — фикс. размер + повтор → при разном
           размере ячейки виден кусок узора соответствующего размера. */
   background:
-    url("assets/elita.webp?v=1") no-repeat center / auto min(82px, 82%),
+    url("assets/elita.webp?v=2") no-repeat center / auto min(82px, 82%),
     radial-gradient(ellipse 30% 82% at 50% 50%,
       rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
     url("assets/elite-bg.webp?v=2") repeat left top / 440px auto;
@@ -5140,7 +5140,7 @@ tr.row-elite > td:last-child {
 .members-table tbody tr.m-row.row-elite.m-row-focus,
 .members-table tbody tr.m-row.row-elite.m-row-flash {
   background:
-    url("assets/elita.webp?v=1") no-repeat center / auto min(82px, 82%),
+    url("assets/elita.webp?v=2") no-repeat center / auto min(82px, 82%),
     radial-gradient(ellipse 30% 82% at 50% 50%,
       rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
     url("assets/elite-bg.webp?v=2") repeat left top / 440px auto !important;
