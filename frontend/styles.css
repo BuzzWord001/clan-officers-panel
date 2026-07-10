@@ -5020,8 +5020,8 @@ tr.row-elite {
   background:
     url("assets/elita.webp?v=1") no-repeat center / auto 80%,
     radial-gradient(ellipse 30% 82% at 50% 50%,
-      rgba(5,9,3,.62), rgba(5,9,3,.30) 55%, rgba(5,9,3,0) 74%),
-    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto;
+      rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
+    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto;
 }
 
 /* Ячейки строки Элиты — ПРОЗРАЧНЫЕ (сквозь сетку виден фон сайта). Только
@@ -5038,7 +5038,7 @@ tr.row-elite > td {
 #valor-table tr.row-elite td:nth-child(1),
 #valor-table tr.row-elite td:nth-child(2) {
   background:
-    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02);
 }
 /* Текст на золоте — СВЕТЛЫЙ с плотной ТЁМНОЙ обводкой (halo). По best practice
@@ -5126,8 +5126,8 @@ tr.row-elite > td:last-child {
   background:
     url("assets/elita.webp?v=1") no-repeat center / auto 80%,
     radial-gradient(ellipse 30% 82% at 50% 50%,
-      rgba(5,9,3,.62), rgba(5,9,3,.30) 55%, rgba(5,9,3,0) 74%),
-    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto !important;
+      rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
+    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto !important;
   animation: none !important;
 }
 #valor-table tr.row-elite.m-row-focus td:nth-child(1),
@@ -5135,7 +5135,7 @@ tr.row-elite > td:last-child {
 #valor-table tr.row-elite.m-row-flash td:nth-child(1),
 #valor-table tr.row-elite.m-row-flash td:nth-child(2) {
   background:
-    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02) !important;
   animation: none !important;
 }
