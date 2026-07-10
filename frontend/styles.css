@@ -5009,15 +5009,19 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 #acceptances-table tr.row-elite,
 tr.row-elite {
   --eg: 255,209,99; --eg2: 255,168,48;
-  /* Фон Элиты = ДВА слоя на всю строку (на tr, чтобы был непрерывным):
-       слой 1 (сверху) — эмблема «ЭЛИТА»: ВСЕГДА одного размера и по центру
-                         (no-repeat, фикс. высота), не зависит от размера ячейки;
-       слой 2 (снизу)  — золотая СЕТКА: фикс. размер + повтор → при разном
-                         размере ячейки видны разные куски решётки; просветы
-                         сетки ПРОЗРАЧНЫ → сквозь них просвечивает фон сайта. */
+  /* Фон Элиты = слои на всю строку (на tr, чтобы был непрерывным):
+       1) эмблема «ЭЛИТА» — крупная, по центру, высота = доля высоты строки
+          (auto 80%) → всегда с отступами сверху/снизу, не вылезает даже у самой
+          низкой ячейки;
+       2) тёмный ореол-подложка по центру — чтобы золотая эмблема не сливалась
+          с золотым узором и читалась;
+       3) узорный фон (зелень+золото) — фикс. размер + повтор → при разном
+          размере ячейки виден кусок узора соответствующего размера. */
   background:
-    url("assets/elita.webp?v=1") no-repeat center / auto 46px,
-    url("assets/setka.webp?v=1") repeat left top / 440px auto;
+    url("assets/elita.webp?v=1") no-repeat center / auto 80%,
+    radial-gradient(ellipse 30% 82% at 50% 50%,
+      rgba(5,9,3,.62), rgba(5,9,3,.30) 55%, rgba(5,9,3,0) 74%),
+    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto;
 }
 
 /* Ячейки строки Элиты — ПРОЗРАЧНЫЕ (сквозь сетку виден фон сайта). Только
@@ -5034,7 +5038,7 @@ tr.row-elite > td {
 #valor-table tr.row-elite td:nth-child(1),
 #valor-table tr.row-elite td:nth-child(2) {
   background:
-    url("assets/setka.webp?v=1") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02);
 }
 /* Текст на золоте — СВЕТЛЫЙ с плотной ТЁМНОЙ обводкой (halo). По best practice
@@ -5120,8 +5124,10 @@ tr.row-elite > td:last-child {
 .members-table tbody tr.m-row.row-elite.m-row-focus,
 .members-table tbody tr.m-row.row-elite.m-row-flash {
   background:
-    url("assets/elita.webp?v=1") no-repeat center / auto 46px,
-    url("assets/setka.webp?v=1") repeat left top / 440px auto !important;
+    url("assets/elita.webp?v=1") no-repeat center / auto 80%,
+    radial-gradient(ellipse 30% 82% at 50% 50%,
+      rgba(5,9,3,.62), rgba(5,9,3,.30) 55%, rgba(5,9,3,0) 74%),
+    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto !important;
   animation: none !important;
 }
 #valor-table tr.row-elite.m-row-focus td:nth-child(1),
@@ -5129,7 +5135,7 @@ tr.row-elite > td:last-child {
 #valor-table tr.row-elite.m-row-flash td:nth-child(1),
 #valor-table tr.row-elite.m-row-flash td:nth-child(2) {
   background:
-    url("assets/setka.webp?v=1") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=1") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02) !important;
   animation: none !important;
 }
