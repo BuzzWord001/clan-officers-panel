@@ -5009,42 +5009,33 @@ button, #logout-btn, .auth-guest, .vedit-btn, .ce-cancel,
 #acceptances-table tr.row-elite,
 tr.row-elite {
   --eg: 255,209,99; --eg2: 255,168,48;
-  /* ФОН-СЛИТОК: настоящий резной прямоугольный слиток «ЭЛИТА 999.9 FINE GOLD»
-     с картинки — на ВСЮ строку целиком (фон на tr, не на ячейках, иначе шёл бы
-     кусками по колонкам). 100%×100% = виден весь слиток с филигранью. */
-  background: url("assets/elite-bar.webp?v=5") center / 100% 100% no-repeat;
-  /* ЛЁГКАЯ тёмная подложка под текстом: приглушает золото ровно настолько,
-     чтобы читались надписи/значки — но слиток, резьба и «ЭЛИТА» остаются видны. */
-  --elite-plate:
-    linear-gradient(180deg,
-      rgba(10,6,0,0)   12%,
-      rgba(10,6,0,.34) 32%,
-      rgba(7,4,0,.46)  50%,
-      rgba(10,6,0,.34) 68%,
-      rgba(10,6,0,0)   88%);
+  /* Фон Элиты = ДВА слоя на всю строку (на tr, чтобы был непрерывным):
+       слой 1 (сверху) — эмблема «ЭЛИТА»: ВСЕГДА одного размера и по центру
+                         (no-repeat, фикс. высота), не зависит от размера ячейки;
+       слой 2 (снизу)  — золотая СЕТКА: фикс. размер + повтор → при разном
+                         размере ячейки видны разные куски решётки; просветы
+                         сетки ПРОЗРАЧНЫ → сквозь них просвечивает фон сайта. */
+  background:
+    url("assets/elita.webp?v=1") no-repeat center / auto 46px,
+    url("assets/setka.webp?v=1") repeat left top / 440px auto;
 }
 
-/* Ячейки строки Элиты: прозрачная тёмная табличка поверх фона-слитка (tr).
-   Плюс объёмная фаска сверху/снизу. */
+/* Ячейки строки Элиты — ПРОЗРАЧНЫЕ (сквозь сетку виден фон сайта). Только
+   рамка/скругление для аккуратного края. Фон-слои — на tr выше. */
 #valor-table tr.row-elite > td,
 #acceptances-table tr.row-elite > td,
 tr.row-elite > td {
-  background: var(--elite-plate);
-  box-shadow:
-    inset 0  2px 0 0 rgba(255,248,210,.9),
-    inset 0 -2px 0 0 rgba(110,72,8,.9),
-    inset 0 0 16px rgba(90,58,6,.28);
+  background: transparent;
   animation: eliteBreathe 3.6s ease-in-out infinite;
 }
-/* Замороженные колонки №/ник — sticky, им нужен НЕПРОЗРАЧНЫЙ фон (иначе при
-   горизонтальной прокрутке сквозь них видно другие ячейки). Даём слиток +
-   плотную тёмную табличку + сплошную подложку → имя читается, прокрутка чистая. */
+/* Замороженные колонки №/ник — sticky, нужен НЕПРОЗРАЧНЫЙ фон (иначе при
+   горизонтальной прокрутке сквозь них видно другие ячейки). Даём ту же сетку
+   поверх тёмной подложки — имя читается, прокрутка чистая. */
 #valor-table tr.row-elite td:nth-child(1),
 #valor-table tr.row-elite td:nth-child(2) {
   background:
-    linear-gradient(180deg, rgba(10,6,0,0) 12%, rgba(10,6,0,.34) 32%,
-      rgba(7,4,0,.46) 50%, rgba(10,6,0,.34) 68%, rgba(10,6,0,0) 88%),
-    linear-gradient(180deg, #8a6a1e 0%, #6e5314 50%, #4d380c 100%);
+    url("assets/setka.webp?v=1") repeat left top / 440px auto,
+    linear-gradient(180deg, #241705, #140c02);
 }
 /* Текст на золоте — СВЕТЛЫЙ с плотной ТЁМНОЙ обводкой (halo). По best practice
    для текста на неоднородном металле: светлая заливка читается на тёмном
@@ -5128,7 +5119,9 @@ tr.row-elite > td:last-child {
    СОХРАНЯЕМ фон-слиток — поверх остаётся только жёлтая рамка выделения. */
 .members-table tbody tr.m-row.row-elite.m-row-focus,
 .members-table tbody tr.m-row.row-elite.m-row-flash {
-  background: url("assets/elite-bar.webp?v=5") center / 100% 100% no-repeat !important;
+  background:
+    url("assets/elita.webp?v=1") no-repeat center / auto 46px,
+    url("assets/setka.webp?v=1") repeat left top / 440px auto !important;
   animation: none !important;
 }
 #valor-table tr.row-elite.m-row-focus td:nth-child(1),
@@ -5136,9 +5129,8 @@ tr.row-elite > td:last-child {
 #valor-table tr.row-elite.m-row-flash td:nth-child(1),
 #valor-table tr.row-elite.m-row-flash td:nth-child(2) {
   background:
-    linear-gradient(180deg, rgba(10,6,0,0) 12%, rgba(10,6,0,.34) 32%,
-      rgba(7,4,0,.46) 50%, rgba(10,6,0,.34) 68%, rgba(10,6,0,0) 88%),
-    linear-gradient(180deg, #8a6a1e 0%, #6e5314 50%, #4d380c 100%) !important;
+    url("assets/setka.webp?v=1") repeat left top / 440px auto,
+    linear-gradient(180deg, #241705, #140c02) !important;
   animation: none !important;
 }
 
