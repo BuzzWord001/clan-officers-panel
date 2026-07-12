@@ -4101,6 +4101,25 @@ def _valor_canon(nick: str) -> str:
     return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
 
 
+# Тёзки-ОМОНИМЫ, которых OCR/ИИ читает ОДИНАКОВО (гомоглиф в игре, но ИИ
+# приводит ник к латинице → написание в данных идентичное). Различить можно
+# ТОЛЬКО по КЛАССУ. Ключ: (базовый канон, класс в нижнем регистре) → отдельный
+# канон, чтобы «одинаковый ник + разный класс» считались РАЗНЫМИ игроками.
+# ДЕРЖАТЬ В СИНХРОНЕ с pw-valor-tracker/gemini_vision.py.
+_CANON_CLASS_SPLIT = {
+    ("interpris", "оборотень"): "interprisoboroten",  # твин INTerpris-Жреца
+}
+
+
+def _valor_canon_cls(nick: str, class_: str | None) -> str:
+    """Канон с учётом класса — для тёзок-омонимов, неотличимых по написанию.
+    Если пара (канон, класс) есть в _CANON_CLASS_SPLIT — отдельный канон,
+    иначе обычный _valor_canon."""
+    base = _valor_canon(nick)
+    cl = (class_ or "").strip().lower()
+    return _CANON_CLASS_SPLIT.get((base, cl), base)
+
+
 def _acceptance_nicks(raw: str) -> list[tuple[str, str]]:
     """Разбор поля game_nick реестра приёма в [(canon, написание), ...].
 
@@ -5229,7 +5248,9 @@ def valor_save_snapshot(
             _nick = (_m.get("nick") or "").strip()
             if not _nick:
                 continue
-            _cn = _valor_canon(_nick)
+            # Класс-aware канон: тёзки-омонимы (одинаковый ник, разный класс) —
+            # разные игроки, НЕ схлопываем.
+            _cn = _valor_canon_cls(_nick, _m.get("class_") or _m.get("class"))
             _ex = _dedup.get(_cn)
             if _ex is None or _vint(_m.get("valor")) > _vint(_ex.get("valor")):
                 _dedup[_cn] = _m
@@ -5288,7 +5309,7 @@ def valor_save_snapshot(
             if not nick:
                 continue
             cls = m.get("class_") or m.get("class") or ""
-            canon = _resolve_canon(_valor_canon(nick), alias_map)
+            canon = _resolve_canon(_valor_canon_cls(nick, cls), alias_map)
             current_canons.add(canon)
 
             # АФК: флаг от бота ИЛИ подстрока «афк/afk» в титуле (НикАФК и т.п.).
