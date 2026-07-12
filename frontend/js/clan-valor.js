@@ -2675,6 +2675,10 @@
     if (!cell) return;
     const tr = cell.closest("tr");
     const nick = tr.dataset.nick;
+    // Историю тянем по КАНОНУ строки, а не по отображаемому нику: у тёзок-омонимов
+    // (одинаковый ник, разный класс — напр. INTerpris Жрец / INTеrpris Оборотень)
+    // ник сворачивается в один канон, и попап показал бы чужую историю.
+    const canon = tr.dataset.canon || tr.dataset.nick;
     const field = cell.dataset.field;
     const fieldLabel = {rank:"должности", title:"титула",
                          level:"уровня", class:"класса",
@@ -2691,7 +2695,7 @@
     popover.style.top  = (window.scrollY + r.bottom + 4) + "px";
     popover.style.left = (window.scrollX + r.left)        + "px";
     try {
-      const data = await API.valorHistory(nick, field);
+      const data = await API.valorHistory(canon, field);
       const returned = data.returned || null;   // {week, at} — возвращён из архива
       const hist = (data[field] || []).slice();
       if (!hist.length) {
