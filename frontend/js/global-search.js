@@ -35,7 +35,7 @@
     wrap.innerHTML =
       '<span class="gs-ic" aria-hidden="true">🔍</span>' +
       '<input id="gs-input" class="gs-input" type="text" autocomplete="off" ' +
-      'placeholder="Поиск по всему сайту — есть ли человек и где он">' +
+      'placeholder="Поиск ника по сайту">' +
       '<div id="gs-drop" class="gs-drop" hidden></div>';
     const brand = bar.querySelector(".brand");
     if (brand && brand.nextSibling) bar.insertBefore(wrap, brand.nextSibling);
@@ -105,7 +105,25 @@
     document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) close(); });
   }
 
+  // Роль — как в chamber-door.js: сначала data-role/guest-mode на body, иначе API.me().
+  function getRole() {
+    var dr = document.body && document.body.getAttribute("data-role");
+    if (dr) return Promise.resolve(dr);
+    if (document.body && document.body.classList.contains("guest-mode"))
+      return Promise.resolve("guest");
+    return (window.API ? API.me() : Promise.reject())
+      .then(function (m) { return (m && m.role) || ""; })
+      .catch(function () { return ""; });
+  }
+
+  // Поиск виден ТОЛЬКО офицеру/админу — гостю бар не инжектим вовсе.
+  function start() {
+    getRole().then(function (role) {
+      if (role === "officer" || role === "admin") inject();
+    });
+  }
+
   if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", inject);
-  else inject();
+    document.addEventListener("DOMContentLoaded", start);
+  else start();
 })();
