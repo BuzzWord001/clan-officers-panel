@@ -13,12 +13,12 @@
   // Раздел → подпись, цвет-класс, страница (focus=canon где поддерживается).
   const SECTIONS = {
     valor_current:     { label: "Доблесть · сейчас", cls: "gs-cur",  page: "clan-valor.html", focus: true },
-    registry:          { label: "Реестр",            cls: "gs-reg",  page: "index.html" },
-    chat:              { label: "Чаты",              cls: "gs-chat", page: "chat-members.html" },
+    registry:          { label: "Реестр",            cls: "gs-reg",  page: "index.html", focus: true },
+    chat:              { label: "Чаты",              cls: "gs-chat", page: "chat-members.html", focus: true },
     departed:          { label: "Покинул клан",      cls: "gs-dep",  page: "clan-valor.html", focus: true },
     force_archived:    { label: "Кикнут",            cls: "gs-kick", page: "clan-valor.html", focus: true },
     valor_ever:        { label: "Доблесть · был",    cls: "gs-ever", page: "clan-valor.html", focus: true },
-    registry_archived: { label: "Реестр · архив",    cls: "gs-rega", page: "index.html" },
+    registry_archived: { label: "Реестр · архив",    cls: "gs-rega", page: "index.html", focus: true },
   };
   const ROLES = {
     elite:   { label: "Элита",   icon: "⚔", cls: "gs-r-elite" },
@@ -89,10 +89,18 @@
             const m = SECTIONS[s];
             if (!m) return "";
             const href = m.page + (m.focus ? "?focus=" + encodeURIComponent(r.canon) : "");
-            return '<a class="gs-sec ' + m.cls + '" href="' + href + '">' + esc(m.label) + "</a>";
+            return '<a class="gs-sec ' + m.cls + '" href="' + href + '">' + esc(m.label) + " ›</a>";
           }).join("");
-          return '<div class="gs-row"><div class="gs-nick">' + esc(r.nick) + " " + roles + "</div>" +
-                 '<div class="gs-secs">' + (secs || '<span class="gs-nosec">нет в разделах</span>') + "</div></div>";
+          // Явно разделяем: имя → роли (что за человек) → разделы (куда нажать,
+          // чтобы открыть его карточку). Раньше роли и разделы сливались в кашу.
+          return '<div class="gs-row">' +
+                   '<div class="gs-nick">' + esc(r.nick) + '</div>' +
+                   (roles ? '<div class="gs-line"><span class="gs-cap">Роли:</span>' + roles + '</div>' : '') +
+                   '<div class="gs-line"><span class="gs-cap">Открыть карточку в разделе:</span></div>' +
+                   '<div class="gs-secs">' +
+                     (secs || '<span class="gs-nosec">пока нет ни в одном разделе</span>') +
+                   '</div>' +
+                 '</div>';
         }).join("");
       open();
     }

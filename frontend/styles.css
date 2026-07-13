@@ -5269,6 +5269,14 @@ tr.row-elite > td:last-child {
 .gs-r-elite { color: #ff8a94; background: rgba(255,90,106,.14); }
 .gs-r-vet   { color: #ffd24a; background: rgba(255,200,80,.14); }
 .gs-r-off   { color: #ff9a44; background: rgba(255,150,70,.12); }
+/* Подписи-разделители в результате поиска (роли vs «куда нажать») */
+.gs-cap { font-size: 9.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: #9a8360; }
+.gs-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 5px 0 2px; }
+/* Переход к нику из глобального поиска — подсветка строки в Реестре */
+tr.reg-row-focus > td { background: rgba(224,162,74,.16) !important; }
+tr.reg-row-flash > td { animation: regRowFlash 1.6s ease-out; }
+@keyframes regRowFlash { from { background: rgba(245,200,120,.55); } to { background: rgba(224,162,74,.16); } }
 /* Гость роли не выдаёт — поиск офицерский; на узких экранах виджет сворачивается. */
 @media (max-width: 720px) {
   .gs-wrap { order: 3; flex: 1 1 100%; margin: 8px 0 0; }

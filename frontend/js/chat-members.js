@@ -370,10 +370,43 @@
     if ($("vc-toggle").checked) loadValorMap();
   });
 
+  // Переход к нику из глобального поиска (?focus=canon): найти строку по canon-кандидату.
+  const CHAT_FOCUS = new URLSearchParams(location.search).get("focus") || "";
+  let chatFocusScrolled = false;
+  function applyChatFocus() {
+    if (!CHAT_FOCUS) return;
+    const find = () => document.querySelector(
+      '#members-tbody tr.m-row[data-canons~="' + CSS.escape(CHAT_FOCUS) + '"]');
+    const tr = find();
+    if (!tr) return;
+    document.querySelectorAll("#members-tbody .m-row-focus")
+      .forEach((x) => x.classList.remove("m-row-focus"));
+    tr.classList.add("m-row-focus");
+    if (chatFocusScrolled) return;
+    chatFocusScrolled = true;
+    const scroll = () => { const r = find(); if (r) r.scrollIntoView({ behavior: "smooth", block: "center" }); };
+    requestAnimationFrame(scroll);
+    setTimeout(() => {
+      const r = find();
+      if (r) {
+        r.scrollIntoView({ behavior: "smooth", block: "center" });
+        r.classList.add("m-row-flash");
+        setTimeout(() => r.classList.remove("m-row-flash"), 1600);
+      }
+    }, 500);
+  }
+
   function renderMemberRow(item, idx) {
     const p = item.profile || {};
     const s = item.stats || {};
     const dn = primaryName(p, item.key);
+    // Канон-кандидаты (ники) — чтобы переход из глобального поиска (?focus=canon)
+    // мог найти эту строку. Тот же nickCanon, что и для лукапа доблести.
+    const _cans = [];
+    (p.game_nick || "").split(",").forEach((x) => { const c = nickCanon(x.trim()); if (c) _cans.push(c); });
+    if (p.display_name) { const c = nickCanon(p.display_name); if (c) _cans.push(c); }
+    { const c = nickCanon(dn); if (c) _cans.push(c); }
+    const _canons = [...new Set(_cans)].join(" ");
     // Подпись под именем: остальные ники из game_nick (если их несколько
     // через запятую — показываем тех что не вошли в primary) и
     // display_name если он отличается И НЕ дублирует @tg_username
@@ -433,7 +466,7 @@
       + (item.unregistered ? " m-row-unreg" : "");
     return `
       <tr class="${rowClasses}"
-          data-key="${escapeHtml(item.key)}"${silentTitle ? ` title="${escapeHtml(silentTitle)}"` : ""}>
+          data-key="${escapeHtml(item.key)}" data-canons="${escapeHtml(_canons)}"${silentTitle ? ` title="${escapeHtml(silentTitle)}"` : ""}>
         <td class="m-cell-idx">${idxNum}</td>
         <td class="m-cell-name">${nameBlock}</td>
         <td class="m-cell-num m-cell-total">${fmtNum(total)}</td>
@@ -526,6 +559,7 @@
         th.classList.add(currentSort.dir === "asc" ? "sort-asc" : "sort-desc");
       }
     });
+    applyChatFocus();
   }
 
   function updateOverallStats() {

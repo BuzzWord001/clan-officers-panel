@@ -184,6 +184,34 @@
     }
   }
 
+  // ── Переход к нику из глобального поиска (?focus=canon): подсветить+прокрутить.
+  //    Ищем строку и в основном реестре, и в архиве.
+  function regCanon(s) { return (s || "").toString().toLowerCase().replace(/[\s\W_]+/gu, ""); }
+  const REG_FOCUS = new URLSearchParams(location.search).get("focus") || "";
+  let regFocusScrolled = false;
+  function applyRegFocus() {
+    if (!REG_FOCUS) return;
+    const find = () => document.querySelector(
+      '#tbody tr[data-canon="' + CSS.escape(REG_FOCUS) + '"], ' +
+      '#arch-tbody tr[data-canon="' + CSS.escape(REG_FOCUS) + '"]');
+    const tr = find();
+    if (!tr) return;
+    document.querySelectorAll(".reg-row-focus").forEach((x) => x.classList.remove("reg-row-focus"));
+    tr.classList.add("reg-row-focus");
+    if (regFocusScrolled) return;
+    regFocusScrolled = true;
+    const scroll = () => { const r = find(); if (r) r.scrollIntoView({ behavior: "smooth", block: "center" }); };
+    requestAnimationFrame(scroll);
+    setTimeout(() => {
+      const r = find();
+      if (r) {
+        r.scrollIntoView({ behavior: "smooth", block: "center" });
+        r.classList.add("reg-row-flash");
+        setTimeout(() => r.classList.remove("reg-row-flash"), 1600);
+      }
+    }, 500);
+  }
+
   // ── Render table ──
   function renderTable(rows) {
     const tbody = $("tbody");
@@ -198,6 +226,7 @@
     rows.forEach((r, i) => {
       const tr = document.createElement("tr");
       tr.dataset.id = r.id;
+      tr.dataset.canon = r.nick_canon || regCanon(r.game_nick);   // для перехода из поиска
       // Роль «Элита» (Топ по урону) — вся строка в роскошной золотой рамке.
       if (r.elite) tr.classList.add("row-elite");
       tr.innerHTML = `
@@ -271,6 +300,7 @@
       tr.querySelector(".btn-arch").addEventListener("click", () => onArchive(r));
       tbody.appendChild(tr);
     });
+    applyRegFocus();
   }
 
   async function onArchive(r) {
@@ -295,6 +325,7 @@
     $("arch-empty").hidden = rows.length > 0;
     rows.forEach((r, i) => {
       const tr = document.createElement("tr");
+      tr.dataset.canon = r.nick_canon || regCanon(r.game_nick);   // для перехода из поиска
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td class="nick"></td><td class="title"></td>
@@ -311,6 +342,7 @@
       });
       tb.appendChild(tr);
     });
+    applyRegFocus();
   }
 
   async function loadArchive() {
