@@ -4,7 +4,7 @@
 // Логотипы: frontend/assets/social/*.png. Ссылки — из бота @SanTDeviL_bot.
 (function () {
   var LINKS = [
-    { img: "tg",       name: "Telegram",  glow: "#39a3e6",
+    { img: "tg",       name: "Чат Telegram",  glow: "#39a3e6",
       href: "https://t.me/+6U3XCSrrZgo1YTMy",
       copy: "https://t.me/+6U3XCSrrZgo1YTMy" },
     { img: "vk-group", name: "Группа ВК",  glow: "#e0903e",
@@ -15,7 +15,10 @@
       copy: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=" },
     { img: "ts",       name: "TeamSpeak",  glow: "#e0903e",
       href: "ts3server://melodybum.ts3.se",
-      copy: "melodybum.ts3.se", proto: true },
+      copy: "melodybum.ts3.se", proto: true,
+      // IP-фолбэк, если по адресу melodybum.ts3.se не подключается
+      extra: [{ copy: "45.151.182.57:10440",
+                note: "если не подключается по адресу — IP:" }] },
   ];
 
   function copyText(text, el) {
@@ -81,6 +84,29 @@
       card.appendChild(a);
       card.appendChild(nm);
       card.appendChild(url);
+
+      // доп. строки для копирования (напр. IP-фолбэк TeamSpeak)
+      if (l.extra) {
+        l.extra.forEach(function (ex) {
+          if (ex.note) {
+            var note = document.createElement("div");
+            note.className = "soc2-note";
+            note.textContent = ex.note;
+            note.style.cssText = "font:600 10px/1.2 system-ui,sans-serif;" +
+              "color:#e0a86a;opacity:.85;margin-top:4px;text-align:center";
+            card.appendChild(note);
+          }
+          var b2 = document.createElement("button");
+          b2.type = "button";
+          b2.className = "soc2-url";
+          b2.textContent = ex.copy;
+          b2.setAttribute("data-full", ex.copy);
+          b2.setAttribute("aria-label", "Скопировать: " + ex.copy);
+          b2.addEventListener("click", function () { copyText(ex.copy, b2); });
+          card.appendChild(b2);
+        });
+      }
+
       grid.appendChild(card);
     });
     box.appendChild(title);

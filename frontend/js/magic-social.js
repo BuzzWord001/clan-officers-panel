@@ -13,7 +13,7 @@
 
   // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak, Группа ВК
   var LINKS = [
-    { key: "tg",       label: "Telegram",  glow: "#2aa6e4",
+    { key: "tg",       label: "Чат Telegram",  glow: "#2aa6e4",
       href: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy",
       img: "assets/social/tg.png" },
     { key: "vk-chat",  label: "Чат ВК",    glow: "#f56a24",
@@ -22,7 +22,14 @@
       img: "assets/social/vk-chat.png" },
     { key: "ts",       label: "TeamSpeak", glow: "#ff5e1c",
       href: "ts3server://melodybum.ts3.se", disp: "melodybum.ts3.se",
-      img: "assets/social/ts.png" },
+      img: "assets/social/ts.png",
+      // клик по иконке — по протоколу ts3server:// (полная ссылка), а копировать
+      // даём чистый адрес + IP-фолбэк, если по адресу не подключается.
+      copyList: [
+        { disp: "melodybum.ts3.se", val: "melodybum.ts3.se" },
+        { disp: "45.151.182.57:10440", val: "45.151.182.57:10440",
+          note: "если не подключается по адресу — скопируй IP:" }
+      ] },
     { key: "vk-group", label: "Группа ВК", glow: "#f57a26",
       href: "https://vk.com/club38888207", disp: "vk.com/club38888207",
       img: "assets/social/vk-group.png" }
@@ -148,7 +155,11 @@
         "background:linear-gradient(180deg,#3a2a14,#241809);color:#f4dcb0;" +
         "font:700 10px/1 system-ui,sans-serif;padding:7px 9px;border-radius:7px;white-space:nowrap}" +
       ".ms-pop-copy:hover{filter:brightness(1.15)}" +
-      ".ms-pop-copy.ok{color:#cde8ac;border-color:#6fae5a}";
+      ".ms-pop-copy.ok{color:#cde8ac;border-color:#6fae5a}" +
+      ".ms-pop.multi{flex-direction:column;align-items:stretch;gap:5px}" +
+      ".ms-pop-row{display:flex;align-items:center;gap:7px;justify-content:space-between}" +
+      ".ms-pop-note{font:600 9.5px/1.25 system-ui,sans-serif;color:#f0b36a;" +
+        "opacity:.95;max-width:200px}";
     document.head.appendChild(style);
 
     var root = document.createElement("div");
@@ -221,14 +232,28 @@
 
       var pop = document.createElement("div");
       pop.className = "ms-pop";
-      var url = document.createElement("span");
-      url.className = "ms-pop-url"; url.textContent = L.disp;
-      var btn = document.createElement("button");
-      btn.className = "ms-pop-copy"; btn.type = "button"; btn.textContent = "Копировать";
-      btn.addEventListener("click", function (ev) {
-        ev.preventDefault(); ev.stopPropagation(); copyToClipboard(L.href, btn);
+      // по умолчанию одна строка (копируем полную ссылку href). TeamSpeak задаёт
+      // copyList: чистый адрес + IP-фолбэк — тогда попап становится вертикальным.
+      var rows = L.copyList || [{ disp: L.disp, val: L.href }];
+      if (rows.length > 1) pop.classList.add("multi");
+      rows.forEach(function (rw) {
+        if (rw.note) {
+          var nt = document.createElement("div");
+          nt.className = "ms-pop-note"; nt.textContent = rw.note;
+          pop.appendChild(nt);
+        }
+        var row = document.createElement("div");
+        row.className = "ms-pop-row";
+        var url = document.createElement("span");
+        url.className = "ms-pop-url"; url.textContent = rw.disp;
+        var btn = document.createElement("button");
+        btn.className = "ms-pop-copy"; btn.type = "button"; btn.textContent = "Копировать";
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault(); ev.stopPropagation(); copyToClipboard(rw.val, btn);
+        });
+        row.appendChild(url); row.appendChild(btn);
+        pop.appendChild(row);
       });
-      pop.appendChild(url); pop.appendChild(btn);
       root.appendChild(pop);
 
       var timer;
