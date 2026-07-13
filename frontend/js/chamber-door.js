@@ -217,12 +217,9 @@
         '<button type="button" class="cos-login-x" aria-label="Закрыть">&times;</button>' +
         KEY_ICON +
         '<div class="cos-login-t">Офицерский вход</div>' +
-        '<div class="cos-login-s">Офицер входит игровым ником и офицерским паролем.<br>' +
-          'Админ вводит свой логин и пароль здесь же.</div>' +
         '<form class="cos-login-form">' +
-          '<label for="cos-nick">Игровой ник</label>' +
-          '<input id="cos-nick" type="text" autocomplete="username" maxlength="64" ' +
-                 'placeholder="Введите ваш игровой ник" autofocus>' +
+          '<label for="cos-nick">Введите ваш игровой ник</label>' +
+          '<input id="cos-nick" type="text" autocomplete="username" maxlength="64" autofocus>' +
           '<label for="cos-pwd">Офицерский пароль</label>' +
           '<input id="cos-pwd" type="password" autocomplete="current-password" maxlength="200" ' +
                  'placeholder="Введите офицерский пароль">' +
