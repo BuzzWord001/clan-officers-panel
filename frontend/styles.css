@@ -5236,7 +5236,7 @@ tr.row-elite > td:last-child {
   position: absolute; top: calc(100% + 6px); left: 0;
   width: min(440px, 88vw); max-height: 66vh; overflow-y: auto;
   background: #17100a; border: 1px solid rgba(224,162,74,.4); border-radius: 9px;
-  box-shadow: 0 14px 40px rgba(0,0,0,.62); padding: 5px; z-index: 70;
+  box-shadow: 0 14px 40px rgba(0,0,0,.62); padding: 5px; z-index: 1200;
 }
 .gs-head { font-size: 11px; color: #a58c68; padding: 4px 8px 6px; }
 .gs-head b { color: #ffd24a; }

@@ -35,25 +35,47 @@
     wrap.innerHTML =
       '<span class="gs-ic" aria-hidden="true">🔍</span>' +
       '<input id="gs-input" class="gs-input" type="text" autocomplete="off" ' +
-      'placeholder="Поиск ника по сайту">' +
-      '<div id="gs-drop" class="gs-drop" hidden></div>';
+      'placeholder="Поиск ника по сайту">';
     const brand = bar.querySelector(".brand");
     if (brand && brand.nextSibling) bar.insertBefore(wrap, brand.nextSibling);
     else bar.appendChild(wrap);
-    wire(wrap);
+    // Выпадашку кладём в <body>, а НЕ внутрь .topbar: обёртка .shell (z-index:2)
+    // создаёт контекст наложения, который «топит» дропдаун под декоративным
+    // #magic-social (z-index:40) — иконка Telegram и золотая линия перекрывали
+    // результаты. В <body> дропдаун в корневом контексте, его z-index честно
+    // побеждает; позиционируем его position:fixed под строкой поиска.
+    const drop = document.createElement("div");
+    drop.id = "gs-drop";
+    drop.className = "gs-drop";
+    drop.hidden = true;
+    document.body.appendChild(drop);
+    wire(wrap, drop);
   }
 
-  function wire(wrap) {
+  function wire(wrap, drop) {
     const input = wrap.querySelector("#gs-input");
-    const drop = wrap.querySelector("#gs-drop");
     let timer = null, lastQ = "";
 
+    // Дропдаун в <body> и position:fixed — считаем позицию под строкой поиска.
+    function place() {
+      const r = input.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      const w = Math.min(440, vw * 0.88);
+      let left = r.left;
+      if (left + w > vw - 8) left = Math.max(8, vw - 8 - w);
+      drop.style.position = "fixed";
+      drop.style.top = Math.round(r.bottom + 6) + "px";
+      drop.style.left = Math.round(left) + "px";
+      drop.style.width = Math.round(w) + "px";
+      drop.style.right = "auto";
+    }
+    function open() { place(); drop.hidden = false; }
     function close() { drop.hidden = true; }
 
     function render(results, q) {
       if (!results.length) {
         drop.innerHTML = '<div class="gs-empty">Никого не нашлось по «' + esc(q) + '»</div>';
-        drop.hidden = false;
+        open();
         return;
       }
       drop.innerHTML =
@@ -72,7 +94,7 @@
           return '<div class="gs-row"><div class="gs-nick">' + esc(r.nick) + " " + roles + "</div>" +
                  '<div class="gs-secs">' + (secs || '<span class="gs-nosec">нет в разделах</span>') + "</div></div>";
         }).join("");
-      drop.hidden = false;
+      open();
     }
 
     async function run(q) {
@@ -83,7 +105,7 @@
       } catch (e) {
         if (e && e.status === 403) { close(); return; }   // гость — тихо прячем
         drop.innerHTML = '<div class="gs-empty">Поиск временно недоступен</div>';
-        drop.hidden = false;
+        open();
       }
     }
 
@@ -93,16 +115,23 @@
       if (timer) clearTimeout(timer);
       if (q.length < 2) { close(); return; }
       drop.innerHTML = '<div class="gs-empty">Ищу…</div>';
-      drop.hidden = false;
+      open();
       timer = setTimeout(() => run(q), 220);
     });
     input.addEventListener("focus", () => {
-      if (input.value.trim().length >= 2 && drop.innerHTML) drop.hidden = false;
+      if (input.value.trim().length >= 2 && drop.innerHTML) open();
     });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { close(); input.blur(); }
     });
-    document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) close(); });
+    // дропдаун теперь в <body> — клик по нему НЕ должен считаться «вне» (иначе
+    // закрывался бы до перехода по ссылке-результату).
+    document.addEventListener("click", (e) => {
+      if (!wrap.contains(e.target) && !drop.contains(e.target)) close();
+    });
+    // position:fixed — держим под строкой при прокрутке/изменении размера окна.
+    window.addEventListener("scroll", () => { if (!drop.hidden) place(); }, true);
+    window.addEventListener("resize", () => { if (!drop.hidden) place(); });
   }
 
   // Роль — как в chamber-door.js: сначала data-role/guest-mode на body, иначе API.me().
