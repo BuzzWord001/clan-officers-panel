@@ -7,7 +7,9 @@
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — вход</title>
   <link rel="stylesheet" href="styles.css?v=1804000000">
-  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .auth-shell{visibility:hidden}</style>
+  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .auth-shell{visibility:hidden}
+  .auth-hint{margin:-4px 0 14px;padding:9px 11px;border-radius:9px;font:400 12px/1.5 system-ui,sans-serif;color:#ecdcbe;background:rgba(224,162,74,.1);border:1px solid rgba(224,162,74,.28)}
+  .auth-hint b{color:#f0c878;font-weight:700}</style>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <!-- Если страница входа восстановлена из bfcache (Назад/Вперёд или возврат
        после «Выйти») — перезагружаем, чтобы НИКОГДА не показать устаревшую
@@ -31,14 +33,16 @@
         <label for="f-nick">Игровой ник</label>
         <input type="text" id="f-nick" name="username"
                autocomplete="username"
+               placeholder="Введите ваш игровой ник"
                required maxlength="64"
                autofocus>
       </div>
 
       <div class="auth-field auth-field--pwd">
-        <label for="f-password">Общий пароль офицеров</label>
+        <label for="f-password">Офицерский пароль</label>
         <input type="password" id="f-password" name="password"
                autocomplete="current-password"
+               placeholder="Введите офицерский пароль"
                required maxlength="200">
         <button type="button" class="pwd-toggle" data-pwd-for="f-password"
                 aria-label="Показать пароль" title="Показать пароль">
@@ -56,6 +60,8 @@
           </svg>
         </button>
       </div>
+
+      <p class="auth-hint">🔒 Пароль есть в <b>закреплённом сообщении</b> офицерского чата ВК или Telegram</p>
 
       <button type="submit" class="auth-submit" id="login-btn">Войти</button>
 

@@ -167,6 +167,11 @@
     'font:400 14px system-ui,sans-serif;color:#f5ecda;background:rgba(0,0,0,.35);' +
     'border:1px solid rgba(224,162,74,.35);border-radius:9px;outline:none}' +
   '.cos-login input:focus{border-color:#e0a24a;box-shadow:0 0 0 2px rgba(224,162,74,.25)}' +
+  '.cos-login input::placeholder{color:#9a8a70;opacity:.85}' +
+  '.cos-login-hint{margin:-4px 0 15px;padding:9px 11px;border-radius:9px;' +
+    'font:400 11.5px/1.5 system-ui,sans-serif;color:#ecdcbe;' +
+    'background:rgba(224,162,74,.1);border:1px solid rgba(224,162,74,.28)}' +
+  '.cos-login-hint b{color:#f0c878;font-weight:700}' +
   '.cos-login-btn{width:100%;margin-top:2px;padding:11px;cursor:pointer;' +
     'font:700 14px system-ui,sans-serif;color:#1b1006;' +
     'background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:9px;' +
@@ -212,12 +217,17 @@
         '<button type="button" class="cos-login-x" aria-label="Закрыть">&times;</button>' +
         KEY_ICON +
         '<div class="cos-login-t">Офицерский вход</div>' +
-        '<div class="cos-login-s">Ник и пароль офицера. Админ вводит свой логин и пароль здесь же.</div>' +
+        '<div class="cos-login-s">Офицер входит игровым ником и офицерским паролем.<br>' +
+          'Админ вводит свой логин и пароль здесь же.</div>' +
         '<form class="cos-login-form">' +
-          '<label for="cos-nick">Игровой ник / логин</label>' +
-          '<input id="cos-nick" type="text" autocomplete="username" maxlength="64" autofocus>' +
-          '<label for="cos-pwd">Пароль</label>' +
-          '<input id="cos-pwd" type="password" autocomplete="current-password" maxlength="200">' +
+          '<label for="cos-nick">Игровой ник</label>' +
+          '<input id="cos-nick" type="text" autocomplete="username" maxlength="64" ' +
+                 'placeholder="Введите ваш игровой ник" autofocus>' +
+          '<label for="cos-pwd">Офицерский пароль</label>' +
+          '<input id="cos-pwd" type="password" autocomplete="current-password" maxlength="200" ' +
+                 'placeholder="Введите офицерский пароль">' +
+          '<div class="cos-login-hint">🔒 Пароль есть в <b>закреплённом сообщении</b> ' +
+            'офицерского чата ВК или Telegram</div>' +
           '<button type="submit" class="cos-login-btn">Войти</button>' +
           '<div class="cos-login-err" role="alert"></div>' +
         '</form>' +
@@ -228,8 +238,11 @@
       document.removeEventListener("keydown", onKey);
     }
     function onKey(e) { if (e.key === "Escape") close(); }
+    // Закрываем ТОЛЬКО по крестику или Esc. НЕ по клику на фон/оверлей — раньше
+    // окно исчезало при промахе мимо поля или при выделении текста мышью, когда
+    // mouseup оказывался вне бокса (target === ov). Ввод не должен внезапно пропадать.
     ov.addEventListener("click", function (e) {
-      if (e.target === ov || e.target.classList.contains("cos-login-x")) close();
+      if (e.target.closest(".cos-login-x")) close();
     });
     document.addEventListener("keydown", onKey);
 
