@@ -117,6 +117,13 @@ def ensure_queue_tables() -> None:
               gender     TEXT NOT NULL DEFAULT '',   -- 'm' | 'f'
               updated_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_placements (
+              key        TEXT PRIMARY KEY,           -- 'item:kamen-doblesti' | 'mount'
+              x          REAL NOT NULL DEFAULT 0,    -- % сцены
+              y          REAL NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -265,6 +272,12 @@ class ModelIn(BaseModel):
 class GenderIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     gender: str = Field(default="")               # 'm' | 'f' | '' (сброс)
+
+
+class PlacementIn(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    x: float
+    y: float
 
 
 # ─────────────────────────── эндпоинты ───────────────────────────
@@ -597,6 +610,25 @@ def set_gender(payload: GenderIn, _: dict = Depends(require_admin)) -> dict:
                 " ON CONFLICT(canon) DO UPDATE SET gender=excluded.gender, updated_at=excluded.updated_at",
                 (cn, g, _now()))
     return {"ok": True, "gender": g}
+
+
+@router.get("/placements")
+def placements() -> dict:
+    with db.connection() as conn:
+        rows = conn.execute("SELECT key, x, y FROM queue_placements").fetchall()
+    return {"placements": {r["key"]: {"x": r["x"], "y": r["y"]} for r in rows}}
+
+
+@router.post("/admin/placement")
+def set_placement(payload: PlacementIn, _: dict = Depends(require_admin)) -> dict:
+    x = max(0.0, min(100.0, float(payload.x)))
+    y = max(0.0, min(100.0, float(payload.y)))
+    with db.connection() as conn:
+        conn.execute(
+            "INSERT INTO queue_placements (key, x, y, updated_at) VALUES (?,?,?,?)"
+            " ON CONFLICT(key) DO UPDATE SET x=excluded.x, y=excluded.y, updated_at=excluded.updated_at",
+            (payload.key, x, y, _now()))
+    return {"ok": True}
 
 
 @router.get("/admin/log")

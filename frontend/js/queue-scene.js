@@ -92,6 +92,39 @@
   ];
   // ночь: 20:00–07:00 по МСК (МСК = UTC+3), иначе день
   function isNight() { var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7; }
+
+  // анимированные факелы (дефолт-позиции, можно двигать в режиме расстановки)
+  var TORCHES = [{ x: 57, y: 44 }, { x: 72, y: 79 }, { x: 87, y: 81 }];
+  var PLACEMENTS = {};     // key ('item:...'/'mount'/'torch:N') -> {x,y} ручная расстановка
+  var _placeMode = false;  // режим ручной расстановки (админ)
+  function placedPos(key, dx, dy) {
+    var p = PLACEMENTS[key];
+    return p ? { x: p.x, y: p.y } : { x: dx, y: dy };
+  }
+  function makeDraggable(el, pkey) {
+    el.style.pointerEvents = "auto"; el.style.cursor = "grab";
+    function start(moveEvt, endEvt) {
+      var stage = el.closest(".qs-stage"); if (!stage) return;
+      var rect = stage.getBoundingClientRect(), lx = null, ly = null;
+      function move(e) {
+        var pt = e.touches ? e.touches[0] : e;
+        lx = Math.max(0, Math.min(100, ((pt.clientX - rect.left) / rect.width) * 100));
+        ly = Math.max(0, Math.min(100, ((pt.clientY - rect.top) / rect.height) * 100));
+        el.style.left = lx.toFixed(2) + "%"; el.style.top = ly.toFixed(2) + "%";
+        el.style.zIndex = Math.round(ly * 12);
+      }
+      function end() {
+        document.removeEventListener(moveEvt, move); document.removeEventListener(endEvt, end);
+        if (lx != null) {
+          PLACEMENTS[pkey] = { x: lx, y: ly };
+          q("POST", "/queue/admin/placement", { key: pkey, x: lx, y: ly }).catch(function () {});
+        }
+      }
+      document.addEventListener(moveEvt, move); document.addEventListener(endEvt, end);
+    }
+    el.addEventListener("mousedown", function (e) { e.preventDefault(); start("mousemove", "mouseup"); });
+    el.addEventListener("touchstart", function () { start("touchmove", "touchend"); }, { passive: true });
+  }
   function pathPoint(path, t) {
     t = Math.max(0, Math.min(1, t));
     var seg = t * (path.length - 1), i = Math.floor(seg), f = seg - i;
@@ -207,12 +240,21 @@
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
     ".qs-wrap{max-width:1120px;margin:14px auto 60px;padding:0 12px}" +
-    ".qs-frame{position:relative;width:100%;aspect-ratio:16/9;" +
-      "background:url('assets/queue/scene/scene-frame.png') center/100% 100% no-repeat}" +
-    ".qs-stage{position:absolute;left:12.6%;top:10.6%;width:74.8%;height:78.4%;overflow:hidden;" +
-      "border-radius:3px;background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
+    ".qs-frame{position:relative;width:100%;aspect-ratio:16/9}" +
+    ".qs-stage{position:absolute;inset:0;overflow:hidden;border-radius:8px;" +
+      "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
     ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.jpg')}" +
     ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.jpg')}" +
+    /* рамка ПОВЕРХ сцены (передний план, центр прозрачный) — ровно закрывает края */
+    ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:9500;" +
+      "background:url('assets/queue/scene/scene-frame.png') center/100% 100% no-repeat}" +
+    /* анимированные факелы (спрайт 6 кадров 200x196) */
+    ".qs-torch{position:absolute;transform:translate(-50%,-100%);pointer-events:none;width:64px;height:63px;" +
+      "background:url('assets/queue/scene/flame.png') 0 0/384px 63px no-repeat;" +
+      "animation:qsTorch .72s steps(6) infinite;filter:drop-shadow(0 0 8px rgba(255,150,40,.5))}" +
+    "@keyframes qsTorch{to{background-position-x:-384px}}" +
+    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-torch{" +
+      "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
     ".qs-glow{position:absolute;width:22%;height:32%;transform:translate(-50%,-55%);pointer-events:none;" +
       "background:radial-gradient(ellipse at center,var(--gc),transparent 66%);filter:blur(7px);" +
       "opacity:.5;animation:qsGlow 3.2s ease-in-out infinite}" +
@@ -287,7 +329,7 @@
     var frame = document.createElement("div");
     frame.className = "qs-frame";
     var stage = document.createElement("div");
-    stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "");
+    stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "") + (_placeMode ? " place" : "");
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
     BOOTHS.forEach(function (b) {
@@ -299,12 +341,13 @@
       stage.appendChild(glow);
       // ресурсы за будкой (кучкой)
       (BOOTH_ITEMS[b.q] || []).forEach(function (it, k) {
-        var iy = b.item.y + Math.floor(k / 3) * 4.6;
+        var pos = placedPos("item:" + it, b.item.x + (k % 3) * 3.4, b.item.y + Math.floor(k / 3) * 4.6);
         var img = document.createElement("img");
         img.className = "qs-item"; img.alt = "";
         img.src = "assets/queue/scene/item/" + it + ".png";
-        img.style.cssText = "left:" + (b.item.x + (k % 3) * 3.4).toFixed(1) + "%;top:" + iy.toFixed(1) +
-          "%;z-index:" + Math.round(iy * 12);
+        img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
+          "%;z-index:" + Math.round(pos.y * 12);
+        if (_placeMode) makeDraggable(img, "item:" + it);
         stage.appendChild(img);
       });
       // персонажи по пути (первый — у будки)
@@ -333,13 +376,31 @@
       });
     });
     // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
+    var mpos = placedPos("mount", 85, 70);
     var mount = document.createElement("img");
     mount.className = "qs-mount"; mount.alt = "";
     mount.src = "assets/queue/scene/item/mount-cilin.png";
-    mount.style.cssText = "left:91%;top:70%;z-index:" + Math.round(70 * 12);
+    mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
+      "%;z-index:" + Math.round(mpos.y * 12);
+    if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
 
+    // анимированные факелы
+    TORCHES.forEach(function (d, i) {
+      var pos = placedPos("torch:" + i, d.x, d.y);
+      var tr = document.createElement("div");
+      tr.className = "qs-torch";
+      tr.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
+        "%;z-index:" + Math.round(pos.y * 12);
+      if (_placeMode) makeDraggable(tr, "torch:" + i);
+      stage.appendChild(tr);
+    });
+
     frame.appendChild(stage);
+    // рамка ПОВЕРХ сцены (передний план) — центр прозрачный
+    var ovl = document.createElement("div");
+    ovl.className = "qs-frame-ovl";
+    frame.appendChild(ovl);
     return frame;
   }
 
@@ -356,8 +417,10 @@
     if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
-    banner.innerHTML = "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно " +
-      "во все сразу. В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
+    banner.innerHTML = _placeMode
+      ? "🎯 <b>Режим расстановки.</b> Тащи мышкой предметы, питомца и факелы — позиции сразу сохраняются. Выключить — кнопкой в панели ниже."
+      : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
+        "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
     wrap.appendChild(renderStage(state));
     if (_isAdmin) wrap.appendChild(adminPanel(state));
@@ -384,6 +447,10 @@
         '<button class="sec" data-clear="2">Очистить оч.3</button>' +
         '<button class="danger" data-clear="all">Очистить ВСЕ</button>' +
         '<button class="sec" id="qa-log-btn">Показать лог и входы</button>' +
+      "</div>" +
+      '<div class="q-admin-row">' +
+        '<button class="sec" id="qa-place">🎯 Ручная расстановка предметов/факелов: ' +
+          (_placeMode ? "ВКЛ — тащи мышкой, сохраняется" : "выкл") + "</button>" +
       "</div>" +
       '<div class="q-admin-row">' +
         '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
@@ -477,6 +544,10 @@
     box.querySelector("#qa-gm").addEventListener("click", function () { setGender("m"); });
     box.querySelector("#qa-gf").addEventListener("click", function () { setGender("f"); });
     box.querySelector("#qa-gr").addEventListener("click", function () { setGender(""); });
+    box.querySelector("#qa-place").addEventListener("click", function () {
+      _placeMode = !_placeMode;
+      render(_lastState);
+    });
     return box;
   }
 
@@ -590,6 +661,7 @@
       Promise.all([
         q("GET", "/queue/roster").then(function (d) { _roster = d.roster || []; }).catch(function () { _roster = []; }),
         q("GET", "/queue/models").then(function (d) { MODEL_SETTINGS = d.settings || {}; }).catch(function () { MODEL_SETTINGS = {}; }),
+        q("GET", "/queue/placements").then(function (d) { PLACEMENTS = d.placements || {}; }).catch(function () { PLACEMENTS = {}; }),
         q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
       ]).then(refresh);
     }
