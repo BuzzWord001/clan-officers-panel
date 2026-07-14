@@ -26,9 +26,55 @@
     officer: { label: "Офицер",  icon: "✦", cls: "gs-r-off" },
   };
 
+  // Самодостаточные стили выпадашки — инжектим из JS (id-специфичность,
+  // гарантированно применяются). Дропдаун лежит в <body>, поэтому НЕ полагаемся
+  // на внешний styles.css (у части браузеров он кэшировался/не доезжал → окно
+  // рисовалось без фона, крупным текстом и под линией). Здесь фон, z-index и
+  // размеры зашиты жёстко.
+  function injectStyle() {
+    if (document.getElementById("gs-drop-style")) return;
+    const st = document.createElement("style");
+    st.id = "gs-drop-style";
+    st.textContent =
+      '#gs-drop{position:fixed;max-height:66vh;overflow-y:auto;background:#17100a;' +
+        'border:1px solid rgba(224,162,74,.45);border-radius:10px;' +
+        'box-shadow:0 16px 46px rgba(0,0,0,.72);padding:5px;z-index:5000;' +
+        'font-family:system-ui,Segoe UI,Arial,sans-serif}' +
+      '#gs-drop[hidden]{display:none}' +
+      '#gs-drop .gs-head{font-size:11px;color:#a58c68;padding:4px 8px 6px}' +
+      '#gs-drop .gs-head b{color:#ffd24a}' +
+      '#gs-drop .gs-empty{font-size:12px;color:#a58c68;padding:10px;text-align:center}' +
+      '#gs-drop .gs-row{padding:8px;border-radius:7px;border-bottom:1px solid rgba(224,162,74,.10)}' +
+      '#gs-drop .gs-row:last-child{border-bottom:none}' +
+      '#gs-drop .gs-row:hover{background:rgba(224,162,74,.07)}' +
+      '#gs-drop .gs-nick{font-size:14px;font-weight:700;color:#f6ead2;margin-bottom:2px}' +
+      '#gs-drop .gs-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:5px 0 2px}' +
+      '#gs-drop .gs-cap{font-size:9.5px;font-weight:700;letter-spacing:.4px;' +
+        'text-transform:uppercase;color:#9a8360}' +
+      '#gs-drop .gs-secs{display:flex;flex-wrap:wrap;gap:5px}' +
+      '#gs-drop .gs-nosec{font-size:11px;color:#7a6a4a;font-style:italic}' +
+      '#gs-drop .gs-sec{font-size:11px;font-weight:600;text-decoration:none;padding:3px 9px;' +
+        'border-radius:11px;white-space:nowrap;border:1px solid currentColor;opacity:.95}' +
+      '#gs-drop .gs-sec:hover{opacity:1;box-shadow:0 0 8px -1px currentColor}' +
+      '#gs-drop .gs-role{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;' +
+        'border:1px solid currentColor}' +
+      '#gs-drop .gs-cur{color:#66d47f;background:rgba(80,220,120,.14)}' +
+      '#gs-drop .gs-reg{color:#ffcf6a;background:rgba(255,200,90,.14)}' +
+      '#gs-drop .gs-chat{color:#6fb0e6;background:rgba(90,150,220,.14)}' +
+      '#gs-drop .gs-dep{color:#e0a0a0;background:rgba(220,120,120,.12)}' +
+      '#gs-drop .gs-kick{color:#ff8a8a;background:rgba(255,90,90,.14)}' +
+      '#gs-drop .gs-ever{color:#b39a6a;background:rgba(180,150,90,.10)}' +
+      '#gs-drop .gs-rega{color:#c8a86a;background:rgba(200,160,90,.10)}' +
+      '#gs-drop .gs-r-elite{color:#ff8a94;background:rgba(255,90,106,.16)}' +
+      '#gs-drop .gs-r-vet{color:#ffd24a;background:rgba(255,200,80,.16)}' +
+      '#gs-drop .gs-r-off{color:#ff9a44;background:rgba(255,150,70,.14)}';
+    document.head.appendChild(st);
+  }
+
   function inject() {
     const bar = document.querySelector(".topbar");
     if (!bar || document.getElementById("gs-wrap")) return;
+    injectStyle();
     const wrap = document.createElement("div");
     wrap.id = "gs-wrap";
     wrap.className = "gs-wrap";
