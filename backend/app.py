@@ -143,6 +143,8 @@ import api_chamber
 app.include_router(api_chamber.router)
 import api_ts3
 app.include_router(api_ts3.router)
+import api_queue
+app.include_router(api_queue.router)
 
 
 # --- Frontend (single-origin) --------------------------------------------

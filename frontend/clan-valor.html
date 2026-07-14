@@ -7,7 +7,23 @@
   <meta name="color-scheme" content="dark">
   <title>SanTDeviL — Доблесть</title>
   <link rel="stylesheet" href="styles.css?v=1806000000">
-  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .tabs{display:none!important}@keyframes bootRevealTabs{to{display:flex}}html.booting .tabs{animation:bootRevealTabs 0s linear 4s forwards}</style>
+  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .tabs{display:none!important}@keyframes bootRevealTabs{to{display:flex}}html.booting .tabs{animation:bootRevealTabs 0s linear 4s forwards}
+  /* Кнопка-вход в раздел «Очередь за ресурсами с КХ» — торговец приглашает */
+  .q-enter-row{display:flex;justify-content:flex-end;margin:0 0 10px}
+  .q-enter{display:inline-flex;align-items:center;gap:12px;text-decoration:none;
+    padding:8px 16px 8px 8px;border-radius:14px;
+    background:linear-gradient(180deg,rgba(224,162,74,.16),rgba(224,162,74,.05));
+    border:1px solid rgba(224,162,74,.45);box-shadow:0 4px 18px rgba(0,0,0,.4);
+    transition:transform .18s ease,box-shadow .25s ease,filter .18s ease}
+  .q-enter:hover{transform:translateY(-2px) scale(1.02);
+    box-shadow:0 8px 26px rgba(245,200,120,.35);filter:brightness(1.05)}
+  .q-enter img{width:78px;height:auto;border-radius:10px;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.55));animation:qEnterBob 2.6s ease-in-out infinite}
+  .q-enter-cta{font:800 15px/1.2 Georgia,serif;color:#f0c878;
+    text-shadow:0 0 10px rgba(245,200,120,.4);white-space:nowrap}
+  .q-enter-cta b{font-size:19px;color:#ffd98a}
+  @keyframes qEnterBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+  @media(max-width:560px){.q-enter img{width:58px}.q-enter-cta{font-size:13px}.q-enter-cta b{font-size:16px}}</style>
   <noscript><style>html.booting .tabs{display:flex!important}</style></noscript>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
   <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
@@ -87,6 +103,12 @@
       </div>
 
       <div class="panel members-panel">
+        <div class="q-enter-row">
+          <a class="q-enter" href="queue.html" aria-label="Войти в очередь за ресурсами с КХ">
+            <img src="assets/queue/trader-enter.png?v=1" alt="">
+            <span class="q-enter-cta">Очередь за ресурсами<br>с КХ <b>→</b></span>
+          </a>
+        </div>
         <div class="valor-update-note">🕗 Таблица доблести обновляется раз в неделю — в воскресенье вечером</div>
         <div class="members-header">
           <div class="members-stats" id="valor-summary"></div>

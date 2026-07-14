@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ru" class="booting">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#140d07">
+  <meta name="color-scheme" content="dark">
+  <title>SanTDeviL — Очередь за ресурсами с КХ</title>
+  <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
+  <style>
+    :root{--gold:#f0c878;--bd:rgba(224,162,74,.4)}
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#140d07;color:#f3e8d2;
+      font-family:system-ui,Segoe UI,Arial,sans-serif;min-height:100%}
+    body::before{content:"";position:fixed;inset:0;z-index:-1;
+      background:radial-gradient(1200px 700px at 50% -10%,rgba(224,162,74,.10),transparent 60%),#140d07}
+    a{color:var(--gold)}
+    .q-top{display:flex;align-items:center;gap:12px;padding:14px 20px}
+    .q-top img{width:40px;height:40px;border-radius:8px}
+    .q-top .t{font:700 18px/1 Georgia,serif;color:var(--gold)}
+    .q-top .sp{flex:1}
+    .q-back{font-size:13px;text-decoration:none;opacity:.85}
+    .q-back:hover{opacity:1}
+
+    /* окно входа */
+    .q-auth{max-width:420px;margin:6vh auto 40px;padding:26px 24px 22px;
+      background:linear-gradient(180deg,#241608,#160d06);
+      border:1px solid var(--bd);border-radius:16px;
+      box-shadow:0 0 50px rgba(245,200,120,.14),inset 0 0 30px rgba(0,0,0,.5)}
+    .q-auth-ic{display:block;width:120px;height:auto;margin:-8px auto 6px;
+      filter:drop-shadow(0 6px 16px rgba(0,0,0,.55))}
+    .q-auth h1{font:700 20px/1.25 Georgia,serif;text-align:center;color:var(--gold);
+      margin:2px 0 4px;text-shadow:0 0 12px rgba(245,200,120,.4)}
+    .q-auth .sub{font-size:12.5px;text-align:center;color:#dcc9ad;opacity:.9;margin:0 0 16px}
+    .q-field{margin:0 0 12px;position:relative}
+    .q-field label{display:block;font:600 11px system-ui;letter-spacing:.6px;
+      text-transform:uppercase;color:#caa66a;margin:0 0 5px}
+    .q-field input{width:100%;padding:11px 12px;font-size:14px;color:#f5ecda;
+      background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:9px;outline:none}
+    .q-field input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(224,162,74,.22)}
+    .q-hint{font-size:11.5px;color:#c9b48f;margin:-4px 0 12px;padding:8px 10px;
+      background:rgba(224,162,74,.10);border:1px solid rgba(224,162,74,.25);border-radius:9px}
+    .q-btn{width:100%;padding:12px;margin-top:4px;cursor:pointer;font:700 14px system-ui;
+      color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:10px;
+      box-shadow:0 4px 14px rgba(245,200,120,.35)}
+    .q-btn:hover{filter:brightness(1.06)}
+    .q-btn:disabled{opacity:.6;cursor:default}
+    .q-err{min-height:16px;margin:10px 0 0;font-size:12.5px;text-align:center;color:#ff8a7a}
+    .q-ok{color:#9fe0a0}
+    .q-remember{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#dcc9ad;margin:2px 0 8px}
+    .q-back-step{display:inline-block;margin-top:10px;font-size:12px;color:#caa66a;
+      background:none;border:0;cursor:pointer}
+    .q-back-step:hover{color:var(--gold)}
+
+    /* автоподсказки ников */
+    .q-sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:240px;
+      overflow-y:auto;background:#1a1109;border:1px solid var(--bd);border-radius:10px;
+      box-shadow:0 14px 40px rgba(0,0,0,.6);padding:4px;display:none}
+    .q-sugg.show{display:block}
+    .q-sugg-item{padding:8px 10px;border-radius:7px;cursor:pointer}
+    .q-sugg-item:hover,.q-sugg-item.active{background:rgba(224,162,74,.12)}
+    .q-sugg-nick{font-weight:700;color:#f6ead2;font-size:13.5px}
+    .q-sugg-meta{font-size:11px;color:#a58c68;margin-top:1px}
+    .q-sugg-twin{color:#e0a86a}
+    .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
+
+    /* раздел очереди (плейсхолдер до Фазы 2) */
+    .q-section{max-width:960px;margin:2vh auto 60px;padding:0 16px}
+    .q-welcome{padding:16px 18px;background:linear-gradient(180deg,#231607,#150c05);
+      border:1px solid var(--bd);border-radius:14px}
+    .q-welcome b{color:var(--gold)}
+    .q-soon{margin-top:16px;padding:26px 20px;text-align:center;color:#c9b48f;
+      border:1px dashed rgba(224,162,74,.35);border-radius:14px;background:rgba(224,162,74,.04)}
+    .q-logout{margin-left:10px;font-size:12px;background:none;border:1px solid var(--bd);
+      color:#caa66a;border-radius:8px;padding:5px 10px;cursor:pointer}
+    .q-logout:hover{color:var(--gold)}
+    html.booting .q-app{visibility:hidden}
+  </style>
+</head>
+<body>
+  <div class="q-app">
+    <div class="q-top">
+      <img src="assets/logo.png?v=1798200000" alt="">
+      <div class="t">Очередь за ресурсами с КХ</div>
+      <div class="sp"></div>
+      <a class="q-back" href="clan-valor.html">← на сайт</a>
+    </div>
+
+    <!-- ОКНО ВХОДА -->
+    <main class="q-auth" id="auth" hidden>
+      <img class="q-auth-ic" src="assets/queue/trader-enter.png" alt="">
+      <h1>Вход в очередь</h1>
+      <p class="sub" id="auth-sub">Выбери свой игровой ник, чтобы войти</p>
+
+      <!-- шаг 1: ник -->
+      <div id="step-nick">
+        <div class="q-field">
+          <label for="q-nick">Твой игровой ник</label>
+          <input id="q-nick" type="text" autocomplete="off" maxlength="64"
+                 placeholder="Начни вводить ник…">
+          <div class="q-sugg" id="q-sugg"></div>
+        </div>
+        <button class="q-btn" id="btn-next">Далее</button>
+      </div>
+
+      <!-- шаг 2а: РЕГИСТРАЦИЯ (первый вход) -->
+      <div id="step-register" hidden>
+        <div class="q-hint">🔑 Введи <b>общий пароль</b> гильдии — он написан внизу окна
+          «Список участников гильдии» в игре (кнопка <b>G</b>).</div>
+        <div class="q-field">
+          <label for="q-shared">Общий пароль (из игры)</label>
+          <input id="q-shared" type="password" autocomplete="off" maxlength="200">
+        </div>
+        <div class="q-field">
+          <label for="q-email">Почта (для восстановления пароля, необязательно)</label>
+          <input id="q-email" type="email" autocomplete="email" maxlength="200"
+                 placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-newpass">Придумай свой личный пароль</label>
+          <input id="q-newpass" type="password" autocomplete="new-password" maxlength="200"
+                 placeholder="минимум 4 символа">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem1" checked> запомнить меня на этом устройстве</label>
+        <button class="q-btn" id="btn-register">Зарегистрироваться и войти</button>
+        <button class="q-back-step" data-back>← другой ник</button>
+      </div>
+
+      <!-- шаг 2б: ВХОД (уже регистрировался) -->
+      <div id="step-login" hidden>
+        <div class="q-field">
+          <label for="q-pass">Твой личный пароль</label>
+          <input id="q-pass" type="password" autocomplete="current-password" maxlength="200">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem2" checked> оставаться в системе</label>
+        <button class="q-btn" id="btn-login">Войти</button>
+        <button class="q-back-step" data-back>← другой ник</button>
+      </div>
+
+      <p class="q-err" id="auth-err" role="alert"></p>
+    </main>
+
+    <!-- РАЗДЕЛ ОЧЕРЕДИ (после входа) -->
+    <section class="q-section" id="section" hidden>
+      <div class="q-welcome">
+        Привет, <b id="who">игрок</b>!
+        <button class="q-logout" id="btn-logout">Выйти</button>
+        <div style="margin-top:6px;font-size:13px;color:#c9b48f">
+          Ты вошёл в раздел очереди за ресурсами с КХ.
+        </div>
+      </div>
+      <div class="q-soon">
+        🏗️ Здесь скоро появятся <b>3 параллельные очереди</b> (обычные · редкие · легендарные)
+        с пиксельными человечками и будками торговцев.<br>
+        Раздел в разработке — вход и аккаунты уже работают.
+      </div>
+    </section>
+  </div>
+
+  <script src="config.js?v=1791600000"></script>
+  <script src="js/queue.js?v=1800500000"></script>
+</body>
+</html>
