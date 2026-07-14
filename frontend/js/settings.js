@@ -42,6 +42,37 @@
     }
   });
 
+  // ── Пароль комнаты распределения наград (очередь) ──
+  const qpwState = $("qpw-state");
+  function refreshQpw() {
+    API.queuePwStatus()
+      .then((d) => {
+        qpwState.textContent = d.is_set
+          ? "задан ✓"
+          : "НЕ задан — игроки пока не смогут зарегистрироваться";
+        qpwState.style.color = d.is_set ? "#9fe0a0" : "#e0a86a";
+      })
+      .catch(() => { qpwState.textContent = "?"; });
+  }
+  refreshQpw();
+  $("queue-pwd-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const a = $("qpw-new").value;
+    const b = $("qpw-confirm").value;
+    const status = $("qpw-status");
+    if (!a) { flash(status, "Введите пароль.", false); return; }
+    if (a !== b) { flash(status, "Пароли не совпадают.", false); return; }
+    try {
+      await API.queuePwSet(a);
+      $("qpw-new").value = "";
+      $("qpw-confirm").value = "";
+      flash(status, "✓ Пароль комнаты распределения наград сохранён.", true);
+      refreshQpw();
+    } catch (e) {
+      flash(status, e.detail || e.message || "Ошибка", false);
+    }
+  });
+
   // ── Веса категорий ценности (%) ──
   (function initWeights() {
     const KEYS = ["base", "streak", "officer", "veteran", "social"];

@@ -127,6 +127,33 @@
       </div>
 
       <div class="panel">
+        <h2>Пароль комнаты распределения наград (очередь)</h2>
+        <p class="hint" style="margin-bottom: 12px;">
+          Общий пароль для входа в раздел «Очередь за ресурсами с КХ». Игроки вводят его
+          при ПЕРВОМ входе (тот, что внизу окна «Список участников гильдии» в игре — кнопка
+          <b>G</b>), затем придумывают свой личный пароль. Смена этого пароля НЕ сбрасывает
+          уже созданные личные пароли игроков.
+          <br>Текущее состояние: <b id="qpw-state">…</b>
+        </p>
+        <form id="queue-pwd-form" autocomplete="off">
+          <div class="form-group">
+            <label for="qpw-new">Пароль комнаты (из игры, кнопка G)</label>
+            <input type="password" id="qpw-new" required minlength="1" maxlength="200"
+                   autocomplete="new-password" placeholder="введите пароль">
+          </div>
+          <div class="form-group">
+            <label for="qpw-confirm">Повтор пароля</label>
+            <input type="password" id="qpw-confirm" required minlength="1" maxlength="200"
+                   autocomplete="new-password">
+          </div>
+          <div class="form-actions">
+            <button type="submit">Сохранить пароль комнаты</button>
+          </div>
+          <div class="status-line" id="qpw-status"></div>
+        </form>
+      </div>
+
+      <div class="panel">
         <h2>Учётные данные администратора</h2>
         <p class="hint" style="margin-bottom: 12px;">
           Этот логин и пароль — только твои. Для подтверждения изменений
@@ -322,9 +349,9 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1812000000"></script>
+  <script src="js/api.js?v=1816500000"></script>
   <script src="js/global-search.js?v=1816000000"></script>
-  <script src="js/settings.js?v=1796400000"></script>
+  <script src="js/settings.js?v=1816500000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1800100000"></script>
   <script src="js/chamber-door.js?v=1800300000"></script>

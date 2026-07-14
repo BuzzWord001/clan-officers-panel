@@ -124,6 +124,8 @@
     loginAdmin:    (username, password)  => loginAndStore("/auth/admin/login", { username, password }),
     setOfficerPwd: (new_password)        => request("POST", "/auth/admin/officer-password", { new_password }),
     updateAdmin:   (payload)             => request("POST", "/auth/admin/credentials", payload),
+    queuePwStatus: ()                    => request("GET",  "/queue/admin/shared-password"),
+    queuePwSet:    (password)            => request("POST", "/queue/admin/shared-password", { password }),
 
     list:          () => request("GET",  "/acceptances"),
     create:        (payload) => request("POST",  "/acceptances", payload),
