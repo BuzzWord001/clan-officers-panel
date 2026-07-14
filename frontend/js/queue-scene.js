@@ -37,12 +37,31 @@
     if (/[аяьи]$/i.test(name)) return "f";
     return "m";
   }
-  function modelUrl(e) {
+  function modelInfo(e) {
     var pc = canon(e.main_nick || e.nick);
-    if (PERSONAL[pc]) return "assets/queue/personal/" + PERSONAL[pc];
+    if (PERSONAL[pc]) { var f = PERSONAL[pc]; return { url: "assets/queue/personal/" + f, key: "personal/" + f }; }
     var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
-    if (set) { var g = genderOf(e.cls, e.true_name); return "assets/queue/class/" + (set[g] || set.m || set.f); }
+    if (set) { var g = genderOf(e.cls, e.true_name); var fn = set[g] || set.m || set.f;
+      return { url: "assets/queue/class/" + fn, key: "class/" + fn }; }
     return null;
+  }
+  function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
+
+  // все модели (для админ-настройки поворота/зеркала)
+  var ALL_MODELS = [
+    { key: "class/Воин(м).png", label: "Воин (м)" }, { key: "class/Воин(ж).png", label: "Воин (ж)" },
+    { key: "class/Жрец (м).png", label: "Жрец (м)" }, { key: "class/Жрец (ж).png", label: "Жрец (ж)" },
+    { key: "class/Маг (ж).png", label: "Маг (ж)" }, { key: "class/Друид.png", label: "Друид" },
+    { key: "class/Стрелок.png", label: "Стрелок" }, { key: "class/Оборотень.png", label: "Оборотень" },
+    { key: "class/Странник.png", label: "Странник" },
+    { key: "personal/_Naomi.png", label: "Naomi (личн.)" }, { key: "personal/Карася.png", label: "Карася (личн.)" },
+    { key: "personal/Кэя.png", label: "Кэя (личн.)" }, { key: "personal/Лирия!.png", label: "Лирия! (личн.)" },
+    { key: "personal/Химеко.png", label: "Химеко (личн.)" }
+  ];
+  var MODEL_SETTINGS = {};   // key -> {flip, rotate}
+  function transformStr(s) {
+    if (!s) return "";
+    return (s.flip ? "scaleX(-1) " : "") + (s.rotate ? ("rotate(" + s.rotate + "deg)") : "");
   }
 
   var LANES = [
@@ -163,10 +182,11 @@
       var n = entries.length;
       var leftPct = n <= 1 ? 12 : (8 + (i / Math.max(1, n - 1)) * 74); // слева-направо к будке
       var zig = (i % 2 ? 10 : 0); // лёгкий зигзаг
-      var url = modelUrl(e);
+      var mi = modelInfo(e);
       var mine = !isDemo && canon(e.main_nick) === meCanon;
-      var body = url
-        ? '<img class="q-char-img" src="' + esc(url) + '" alt="" loading="lazy">'
+      var body = mi
+        ? '<img class="q-char-img" src="' + esc(mi.url) + '" alt="" loading="lazy" data-mkey="' +
+            esc(mi.key) + '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '">'
         : '<div class="q-char-ph">' + esc((e.cls || "?").slice(0, 8)) + "</div>";
       return '<div class="q-char' + (mine ? " q-char-me" : "") + '" data-id="' + (e.id || "") +
         '" data-i="' + i + '" style="left:' + leftPct + "%;bottom:" + zig + 'px;animation-delay:' + (i * 0.2) + 's">' +
@@ -351,7 +371,64 @@
           (accs || '<tr><td colspan="4">аккаунтов нет</td></tr>') + "</tbody></table>";
       }).catch(function (e) { st("Лог доступен только админу: " + (e.detail || e.message)); });
     });
+    box.appendChild(buildOrientSection());
     return box;
+  }
+
+  // ── админ: поворот/зеркало каждой модели ──
+  function buildOrientSection() {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "16px";
+    wrap.innerHTML =
+      '<h3 style="margin:0 0 6px;font:800 14px Georgia,serif;color:#f0c878">🔄 Поворот и зеркало моделей</h3>' +
+      '<div style="font-size:12px;color:#c9b48f;margin-bottom:10px">Персонажи идут к будке (вправо). ' +
+      'Если модель смотрит не туда — «⇋ Зеркало». «↺/↻» — поворот на 15°. Применяется ко ВСЕМ с этой ' +
+      'моделью и сразу сохраняется.</div>';
+    var grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px";
+    ALL_MODELS.forEach(function (m) {
+      var s = Object.assign({ flip: 0, rotate: 0 }, MODEL_SETTINGS[m.key] || {});
+      MODEL_SETTINGS[m.key] = s;
+      var card = document.createElement("div");
+      card.style.cssText = "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:10px;padding:8px;text-align:center";
+      var img = document.createElement("img");
+      img.src = "assets/queue/" + m.key;
+      img.style.cssText = "height:82px;width:auto;max-width:100%;object-fit:contain;background:linear-gradient(180deg,#bfe0ea,#8fc36a);border-radius:8px;padding:3px";
+      function applyPreview() { img.style.transform = transformStr(s); }
+      applyPreview();
+      var lbl = document.createElement("div");
+      lbl.textContent = m.label + (s.flip || s.rotate ? "" : "");
+      lbl.style.cssText = "font-size:11.5px;color:#f6ead2;margin:5px 0 6px;font-weight:700";
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:4px;justify-content:center;flex-wrap:wrap";
+      function applyScene() {
+        var sel = document.querySelectorAll('.q-char-img[data-mkey="' + m.key.replace(/"/g, '\\"') + '"]');
+        [].forEach.call(sel, function (el) { el.style.transform = transformStr(s); });
+      }
+      var saveT;
+      function save() {
+        applyPreview(); applyScene();
+        clearTimeout(saveT);
+        saveT = setTimeout(function () {
+          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate })
+            .catch(function (e) { alert("Не сохранилось (нужен вход админом): " + (e.detail || e.message)); });
+        }, 250);
+      }
+      function mk(txt, title, fn) {
+        var b = document.createElement("button");
+        b.textContent = txt; b.title = title;
+        b.style.cssText = "cursor:pointer;border:1px solid rgba(224,162,74,.5);background:rgba(20,13,7,.7);color:#f0c878;border-radius:6px;padding:5px 8px;font-size:13px";
+        b.addEventListener("click", fn); return b;
+      }
+      row.appendChild(mk("⇋", "Отзеркалить", function () { s.flip = s.flip ? 0 : 1; save(); }));
+      row.appendChild(mk("↺", "−15°", function () { s.rotate = (s.rotate || 0) - 15; save(); }));
+      row.appendChild(mk("↻", "+15°", function () { s.rotate = (s.rotate || 0) + 15; save(); }));
+      row.appendChild(mk("⟲", "Сброс", function () { s.flip = 0; s.rotate = 0; save(); }));
+      card.appendChild(img); card.appendChild(lbl); card.appendChild(row);
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+    return wrap;
   }
 
   function refresh() {
@@ -368,6 +445,7 @@
       _meAcc = acc || null;
       Promise.all([
         q("GET", "/queue/roster").then(function (d) { _roster = d.roster || []; }).catch(function () { _roster = []; }),
+        q("GET", "/queue/models").then(function (d) { MODEL_SETTINGS = d.settings || {}; }).catch(function () { MODEL_SETTINGS = {}; }),
         q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
       ]).then(refresh);
     }

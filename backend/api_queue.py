@@ -104,6 +104,13 @@ def ensure_queue_tables() -> None:
               user_agent TEXT NOT NULL DEFAULT '',
               detail     TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_models (
+              model_key  TEXT PRIMARY KEY,          -- 'class/Воин(м).png' | 'personal/Карася.png'
+              flip       INTEGER NOT NULL DEFAULT 0, -- 1 = отзеркалить по горизонтали
+              rotate     INTEGER NOT NULL DEFAULT 0, -- градусы
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -241,6 +248,12 @@ class MoveIn(BaseModel):
 
 class ClearIn(BaseModel):
     queue: int | None = None                 # None = очистить все очереди
+
+
+class ModelIn(BaseModel):
+    key: str = Field(min_length=1, max_length=120)
+    flip: int = Field(default=0)
+    rotate: int = Field(default=0)
 
 
 # ─────────────────────────── эндпоинты ───────────────────────────
@@ -510,6 +523,26 @@ def admin_clear(payload: ClearIn, request: Request, actor: dict = Depends(requir
         else:
             conn.execute("DELETE FROM queue_entries WHERE queue=?", (payload.queue,))
             _log(conn, "admin_clear", actor=_actor_name(actor), queue=payload.queue, request=request)
+    return {"ok": True}
+
+
+@router.get("/models")
+def models() -> dict:
+    with db.connection() as conn:
+        rows = conn.execute("SELECT model_key, flip, rotate FROM queue_models").fetchall()
+    return {"settings": {r["model_key"]: {"flip": r["flip"], "rotate": r["rotate"]} for r in rows}}
+
+
+@router.post("/admin/model")
+def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
+    flip = 1 if payload.flip else 0
+    rot = max(-180, min(180, int(payload.rotate)))
+    with db.connection() as conn:
+        conn.execute(
+            "INSERT INTO queue_models (model_key, flip, rotate, updated_at) VALUES (?,?,?,?)"
+            " ON CONFLICT(model_key) DO UPDATE SET flip=excluded.flip,"
+            " rotate=excluded.rotate, updated_at=excluded.updated_at",
+            (payload.key, flip, rot, _now()))
     return {"ok": True}
 
 
