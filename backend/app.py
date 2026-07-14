@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import mimetypes
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -159,6 +160,18 @@ app.include_router(api_queue.router)
 _FRONTEND_DIR = os.environ.get("FRONTEND_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend"
 )
+# В контейнере mimetypes может не знать современные типы (напр. .webp) → отдаёт
+# text/plain, и браузер НЕ рисует их как картинку/шрифт (пропала эмблема Элиты).
+# Правим Content-Type по расширению.
+_EXT_MIME = {
+    ".webp": "image/webp", ".avif": "image/avif", ".svg": "image/svg+xml",
+    ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon",
+    ".jpeg": "image/jpeg", ".jpg": "image/jpeg",
+}
+for _ext, _mt in _EXT_MIME.items():
+    mimetypes.add_type(_mt, _ext)
+
+
 class _RevalidateHTMLStatic(StaticFiles):
     """StaticFiles, но HTML отдаёт с Cache-Control: no-cache — браузер всегда
     ревалидирует страницу по ETag (дешёвый 304, если не менялась; свежая
@@ -171,6 +184,14 @@ class _RevalidateHTMLStatic(StaticFiles):
     async def get_response(self, path, scope):
         resp = await super().get_response(path, scope)
         ct = resp.headers.get("content-type", "")
+        # если тип не распознан (text/plain) — правим по расширению файла
+        if (not ct) or ct.startswith("text/plain"):
+            low = (path or "").lower()
+            for ext, mt in _EXT_MIME.items():
+                if low.endswith(ext):
+                    resp.headers["content-type"] = mt
+                    ct = mt
+                    break
         if ct.startswith("text/html"):
             resp.headers["Cache-Control"] = "no-cache"
         else:

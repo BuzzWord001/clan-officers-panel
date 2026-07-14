@@ -5022,10 +5022,10 @@ tr.row-elite {
        3) узорный фон (зелень+золото) — фикс. размер + повтор → при разном
           размере ячейки виден кусок узора соответствующего размера. */
   background:
-    url("assets/elita.webp?v=4") no-repeat center / auto min(103px, 92%),
+    url("assets/elita.webp?v=5") no-repeat center / auto min(103px, 92%),
     radial-gradient(ellipse 30% 82% at 50% 50%,
       rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
-    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto;
+    url("assets/elite-bg.webp?v=3") repeat left top / 440px auto;
 }
 
 /* Ячейки строки Элиты — ПРОЗРАЧНЫЕ (сквозь сетку виден фон сайта). Только
@@ -5050,7 +5050,7 @@ tr.row-elite > td {
 #valor-table tr.row-elite td:nth-child(1),
 #valor-table tr.row-elite td:nth-child(2) {
   background:
-    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=3") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02);
 }
 /* Текст на золоте — СВЕТЛЫЙ с плотной ТЁМНОЙ обводкой (halo). По best practice
@@ -5140,10 +5140,10 @@ tr.row-elite > td:last-child {
 .members-table tbody tr.m-row.row-elite.m-row-focus,
 .members-table tbody tr.m-row.row-elite.m-row-flash {
   background:
-    url("assets/elita.webp?v=4") no-repeat center / auto min(103px, 92%),
+    url("assets/elita.webp?v=5") no-repeat center / auto min(103px, 92%),
     radial-gradient(ellipse 30% 82% at 50% 50%,
       rgba(0,0,0,.42), rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 74%),
-    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto !important;
+    url("assets/elite-bg.webp?v=3") repeat left top / 440px auto !important;
   animation: none !important;
 }
 #valor-table tr.row-elite.m-row-focus td:nth-child(1),
@@ -5151,7 +5151,7 @@ tr.row-elite > td:last-child {
 #valor-table tr.row-elite.m-row-flash td:nth-child(1),
 #valor-table tr.row-elite.m-row-flash td:nth-child(2) {
   background:
-    url("assets/elite-bg.webp?v=2") repeat left top / 440px auto,
+    url("assets/elite-bg.webp?v=3") repeat left top / 440px auto,
     linear-gradient(180deg, #241705, #140c02) !important;
   animation: none !important;
 }
