@@ -14,7 +14,9 @@
   }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-  function canon(s) { return (s || "").toString().toLowerCase().replace(/[\s\W_]+/gu, ""); }
+  // ВАЖНО: \W в JS удаляет кириллицу — поэтому берём «не буква/цифра» через
+  // юникод-свойства (кириллица сохраняется). Иначе canon("Карася")→"" и модель не находилась.
+  function canon(s) { return (s || "").toString().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
 
   // ── модели ──
   var CLASS_MODEL = {
@@ -38,11 +40,18 @@
     return "m";
   }
   function modelInfo(e) {
-    var pc = canon(e.main_nick || e.nick);
-    if (PERSONAL[pc]) { var f = PERSONAL[pc]; return { url: "assets/queue/personal/" + f, key: "personal/" + f }; }
+    // персональная модель ищется и по нику-твину, и по мэйну (файл назван по нику)
+    var keys = [canon(e.nick), canon(e.main_nick)];
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] && PERSONAL[keys[i]]) { var f = PERSONAL[keys[i]];
+        return { url: "assets/queue/personal/" + f, key: "personal/" + f }; }
+    }
     var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
-    if (set) { var g = genderOf(e.cls, e.true_name); var fn = set[g] || set.m || set.f;
-      return { url: "assets/queue/class/" + fn, key: "class/" + fn }; }
+    if (set) {
+      var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
+      var fn = set[g] || set.m || set.f;
+      return { url: "assets/queue/class/" + fn, key: "class/" + fn };
+    }
     return null;
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
@@ -75,6 +84,12 @@
 
   var TREE = '<svg viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg"><path d="M30 78 L27 55 h6 L30 78Z" fill="#5a3a1f"/><circle cx="30" cy="34" r="22" fill="#3f7a3a"/><circle cx="18" cy="42" r="15" fill="#356b31"/><circle cx="43" cy="42" r="15" fill="#356b31"/><circle cx="30" cy="24" r="16" fill="#4a8a44"/></svg>';
   var BUSH = '<svg viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="20" r="12" fill="#356b31"/><circle cx="30" cy="16" r="14" fill="#3f7a3a"/><circle cx="42" cy="22" r="10" fill="#356b31"/></svg>';
+  // силуэт-заглушка (когда для класса ещё нет модели и нет персональной)
+  var PH_FIGURE = '<svg viewBox="0 0 44 80" width="44" height="80" xmlns="http://www.w3.org/2000/svg">' +
+    '<ellipse cx="22" cy="76" rx="13" ry="3.5" fill="rgba(0,0,0,.22)"/>' +
+    '<path d="M22 22 C9 22 8 44 9 66 L35 66 C36 44 35 22 22 22Z" fill="#3b2c1a"/>' +
+    '<path d="M22 22 C13 22 12 34 12 44 L32 44 C32 34 31 22 22 22Z" fill="#4a3927"/>' +
+    '<circle cx="22" cy="16" r="10.5" fill="#5a4630"/><circle cx="22" cy="17" r="7" fill="#241a10"/></svg>';
 
   function injectStyle() {
     if (document.getElementById("q-scene-style")) return;
@@ -120,9 +135,10 @@
       "text-shadow:0 1px 2px #000;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis}" +
     ".q-char-img{height:96px;width:auto;display:block;margin:0 auto;" +
       "filter:drop-shadow(0 4px 5px rgba(0,0,0,.4))}" +
-    ".q-char-ph{width:46px;height:82px;margin:0 auto;border-radius:10px 10px 8px 8px;" +
-      "background:linear-gradient(180deg,#4a3a26,#2b2013);border:1px solid rgba(224,162,74,.4);" +
-      "display:flex;align-items:flex-start;justify-content:center;color:#caa66a;font-size:11px;padding-top:6px}" +
+    ".q-char-ph{margin:0 auto;text-align:center;filter:drop-shadow(0 4px 5px rgba(0,0,0,.4))}" +
+    ".q-char-ph svg{display:block;margin:0 auto}" +
+    ".q-ph-cls{display:inline-block;font-size:9px;color:#2a1d0c;background:rgba(255,240,200,.7);" +
+      "border-radius:5px;padding:0 5px;margin-top:1px;font-weight:700}" +
     ".q-char-me .q-char-name{background:linear-gradient(180deg,#3a2a12,#241809);" +
       "border-color:#f0c878;color:#ffe6ad;box-shadow:0 0 10px rgba(245,200,120,.4)}" +
     ".q-char-x{position:absolute;top:-4px;right:-6px;width:20px;height:20px;border-radius:50%;" +
@@ -200,7 +216,8 @@
       var body = mi
         ? '<img class="q-char-img" src="' + esc(mi.url) + '" alt="" loading="lazy" data-mkey="' +
             esc(mi.key) + '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '">'
-        : '<div class="q-char-ph">' + esc((e.cls || "?").slice(0, 8)) + "</div>";
+        : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
+            esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
       return '<div class="q-char' + (mine ? " q-char-me" : "") + '" data-id="' + (e.id || "") +
         '" data-i="' + i + '" style="left:' + leftPct + "%;bottom:" + zig + 'px;animation-delay:' + (i * 0.2) + 's">' +
         (isAdmin ? '<button class="q-char-x" title="Убрать из очереди">✕</button>' : "") +
@@ -303,6 +320,14 @@
         '<button class="danger" data-clear="all">Очистить ВСЕ</button>' +
         '<button class="sec" id="qa-log-btn">Показать лог и входы</button>' +
       "</div>" +
+      '<div class="q-admin-row">' +
+        '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
+        '<input id="qa-gnick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off" style="min-width:150px">' +
+        '<datalist id="qa-roster-dl"></datalist>' +
+        '<button class="sec" id="qa-gm">♂ Мужской</button>' +
+        '<button class="sec" id="qa-gf">♀ Женский</button>' +
+        '<button class="sec" id="qa-gr">Сброс (по имени)</button>' +
+      "</div>" +
       '<div class="q-adm-status" id="qa-status"></div>' +
       '<div class="q-log" id="qa-log" hidden></div>';
 
@@ -370,6 +395,23 @@
           (accs || '<tr><td colspan="4">аккаунтов нет</td></tr>') + "</tbody></table>";
       }).catch(function (e) { st("Лог доступен только админу: " + (e.detail || e.message)); });
     });
+
+    // пол игрока (подбор модели по полу)
+    var dl = box.querySelector("#qa-roster-dl");
+    dl.innerHTML = _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
+    function setGender(g) {
+      var n = box.querySelector("#qa-gnick").value.trim();
+      if (!n) { st("Укажи ник, чтобы задать пол."); return; }
+      q("POST", "/queue/admin/gender", { nick: n, gender: g })
+        .then(function () {
+          st("✓ Пол сохранён: " + n + " → " + (g === "m" ? "мужской" : g === "f" ? "женский" : "по имени"), true);
+          refresh();
+        })
+        .catch(function (e) { st(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    box.querySelector("#qa-gm").addEventListener("click", function () { setGender("m"); });
+    box.querySelector("#qa-gf").addEventListener("click", function () { setGender("f"); });
+    box.querySelector("#qa-gr").addEventListener("click", function () { setGender(""); });
     return box;
   }
 

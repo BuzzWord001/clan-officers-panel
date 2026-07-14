@@ -111,6 +111,12 @@ def ensure_queue_tables() -> None:
               rotate     INTEGER NOT NULL DEFAULT 0, -- градусы
               updated_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_gender (
+              canon      TEXT PRIMARY KEY,           -- канон ника/мэйна
+              gender     TEXT NOT NULL DEFAULT '',   -- 'm' | 'f'
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -256,6 +262,11 @@ class ModelIn(BaseModel):
     rotate: int = Field(default=0)
 
 
+class GenderIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    gender: str = Field(default="")               # 'm' | 'f' | '' (сброс)
+
+
 # ─────────────────────────── эндпоинты ───────────────────────────
 @router.get("/nick-suggest")
 def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
@@ -373,6 +384,25 @@ def set_shared_pw(payload: SharedPwIn, _: dict = Depends(require_admin)) -> dict
 # ─────────────────── состояние очередей + лог (Фаза 2) ───────────────────
 QUEUES = (0, 1, 2)  # 0 обычные · 1 редкие(R) · 2 легендарные(S)
 
+_FEMALE_ONLY = {"друид", "стрелок"}
+_MALE_ONLY = {"оборотень", "странник"}
+
+
+def _gender_of(cls: str, true_name: str, override: str) -> str:
+    """Пол для подбора модели. Приоритет: явное указание админа → класс с одним
+    полом → эвристика по имени (оканч. на а/я/и/ь/е → ж), иначе м."""
+    if override in ("m", "f"):
+        return override
+    c = (cls or "").strip().lower()
+    if c in _FEMALE_ONLY:
+        return "f"
+    if c in _MALE_ONLY:
+        return "m"
+    nm = (true_name or "").strip().split(" ")[0].lower() if true_name else ""
+    if nm and nm[-1] in "аяиье":
+        return "f"
+    return "m"
+
 
 def _actor_name(actor: dict) -> str:
     return (actor.get("name") or actor.get("role") or "admin") if actor else "admin"
@@ -388,10 +418,13 @@ def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
         " VALUES (?,?,?,?,?,?,?,?)", (_now(), kind, actor, nick, queue, ip, ua, detail))
 
 
-def _entry_public(r, idx) -> dict:
+def _entry_public(r, idx, gmap) -> dict:
     p = idx.get(r["main_canon"]) or {}
-    return {"id": r["id"], "nick": r["nick"], "cls": r["cls"] or p.get("cls", ""),
-            "main_nick": p.get("main_nick", r["nick"]), "true_name": p.get("true_name", ""),
+    cls = r["cls"] or p.get("cls", "")
+    tn = p.get("true_name", "")
+    return {"id": r["id"], "nick": r["nick"], "cls": cls,
+            "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
+            "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
             "added_by": r["added_by"]}
 
 
@@ -428,9 +461,11 @@ def state() -> dict:
     qs = [[], [], []]
     with db.connection() as conn:
         idx = _people(conn)
+        gmap = {r["canon"]: r["gender"]
+                for r in conn.execute("SELECT canon, gender FROM queue_gender")}
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap))
     return {"queues": qs}
 
 
@@ -544,6 +579,24 @@ def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
             " rotate=excluded.rotate, updated_at=excluded.updated_at",
             (payload.key, flip, rot, _now()))
     return {"ok": True}
+
+
+@router.post("/admin/gender")
+def set_gender(payload: GenderIn, _: dict = Depends(require_admin)) -> dict:
+    g = payload.gender if payload.gender in ("m", "f") else ""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        cn = p["main_canon"] if p else db._valor_canon(payload.nick)
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not g:
+            conn.execute("DELETE FROM queue_gender WHERE canon=?", (cn,))
+        else:
+            conn.execute(
+                "INSERT INTO queue_gender (canon, gender, updated_at) VALUES (?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET gender=excluded.gender, updated_at=excluded.updated_at",
+                (cn, g, _now()))
+    return {"ok": True, "gender": g}
 
 
 @router.get("/admin/log")
