@@ -73,14 +73,23 @@
     return (s.flip ? "scaleX(-1) " : "") + (s.rotate ? ("rotate(" + s.rotate + "deg)") : "");
   }
 
-  var LANES = [
-    { q: 0, title: "Обычные ресурсы", tag: "очередь 1", booth: "booth-common.png",
-      accent: "#7ec46a", need: "нужно ≥ 60 доблести" },
-    { q: 1, title: "Редкие ресурсы (R)", tag: "очередь 2", booth: "booth-rare.png",
-      accent: "#e0a24a", need: "нужно ≥ 100 доблести" },
-    { q: 2, title: "Легендарные (S)", tag: "очередь 3", booth: "booth-elite.png",
-      accent: "#c07be0", need: "нужно ≥ 100 доблести" }
+  // 3 будки/очереди на сцене 16:9. Координаты — в % сцены (совпадают с фон-картинкой).
+  // path — путь очереди: t=1 у будки (перёд очереди), t=0 — хвост (слева/ближе к зрителю).
+  var BOOTHS = [
+    { q: 0, title: "Обычные", accent: "#7ec46a", bx: 80, by: 30, item: { x: 92, y: 33 },
+      path: [{ x: 8, y: 44 }, { x: 30, y: 40 }, { x: 52, y: 35 }, { x: 71, y: 31 }] },
+    { q: 1, title: "Редкие (R)", accent: "#e0a24a", bx: 84, by: 56, item: { x: 95, y: 59 },
+      path: [{ x: 6, y: 66 }, { x: 30, y: 62 }, { x: 55, y: 58 }, { x: 75, y: 56 }] },
+    { q: 2, title: "Легендарные (S)", accent: "#c07be0", bx: 79, by: 82, item: { x: 91, y: 85 },
+      path: [{ x: 10, y: 90 }, { x: 33, y: 87 }, { x: 56, y: 84 }, { x: 71, y: 82 }] }
   ];
+  function pathPoint(path, t) {
+    t = Math.max(0, Math.min(1, t));
+    var seg = t * (path.length - 1), i = Math.floor(seg), f = seg - i;
+    if (i >= path.length - 1) return path[path.length - 1];
+    var a = path[i], b = path[i + 1];
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+  }
 
   var TREE = '<svg viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg"><path d="M30 78 L27 55 h6 L30 78Z" fill="#5a3a1f"/><circle cx="30" cy="34" r="22" fill="#3f7a3a"/><circle cx="18" cy="42" r="15" fill="#356b31"/><circle cx="43" cy="42" r="15" fill="#356b31"/><circle cx="30" cy="24" r="16" fill="#4a8a44"/></svg>';
   var BUSH = '<svg viewBox="0 0 50 30" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="20" r="12" fill="#356b31"/><circle cx="30" cy="16" r="14" fill="#3f7a3a"/><circle cx="42" cy="22" r="10" fill="#356b31"/></svg>';
@@ -187,93 +196,125 @@
     ".q-modal-x{margin-left:auto;cursor:pointer;background:none;border:0;color:#caa66a;font-size:26px;line-height:1}" +
     ".q-modal-x:hover{color:#f0c878}" +
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
-    "@media(max-width:640px){.q-world{height:160px}.q-char-img{height:74px}.q-booth{height:118px}}";
+    /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
+    ".qs-wrap{max-width:1120px;margin:14px auto 60px;padding:0 12px}" +
+    ".qs-frame{position:relative;border-radius:16px;padding:min(2.8%,28px);border:2px solid #180d03;" +
+      "background:linear-gradient(135deg,#3a2412,#211404 45%,#3a2412);" +
+      "box-shadow:0 12px 44px rgba(0,0,0,.6),inset 0 0 0 2px rgba(224,162,74,.35),inset 0 0 34px rgba(0,0,0,.65)}" +
+    ".qs-frame::before{content:'';position:absolute;inset:9px;border-radius:12px;pointer-events:none;" +
+      "border:2px solid rgba(224,162,74,.5)}" +
+    ".qs-stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;" +
+      "background:var(--qs-bg,none) center/cover no-repeat," +
+        "linear-gradient(180deg,#9fc7e8 0%,#bfe0ea 34%,#cfe0a0 46%,#8fb85e 60%,#6a9a44 100%);" +
+      "box-shadow:inset 0 0 60px rgba(0,0,0,.45)}" +
+    ".qs-glow{position:absolute;width:22%;height:32%;transform:translate(-50%,-55%);pointer-events:none;" +
+      "background:radial-gradient(ellipse at center,var(--gc),transparent 66%);filter:blur(7px);" +
+      "opacity:.5;animation:qsGlow 3.2s ease-in-out infinite}" +
+    "@keyframes qsGlow{0%,100%{opacity:.35;transform:translate(-50%,-55%) scale(.95)}" +
+      "50%{opacity:.65;transform:translate(-50%,-55%) scale(1.06)}}" +
+    ".qs-booth{position:absolute;transform:translate(-50%,-100%);text-align:center;z-index:9000}" +
+    ".qs-sign{display:inline-block;font:800 12px/1.1 Georgia,serif;color:#fff;white-space:nowrap;" +
+      "padding:4px 12px;border-radius:8px;background:linear-gradient(180deg,#3a2612,#221305);" +
+      "border:1px solid rgba(224,162,74,.55);box-shadow:0 3px 10px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
+    ".qs-cnt{display:inline-block;margin-left:7px;padding:0 6px;border-radius:7px;font-size:11px;" +
+      "background:rgba(0,0,0,.45);color:#fff}" +
+    ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
+      "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
+      "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
+    ".qs-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b)}" +
+    ".qs-join:hover{filter:brightness(1.07)}" +
+    ".qs-char{position:absolute;height:16%;transform-origin:bottom center;text-align:center}" +
+    ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
+    ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
+      "animation:qsBob 2.6s ease-in-out infinite}" +
+    ".qs-char-inner img{height:100%;width:auto;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
+    ".qs-char-inner .q-char-ph{height:100%}" +
+    "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
+    ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
+    "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}.qs-join{font-size:11px;padding:5px 9px}" +
+      ".q-char-name{font-size:9px}}";
     document.head.appendChild(st);
   }
 
-  // ── рендер одной дорожки ──
-  function renderLane(lane, entries, meAcc, isAdmin) {
+  // ── одна моделька на сцене: позиция %, масштаб по глубине, y-сортировка ──
+  function renderChar(e, p, t, meCanon, boothQ, idx) {
+    var scale = 1.0 - t * 0.4;                    // у будки (t=1) меньше, у хвоста крупнее
+    var mi = modelInfo(e);
+    var mine = canon(e.main_nick) === meCanon;
+    var body = mi
+      ? '<img class="q-char-img" src="' + esc(mi.url) + '" data-mkey="' + esc(mi.key) +
+          '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy">'
+      : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
+          esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
-    el.className = "q-lane" + (isAdmin ? " admin" : "");
-    el.dataset.q = lane.q;
-    var meCanon = meAcc ? canon(meAcc.main_nick) : "";
-    var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
-
-    var trees = "";
-    for (var t = 0; t < 6; t++) {
-      var lft = 4 + t * 15 + (t % 2 ? 4 : 0);
-      var scale = t % 2 ? 0.8 : 1.05;
-      trees += '<div class="t" style="left:' + lft + '%;transform:scale(' + scale + ')">' +
-        (t % 3 === 2 ? BUSH : TREE) + "</div>";
-    }
-
-    var chars = entries.map(function (e, i) {
-      var n = entries.length;
-      var leftPct = n <= 1 ? 12 : (8 + (i / Math.max(1, n - 1)) * 74); // слева-направо к будке
-      var zig = (i % 2 ? 10 : 0); // лёгкий зигзаг
-      var mi = modelInfo(e);
-      var mine = canon(e.main_nick) === meCanon;
-      var body = mi
-        ? '<img class="q-char-img" src="' + esc(mi.url) + '" alt="" loading="lazy" data-mkey="' +
-            esc(mi.key) + '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '">'
-        : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
-            esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
-      return '<div class="q-char' + (mine ? " q-char-me" : "") + '" data-id="' + (e.id || "") +
-        '" data-i="' + i + '" style="left:' + leftPct + "%;bottom:" + zig + 'px;animation-delay:' + (i * 0.2) + 's">' +
-        (isAdmin ? '<button class="q-char-x" title="Убрать из очереди">✕</button>' : "") +
-        '<div class="q-char-name">' + esc(e.nick) + "</div>" + body +
-        (isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button><button data-mv="1" title="в конец">▶</button></div>' : "") +
-        "</div>";
-    }).join("");
-
+    el.className = "qs-char" + (mine ? " q-char-me" : "");
+    el.dataset.id = e.id || "";
+    el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;" +
+      "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + Math.round(p.y * 12) + ";";
     el.innerHTML =
-      '<div class="q-lane-bar">' +
-        '<span class="q-lane-dot" style="background:' + lane.accent + '"></span>' +
-        '<span class="q-lane-title" style="color:' + lane.accent + '">' + esc(lane.title) + "</span>" +
-        '<span class="q-lane-tag">· ' + esc(lane.tag) + "</span>" +
-        '<span class="q-lane-need">· ' + esc(lane.need) + "</span>" +
-        '<span class="q-lane-count">' + (entries.length ? entries.length + " чел." : "очередь пуста") + "</span>" +
-        (meAcc ? '<button class="q-join' + (iAmIn ? " leave" : "") + '" data-act="' + (iAmIn ? "leave" : "join") +
-          '">' + (iAmIn ? "Выйти из очереди" : "Встать в очередь") + "</button>" : "") +
-      "</div>" +
-      '<div class="q-world">' +
-        '<div class="q-sun"></div>' +
-        '<div class="q-trees">' + trees + "</div>" +
-        '<div class="q-ground"></div><div class="q-path"></div>' +
-        (entries.length ? "" : '<div class="q-empty-note">Очередь пуста — ' +
-          (meAcc ? "нажми «Встать в очередь»" : "никто не стоит") + "</div>") +
-        '<div class="q-track">' + chars + "</div>" +
-        '<div class="q-booth-name">' + esc(lane.title) + "</div>" +
-        '<img class="q-booth" src="assets/queue/' + lane.booth + '" alt="">' +
-      "</div>";
-
-    // события
-    var joinBtn = el.querySelector(".q-join");
-    if (joinBtn) joinBtn.addEventListener("click", function () {
-      var act = joinBtn.dataset.act;
-      joinBtn.disabled = true;
-      q("POST", "/queue/" + act, { queue: lane.q }).then(refresh).catch(function (e) {
-        joinBtn.disabled = false;
-        alert(e.status === 409 ? "Ты уже стоишь в этой очереди." :
-              e.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e.detail || e.message)));
+      (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
+      '<div class="q-char-name">' + esc(e.nick) + "</div>" +
+      '<div class="qs-char-inner">' + body + "</div>" +
+      (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
+        '<button data-mv="1" title="назад">▶</button></div>' : "");
+    if (_isAdmin) {
+      var id = +el.dataset.id;
+      var x = el.querySelector(".q-char-x");
+      if (x) x.addEventListener("click", function () {
+        q("POST", "/queue/admin/remove", { entry_id: id }).then(refresh).catch(admErr);
       });
-    });
-    if (isAdmin) {
-      el.querySelectorAll(".q-char").forEach(function (c) {
-        var id = +c.dataset.id, i = +c.dataset.i;
-        var x = c.querySelector(".q-char-x");
-        if (x) x.addEventListener("click", function () {
-          q("POST", "/queue/admin/remove", { entry_id: id }).then(refresh).catch(admErr); });
-        c.querySelectorAll("[data-mv]").forEach(function (b) {
-          b.addEventListener("click", function () {
-            var target = i + (+b.dataset.mv === -1 ? -1 : 2); // -1 ближе к началу; +2 т.к. индекс сдвигается
-            q("POST", "/queue/admin/move", { entry_id: id, queue: lane.q, position: Math.max(0, target) })
-              .then(refresh).catch(admErr);
-          });
+      el.querySelectorAll("[data-mv]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var target = idx + (+b.dataset.mv === -1 ? -1 : 1);
+          q("POST", "/queue/admin/move", { entry_id: id, queue: boothQ, position: Math.max(0, target) })
+            .then(refresh).catch(admErr);
         });
       });
     }
     return el;
+  }
+
+  // ── сцена: фон + 3 будки (свечение, подпись, счётчик, кнопка) + модельки по путям ──
+  function renderStage(state) {
+    var frame = document.createElement("div");
+    frame.className = "qs-frame";
+    var stage = document.createElement("div");
+    stage.className = "qs-stage" + (_isAdmin ? " admin" : "");
+    var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
+
+    BOOTHS.forEach(function (b) {
+      var entries = state.queues[b.q] || [];
+      var glow = document.createElement("div");
+      glow.className = "qs-glow";
+      glow.style.cssText = "left:" + b.bx + "%;top:" + b.by + "%;--gc:" + b.accent;
+      stage.appendChild(glow);
+
+      entries.forEach(function (e, i) {
+        var t = 1 - i * 0.11;                     // первый (i=0) — у будки
+        stage.appendChild(renderChar(e, pathPoint(b.path, t), t, meCanon, b.q, i));
+      });
+
+      var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
+      var ui = document.createElement("div");
+      ui.className = "qs-booth";
+      ui.style.cssText = "left:" + b.bx + "%;top:" + (b.by - 9) + "%;--gc:" + b.accent;
+      ui.innerHTML =
+        '<div class="qs-sign">' + esc(b.title) + '<span class="qs-cnt">' + entries.length + "</span></div>" +
+        (_meAcc ? '<button class="qs-join' + (iAmIn ? " leave" : "") + '" data-act="' +
+          (iAmIn ? "leave" : "join") + '">' + (iAmIn ? "Выйти" : "Встать в очередь") + "</button>" : "");
+      stage.appendChild(ui);
+      var jb = ui.querySelector(".qs-join");
+      if (jb) jb.addEventListener("click", function () {
+        jb.disabled = true;
+        q("POST", "/queue/" + jb.dataset.act, { queue: b.q }).then(refresh).catch(function (e2) {
+          jb.disabled = false;
+          alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
+                e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+        });
+      });
+    });
+    frame.appendChild(stage);
+    return frame;
   }
 
   function admErr(e) { alert("Ошибка (нужны права админа?): " + (e.detail || e.message)); }
@@ -284,19 +325,17 @@
     _lastState = state;
     var host = document.getElementById("scene");
     host.innerHTML = "";
-    var scene = document.createElement("div");
-    scene.className = "q-scene";
-    if (_isAdmin) scene.appendChild(gearBar());
+    var wrap = document.createElement("div");
+    wrap.className = "qs-wrap";
+    if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
     banner.innerHTML = "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно " +
       "во все сразу. В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
-    scene.appendChild(banner);
-    LANES.forEach(function (lane) {
-      scene.appendChild(renderLane(lane, state.queues[lane.q] || [], _meAcc, _isAdmin));
-    });
-    if (_isAdmin) scene.appendChild(adminPanel(state));
-    host.appendChild(scene);
+    wrap.appendChild(banner);
+    wrap.appendChild(renderStage(state));
+    if (_isAdmin) wrap.appendChild(adminPanel(state));
+    host.appendChild(wrap);
   }
 
   // ── админ-панель ──
