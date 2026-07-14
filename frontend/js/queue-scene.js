@@ -133,7 +133,6 @@
     ".q-lane.admin .q-char-x,.q-lane.admin .q-char-mv{display:flex}" +
     ".q-empty-note{position:absolute;left:14px;top:14px;font-size:12px;color:#20140a;font-weight:700;" +
       "background:rgba(255,255,255,.6);padding:3px 9px;border-radius:8px}" +
-    ".q-demo .q-char{opacity:.82}" +
     "@keyframes qBob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-4px)}}" +
     /* админ-панель */
     ".q-admin{margin:20px 0 0;padding:14px 16px;border-radius:14px;background:linear-gradient(180deg,#1c1207,#140c05);" +
@@ -158,17 +157,31 @@
     ".q-log table{width:100%;border-collapse:collapse;font-size:11.5px}" +
     ".q-log th,.q-log td{padding:5px 8px;border-bottom:1px solid rgba(224,162,74,.12);text-align:left;white-space:nowrap}" +
     ".q-log th{color:#a58c68;position:sticky;top:0;background:#1a1109}" +
+    ".q-gearbar{display:flex;justify-content:flex-end;margin:0 0 10px}" +
+    ".q-gear{cursor:pointer;display:inline-flex;align-items:center;gap:7px;font:700 13px system-ui;" +
+      "color:#f0c878;background:linear-gradient(180deg,#2a1d0f,#160d06);border:1px solid rgba(224,162,74,.55);" +
+      "border-radius:10px;padding:9px 15px;box-shadow:0 3px 10px rgba(0,0,0,.4)}" +
+    ".q-gear:hover{filter:brightness(1.12)}" +
+    ".q-modal{position:fixed;inset:0;z-index:6000;display:flex;align-items:flex-start;justify-content:center;" +
+      "background:rgba(8,5,2,.74);backdrop-filter:blur(3px);overflow:auto;padding:28px 12px}" +
+    ".q-modal-box{width:min(780px,96vw);margin:auto;background:linear-gradient(180deg,#241608,#150d06);" +
+      "border:1px solid rgba(224,162,74,.45);border-radius:16px;padding:16px 18px 22px;box-shadow:0 22px 64px rgba(0,0,0,.6)}" +
+    ".q-modal-head{display:flex;align-items:center;margin:0 0 8px}" +
+    ".q-modal-head h3{margin:0;font:800 17px Georgia,serif;color:#f0c878}" +
+    ".q-modal-x{margin-left:auto;cursor:pointer;background:none;border:0;color:#caa66a;font-size:26px;line-height:1}" +
+    ".q-modal-x:hover{color:#f0c878}" +
+    ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     "@media(max-width:640px){.q-world{height:160px}.q-char-img{height:74px}.q-booth{height:118px}}";
     document.head.appendChild(st);
   }
 
   // ── рендер одной дорожки ──
-  function renderLane(lane, entries, meAcc, isAdmin, isDemo) {
+  function renderLane(lane, entries, meAcc, isAdmin) {
     var el = document.createElement("div");
-    el.className = "q-lane" + (isAdmin ? " admin" : "") + (isDemo ? " demo" : "");
+    el.className = "q-lane" + (isAdmin ? " admin" : "");
     el.dataset.q = lane.q;
     var meCanon = meAcc ? canon(meAcc.main_nick) : "";
-    var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; }) && !isDemo;
+    var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
 
     var trees = "";
     for (var t = 0; t < 6; t++) {
@@ -183,16 +196,16 @@
       var leftPct = n <= 1 ? 12 : (8 + (i / Math.max(1, n - 1)) * 74); // слева-направо к будке
       var zig = (i % 2 ? 10 : 0); // лёгкий зигзаг
       var mi = modelInfo(e);
-      var mine = !isDemo && canon(e.main_nick) === meCanon;
+      var mine = canon(e.main_nick) === meCanon;
       var body = mi
         ? '<img class="q-char-img" src="' + esc(mi.url) + '" alt="" loading="lazy" data-mkey="' +
             esc(mi.key) + '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '">'
         : '<div class="q-char-ph">' + esc((e.cls || "?").slice(0, 8)) + "</div>";
       return '<div class="q-char' + (mine ? " q-char-me" : "") + '" data-id="' + (e.id || "") +
         '" data-i="' + i + '" style="left:' + leftPct + "%;bottom:" + zig + 'px;animation-delay:' + (i * 0.2) + 's">' +
-        (isAdmin && !isDemo ? '<button class="q-char-x" title="Убрать из очереди">✕</button>' : "") +
+        (isAdmin ? '<button class="q-char-x" title="Убрать из очереди">✕</button>' : "") +
         '<div class="q-char-name">' + esc(e.nick) + "</div>" + body +
-        (isAdmin && !isDemo ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button><button data-mv="1" title="в конец">▶</button></div>' : "") +
+        (isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button><button data-mv="1" title="в конец">▶</button></div>' : "") +
         "</div>";
     }).join("");
 
@@ -202,7 +215,7 @@
         '<span class="q-lane-title" style="color:' + lane.accent + '">' + esc(lane.title) + "</span>" +
         '<span class="q-lane-tag">· ' + esc(lane.tag) + "</span>" +
         '<span class="q-lane-need">· ' + esc(lane.need) + "</span>" +
-        '<span class="q-lane-count">' + (isDemo ? "пример" : entries.length + " чел.") + "</span>" +
+        '<span class="q-lane-count">' + (entries.length ? entries.length + " чел." : "очередь пуста") + "</span>" +
         (meAcc ? '<button class="q-join' + (iAmIn ? " leave" : "") + '" data-act="' + (iAmIn ? "leave" : "join") +
           '">' + (iAmIn ? "Выйти из очереди" : "Встать в очередь") + "</button>" : "") +
       "</div>" +
@@ -210,7 +223,8 @@
         '<div class="q-sun"></div>' +
         '<div class="q-trees">' + trees + "</div>" +
         '<div class="q-ground"></div><div class="q-path"></div>' +
-        (isDemo ? '<div class="q-empty-note">пример — тут пусто, нажми «Встать в очередь»</div>' : "") +
+        (entries.length ? "" : '<div class="q-empty-note">Очередь пуста — ' +
+          (meAcc ? "нажми «Встать в очередь»" : "никто не стоит") + "</div>") +
         '<div class="q-track">' + chars + "</div>" +
         '<div class="q-booth-name">' + esc(lane.title) + "</div>" +
         '<img class="q-booth" src="assets/queue/' + lane.booth + '" alt="">' +
@@ -227,7 +241,7 @@
               e.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e.detail || e.message)));
       });
     });
-    if (isAdmin && !isDemo) {
+    if (isAdmin) {
       el.querySelectorAll(".q-char").forEach(function (c) {
         var id = +c.dataset.id, i = +c.dataset.i;
         var x = c.querySelector(".q-char-x");
@@ -247,38 +261,23 @@
 
   function admErr(e) { alert("Ошибка (нужны права админа?): " + (e.detail || e.message)); }
 
-  // ── демо-население (пример) из ростера ──
-  function demoFor(lane, roster) {
-    var withModel = roster.filter(function (p) { return modelUrl(p); });
-    var pool = withModel.length >= 4 ? withModel : roster;
-    var start = lane.q * 4;
-    var out = [];
-    for (var i = 0; i < 5 && pool.length; i++) out.push(pool[(start + i * 3) % pool.length]);
-    return out;
-  }
-
-  var _roster = [], _isAdmin = false, _meAcc = null;
+  var _roster = [], _isAdmin = false, _meAcc = null, _lastState = { queues: [[], [], []] };
 
   function render(state) {
+    _lastState = state;
     var host = document.getElementById("scene");
     host.innerHTML = "";
     var scene = document.createElement("div");
     scene.className = "q-scene";
-    var anyReal = state.queues.some(function (qq) { return qq.length; });
+    if (_isAdmin) scene.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
-    banner.innerHTML = anyReal
-      ? "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей (можно во все сразу). В одну очередь — только один раз, пока не заберёшь ресурс."
-      : "🏰 <b>Так будет выглядеть очередь.</b> Сейчас показан <b>пример</b> с моделями по классам. Нажми «Встать в очередь» — и встанешь по-настоящему.";
+    banner.innerHTML = "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно " +
+      "во все сразу. В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     scene.appendChild(banner);
-
     LANES.forEach(function (lane) {
-      var real = state.queues[lane.q] || [];
-      var isDemo = real.length === 0;
-      var entries = isDemo ? demoFor(lane, _roster) : real;
-      scene.appendChild(renderLane(lane, entries, _meAcc, _isAdmin, isDemo));
+      scene.appendChild(renderLane(lane, state.queues[lane.q] || [], _meAcc, _isAdmin));
     });
-
     if (_isAdmin) scene.appendChild(adminPanel(state));
     host.appendChild(scene);
   }
@@ -371,39 +370,70 @@
           (accs || '<tr><td colspan="4">аккаунтов нет</td></tr>') + "</tbody></table>";
       }).catch(function (e) { st("Лог доступен только админу: " + (e.detail || e.message)); });
     });
-    box.appendChild(buildOrientSection());
     return box;
   }
 
-  // ── админ: поворот/зеркало каждой модели ──
+  // ── кнопка «⚙️ Настройки моделей» (открывает модалку с поворотом/зеркалом) ──
+  function gearBar() {
+    var bar = document.createElement("div");
+    bar.className = "q-gearbar";
+    var b = document.createElement("button");
+    b.className = "q-gear";
+    b.innerHTML = "⚙️ Настройки моделей";
+    b.title = "Поворот и зеркало моделей";
+    b.addEventListener("click", openOrientModal);
+    bar.appendChild(b);
+    return bar;
+  }
+
+  function openOrientModal() {
+    if (document.getElementById("q-orient-modal")) return;
+    var ov = document.createElement("div");
+    ov.className = "q-modal"; ov.id = "q-orient-modal";
+    var box = document.createElement("div");
+    box.className = "q-modal-box";
+    var head = document.createElement("div");
+    head.className = "q-modal-head";
+    head.innerHTML = "<h3>🔄 Поворот и зеркало моделей</h3>";
+    var x = document.createElement("button");
+    x.className = "q-modal-x"; x.innerHTML = "&times;"; x.title = "Закрыть";
+    function close() { ov.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    x.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    head.appendChild(x);
+    box.appendChild(head);
+    box.appendChild(buildOrientSection());
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  }
+
+  // ── грид поворота/зеркала (best practice: тумблер зеркала + ползунок поворота, живое превью) ──
   function buildOrientSection() {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "16px";
     wrap.innerHTML =
-      '<h3 style="margin:0 0 6px;font:800 14px Georgia,serif;color:#f0c878">🔄 Поворот и зеркало моделей</h3>' +
-      '<div style="font-size:12px;color:#c9b48f;margin-bottom:10px">Персонажи идут к будке (вправо). ' +
-      'Если модель смотрит не туда — «⇋ Зеркало». «↺/↻» — поворот на 15°. Применяется ко ВСЕМ с этой ' +
-      'моделью и сразу сохраняется.</div>';
+      '<div style="font-size:12.5px;color:#c9b48f;margin:2px 0 14px">Персонажи идут к будке (вправо). ' +
+      'Если модель смотрит не туда — включи «Зеркало». Ползунок — поворот. Меняется у всех персонажей ' +
+      'с этой моделью сразу и автоматически сохраняется.</div>';
     var grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px";
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px";
     ALL_MODELS.forEach(function (m) {
       var s = Object.assign({ flip: 0, rotate: 0 }, MODEL_SETTINGS[m.key] || {});
       MODEL_SETTINGS[m.key] = s;
       var card = document.createElement("div");
-      card.style.cssText = "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:10px;padding:8px;text-align:center";
+      card.className = "q-mcard";
+      card.style.cssText = "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;padding:10px;text-align:center";
       var img = document.createElement("img");
       img.src = "assets/queue/" + m.key;
-      img.style.cssText = "height:82px;width:auto;max-width:100%;object-fit:contain;background:linear-gradient(180deg,#bfe0ea,#8fc36a);border-radius:8px;padding:3px";
+      img.style.cssText = "height:96px;width:auto;max-width:100%;object-fit:contain;background:linear-gradient(180deg,#bfe0ea,#8fc36a);border-radius:8px;padding:4px";
       function applyPreview() { img.style.transform = transformStr(s); }
       applyPreview();
       var lbl = document.createElement("div");
-      lbl.textContent = m.label + (s.flip || s.rotate ? "" : "");
-      lbl.style.cssText = "font-size:11.5px;color:#f6ead2;margin:5px 0 6px;font-weight:700";
-      var row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:4px;justify-content:center;flex-wrap:wrap";
+      lbl.textContent = m.label;
+      lbl.style.cssText = "font-size:12px;color:#f6ead2;margin:6px 0;font-weight:700";
       function applyScene() {
-        var sel = document.querySelectorAll('.q-char-img[data-mkey="' + m.key.replace(/"/g, '\\"') + '"]');
-        [].forEach.call(sel, function (el) { el.style.transform = transformStr(s); });
+        [].forEach.call(document.querySelectorAll('.q-char-img[data-mkey="' + m.key.replace(/"/g, '\\"') + '"]'),
+          function (el) { el.style.transform = transformStr(s); });
       }
       var saveT;
       function save() {
@@ -412,19 +442,26 @@
         saveT = setTimeout(function () {
           q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate })
             .catch(function (e) { alert("Не сохранилось (нужен вход админом): " + (e.detail || e.message)); });
-        }, 250);
+        }, 300);
       }
-      function mk(txt, title, fn) {
-        var b = document.createElement("button");
-        b.textContent = txt; b.title = title;
-        b.style.cssText = "cursor:pointer;border:1px solid rgba(224,162,74,.5);background:rgba(20,13,7,.7);color:#f0c878;border-radius:6px;padding:5px 8px;font-size:13px";
-        b.addEventListener("click", fn); return b;
-      }
-      row.appendChild(mk("⇋", "Отзеркалить", function () { s.flip = s.flip ? 0 : 1; save(); }));
-      row.appendChild(mk("↺", "−15°", function () { s.rotate = (s.rotate || 0) - 15; save(); }));
-      row.appendChild(mk("↻", "+15°", function () { s.rotate = (s.rotate || 0) + 15; save(); }));
-      row.appendChild(mk("⟲", "Сброс", function () { s.flip = 0; s.rotate = 0; save(); }));
-      card.appendChild(img); card.appendChild(lbl); card.appendChild(row);
+      var mir = document.createElement("button");
+      function paintMir() { mir.textContent = s.flip ? "⇋ Зеркало: вкл" : "⇋ Зеркало: выкл"; mir.style.opacity = s.flip ? "1" : ".7"; }
+      mir.style.cssText = "cursor:pointer;width:100%;margin:0 0 8px;border:1px solid rgba(224,162,74,.5);background:rgba(20,13,7,.7);color:#f0c878;border-radius:8px;padding:7px;font-size:12px;font-weight:700";
+      paintMir();
+      mir.addEventListener("click", function () { s.flip = s.flip ? 0 : 1; paintMir(); save(); });
+      var rd = document.createElement("div");
+      rd.style.cssText = "font-size:11px;color:#a58c68;margin-bottom:2px";
+      rd.textContent = "поворот: " + (s.rotate || 0) + "°";
+      var rng = document.createElement("input");
+      rng.type = "range"; rng.min = "-180"; rng.max = "180"; rng.step = "5"; rng.value = String(s.rotate || 0);
+      rng.style.width = "100%";
+      rng.addEventListener("input", function () { s.rotate = +rng.value; rd.textContent = "поворот: " + s.rotate + "°"; save(); });
+      var rst = document.createElement("button");
+      rst.textContent = "⟲ Сброс"; rst.title = "Без зеркала и поворота";
+      rst.style.cssText = "cursor:pointer;margin-top:8px;border:1px solid rgba(224,162,74,.4);background:none;color:#caa66a;border-radius:8px;padding:5px 10px;font-size:12px";
+      rst.addEventListener("click", function () { s.flip = 0; s.rotate = 0; paintMir(); rd.textContent = "поворот: 0°"; rng.value = "0"; save(); });
+      card.appendChild(img); card.appendChild(lbl); card.appendChild(mir);
+      card.appendChild(rd); card.appendChild(rng); card.appendChild(rst);
       grid.appendChild(card);
     });
     wrap.appendChild(grid);
