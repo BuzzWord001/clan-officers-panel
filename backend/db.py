@@ -6026,7 +6026,8 @@ _ROLE_LABELS = {"veteran": "Ветеран", "elite": "Элита", "officer": "
 def global_search(q: str, limit: int = 40) -> list[dict[str, Any]]:
     """Единый поиск по ВСЕМ разделам сайта: реестр приёма, таблица Доблести
     (сейчас/когда-либо), архив «Покинули клан», ручные кики, участники чатов,
-    роли. Ищет по нику/имени/титулу/примечанию/соц-нику И по названию роли.
+    роли. Ищет по нику/имени (в т.ч. реальные имя-фамилия из VK/Telegram)/титулу
+    (в реестре и Доблести)/примечанию/соц-нику И по названию роли.
     Возвращает список людей (по канону) с тем, в КАКИХ разделах они есть, и
     какие у них роли — чтобы понять «был ли человек на сайте и где он сейчас».
     Каждый: {canon, nick, sections:[...], roles:[...]}."""
@@ -6078,36 +6079,37 @@ def global_search(q: str, limit: int = 40) -> list[dict[str, Any]]:
             "SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
         cur_id = cur_snap["id"] if cur_snap else None
         for r in conn.execute(
-                "SELECT DISTINCT nick_canon, nick, true_name FROM valor_members"):
+                "SELECT DISTINCT nick_canon, nick, true_name, title FROM valor_members"):
             cn = _resolve_canon(r["nick_canon"], amap)
             sections_of[cn].add("valor_ever")
             _nick(cn, r["nick"], 1)
-            if _hit(r["nick"], r["true_name"]):
+            if _hit(r["nick"], r["true_name"], r["title"]):
                 matched.add(cn)
         if cur_id:
             for r in conn.execute(
-                    "SELECT nick_canon, nick, true_name FROM valor_members WHERE snapshot_id=?",
+                    "SELECT nick_canon, nick, true_name, title FROM valor_members WHERE snapshot_id=?",
                     (cur_id,)):
                 cn = _resolve_canon(r["nick_canon"], amap)
                 sections_of[cn].add("valor_current")
                 _nick(cn, r["nick"], 0)
-                if _hit(r["nick"], r["true_name"]):
+                if _hit(r["nick"], r["true_name"], r["title"]):
                     matched.add(cn)
 
         # 3) Архив «Покинули клан» + ручные кики.
-        for r in conn.execute("SELECT nick_canon, nick, true_name FROM valor_departed"):
+        for r in conn.execute("SELECT nick_canon, nick, true_name, last_title FROM valor_departed"):
             cn = _resolve_canon(r["nick_canon"], amap)
             sections_of[cn].add("departed")
             _nick(cn, r["nick"], 3)
-            if _hit(r["nick"], r["true_name"]):
+            if _hit(r["nick"], r["true_name"], r["last_title"]):
                 matched.add(cn)
         for r in conn.execute("SELECT nick_canon FROM valor_force_archived"):
             sections_of[_resolve_canon(r["nick_canon"], amap)].add("force_archived")
 
         # 4) Участники чатов (VK / Telegram).
         for r in conn.execute(
-                "SELECT game_nick, display_name, vk_display, vk_screen_name, "
-                "tg_display, tg_username FROM clan_members WHERE is_active=1"):
+                "SELECT game_nick, display_name, vk_display, vk_first, vk_last, "
+                "vk_screen_name, tg_display, tg_username, tg_first_name, tg_last_name "
+                "FROM clan_members WHERE is_active=1"):
             gn = (r["game_nick"] or "").split(",")[0].strip()
             cn = (_resolve_canon(_valor_canon(gn), amap) if gn
                   else (r["display_name"] or "").lower())
@@ -6115,8 +6117,10 @@ def global_search(q: str, limit: int = 40) -> list[dict[str, Any]]:
                 continue
             sections_of[cn].add("chat")
             _nick(cn, gn or r["display_name"] or r["vk_display"], 4)
+            # Ищем и по реальным имени/фамилии из VK/Telegram, не только по нику.
             if _hit(r["game_nick"], r["display_name"], r["vk_display"],
-                    r["vk_screen_name"], r["tg_display"], r["tg_username"]):
+                    r["vk_first"], r["vk_last"], r["vk_screen_name"],
+                    r["tg_display"], r["tg_username"], r["tg_first_name"], r["tg_last_name"]):
                 matched.add(cn)
 
         # 5) Прямое совпадение по канону + по НАЗВАНИЮ роли.
