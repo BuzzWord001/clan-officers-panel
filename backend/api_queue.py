@@ -124,6 +124,12 @@ def ensure_queue_tables() -> None:
               y          REAL NOT NULL DEFAULT 0,
               updated_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_kv (
+              key        TEXT PRIMARY KEY,           -- 'path:0' (JSON точек) | 'size:frame|char|item|mount'
+              val        TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -278,6 +284,11 @@ class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
     y: float
+
+
+class KVIn(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    val: str = Field(default="", max_length=4000)
 
 
 # ─────────────────────────── эндпоинты ───────────────────────────
@@ -628,6 +639,23 @@ def set_placement(payload: PlacementIn, _: dict = Depends(require_admin)) -> dic
             "INSERT INTO queue_placements (key, x, y, updated_at) VALUES (?,?,?,?)"
             " ON CONFLICT(key) DO UPDATE SET x=excluded.x, y=excluded.y, updated_at=excluded.updated_at",
             (payload.key, x, y, _now()))
+    return {"ok": True}
+
+
+@router.get("/config")
+def get_config() -> dict:
+    with db.connection() as conn:
+        rows = conn.execute("SELECT key, val FROM queue_kv").fetchall()
+    return {"config": {r["key"]: r["val"] for r in rows}}
+
+
+@router.post("/admin/config")
+def set_config(payload: KVIn, _: dict = Depends(require_admin)) -> dict:
+    with db.connection() as conn:
+        conn.execute(
+            "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?)"
+            " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
+            (payload.key, payload.val, _now()))
     return {"ok": True}
 
 

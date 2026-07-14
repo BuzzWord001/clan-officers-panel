@@ -93,10 +93,20 @@
   // ночь: 20:00–07:00 по МСК (МСК = UTC+3), иначе день
   function isNight() { var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7; }
 
-  // анимированные факелы (дефолт-позиции, можно двигать в режиме расстановки)
-  var TORCHES = [{ x: 57, y: 44 }, { x: 72, y: 79 }, { x: 87, y: 81 }];
-  var PLACEMENTS = {};     // key ('item:...'/'mount'/'torch:N') -> {x,y} ручная расстановка
-  var _placeMode = false;  // режим ручной расстановки (админ)
+  var PLACEMENTS = {};     // key ('item:...'/'mount') -> {x,y} ручная расстановка
+  var CONFIG = {};         // key -> string: 'path:N' (JSON точек), 'size:frame|char|item|mount'
+  var _placeMode = false;  // режим ручной расстановки предметов
+  var _pathMode = false;   // режим редактирования формы очередей
+  function getPath(qi) {
+    var raw = CONFIG["path:" + qi];
+    if (raw) { try { var a = JSON.parse(raw); if (a && a.length >= 2) return a; } catch (e) {} }
+    return BOOTHS[qi].path;
+  }
+  function getSize(key, dflt) { var v = parseFloat(CONFIG["size:" + key]); return (isFinite(v) && v > 0) ? v : dflt; }
+  function saveCfg(key, val) {
+    CONFIG[key] = String(val);
+    q("POST", "/queue/admin/config", { key: key, val: String(val) }).catch(function () {});
+  }
   function placedPos(key, dx, dy) {
     var p = PLACEMENTS[key];
     return p ? { x: p.x, y: p.y } : { x: dx, y: dy };
@@ -124,6 +134,44 @@
     }
     el.addEventListener("mousedown", function (e) { e.preventDefault(); start("mousemove", "mouseup"); });
     el.addEventListener("touchstart", function () { start("touchmove", "touchend"); }, { passive: true });
+  }
+  // редактор формы очереди — линия пути (SVG) + перетаскиваемые точки
+  function svgLine(pts, color) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "qs-pathsvg");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("preserveAspectRatio", "none");
+    var pl = document.createElementNS(ns, "polyline");
+    pl.setAttribute("fill", "none"); pl.setAttribute("stroke", color);
+    pl.setAttribute("stroke-width", "0.6"); pl.setAttribute("stroke-dasharray", "1.6 1.6");
+    pl.setAttribute("opacity", "0.9"); pl.setAttribute("stroke-linecap", "round");
+    svg._pl = pl; svg.appendChild(pl); updateSvgLine(svg, pts);
+    return svg;
+  }
+  function updateSvgLine(svg, pts) {
+    svg._pl.setAttribute("points", pts.map(function (p) { return p.x + "," + p.y; }).join(" "));
+  }
+  function makePathDraggable(dot, qi, idx, pts, svg) {
+    dot.style.cursor = "grab";
+    function start(moveEvt, endEvt) {
+      var stage = dot.closest(".qs-stage"); if (!stage) return;
+      var rect = stage.getBoundingClientRect();
+      function move(e) {
+        var pt = e.touches ? e.touches[0] : e;
+        var x = Math.max(0, Math.min(100, ((pt.clientX - rect.left) / rect.width) * 100));
+        var y = Math.max(0, Math.min(100, ((pt.clientY - rect.top) / rect.height) * 100));
+        pts[idx] = { x: +x.toFixed(2), y: +y.toFixed(2) };
+        dot.style.left = x + "%"; dot.style.top = y + "%"; updateSvgLine(svg, pts);
+      }
+      function end() {
+        document.removeEventListener(moveEvt, move); document.removeEventListener(endEvt, end);
+        saveCfg("path:" + qi, JSON.stringify(pts)); render(_lastState);
+      }
+      document.addEventListener(moveEvt, move); document.addEventListener(endEvt, end);
+    }
+    dot.addEventListener("mousedown", function (e) { e.preventDefault(); start("mousemove", "mouseup"); });
+    dot.addEventListener("touchstart", function () { start("touchmove", "touchend"); }, { passive: true });
   }
   function pathPoint(path, t) {
     t = Math.max(0, Math.min(1, t));
@@ -240,6 +288,8 @@
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
     ".qs-wrap{max-width:1120px;margin:14px auto 60px;padding:0 12px}" +
+    "#qs-page-bg{position:fixed;inset:-60px;z-index:-3;background-size:cover;background-position:center;" +
+      "filter:blur(36px) brightness(.34) saturate(.85);transform:scale(1.05);pointer-events:none}" +
     ".qs-frame{position:relative;width:100%;aspect-ratio:16/9}" +
     ".qs-stage{position:absolute;inset:0;overflow:hidden;border-radius:8px;" +
       "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
@@ -248,13 +298,13 @@
     /* рамка ПОВЕРХ сцены (передний план, центр прозрачный) — ровно закрывает края */
     ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:9500;" +
       "background:url('assets/queue/scene/scene-frame.png') center/100% 100% no-repeat}" +
-    /* анимированные факелы (спрайт 6 кадров 200x196) */
-    ".qs-torch{position:absolute;transform:translate(-50%,-100%);pointer-events:none;width:64px;height:63px;" +
-      "background:url('assets/queue/scene/flame.png') 0 0/384px 63px no-repeat;" +
-      "animation:qsTorch .72s steps(6) infinite;filter:drop-shadow(0 0 8px rgba(255,150,40,.5))}" +
-    "@keyframes qsTorch{to{background-position-x:-384px}}" +
-    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-torch{" +
+    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount{" +
       "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
+    /* редактор формы очередей: линия пути + точки */
+    ".qs-pathsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8500;overflow:visible}" +
+    ".qs-pathdot{position:absolute;width:22px;height:22px;transform:translate(-50%,-50%);z-index:8600;" +
+      "border-radius:50%;background:var(--gc);border:2px solid #fff;color:#1b1006;font:800 11px system-ui;" +
+      "display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.55);touch-action:none}" +
     ".qs-glow{position:absolute;width:22%;height:32%;transform:translate(-50%,-55%);pointer-events:none;" +
       "background:radial-gradient(ellipse at center,var(--gc),transparent 66%);filter:blur(7px);" +
       "opacity:.5;animation:qsGlow 3.2s ease-in-out infinite}" +
@@ -264,16 +314,17 @@
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
-    ".qs-item{position:absolute;height:7%;width:auto;transform:translate(-50%,-100%);pointer-events:none;" +
-      "filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}" +
-    ".qs-mount{position:absolute;height:22%;width:auto;transform:translate(-50%,-100%);pointer-events:none;" +
+    ".qs-item{position:absolute;height:calc(7% * var(--qs-item-scale,1));width:auto;" +
+      "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}" +
+    ".qs-mount{position:absolute;height:calc(22% * var(--qs-mount-scale,1));width:auto;" +
+      "transform:translate(-50%,-100%);pointer-events:none;" +
       "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5));animation:qsBob 3.4s ease-in-out infinite}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
     ".qs-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b)}" +
     ".qs-join:hover{filter:brightness(1.07)}" +
-    ".qs-char{position:absolute;height:16%;transform-origin:bottom center;text-align:center}" +
+    ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1));transform-origin:bottom center;text-align:center}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
     ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
@@ -330,6 +381,9 @@
     frame.className = "qs-frame";
     var stage = document.createElement("div");
     stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "") + (_placeMode ? " place" : "");
+    stage.style.setProperty("--qs-char-scale", getSize("char", 1));
+    stage.style.setProperty("--qs-item-scale", getSize("item", 1));
+    stage.style.setProperty("--qs-mount-scale", getSize("mount", 1));
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
     BOOTHS.forEach(function (b) {
@@ -350,9 +404,10 @@
         if (_placeMode) makeDraggable(img, "item:" + it);
         stage.appendChild(img);
       });
-      // персонажи по пути (первый — у будки)
+      // персонажи по пути (первый — у будки); путь можно менять в редакторе
+      var pth = getPath(b.q);
       entries.forEach(function (e, i) {
-        stage.appendChild(renderChar(e, pathPoint(b.path, 1 - i * 0.11), meCanon, b.q, i));
+        stage.appendChild(renderChar(e, pathPoint(pth, 1 - i * 0.11), meCanon, b.q, i));
       });
       // UI: счётчик + кнопка
       var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
@@ -385,16 +440,22 @@
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
 
-    // анимированные факелы
-    TORCHES.forEach(function (d, i) {
-      var pos = placedPos("torch:" + i, d.x, d.y);
-      var tr = document.createElement("div");
-      tr.className = "qs-torch";
-      tr.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
-        "%;z-index:" + Math.round(pos.y * 12);
-      if (_placeMode) makeDraggable(tr, "torch:" + i);
-      stage.appendChild(tr);
-    });
+    // редактор формы очередей: линия пути + перетаскиваемые точки (начало ◉ … конец ⚑)
+    if (_pathMode) {
+      BOOTHS.forEach(function (b) {
+        var pts = getPath(b.q).map(function (p) { return { x: p.x, y: p.y }; });
+        var svg = svgLine(pts, b.accent);
+        stage.appendChild(svg);
+        pts.forEach(function (pt, i) {
+          var dot = document.createElement("div");
+          dot.className = "qs-pathdot";
+          dot.style.cssText = "left:" + pt.x + "%;top:" + pt.y + "%;--gc:" + b.accent;
+          dot.textContent = (i === 0 ? "◉" : (i === pts.length - 1 ? "⚑" : String(i + 1)));
+          makePathDraggable(dot, b.q, i, pts, svg);
+          stage.appendChild(dot);
+        });
+      });
+    }
 
     frame.appendChild(stage);
     // рамка ПОВЕРХ сцены (передний план) — центр прозрачный
@@ -410,21 +471,36 @@
 
   function render(state) {
     _lastState = state;
+    updatePageBg();
     var host = document.getElementById("scene");
     host.innerHTML = "";
     var wrap = document.createElement("div");
     wrap.className = "qs-wrap";
+    wrap.style.maxWidth = Math.round(1120 * getSize("frame", 1)) + "px";
     if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
-    banner.innerHTML = _placeMode
-      ? "🎯 <b>Режим расстановки.</b> Тащи мышкой предметы, питомца и факелы — позиции сразу сохраняются. Выключить — кнопкой в панели ниже."
-      : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
-        "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
+    banner.innerHTML = _pathMode
+      ? "✏️ <b>Форма очередей.</b> Тащи точки: ◉ начало очереди, ⚑ у будки (конец), цифры — изгибы. У каждой очереди свой цвет. Сохраняется сразу."
+      : _placeMode
+        ? "🎯 <b>Режим расстановки.</b> Тащи мышкой предметы и питомца — позиции сразу сохраняются. Выключить — кнопкой в панели ниже."
+        : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
+          "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
     wrap.appendChild(renderStage(state));
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     host.appendChild(wrap);
+  }
+
+  // размытый фон страницы (из сцены день/ночь) — заполняет коричневые края
+  function updatePageBg() {
+    var pbg = document.getElementById("qs-page-bg");
+    if (!pbg) {
+      pbg = document.createElement("div");
+      pbg.id = "qs-page-bg";
+      document.body.insertBefore(pbg, document.body.firstChild);
+    }
+    pbg.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (isNight() ? "night" : "day") + ".jpg')";
   }
 
   // ── админ-панель ──
@@ -449,8 +525,13 @@
         '<button class="sec" id="qa-log-btn">Показать лог и входы</button>' +
       "</div>" +
       '<div class="q-admin-row">' +
-        '<button class="sec" id="qa-place">🎯 Ручная расстановка предметов/факелов: ' +
-          (_placeMode ? "ВКЛ — тащи мышкой, сохраняется" : "выкл") + "</button>" +
+        '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
+        '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
+        '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
+        sizeSlider("frame", "Рамка") + sizeSlider("char", "Модели") +
+        sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") +
       "</div>" +
       '<div class="q-admin-row">' +
         '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
@@ -544,9 +625,26 @@
     box.querySelector("#qa-gm").addEventListener("click", function () { setGender("m"); });
     box.querySelector("#qa-gf").addEventListener("click", function () { setGender("f"); });
     box.querySelector("#qa-gr").addEventListener("click", function () { setGender(""); });
+    function sizeSlider(key, label) {
+      var v = getSize(key, 1).toFixed(2);
+      return '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+        label + ': <b id="qa-sz-' + key + '-v">' + v + '×</b>' +
+        '<input type="range" id="qa-sz-' + key + '" min="0.4" max="2.2" step="0.05" value="' + v + '" style="width:118px"></label>';
+    }
     box.querySelector("#qa-place").addEventListener("click", function () {
-      _placeMode = !_placeMode;
-      render(_lastState);
+      _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState);
+    });
+    box.querySelector("#qa-path").addEventListener("click", function () {
+      _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState);
+    });
+    ["frame", "char", "item", "mount"].forEach(function (key) {
+      var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
+      el.addEventListener("input", function () {
+        var v = +el.value; vl.textContent = v.toFixed(2) + "×";
+        if (key === "frame") { var w = document.querySelector(".qs-wrap"); if (w) w.style.maxWidth = Math.round(1120 * v) + "px"; }
+        else { var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v); }
+        clearTimeout(t); t = setTimeout(function () { saveCfg("size:" + key, v); }, 300);
+      });
     });
     return box;
   }
@@ -662,6 +760,7 @@
         q("GET", "/queue/roster").then(function (d) { _roster = d.roster || []; }).catch(function () { _roster = []; }),
         q("GET", "/queue/models").then(function (d) { MODEL_SETTINGS = d.settings || {}; }).catch(function () { MODEL_SETTINGS = {}; }),
         q("GET", "/queue/placements").then(function (d) { PLACEMENTS = d.placements || {}; }).catch(function () { PLACEMENTS = {}; }),
+        q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
         q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
       ]).then(refresh);
     }
