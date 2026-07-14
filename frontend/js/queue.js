@@ -32,6 +32,7 @@
   function showSection(acc) {
     $("auth").hidden = true; $("section").hidden = false;
     $("who").textContent = (acc && (acc.main_nick || acc.reg_nick)) || "игрок";
+    if (window.QueueScene) window.QueueScene.enter(acc);
   }
   function goStep(which) {
     $("step-nick").hidden = which !== "nick";
@@ -177,10 +178,17 @@
     $("q-newpass").addEventListener("keydown", function (e) { if (e.key === "Enter") doRegister(); });
     $("q-pass").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
 
-    // уже вошёл?
+    // уже вошёл как игрок?
     api("GET", "/queue/me").then(function (d) {
-      if (d.account) showSection(d.account);
-      else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
+      if (d.account) { showSection(d.account); return; }
+      // не игрок — но, возможно, админ/офицер: пусть смотрит пример и управляет
+      api("GET", "/auth/me").then(function (m) {
+        if (m && (m.role === "admin" || m.role === "officer")) {
+          $("auth").hidden = true; $("section").hidden = false;
+          $("who").textContent = (m.name || "админ") + " · просмотр";
+          if (window.QueueScene) window.QueueScene.enter(null);
+        } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
+      }).catch(function () { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); });
     }).catch(function () { showAuth(); });
   }
 

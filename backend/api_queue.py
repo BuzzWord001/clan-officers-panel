@@ -81,6 +81,29 @@ def ensure_queue_tables() -> None:
               ip           TEXT NOT NULL DEFAULT '',
               user_agent   TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_entries (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              queue      INTEGER NOT NULL,          -- 0 обычные, 1 редкие(R), 2 легендарные(S)
+              pos        REAL    NOT NULL,          -- порядок (дробный — для вставки между)
+              main_canon TEXT    NOT NULL DEFAULT '',
+              nick       TEXT    NOT NULL,          -- отображаемый ник (мэйн/твин, которым встал)
+              cls        TEXT    NOT NULL DEFAULT '',
+              added_by   TEXT    NOT NULL DEFAULT '',   -- 'self' или 'admin:<имя>'
+              added_at   TEXT    NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS queue_log (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              at         TEXT NOT NULL,
+              kind       TEXT NOT NULL,             -- register|login|join|leave|admin_add|admin_remove|admin_move|admin_clear
+              actor      TEXT NOT NULL DEFAULT '',
+              nick       TEXT NOT NULL DEFAULT '',
+              queue      INTEGER,
+              ip         TEXT NOT NULL DEFAULT '',
+              user_agent TEXT NOT NULL DEFAULT '',
+              detail     TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -99,7 +122,7 @@ def _people(conn) -> dict[str, dict]:
     Источники: текущий снимок Доблести + активный реестр приёма."""
     idx: dict[str, dict] = {}
 
-    def add(nick: str, title: str, cls: str, source: str):
+    def add(nick: str, title: str, cls: str, true_name: str, source: str):
         nick = (nick or "").strip()
         if not nick:
             return
@@ -111,6 +134,7 @@ def _people(conn) -> dict[str, dict]:
             main_nick, is_twin = _main_of(nick, title)
             idx[cn] = {
                 "nick": nick, "title": (title or "").strip(), "cls": (cls or "").strip(),
+                "true_name": (true_name or "").strip(),
                 "main_nick": main_nick, "main_canon": db._valor_canon(main_nick),
                 "is_twin": is_twin, "sources": {source},
             }
@@ -118,6 +142,8 @@ def _people(conn) -> dict[str, dict]:
             cur["sources"].add(source)
             if not cur["cls"] and cls:
                 cur["cls"] = cls.strip()
+            if not cur.get("true_name") and true_name:
+                cur["true_name"] = true_name.strip()
             # титул из Доблести приоритетнее (там мэйн-метки живут)
             if title and not cur["title"]:
                 cur["title"] = title.strip()
@@ -128,12 +154,12 @@ def _people(conn) -> dict[str, dict]:
         "SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
     if snap:
         for r in conn.execute(
-                "SELECT nick, title, class_ AS cls FROM valor_members WHERE snapshot_id=?",
+                "SELECT nick, title, class_ AS cls, true_name FROM valor_members WHERE snapshot_id=?",
                 (snap["id"],)):
-            add(r["nick"], r["title"], r["cls"], "valor")
+            add(r["nick"], r["title"], r["cls"], r["true_name"], "valor")
     for r in conn.execute(
             "SELECT game_nick AS nick, title FROM acceptances WHERE COALESCE(archived,0)=0"):
-        add(r["nick"], r["title"], "", "registry")
+        add(r["nick"], r["title"], "", "", "registry")
     return idx
 
 
@@ -191,6 +217,30 @@ class LoginIn(BaseModel):
 
 class SharedPwIn(BaseModel):
     password: str = Field(min_length=1, max_length=200)
+
+
+class JoinIn(BaseModel):
+    queue: int
+
+
+class AdminAddIn(BaseModel):
+    queue: int
+    nick: str = Field(min_length=1, max_length=64)
+    position: int = Field(default=9999)      # 0-based индекс; большое число = в конец
+
+
+class EntryIn(BaseModel):
+    entry_id: int
+
+
+class MoveIn(BaseModel):
+    entry_id: int
+    queue: int
+    position: int = Field(default=9999)
+
+
+class ClearIn(BaseModel):
+    queue: int | None = None                 # None = очистить все очереди
 
 
 # ─────────────────────────── эндпоинты ───────────────────────────
@@ -253,6 +303,8 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
              _hash(payload.personal_password), _now(), _now()))
         acc_id = cur.lastrowid
         _set_device(conn, response, acc_id, request)
+        _log(conn, "register", actor=p["nick"], nick=p["nick"], request=request,
+             detail="email" if payload.email.strip() else "no-email")
         acc = conn.execute("SELECT * FROM queue_accounts WHERE id=?", (acc_id,)).fetchone()
         return {"ok": True, "account": _acc_public(acc)}
 
@@ -268,6 +320,7 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
         conn.execute("UPDATE queue_accounts SET last_login_at=? WHERE id=?", (_now(), acc["id"]))
         _set_device(conn, response, acc["id"], request)
+        _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request)
         return {"ok": True, "account": _acc_public(acc)}
 
 
@@ -302,6 +355,178 @@ def set_shared_pw(payload: SharedPwIn, _: dict = Depends(require_admin)) -> dict
         conn.execute("UPDATE queue_config SET shared_password_hash=?, updated_at=? WHERE id=1",
                      (_hash(payload.password), _now()))
     return {"ok": True}
+
+
+# ─────────────────── состояние очередей + лог (Фаза 2) ───────────────────
+QUEUES = (0, 1, 2)  # 0 обычные · 1 редкие(R) · 2 легендарные(S)
+
+
+def _actor_name(actor: dict) -> str:
+    return (actor.get("name") or actor.get("role") or "admin") if actor else "admin"
+
+
+def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
+    ip = ua = ""
+    if request is not None:
+        ip = request.client.host if request.client else ""
+        ua = request.headers.get("user-agent", "")[:300]
+    conn.execute(
+        "INSERT INTO queue_log (at, kind, actor, nick, queue, ip, user_agent, detail)"
+        " VALUES (?,?,?,?,?,?,?,?)", (_now(), kind, actor, nick, queue, ip, ua, detail))
+
+
+def _entry_public(r, idx) -> dict:
+    p = idx.get(r["main_canon"]) or {}
+    return {"id": r["id"], "nick": r["nick"], "cls": r["cls"] or p.get("cls", ""),
+            "main_nick": p.get("main_nick", r["nick"]), "true_name": p.get("true_name", ""),
+            "added_by": r["added_by"]}
+
+
+def _append_pos(conn, q) -> float:
+    row = conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (q,)).fetchone()
+    return (row["m"] or 0.0) + 1.0
+
+
+def _pos_for_index(conn, q, index, exclude=None) -> float:
+    rows = [r for r in conn.execute(
+        "SELECT id, pos FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
+        if r["id"] != exclude]
+    pos = [r["pos"] for r in rows]
+    n = len(pos)
+    if index <= 0:
+        return (pos[0] - 1.0) if pos else 1.0
+    if index >= n:
+        return (pos[-1] + 1.0) if pos else 1.0
+    return (pos[index - 1] + pos[index]) / 2.0
+
+
+@router.get("/roster")
+def roster() -> dict:
+    with db.connection() as conn:
+        idx = _people(conn)
+    out = [{"nick": p["nick"], "cls": p["cls"], "true_name": p.get("true_name", ""),
+            "main_nick": p["main_nick"], "is_twin": p["is_twin"]} for p in idx.values()]
+    out.sort(key=lambda e: e["nick"].lower())
+    return {"roster": out}
+
+
+@router.get("/state")
+def state() -> dict:
+    qs = [[], [], []]
+    with db.connection() as conn:
+        idx = _people(conn)
+        for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
+            if r["queue"] in QUEUES:
+                qs[r["queue"]].append(_entry_public(r, idx))
+    return {"queues": qs}
+
+
+@router.post("/join")
+def join(payload: JoinIn, request: Request) -> dict:
+    q = payload.queue
+    if q not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        if conn.execute("SELECT 1 FROM queue_entries WHERE queue=? AND main_canon=?",
+                        (q, acc["main_canon"])).fetchone():
+            raise HTTPException(status.HTTP_409_CONFLICT, "already_in_queue")
+        p = _people(conn).get(acc["main_canon"]) or {}
+        nick = acc["main_nick"] or acc["reg_nick"]
+        conn.execute(
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, added_by, added_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), "self", _now()))
+        _log(conn, "join", actor=nick, nick=nick, queue=q, request=request)
+    return {"ok": True}
+
+
+@router.post("/leave")
+def leave(payload: JoinIn, request: Request) -> dict:
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=?",
+                     (payload.queue, acc["main_canon"]))
+        _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
+             queue=payload.queue, request=request)
+    return {"ok": True}
+
+
+@router.post("/admin/add")
+def admin_add(payload: AdminAddIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        if not p:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        conn.execute(
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, added_by, added_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (payload.queue, _pos_for_index(conn, payload.queue, payload.position),
+             p["main_canon"], p["nick"], p["cls"], "admin:" + _actor_name(actor), _now()))
+        _log(conn, "admin_add", actor=_actor_name(actor), nick=p["nick"], queue=payload.queue,
+             request=request, detail="pos=%s" % payload.position)
+    return {"ok": True}
+
+
+@router.post("/admin/remove")
+def admin_remove(payload: EntryIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    with db.connection() as conn:
+        r = conn.execute("SELECT nick, queue FROM queue_entries WHERE id=?", (payload.entry_id,)).fetchone()
+        conn.execute("DELETE FROM queue_entries WHERE id=?", (payload.entry_id,))
+        if r:
+            _log(conn, "admin_remove", actor=_actor_name(actor), nick=r["nick"],
+                 queue=r["queue"], request=request)
+    return {"ok": True}
+
+
+@router.post("/admin/move")
+def admin_move(payload: MoveIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
+    with db.connection() as conn:
+        r = conn.execute("SELECT nick FROM queue_entries WHERE id=?", (payload.entry_id,)).fetchone()
+        if not r:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "entry_not_found")
+        pos = _pos_for_index(conn, payload.queue, payload.position, exclude=payload.entry_id)
+        conn.execute("UPDATE queue_entries SET queue=?, pos=? WHERE id=?",
+                     (payload.queue, pos, payload.entry_id))
+        _log(conn, "admin_move", actor=_actor_name(actor), nick=r["nick"], queue=payload.queue,
+             request=request, detail="pos=%s" % payload.position)
+    return {"ok": True}
+
+
+@router.post("/admin/clear")
+def admin_clear(payload: ClearIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    with db.connection() as conn:
+        if payload.queue is None:
+            conn.execute("DELETE FROM queue_entries")
+            _log(conn, "admin_clear", actor=_actor_name(actor), request=request, detail="all")
+        else:
+            conn.execute("DELETE FROM queue_entries WHERE queue=?", (payload.queue,))
+            _log(conn, "admin_clear", actor=_actor_name(actor), queue=payload.queue, request=request)
+    return {"ok": True}
+
+
+@router.get("/admin/log")
+def admin_log(_: dict = Depends(require_admin)) -> dict:
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT at, kind, actor, nick, queue, ip, user_agent, detail FROM queue_log"
+            " ORDER BY id DESC LIMIT 300").fetchall()
+        accs = conn.execute(
+            "SELECT main_nick, reg_nick, email, created_at, last_login_at FROM queue_accounts"
+            " ORDER BY last_login_at DESC").fetchall()
+        devs = conn.execute(
+            "SELECT d.ip, d.user_agent, d.last_seen_at, a.main_nick FROM queue_devices d"
+            " LEFT JOIN queue_accounts a ON a.id=d.account_id ORDER BY d.last_seen_at DESC LIMIT 200").fetchall()
+    return {"log": [dict(r) for r in rows], "accounts": [dict(a) for a in accs],
+            "devices": [dict(x) for x in devs]}
 
 
 # таблицы создаём при импорте модуля (db-файл уже сконфигурирован settings)
