@@ -73,16 +73,25 @@
     return (s.flip ? "scaleX(-1) " : "") + (s.rotate ? ("rotate(" + s.rotate + "deg)") : "");
   }
 
-  // 3 будки/очереди на сцене 16:9. Координаты — в % сцены (совпадают с фон-картинкой).
-  // path — путь очереди: t=1 у будки (перёд очереди), t=0 — хвост (слева/ближе к зрителю).
+  // Координаты под РЕАЛЬНУЮ картинку scene-bg (день/ночь). % от сцены.
+  // Подписи будок ВПЕЧАТАНЫ в картинку — их не дублируем; сверху только счётчик+кнопка.
+  // path — путь очереди: t=1 у будки (перёд), t=0 хвост (глубже в площадь).
   var BOOTHS = [
-    { q: 0, title: "Обычные", accent: "#7ec46a", bx: 80, by: 30, item: { x: 92, y: 33 },
-      path: [{ x: 8, y: 44 }, { x: 30, y: 40 }, { x: 52, y: 35 }, { x: 71, y: 31 }] },
-    { q: 1, title: "Редкие (R)", accent: "#e0a24a", bx: 84, by: 56, item: { x: 95, y: 59 },
-      path: [{ x: 6, y: 66 }, { x: 30, y: 62 }, { x: 55, y: 58 }, { x: 75, y: 56 }] },
-    { q: 2, title: "Легендарные (S)", accent: "#c07be0", bx: 79, by: 82, item: { x: 91, y: 85 },
-      path: [{ x: 10, y: 90 }, { x: 33, y: 87 }, { x: 56, y: 84 }, { x: 71, y: 82 }] }
+    { q: 0, title: "Обычные", accent: "#7ec46a", bx: 50, by: 26, ui: { x: 49, y: 40 }, item: { x: 60, y: 27 },
+      path: [{ x: 45, y: 60 }, { x: 47, y: 51 }, { x: 48, y: 43 }, { x: 49, y: 35 }] },
+    { q: 1, title: "Редкие (R)", accent: "#e0a24a", bx: 65, by: 62, ui: { x: 61, y: 74 }, item: { x: 73, y: 64 },
+      path: [{ x: 37, y: 80 }, { x: 45, y: 76 }, { x: 53, y: 72 }, { x: 60, y: 69 }] },
+    { q: 2, title: "Легендарные (S)", accent: "#c07be0", bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
+      path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] }
   ];
+  // ресурсы за каждой будкой (файлы assets/queue/scene/item/*.png)
+  var BOOTH_ITEMS = [
+    ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
+    ["gramota", "prikaz-feniksa"],
+    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen"]
+  ];
+  // ночь: 20:00–07:00 по МСК (МСК = UTC+3), иначе день
+  function isNight() { var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7; }
   function pathPoint(path, t) {
     t = Math.max(0, Math.min(1, t));
     var seg = t * (path.length - 1), i = Math.floor(seg), f = seg - i;
@@ -198,26 +207,25 @@
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
     ".qs-wrap{max-width:1120px;margin:14px auto 60px;padding:0 12px}" +
-    ".qs-frame{position:relative;border-radius:16px;padding:min(2.8%,28px);border:2px solid #180d03;" +
-      "background:linear-gradient(135deg,#3a2412,#211404 45%,#3a2412);" +
-      "box-shadow:0 12px 44px rgba(0,0,0,.6),inset 0 0 0 2px rgba(224,162,74,.35),inset 0 0 34px rgba(0,0,0,.65)}" +
-    ".qs-frame::before{content:'';position:absolute;inset:9px;border-radius:12px;pointer-events:none;" +
-      "border:2px solid rgba(224,162,74,.5)}" +
-    ".qs-stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;" +
-      "background:var(--qs-bg,none) center/cover no-repeat," +
-        "linear-gradient(180deg,#9fc7e8 0%,#bfe0ea 34%,#cfe0a0 46%,#8fb85e 60%,#6a9a44 100%);" +
-      "box-shadow:inset 0 0 60px rgba(0,0,0,.45)}" +
+    ".qs-frame{position:relative;width:100%;aspect-ratio:16/9;" +
+      "background:url('assets/queue/scene/scene-frame.png') center/100% 100% no-repeat}" +
+    ".qs-stage{position:absolute;left:12.6%;top:10.6%;width:74.8%;height:78.4%;overflow:hidden;" +
+      "border-radius:3px;background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
+    ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.jpg')}" +
+    ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.jpg')}" +
     ".qs-glow{position:absolute;width:22%;height:32%;transform:translate(-50%,-55%);pointer-events:none;" +
       "background:radial-gradient(ellipse at center,var(--gc),transparent 66%);filter:blur(7px);" +
       "opacity:.5;animation:qsGlow 3.2s ease-in-out infinite}" +
     "@keyframes qsGlow{0%,100%{opacity:.35;transform:translate(-50%,-55%) scale(.95)}" +
       "50%{opacity:.65;transform:translate(-50%,-55%) scale(1.06)}}" +
-    ".qs-booth{position:absolute;transform:translate(-50%,-100%);text-align:center;z-index:9000}" +
-    ".qs-sign{display:inline-block;font:800 12px/1.1 Georgia,serif;color:#fff;white-space:nowrap;" +
-      "padding:4px 12px;border-radius:8px;background:linear-gradient(180deg,#3a2612,#221305);" +
-      "border:1px solid rgba(224,162,74,.55);box-shadow:0 3px 10px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
-    ".qs-cnt{display:inline-block;margin-left:7px;padding:0 6px;border-radius:7px;font-size:11px;" +
-      "background:rgba(0,0,0,.45);color:#fff}" +
+    ".qs-booth{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:9000}" +
+    ".qs-cnt-line{margin:0 0 4px}" +
+    ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
+      "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
+    ".qs-item{position:absolute;height:7%;width:auto;transform:translate(-50%,-100%);pointer-events:none;" +
+      "filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}" +
+    ".qs-mount{position:absolute;height:22%;width:auto;transform:translate(-50%,-100%);pointer-events:none;" +
+      "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5));animation:qsBob 3.4s ease-in-out infinite}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
@@ -236,9 +244,9 @@
     document.head.appendChild(st);
   }
 
-  // ── одна моделька на сцене: позиция %, масштаб по глубине, y-сортировка ──
-  function renderChar(e, p, t, meCanon, boothQ, idx) {
-    var scale = 1.0 - t * 0.4;                    // у будки (t=1) меньше, у хвоста крупнее
+  // ── одна моделька на сцене: позиция %, масштаб по глубине (ниже=крупнее), y-сортировка ──
+  function renderChar(e, p, meCanon, boothQ, idx) {
+    var scale = 0.5 + (p.y / 100) * 0.62;         // ниже на экране = ближе = крупнее
     var mi = modelInfo(e);
     var mine = canon(e.main_nick) === meCanon;
     var body = mi
@@ -274,34 +282,45 @@
     return el;
   }
 
-  // ── сцена: фон + 3 будки (свечение, подпись, счётчик, кнопка) + модельки по путям ──
+  // ── сцена: рамка + фон день/ночь + будки (свечение, предметы, счётчик, кнопка) + модельки ──
   function renderStage(state) {
     var frame = document.createElement("div");
     frame.className = "qs-frame";
     var stage = document.createElement("div");
-    stage.className = "qs-stage" + (_isAdmin ? " admin" : "");
+    stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "");
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
+      // свечение будки
       var glow = document.createElement("div");
       glow.className = "qs-glow";
       glow.style.cssText = "left:" + b.bx + "%;top:" + b.by + "%;--gc:" + b.accent;
       stage.appendChild(glow);
-
-      entries.forEach(function (e, i) {
-        var t = 1 - i * 0.11;                     // первый (i=0) — у будки
-        stage.appendChild(renderChar(e, pathPoint(b.path, t), t, meCanon, b.q, i));
+      // ресурсы за будкой (кучкой)
+      (BOOTH_ITEMS[b.q] || []).forEach(function (it, k) {
+        var iy = b.item.y + Math.floor(k / 3) * 4.6;
+        var img = document.createElement("img");
+        img.className = "qs-item"; img.alt = "";
+        img.src = "assets/queue/scene/item/" + it + ".png";
+        img.style.cssText = "left:" + (b.item.x + (k % 3) * 3.4).toFixed(1) + "%;top:" + iy.toFixed(1) +
+          "%;z-index:" + Math.round(iy * 12);
+        stage.appendChild(img);
       });
-
+      // персонажи по пути (первый — у будки)
+      entries.forEach(function (e, i) {
+        stage.appendChild(renderChar(e, pathPoint(b.path, 1 - i * 0.11), meCanon, b.q, i));
+      });
+      // UI: счётчик + кнопка
       var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
       var ui = document.createElement("div");
       ui.className = "qs-booth";
-      ui.style.cssText = "left:" + b.bx + "%;top:" + (b.by - 9) + "%;--gc:" + b.accent;
+      ui.style.cssText = "left:" + b.ui.x + "%;top:" + b.ui.y + "%";
       ui.innerHTML =
-        '<div class="qs-sign">' + esc(b.title) + '<span class="qs-cnt">' + entries.length + "</span></div>" +
+        '<div class="qs-cnt-line"><span class="qs-cnt" style="--gc:' + b.accent + '">' +
+          entries.length + " в очереди</span></div>" +
         (_meAcc ? '<button class="qs-join' + (iAmIn ? " leave" : "") + '" data-act="' +
-          (iAmIn ? "leave" : "join") + '">' + (iAmIn ? "Выйти" : "Встать в очередь") + "</button>" : "");
+          (iAmIn ? "leave" : "join") + '">' + (iAmIn ? "Выйти" : "Встать") + "</button>" : "");
       stage.appendChild(ui);
       var jb = ui.querySelector(".qs-join");
       if (jb) jb.addEventListener("click", function () {
@@ -313,6 +332,13 @@
         });
       });
     });
+    // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
+    var mount = document.createElement("img");
+    mount.className = "qs-mount"; mount.alt = "";
+    mount.src = "assets/queue/scene/item/mount-cilin.png";
+    mount.style.cssText = "left:91%;top:70%;z-index:" + Math.round(70 * 12);
+    stage.appendChild(mount);
+
     frame.appendChild(stage);
     return frame;
   }
