@@ -287,9 +287,9 @@
     ".q-modal-x:hover{color:#f0c878}" +
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
-    ".qs-wrap{max-width:1120px;margin:14px auto 60px;padding:0 12px}" +
+    ".qs-wrap{max-width:1340px;margin:14px auto 60px;padding:0 12px}" +
     "#qs-page-bg{position:fixed;inset:-60px;z-index:-3;background-size:cover;background-position:center;" +
-      "filter:blur(36px) brightness(.34) saturate(.85);transform:scale(1.05);pointer-events:none}" +
+      "filter:blur(42px) brightness(.5) saturate(.9);transform:scale(1.06);pointer-events:none}" +
     ".qs-frame{position:relative;width:100%;aspect-ratio:16/9}" +
     ".qs-stage{position:absolute;inset:0;overflow:hidden;border-radius:8px;" +
       "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
@@ -404,10 +404,12 @@
         if (_placeMode) makeDraggable(img, "item:" + it);
         stage.appendChild(img);
       });
-      // персонажи по пути (первый — у будки); путь можно менять в редакторе
-      var pth = getPath(b.q);
+      // персонажи РАВНОМЕРНО от начала (t=0, хвост) до будки (t=1, перёд).
+      // первый в очереди (i=0) — у будки; последний — в самом хвосте.
+      var pth = getPath(b.q), n = entries.length;
       entries.forEach(function (e, i) {
-        stage.appendChild(renderChar(e, pathPoint(pth, 1 - i * 0.11), meCanon, b.q, i));
+        var t = n <= 1 ? 0.9 : 1 - (i / (n - 1));
+        stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
       // UI: счётчик + кнопка
       var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
@@ -476,7 +478,6 @@
     host.innerHTML = "";
     var wrap = document.createElement("div");
     wrap.className = "qs-wrap";
-    wrap.style.maxWidth = Math.round(1120 * getSize("frame", 1)) + "px";
     if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
@@ -530,8 +531,8 @@
       "</div>" +
       '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
         '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
-        sizeSlider("frame", "Рамка") + sizeSlider("char", "Модели") +
-        sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") +
+        sizeSlider("char", "Модели") + sizeSlider("item", "Предметы") +
+        sizeSlider("mount", "Питомец") +
       "</div>" +
       '<div class="q-admin-row">' +
         '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
@@ -637,12 +638,11 @@
     box.querySelector("#qa-path").addEventListener("click", function () {
       _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState);
     });
-    ["frame", "char", "item", "mount"].forEach(function (key) {
+    ["char", "item", "mount"].forEach(function (key) {
       var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
       el.addEventListener("input", function () {
         var v = +el.value; vl.textContent = v.toFixed(2) + "×";
-        if (key === "frame") { var w = document.querySelector(".qs-wrap"); if (w) w.style.maxWidth = Math.round(1120 * v) + "px"; }
-        else { var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v); }
+        var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v);
         clearTimeout(t); t = setTimeout(function () { saveCfg("size:" + key, v); }, 300);
       });
     });
