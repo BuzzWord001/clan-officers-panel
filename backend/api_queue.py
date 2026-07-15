@@ -28,7 +28,15 @@ from pydantic import BaseModel, Field
 
 import db
 from config import settings
-from session import require_admin
+from session import require_admin, current_session
+
+
+def require_officer_or_admin(request: Request) -> dict:
+    """Офицер ИЛИ админ — для функций, доступных офицерам (связки супругов)."""
+    s = current_session(request)
+    if s["role"] not in ("officer", "admin"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
+    return s
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -143,6 +151,13 @@ def ensure_queue_tables() -> None:
               val        TEXT NOT NULL DEFAULT '',
               updated_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_spouses (
+              canon      TEXT PRIMARY KEY,           -- канон мэйна человека
+              recipient  TEXT NOT NULL DEFAULT '',   -- ник супруга/твина по умолчанию (кому передавать)
+              updated_by TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         # миграция для существующих БД: индивидуальный размер модели
@@ -153,6 +168,11 @@ def ensure_queue_tables() -> None:
         # миграция: выбранный ресурс у записи очереди
         try:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN resource TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        # миграция: получатель (кому передать рес — твин/супруг)
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN recipient TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
 
@@ -271,6 +291,18 @@ class SharedPwIn(BaseModel):
 class JoinIn(BaseModel):
     queue: int
     resource: str = Field(default="", max_length=64)
+    recipient: str = Field(default="", max_length=64)   # кому передать (твин/супруг), необязательно
+
+
+class SetEntryIn(BaseModel):
+    queue: int
+    resource: str | None = Field(default=None, max_length=64)    # None = не менять
+    recipient: str | None = Field(default=None, max_length=64)   # None = не менять; "" = очистить
+
+
+class SpouseIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)               # кому задаём получателя
+    recipient: str = Field(default="", max_length=64)            # ник получателя; пусто = удалить связь
 
 
 class AdminAddIn(BaseModel):
@@ -481,6 +513,7 @@ def _entry_public(r, idx, gmap) -> dict:
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
             "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
             "resource": (r["resource"] if "resource" in r.keys() else ""),
+            "recipient": (r["recipient"] if "recipient" in r.keys() else ""),
             "added_by": r["added_by"]}
 
 
@@ -540,11 +573,17 @@ def join(payload: JoinIn, request: Request) -> dict:
         p = _people(conn).get(acc["main_canon"]) or {}
         nick = acc["main_nick"] or acc["reg_nick"]
         res = (payload.resource or "").strip()[:64]
+        rcpt = (payload.recipient or "").strip()[:64]
+        if not rcpt:   # не указан явно → берём получателя по умолчанию из связки супругов
+            sp = conn.execute("SELECT recipient FROM queue_spouses WHERE canon=?",
+                              (acc["main_canon"],)).fetchone()
+            rcpt = (sp["recipient"] if sp else "")[:64]
         conn.execute(
-            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, added_by, added_at)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, "self", _now()))
-        _log(conn, "join", actor=nick, nick=nick, queue=q, request=request)
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient, added_by, added_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, rcpt, "self", _now()))
+        _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
+             detail=("res=" + res + (" →" + rcpt if rcpt else "")))
     return {"ok": True}
 
 
@@ -559,6 +598,70 @@ def leave(payload: JoinIn, request: Request) -> dict:
         _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
              queue=payload.queue, request=request)
     return {"ok": True}
+
+
+@router.post("/set-entry")
+def set_entry(payload: SetEntryIn, request: Request) -> dict:
+    """Игрок меняет ресурс и/или получателя своей записи, пока стоит в очереди."""
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        row = conn.execute(
+            "SELECT id FROM queue_entries WHERE queue=? AND main_canon=?",
+            (payload.queue, acc["main_canon"])).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_in_queue")
+        sets, vals = [], []
+        if payload.resource is not None:
+            sets.append("resource=?"); vals.append(payload.resource.strip()[:64])
+        if payload.recipient is not None:
+            sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
+        if sets:
+            vals.append(row["id"])
+            conn.execute("UPDATE queue_entries SET " + ",".join(sets) + " WHERE id=?", vals)
+            _log(conn, "set_entry", actor=acc["main_nick"], nick=acc["main_nick"],
+                 queue=payload.queue, request=request,
+                 detail=("res=" + (payload.resource or "—") + " →" + (payload.recipient or "—")))
+    return {"ok": True}
+
+
+@router.get("/spouses")
+def spouses() -> dict:
+    """Связки канон→получатель. links — карта (для префилла), items — с никами (для панели)."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        rows = conn.execute(
+            "SELECT canon, recipient FROM queue_spouses WHERE recipient!=''").fetchall()
+    canon2nick = {p["main_canon"]: p["main_nick"] for p in idx.values()}
+    links = {r["canon"]: r["recipient"] for r in rows}
+    items = [{"canon": r["canon"], "nick": canon2nick.get(r["canon"], r["canon"]),
+              "recipient": r["recipient"]} for r in rows]
+    items.sort(key=lambda e: (e["nick"] or "").lower())
+    return {"links": links, "items": items}
+
+
+@router.post("/spouse")
+def set_spouse(payload: SpouseIn, request: Request,
+               actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Связка «кому этот человек передаёт рес». Доступно офицеру И админу."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        cn = p["main_canon"] if p else db._valor_canon(payload.nick)
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        rcpt = (payload.recipient or "").strip()[:64]
+        if rcpt:
+            conn.execute(
+                "INSERT INTO queue_spouses (canon, recipient, updated_by, updated_at) VALUES (?,?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET recipient=excluded.recipient,"
+                " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                (cn, rcpt, _actor_name(actor), _now()))
+        else:
+            conn.execute("DELETE FROM queue_spouses WHERE canon=?", (cn,))
+        _log(conn, "spouse", actor=_actor_name(actor), nick=payload.nick,
+             request=request, detail="→" + (rcpt or "(удалено)"))
+    return {"ok": True, "recipient": rcpt}
 
 
 @router.post("/admin/add")

@@ -56,6 +56,13 @@
   // key остаётся с .png (логический id для настроек поворота), а файл — .webp
   function webpUrl(rel) { return "assets/queue/" + rel.replace(/\.png$/i, ".webp"); }
   var UPLOADED = {};   // ключ (person-<canon> | class-<Класс>-<m|f>) -> mtime (загружено админом)
+  var SPOUSES = {};        // бэк-канон мэйна -> ник получателя (как хранит сервер)
+  var SPOUSE_BY_NICK = {}; // фронт-канон ника -> получатель (для префилла: каноны сторон могут расходиться)
+  function applySpouses(d) {
+    SPOUSES = (d && d.links) || {};
+    SPOUSE_BY_NICK = {};
+    ((d && d.items) || []).forEach(function (it) { if (it.nick) SPOUSE_BY_NICK[canon(it.nick)] = it.recipient; });
+  }
   function uploadedUrl(key) {
     return UPLOADED[key] ? (API + "/queue/model-img/" + encodeURIComponent(key) + "?v=" + UPLOADED[key]) : null;
   }
@@ -471,6 +478,7 @@
       "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;color:#f6ead2;" +
       "font:700 12px system-ui;text-align:center}" +
     ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
+    ".qs-rescard.sel{border-color:#7ec46a;background:rgba(126,196,106,.16);box-shadow:0 0 0 1px #7ec46a}" +
     ".qs-rescard img{height:64px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
@@ -482,6 +490,8 @@
     ".qs-fl-nick{font:700 13px system-ui;color:#f6ead2;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-fl-res{height:26px;width:26px;object-fit:contain;flex:0 0 auto}" +
     ".qs-fl-rname{font-size:11px;color:#c9b48f;flex:0 0 auto}" +
+    ".qs-fl-rcpt{font:700 11px system-ui;color:#8fc36a;flex:0 0 auto;padding:1px 7px;border-radius:6px;" +
+      "background:rgba(126,196,106,.14);border:1px solid rgba(126,196,106,.3)}" +
     ".qs-fl-tag{font:700 10px system-ui;padding:2px 7px;border-radius:6px;flex:0 0 auto}" +
     ".qs-fl-tag.shown{background:rgba(126,196,106,.2);color:#a9e08f;border:1px solid rgba(126,196,106,.4)}" +
     ".qs-fl-tag.wait{background:rgba(224,162,74,.16);color:#e6c48f;border:1px solid rgba(224,162,74,.35)}" +
@@ -560,25 +570,54 @@
     ov.appendChild(box); document.body.appendChild(ov);
     return { close: close };
   }
-  // выбор ресурса при вставании в очередь
-  function openResourcePicker(b) {
+  // выбор ресурса при вставании (или изменение уже стоящей записи, edit={resource,recipient})
+  function openResourcePicker(b, edit) {
     var body = document.createElement("div");
-    body.className = "qs-respick";
     var m = null;
+    // поле получателя (твин/супруг) — необязательно; префилл из связки супругов
+    var defRcpt = edit ? (edit.recipient || "")
+      : (SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)] || "");
+    var rcptWrap = document.createElement("div");
+    rcptWrap.style.cssText = "margin:0 0 14px;display:flex;flex-direction:column;gap:5px";
+    rcptWrap.innerHTML =
+      '<label style="font-size:12.5px;color:#caa66a">Кому передать ресурс ' +
+        '<span style="color:#8a795a">(необязательно — твин или супруг)</span>:</label>' +
+      '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' +
+        esc(defRcpt) + '" style="padding:9px 11px;font-size:14px;border-radius:9px;' +
+        'border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.82);color:#f3e8d2">' +
+      '<datalist id="qs-rcpt-dl">' +
+        _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") +
+      '</datalist>' +
+      '<span style="font-size:11px;color:#8a795a">Ресурс и получателя можно менять в любой момент, пока стоишь.</span>';
+    body.appendChild(rcptWrap);
+    function commit(resource) {
+      var rcpt = (body.querySelector("#qs-rcpt").value || "").trim();
+      if (m) m.close();
+      var path = edit ? "/queue/set-entry" : "/queue/join";
+      q("POST", path, { queue: b.q, resource: resource, recipient: rcpt }).then(refresh).catch(function (e2) {
+        alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
+              e2.status === 401 ? "Сессия истекла, войди заново." :
+              e2.status === 404 ? "Тебя нет в этой очереди." : ("Ошибка: " + (e2.detail || e2.message)));
+      });
+    }
+    var grid = document.createElement("div");
+    grid.className = "qs-respick";
     (BOOTH_ITEMS[b.q] || []).forEach(function (it) {
       var card = document.createElement("button");
-      card.className = "qs-rescard";
+      card.className = "qs-rescard" + (edit && edit.resource === it ? " sel" : "");
       card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span>' + esc(resName(it)) + "</span>";
-      card.addEventListener("click", function () {
-        if (m) m.close();
-        q("POST", "/queue/join", { queue: b.q, resource: it }).then(refresh).catch(function (e2) {
-          alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
-                e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
-        });
-      });
-      body.appendChild(card);
+      card.addEventListener("click", function () { commit(it); });
+      grid.appendChild(card);
     });
-    m = sceneModal("Выбери ресурс — очередь «" + b.title + "»", body);
+    body.appendChild(grid);
+    if (edit) {   // в режиме правки — кнопка «сохранить только получателя»
+      var save = document.createElement("button");
+      save.className = "qs-join"; save.style.cssText = "margin:14px auto 0;max-width:none;width:100%";
+      save.textContent = "💾 Сохранить получателя (ресурс не менять)";
+      save.addEventListener("click", function () { commit(edit.resource || ""); });
+      body.appendChild(save);
+    }
+    m = sceneModal((edit ? "Изменить запись — очередь «" : "Выбери ресурс — очередь «") + b.title + "»", body);
   }
   // полный список очереди (все, включая тех, кто ещё не на сцене) с модельками
   function openFullList(b, entries) {
@@ -597,6 +636,7 @@
         '<span class="qs-fl-nick">' + esc(e.nick) + "</span>" +
         (e.resource ? '<img class="qs-fl-res" src="' + resImg(e.resource) + '" title="' + esc(resName(e.resource)) + '" alt="">' +
           '<span class="qs-fl-rname">' + esc(resName(e.resource)) + "</span>" : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>') +
+        (e.recipient ? '<span class="qs-fl-rcpt" title="кому передать">→ ' + esc(e.recipient) + "</span>" : "") +
         (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
       body.appendChild(row);
     });
@@ -661,9 +701,11 @@
         var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
         stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
-      // UI: ДВЕ отдельные кнопки — «Список» и «Встать в очередь». Каждую можно
-      // перетащить (в режиме «Расставить предметы»); позиция сохраняется.
-      var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
+      // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
+      // Каждую можно перетащить (в режиме «Расставить предметы»); позиция сохраняется.
+      var myEntry = null;
+      entries.some(function (e) { if (canon(e.main_nick) === meCanon) { myEntry = e; return true; } return false; });
+      var iAmIn = !!myEntry;
       // кнопка «Список»
       var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
       var listBtn = document.createElement("button");
@@ -690,6 +732,26 @@
         });
       });
       stage.appendChild(joinBtn);
+      // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
+      if (iAmIn && !_placeMode && _meAcc) {
+        var ep = placedPos("btn-edit:" + b.q, b.ui.x + 9, b.ui.y + 2);
+        var editBtn = document.createElement("button");
+        editBtn.className = "qs-list qs-btn-abs";
+        editBtn.style.cssText = "left:" + ep.x.toFixed(2) + "%;top:" + ep.y.toFixed(2) + "%;--gc:" + b.accent;
+        editBtn.title = "Изменить ресурс и кому передать"; editBtn.textContent = "✎ ресурс/кому";
+        editBtn.addEventListener("click", function () {
+          openResourcePicker(b, { resource: myEntry.resource || "", recipient: myEntry.recipient || "" });
+        });
+        stage.appendChild(editBtn);
+      } else if (iAmIn && _placeMode) {
+        var ep2 = placedPos("btn-edit:" + b.q, b.ui.x + 9, b.ui.y + 2);
+        var editPh = document.createElement("button");
+        editPh.className = "qs-list qs-btn-abs";
+        editPh.style.cssText = "left:" + ep2.x.toFixed(2) + "%;top:" + ep2.y.toFixed(2) + "%;--gc:" + b.accent;
+        editPh.textContent = "✎ ресурс/кому";
+        makeDraggable(editPh, "btn-edit:" + b.q);
+        stage.appendChild(editPh);
+      }
     });
     // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
     var mpos = placedPos("mount", 85, 70);
@@ -744,7 +806,7 @@
 
   function admErr(e) { alert("Ошибка (нужны права админа?): " + (e.detail || e.message)); }
 
-  var _roster = [], _isAdmin = false, _meAcc = null, _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _lastState = { queues: [[], [], []] };
 
   function render(state) {
     _lastState = state;
@@ -765,6 +827,7 @@
     wrap.appendChild(banner);
     wrap.appendChild(renderStage(state));
     if (_isAdmin) wrap.appendChild(adminPanel(state));
+    else if (_role === "officer") wrap.appendChild(buildSpousePanel(true));   // офицеру — только связки
     host.appendChild(wrap);
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
   }
@@ -1063,6 +1126,7 @@
     box.appendChild(buildModelSizePanel());
     box.appendChild(buildUploadPanel());
     box.appendChild(buildEnvPanel());
+    box.appendChild(buildSpousePanel(false));
     return box;
   }
 
@@ -1319,6 +1383,80 @@
     return wrap;
   }
 
+  // ── связки «кому кто передаёт ресурс» — доступно ОФИЦЕРАМ и админу ──
+  function buildSpousePanel(standalone) {
+    var wrap = document.createElement("div");
+    if (standalone) wrap.className = "q-admin";   // отдельная коробка для офицера
+    var head = standalone
+      ? "<h3>💞 Связки: кому кто передаёт ресурс</h3>" +
+        '<div style="font-size:11.5px;color:#8a795a;margin:-6px 0 10px">Единственная функция офицеров тут. ' +
+        'Задай, кому игрок по умолчанию передаёт полученный ресурс (супруг/твин). ' +
+        'Игрок сможет переопределить при вставании.</div>'
+      : '<div style="font-size:12px;color:#caa66a">💞 Связки супругов/получателей ' +
+        '<span style="color:#8a795a;font-size:11px">— кому игрок передаёт рес по умолчанию (могут менять и офицеры)</span></div>';
+    var dl = _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
+    wrap.innerHTML = head +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:12px;color:#caa66a">Игрок:</b>' +
+        '<input id="qsp-nick" list="qsp-dl" placeholder="ник игрока…" autocomplete="off" style="min-width:150px">' +
+        '<b style="font-size:12px;color:#caa66a">→ кому:</b>' +
+        '<input id="qsp-rcpt" list="qsp-dl" placeholder="ник получателя…" autocomplete="off" style="min-width:150px">' +
+        '<button id="qsp-save">Сохранить связку</button>' +
+        '<button class="sec" id="qsp-del" title="Удалить связку игрока">✕</button>' +
+        '<datalist id="qsp-dl">' + dl + '</datalist>' +
+      "</div>" +
+      '<div id="qsp-list" style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow:auto;margin-top:4px"></div>' +
+      '<div id="qsp-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
+    var st = wrap.querySelector("#qsp-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    var listHost = wrap.querySelector("#qsp-list");
+    function reload() {
+      q("GET", "/queue/spouses").then(function (d) {
+        applySpouses(d);
+        var items = d.items || [];
+        listHost.innerHTML = "";
+        if (!items.length) {
+          listHost.innerHTML = '<span style="font-size:11px;color:#8a795a">Связок пока нет.</span>'; return;
+        }
+        items.forEach(function (it) {
+          var row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12.5px;color:#f6ead2;" +
+            "padding:4px 7px;border:1px solid rgba(224,162,74,.18);border-radius:8px";
+          row.innerHTML = '<b style="min-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            esc(it.nick) + '</b><span style="color:#caa66a">→</span>' +
+            '<span style="flex:1;color:#a9e08f">' + esc(it.recipient) + "</span>";
+          var del = document.createElement("button");
+          del.className = "sec"; del.style.padding = "2px 9px"; del.textContent = "✕"; del.title = "удалить";
+          del.addEventListener("click", function () { save(it.nick, ""); });
+          row.appendChild(del); listHost.appendChild(row);
+        });
+      }).catch(function (e) { status("Не загрузилось: " + (e.detail || e.message)); });
+    }
+    function save(nick, rcpt) {
+      q("POST", "/queue/spouse", { nick: nick, recipient: rcpt })
+        .then(function () {
+          status(rcpt ? ("✓ " + nick + " → " + rcpt) : ("Связка удалена: " + nick), true);
+          reload();
+        })
+        .catch(function (e) {
+          status(e.status === 404 ? "Ник не найден." :
+                 e.status === 403 ? "Нужны права офицера/админа." : ("Ошибка: " + (e.detail || e.message)));
+        });
+    }
+    wrap.querySelector("#qsp-save").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qsp-nick").value.trim(), rc = wrap.querySelector("#qsp-rcpt").value.trim();
+      if (!nk || !rc) { status("Укажи игрока и получателя."); return; }
+      save(nk, rc);
+    });
+    wrap.querySelector("#qsp-del").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qsp-nick").value.trim();
+      if (!nk) { status("Укажи ник игрока для удаления связки."); return; }
+      save(nk, "");
+    });
+    reload();
+    return wrap;
+  }
+
   function buildModelSizePanel() {
     var BASE = 58;  // px высоты модели при 1.00×
     var wrap = document.createElement("div");
@@ -1403,7 +1541,9 @@
         q("GET", "/queue/placements").then(function (d) { PLACEMENTS = d.placements || {}; }).catch(function () { PLACEMENTS = {}; }),
         q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
         q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
-        q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
+        q("GET", "/queue/spouses").then(function (d) { applySpouses(d); }).catch(function () { applySpouses(null); }),
+        q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
+          .catch(function () { _role = ""; _isAdmin = false; })
       ]).then(function () { loadEnv(); refresh(); });
     }
   };
