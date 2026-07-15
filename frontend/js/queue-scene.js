@@ -55,16 +55,29 @@
   }
   // key остаётся с .png (логический id для настроек поворота), а файл — .webp
   function webpUrl(rel) { return "assets/queue/" + rel.replace(/\.png$/i, ".webp"); }
+  var UPLOADED = {};   // ключ (person-<canon> | class-<Класс>-<m|f>) -> mtime (загружено админом)
+  function uploadedUrl(key) {
+    return UPLOADED[key] ? (API + "/queue/model-img/" + encodeURIComponent(key) + "?v=" + UPLOADED[key]) : null;
+  }
   function modelInfo(e) {
-    // персональная модель ищется и по нику-твину, и по мэйну (файл назван по нику)
-    var keys = [canon(e.nick), canon(e.main_nick)];
+    var keys = [canon(e.main_nick), canon(e.nick)];   // мэйн приоритетнее (твин наследует)
+    // 1) ЗАГРУЖЕННАЯ админом персональная модель
     for (var i = 0; i < keys.length; i++) {
-      if (keys[i] && PERSONAL[keys[i]]) { var f = PERSONAL[keys[i]];
+      var pu = keys[i] && uploadedUrl("person-" + keys[i]);
+      if (pu) return { url: pu, key: "person-" + keys[i], uploaded: true };
+    }
+    // 2) статическая персональная (файл в assets)
+    for (var j = 0; j < keys.length; j++) {
+      if (keys[j] && PERSONAL[keys[j]]) { var f = PERSONAL[keys[j]];
         return { url: webpUrl("personal/" + f), key: "personal/" + f }; }
     }
+    // 3) КЛАССОВАЯ по полу
+    var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
+    var cu = uploadedUrl("class-" + e.cls + "-" + g) ||
+             uploadedUrl("class-" + e.cls + "-m") || uploadedUrl("class-" + e.cls + "-f");
+    if (cu) return { url: cu, key: "class-" + e.cls + "-" + g, uploaded: true };
     var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
     if (set) {
-      var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
       var fn = set[g] || set.m || set.f;
       return { url: webpUrl("class/" + fn), key: "class/" + fn };
     }
@@ -1024,6 +1037,7 @@
       lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
     }
     box.appendChild(buildModelSizePanel());
+    box.appendChild(buildUploadPanel());
     return box;
   }
 
@@ -1063,6 +1077,96 @@
   }
 
   // ── панель размеров КАЖДОЙ модели с визуальным сравнением (общая базовая линия) ──
+  // пол(а) для класса: заблокированные — один, остальные — муж+жен
+  function classGenders(cls) {
+    var c = (cls || "").toLowerCase();
+    if (FEMALE_ONLY.indexOf(c) >= 0) return ["f"];
+    if (MALE_ONLY.indexOf(c) >= 0) return ["m"];
+    return ["m", "f"];
+  }
+  function fileToDataURL(file, cb, errcb) {
+    if (!file) { errcb("Файл не выбран."); return; }
+    if (file.size > 5 * 1024 * 1024) { errcb("Файл слишком большой (макс 5 МБ)."); return; }
+    var r = new FileReader();
+    r.onload = function () { cb(r.result); };
+    r.onerror = function () { errcb("Не удалось прочитать файл."); };
+    r.readAsDataURL(file);
+  }
+  // ── админ: загрузка моделей (классовых с делением муж/жен + персональных) ──
+  function buildUploadPanel() {
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin-row";
+    wrap.style.cssText = "flex-direction:column;align-items:stretch;gap:8px";
+    var clsSet = {};
+    ["Воин", "Жрец", "Маг", "Друид", "Стрелок", "Оборотень", "Странник"].forEach(function (c) { clsSet[c] = 1; });
+    (_roster || []).forEach(function (p) { if (p.cls) clsSet[p.cls] = 1; });
+    var clsOpts = Object.keys(clsSet).sort().map(function (cls) {
+      return classGenders(cls).map(function (g) {
+        var key = "class-" + cls + "-" + g;
+        return '<option value="' + esc(key) + '">' + esc(cls) + " (" + (g === "m" ? "муж" : "жен") + ")" +
+          (UPLOADED[key] ? " ✓" : "") + "</option>";
+      }).join("");
+    }).join("");
+    wrap.innerHTML =
+      '<div style="font-size:12px;color:#caa66a">🖼️ Загрузка моделей (PNG с вырезанным фоном) ' +
+        '<span style="color:#8a795a;font-size:11px">— класс делится на муж/жен; ✓ = уже загружена; ' +
+        'персональная идёт человеку И его твинам</span></div>' +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:11px;color:#caa66a">Класс:</b>' +
+        '<select id="qa-up-class" style="min-width:180px">' + clsOpts + "</select>" +
+        '<input type="file" id="qa-up-class-file" accept="image/png,image/webp,image/jpeg">' +
+        '<button class="sec" id="qa-up-class-btn">Загрузить классу</button>' +
+        '<button class="sec" id="qa-up-class-del" title="Удалить загруженную">✕</button>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:11px;color:#caa66a">Персональная:</b>' +
+        '<input id="qa-up-nick" list="qa-roster-dl" placeholder="ник игрока…" style="min-width:150px" autocomplete="off">' +
+        '<input type="file" id="qa-up-nick-file" accept="image/png,image/webp,image/jpeg">' +
+        '<button class="sec" id="qa-up-nick-btn">Загрузить игроку</button>' +
+        '<button class="sec" id="qa-up-nick-del" title="Удалить загруженную">✕</button>' +
+      "</div>" +
+      '<div id="qa-up-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
+    var st = wrap.querySelector("#qa-up-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function reloadUploaded() {
+      q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; refresh(); }).catch(refresh);
+    }
+    function doUpload(key, file, label) {
+      if (!key) { status("Не выбрана цель."); return; }
+      fileToDataURL(file, function (dataUrl) {
+        status("Загрузка…");
+        q("POST", "/queue/admin/model-upload", { key: key, data: dataUrl })
+          .then(function () { status("✓ " + label + " загружена!", true); reloadUploaded(); })
+          .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+      }, status);
+    }
+    function doDelete(key, label) {
+      if (!key || !UPLOADED[key]) { status("Для этой цели загруженной модели нет."); return; }
+      q("POST", "/queue/admin/model-delete", { key: key })
+        .then(function () { status("Удалена: " + label, true); reloadUploaded(); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    }
+    wrap.querySelector("#qa-up-class-btn").addEventListener("click", function () {
+      var sel = wrap.querySelector("#qa-up-class");
+      doUpload(sel.value, wrap.querySelector("#qa-up-class-file").files[0], "Модель класса");
+    });
+    wrap.querySelector("#qa-up-class-del").addEventListener("click", function () {
+      var sel = wrap.querySelector("#qa-up-class");
+      doDelete(sel.value, sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : "");
+    });
+    wrap.querySelector("#qa-up-nick-btn").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qa-up-nick").value.trim();
+      if (!nk) { status("Укажи ник игрока."); return; }
+      doUpload("person-" + canon(nk), wrap.querySelector("#qa-up-nick-file").files[0], "Персональная модель");
+    });
+    wrap.querySelector("#qa-up-nick-del").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qa-up-nick").value.trim();
+      if (!nk) { status("Укажи ник игрока."); return; }
+      doDelete("person-" + canon(nk), nk);
+    });
+    return wrap;
+  }
+
   function buildModelSizePanel() {
     var BASE = 58;  // px высоты модели при 1.00×
     var wrap = document.createElement("div");
@@ -1194,6 +1298,7 @@
         q("GET", "/queue/models").then(function (d) { MODEL_SETTINGS = d.settings || {}; }).catch(function () { MODEL_SETTINGS = {}; }),
         q("GET", "/queue/placements").then(function (d) { PLACEMENTS = d.placements || {}; }).catch(function () { PLACEMENTS = {}; }),
         q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
+        q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
         q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
       ]).then(refresh);
     }

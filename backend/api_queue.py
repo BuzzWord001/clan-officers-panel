@@ -15,18 +15,29 @@
 """
 from __future__ import annotations
 
+import base64
 import re
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import db
+from config import settings
 from session import require_admin
 
 router = APIRouter(prefix="/queue", tags=["queue"])
+
+# загруженные админом модели (персональные/классовые) — на томе /data, переживают редеплой
+_UPLOAD_DIR = Path(settings.db_path).parent / "queue_models"
+_SAFE_KEY = re.compile(r"[^\w\-]", re.U)
+_IMG_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+def _safe_key(k: str) -> str:
+    return _SAFE_KEY.sub("_", (k or "").strip())[:80]
 
 COOKIE = "queue_device"
 COOKIE_MAX_AGE = 180 * 24 * 3600           # «оставаться в системе» ~полгода
@@ -287,6 +298,11 @@ class ModelIn(BaseModel):
     flip: int = Field(default=0)
     rotate: int = Field(default=0)
     scale: float = Field(default=1.0)
+
+
+class ModelUploadIn(BaseModel):
+    key: str = Field(min_length=1, max_length=120)      # 'person-<canon>' | 'class-<Класс>-<m|f>'
+    data: str = Field(min_length=1, max_length=8_000_000)  # 'data:image/png;base64,...'
 
 
 class GenderIn(BaseModel):
@@ -622,6 +638,68 @@ def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
             " rotate=excluded.rotate, scale=excluded.scale, updated_at=excluded.updated_at",
             (payload.key, flip, rot, scl, _now()))
     return {"ok": True}
+
+
+@router.post("/admin/model-upload")
+def model_upload(payload: ModelUploadIn, _: dict = Depends(require_admin)) -> dict:
+    """Загрузка картинки модели (персональной 'person-<canon>' или классовой
+    'class-<Класс>-<m|f>'). Хранится на томе /data, отдаётся через /queue/model-img."""
+    key = _safe_key(payload.key)
+    if not key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_key")
+    m = re.match(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", payload.data, re.S)
+    if not m:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_image")
+    try:
+        raw = base64.b64decode(m.group(2), validate=True)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_base64")
+    if len(raw) > 5_000_000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "too_big")
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    for old in _UPLOAD_DIR.glob(key + ".*"):        # заменяем прежнюю
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    (_UPLOAD_DIR / (key + "." + _IMG_EXT[m.group(1)])).write_bytes(raw)
+    return {"ok": True, "key": key}
+
+
+@router.post("/admin/model-delete")
+def model_delete(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
+    """Удалить загруженную модель по ключу (возврат к статической/заглушке)."""
+    key = _safe_key(payload.key)
+    n = 0
+    if key and _UPLOAD_DIR.exists():
+        for f in _UPLOAD_DIR.glob(key + ".*"):
+            try:
+                f.unlink(); n += 1
+            except OSError:
+                pass
+    return {"ok": True, "removed": n}
+
+
+@router.get("/uploaded-models")
+def uploaded_models() -> dict:
+    """key -> mtime (для cache-bust на фронте)."""
+    out: dict[str, int] = {}
+    if _UPLOAD_DIR.exists():
+        for f in _UPLOAD_DIR.glob("*.*"):
+            try:
+                out[f.stem] = int(f.stat().st_mtime)
+            except OSError:
+                pass
+    return {"keys": out}
+
+
+@router.get("/model-img/{key}")
+def model_img(key: str) -> FileResponse:
+    safe = _safe_key(key)
+    files = sorted(_UPLOAD_DIR.glob(safe + ".*")) if (safe and _UPLOAD_DIR.exists()) else []
+    if not files:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    return FileResponse(files[0], headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 @router.post("/admin/gender")
