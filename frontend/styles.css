@@ -5277,9 +5277,10 @@ tr.row-elite > td:last-child {
 tr.reg-row-focus > td { background: rgba(224,162,74,.16) !important; }
 tr.reg-row-flash > td { animation: regRowFlash 1.6s ease-out; }
 @keyframes regRowFlash { from { background: rgba(245,200,120,.55); } to { background: rgba(224,162,74,.16); } }
-/* Гость роли не выдаёт — поиск офицерский; на узких экранах виджет сворачивается. */
+/* Гость роли не выдаёт — поиск офицерский; на узких экранах виджет сворачивается
+   в иконку (js/global-search.js), плавающее поле по тапу — НЕ занимает место в шапке. */
 @media (max-width: 720px) {
-  .gs-wrap { order: 3; flex: 1 1 100%; margin: 8px 0 0; }
+  .gs-wrap { order: 2; flex: 0 0 auto; width: auto; min-width: 0; margin: 0 6px 0 auto; }
 }
 
 /* Счётчик Элиты в сводке таблицы Доблести — золотыми буквами со свечением.

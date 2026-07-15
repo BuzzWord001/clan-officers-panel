@@ -67,7 +67,21 @@
       '#gs-drop .gs-rega{color:#c8a86a;background:rgba(200,160,90,.10)}' +
       '#gs-drop .gs-r-elite{color:#ff8a94;background:rgba(255,90,106,.16)}' +
       '#gs-drop .gs-r-vet{color:#ffd24a;background:rgba(255,200,80,.16)}' +
-      '#gs-drop .gs-r-off{color:#ff9a44;background:rgba(255,150,70,.14)}';
+      '#gs-drop .gs-r-off{color:#ff9a44;background:rgba(255,150,70,.14)}' +
+      // Кнопка-иконка поиска — видна ТОЛЬКО на телефоне (десктоп показывает строку целиком).
+      '#gs-wrap .gs-toggle{display:none;align-items:center;justify-content:center;width:38px;height:38px;' +
+        'flex:0 0 auto;border-radius:9px;border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.72);' +
+        'color:#e0a24a;font-size:16px;line-height:1;cursor:pointer;padding:0}' +
+      '#gs-wrap .gs-toggle:active{background:rgba(28,18,9,.92)}' +
+      // Телефон: строка поиска НЕ занимает место в шапке (не толкает таблицу вниз).
+      // Свёрнута в иконку; по тапу поле разворачивается как плавающая строка (position:fixed из JS).
+      '@media (max-width:720px){' +
+        '#gs-wrap{order:2;flex:0 0 auto;width:auto;min-width:0;margin:0 6px 0 auto;position:static}' +
+        '#gs-wrap .gs-ic{display:none}' +
+        '#gs-wrap .gs-toggle{display:inline-flex}' +
+        '#gs-wrap>#gs-input{display:none}' +
+        '#gs-wrap.gs-open>#gs-input{display:block}' +
+      '}';
     document.head.appendChild(st);
   }
 
@@ -79,6 +93,7 @@
     wrap.id = "gs-wrap";
     wrap.className = "gs-wrap";
     wrap.innerHTML =
+      '<button id="gs-toggle" class="gs-toggle" type="button" aria-label="Поиск по сайту">🔍</button>' +
       '<span class="gs-ic" aria-hidden="true">🔍</span>' +
       '<input id="gs-input" class="gs-input" type="text" autocomplete="off" ' +
       'placeholder="Поиск ника по сайту">';
@@ -100,14 +115,29 @@
 
   function wire(wrap, drop) {
     const input = wrap.querySelector("#gs-input");
+    const toggle = wrap.querySelector("#gs-toggle");
     let timer = null, lastQ = "";
+
+    function isMobile() { return window.matchMedia("(max-width:720px)").matches; }
+    // На телефоне развёрнутое поле — плавающая строка ПОД шапкой (position:fixed),
+    // чтобы не занимать место в шапке и не толкать таблицу вниз.
+    function placeInput() {
+      if (isMobile() && wrap.classList.contains("gs-open")) {
+        const bar = document.querySelector(".topbar");
+        const top = bar ? bar.getBoundingClientRect().bottom + 6 : 56;
+        input.style.cssText = "display:block;position:fixed;top:" + Math.round(top) +
+          "px;left:8px;right:8px;width:auto;z-index:5001;font-size:16px;padding:11px 12px 11px 14px";
+      } else {
+        input.style.cssText = "";   // десктоп/свёрнуто — по внешним стилям
+      }
+    }
 
     // Дропдаун в <body> и position:fixed — считаем позицию под строкой поиска.
     function place() {
       const r = input.getBoundingClientRect();
       const vw = document.documentElement.clientWidth;
-      const w = Math.min(440, vw * 0.88);
-      let left = r.left;
+      const w = isMobile() ? (vw - 16) : Math.min(440, vw * 0.88);
+      let left = isMobile() ? 8 : r.left;
       if (left + w > vw - 8) left = Math.max(8, vw - 8 - w);
       drop.style.position = "fixed";
       drop.style.top = Math.round(r.bottom + 6) + "px";
@@ -117,6 +147,14 @@
     }
     function open() { place(); drop.hidden = false; }
     function close() { drop.hidden = true; }
+    function collapse() { wrap.classList.remove("gs-open"); close(); placeInput(); }
+
+    if (toggle) toggle.addEventListener("click", function () {
+      if (wrap.classList.contains("gs-open")) { collapse(); return; }
+      wrap.classList.add("gs-open"); placeInput();
+      input.focus();
+      if (input.value.trim().length >= 2 && drop.innerHTML) open();
+    });
 
     function render(results, q) {
       if (!results.length) {
@@ -176,16 +214,23 @@
       if (input.value.trim().length >= 2 && drop.innerHTML) open();
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { close(); input.blur(); }
+      if (e.key === "Escape") { collapse(); input.blur(); }
     });
     // дропдаун теперь в <body> — клик по нему НЕ должен считаться «вне» (иначе
-    // закрывался бы до перехода по ссылке-результату).
+    // закрывался бы до перехода по ссылке-результату). На телефоне клик вне
+    // сворачивает плавающее поле обратно в иконку.
     document.addEventListener("click", (e) => {
-      if (!wrap.contains(e.target) && !drop.contains(e.target)) close();
+      if (!wrap.contains(e.target) && !drop.contains(e.target)) {
+        if (isMobile() && wrap.classList.contains("gs-open")) collapse(); else close();
+      }
     });
     // position:fixed — держим под строкой при прокрутке/изменении размера окна.
-    window.addEventListener("scroll", () => { if (!drop.hidden) place(); }, true);
-    window.addEventListener("resize", () => { if (!drop.hidden) place(); });
+    window.addEventListener("scroll", () => { placeInput(); if (!drop.hidden) place(); }, true);
+    window.addEventListener("resize", () => {
+      if (!isMobile()) wrap.classList.remove("gs-open");   // перешли на десктоп — строка снова целиком
+      placeInput();
+      if (!drop.hidden) place();
+    });
   }
 
   // Роль — как в chamber-door.js: сначала data-role/guest-mode на body, иначе API.me().
