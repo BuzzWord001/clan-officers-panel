@@ -395,20 +395,6 @@
     ".q-log table{width:100%;border-collapse:collapse;font-size:11.5px}" +
     ".q-log th,.q-log td{padding:5px 8px;border-bottom:1px solid rgba(224,162,74,.12);text-align:left;white-space:nowrap}" +
     ".q-log th{color:#a58c68;position:sticky;top:0;background:#1a1109}" +
-    ".q-gearbar{display:flex;justify-content:flex-end;margin:0 0 10px}" +
-    ".q-gear{cursor:pointer;display:inline-flex;align-items:center;gap:7px;font:700 13px system-ui;" +
-      "color:#f0c878;background:linear-gradient(180deg,#2a1d0f,#160d06);border:1px solid rgba(224,162,74,.55);" +
-      "border-radius:10px;padding:9px 15px;box-shadow:0 3px 10px rgba(0,0,0,.4)}" +
-    ".q-gear:hover{filter:brightness(1.12)}" +
-    ".q-modal{position:fixed;inset:0;z-index:6000;display:flex;align-items:flex-start;justify-content:center;" +
-      "background:rgba(8,5,2,.74);backdrop-filter:blur(3px);overflow:auto;padding:28px 12px}" +
-    ".q-modal-box{width:min(780px,96vw);margin:auto;background:linear-gradient(180deg,#241608,#150d06);" +
-      "border:1px solid rgba(224,162,74,.45);border-radius:16px;padding:16px 18px 22px;box-shadow:0 22px 64px rgba(0,0,0,.6)}" +
-    ".q-modal-head{display:flex;align-items:center;margin:0 0 8px}" +
-    ".q-modal-head h3{margin:0;font:800 17px Georgia,serif;color:#f0c878}" +
-    ".q-modal-x{margin-left:auto;cursor:pointer;background:none;border:0;color:#caa66a;font-size:26px;line-height:1}" +
-    ".q-modal-x:hover{color:#f0c878}" +
-    ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
     ".qs-wrap{max-width:1340px;margin:14px auto 60px;padding:0 12px}" +
     /* рамка и сцена одной пропорции (1.79) → равные отступы не искажают картинку */
@@ -507,8 +493,10 @@
     ".qs-char-inner .q-char-ph{height:100%}" +
     "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
-    "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}.qs-join{font-size:11px;padding:5px 9px}" +
-      ".q-char-name{font-size:9px}}";
+    "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
+      ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
+      ".q-char-name{font:700 9px/1.3 Georgia,serif;max-width:74px}" +
+      ".q-admin{padding:11px 10px}.q-admin-row{gap:6px}}";
     document.head.appendChild(st);
   }
 
@@ -766,7 +754,6 @@
     var wrap = document.createElement("div");
     wrap.className = "qs-wrap";
     wrap.style.maxWidth = Math.round(1340 * getSize("frame", 1)) + "px";  // размер рамки (сохраняется)
-    if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
     banner.innerHTML = _pathMode
@@ -1079,40 +1066,8 @@
     return box;
   }
 
-  // ── кнопка «⚙️ Настройки моделей» (открывает модалку с поворотом/зеркалом) ──
-  function gearBar() {
-    var bar = document.createElement("div");
-    bar.className = "q-gearbar";
-    var b = document.createElement("button");
-    b.className = "q-gear";
-    b.innerHTML = "⚙️ Настройки моделей";
-    b.title = "Поворот и зеркало моделей";
-    b.addEventListener("click", openOrientModal);
-    bar.appendChild(b);
-    return bar;
-  }
-
-  function openOrientModal() {
-    if (document.getElementById("q-orient-modal")) return;
-    var ov = document.createElement("div");
-    ov.className = "q-modal"; ov.id = "q-orient-modal";
-    var box = document.createElement("div");
-    box.className = "q-modal-box";
-    var head = document.createElement("div");
-    head.className = "q-modal-head";
-    head.innerHTML = "<h3>🔄 Поворот и зеркало моделей</h3>";
-    var x = document.createElement("button");
-    x.className = "q-modal-x"; x.innerHTML = "&times;"; x.title = "Закрыть";
-    function close() { ov.remove(); document.removeEventListener("keydown", onKey); }
-    function onKey(e) { if (e.key === "Escape") close(); }
-    x.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    head.appendChild(x);
-    box.appendChild(head);
-    box.appendChild(buildOrientSection());
-    ov.appendChild(box);
-    document.body.appendChild(ov);
-  }
+  // (поворот/зеркало моделей перенесены ВНИЗ в панель размеров — buildModelSizePanel;
+  //  отдельная кнопка «⚙️ Настройки моделей» убрана)
 
   // ── панель размеров КАЖДОЙ модели с визуальным сравнением (общая базовая линия) ──
   // пол(а) для класса: заблокированные — один, остальные — муж+жен
@@ -1369,9 +1324,10 @@
     var wrap = document.createElement("div");
     wrap.className = "q-admin-row";
     wrap.style.cssText = "flex-direction:column;align-items:stretch;gap:4px";
-    wrap.innerHTML = '<div style="font-size:12px;color:#caa66a">Размер каждой модели ' +
-      '<span style="color:#8a795a;font-size:11px">— все стоят на одной линии, видно относительный размер; ' +
-      'тяни ползунок под нужной. Общий «Модели» умножает все сразу.</span></div>';
+    wrap.innerHTML = '<div style="font-size:12px;color:#caa66a">Размер, поворот и зеркало каждой модели ' +
+      '<span style="color:#8a795a;font-size:11px">— все на одной линии, видно относительный размер. ' +
+      'Ползунок — размер; ⇋ — зеркало (если модель смотрит не туда); ↺/↻ — поворот. ' +
+      'Меняется у всех с этой моделью сразу и сохраняется само.</span></div>';
     var strip = document.createElement("div");
     strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:8px 4px;align-items:flex-end;" +
       "background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.22);border-radius:10px";
@@ -1379,7 +1335,7 @@
       var s = Object.assign({ flip: 0, rotate: 0, scale: 1 }, MODEL_SETTINGS[m.key] || {});
       s.scale = +s.scale || 1; MODEL_SETTINGS[m.key] = s;
       var col = document.createElement("div");
-      col.style.cssText = "flex:0 0 auto;width:82px;display:flex;flex-direction:column;align-items:center;gap:3px";
+      col.style.cssText = "flex:0 0 auto;width:96px;display:flex;flex-direction:column;align-items:center;gap:3px";
       var pit = document.createElement("div");   // общая базовая линия (низ) для сравнения
       pit.style.cssText = "height:" + (BASE * 2 + 16) + "px;width:100%;display:flex;align-items:flex-end;" +
         "justify-content:center;background:linear-gradient(180deg,rgba(190,224,234,.14),rgba(143,195,106,.16));" +
@@ -1387,94 +1343,45 @@
       var img = document.createElement("img");
       img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.src = webpUrl(m.key);
       img.style.cssText = "width:auto;max-width:100%;object-fit:contain;transform:" + transformStr(s);
-      function sizeImg() { img.style.height = Math.round(BASE * s.scale) + "px"; }
-      sizeImg(); pit.appendChild(img);
+      function applyPreview() { img.style.transform = transformStr(s); img.style.height = Math.round(BASE * s.scale) + "px"; }
+      applyPreview(); pit.appendChild(img);
       var lbl = document.createElement("div");
       lbl.textContent = m.label;
       lbl.style.cssText = "font-size:10px;color:#e8dcc4;text-align:center;line-height:1.05;height:22px;overflow:hidden";
       var val = document.createElement("div");
-      val.textContent = s.scale.toFixed(2) + "×";
-      val.style.cssText = "font-size:10.5px;color:#f0c878;font-weight:700";
+      val.textContent = s.scale.toFixed(2) + "× · " + (s.rotate || 0) + "°";
+      val.style.cssText = "font-size:10px;color:#f0c878;font-weight:700";
       var rng = document.createElement("input");
       rng.type = "range"; rng.min = "0.4"; rng.max = "2"; rng.step = "0.05"; rng.value = String(s.scale);
       rng.style.cssText = "width:100%;accent-color:#e0a24a";
       var t;
-      rng.addEventListener("input", function () {
-        s.scale = +rng.value; val.textContent = s.scale.toFixed(2) + "×"; sizeImg();
-        applyModelLive(m.key, s);
+      function persist() {
         clearTimeout(t); t = setTimeout(function () {
           q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale }).catch(function () {});
         }, 300);
+      }
+      function live() { val.textContent = s.scale.toFixed(2) + "× · " + (s.rotate || 0) + "°"; applyPreview(); applyModelLive(m.key, s); }
+      rng.addEventListener("input", function () { s.scale = +rng.value; live(); persist(); });
+      // ряд управления: зеркало + поворот −15/+15
+      var ctl = document.createElement("div");
+      ctl.style.cssText = "display:flex;gap:3px;width:100%;justify-content:center;align-items:center";
+      var mir = document.createElement("button");
+      mir.className = "sec"; mir.style.cssText = "padding:2px 6px;font-size:12px;line-height:1";
+      function paintMir() { mir.textContent = "⇋"; mir.style.background = s.flip ? "rgba(224,162,74,.4)" : ""; mir.title = s.flip ? "зеркало вкл" : "зеркало выкл"; }
+      paintMir();
+      mir.addEventListener("click", function () { s.flip = s.flip ? 0 : 1; paintMir(); live(); persist(); });
+      ctl.appendChild(mir);
+      [["↺", -15], ["↻", 15]].forEach(function (p) {
+        var b = document.createElement("button");
+        b.className = "sec"; b.style.cssText = "padding:2px 6px;font-size:12px;line-height:1"; b.textContent = p[0];
+        b.title = "поворот " + (p[1] > 0 ? "+" : "") + p[1] + "°";
+        b.addEventListener("click", function () { s.rotate = (((s.rotate || 0) + p[1]) % 360); live(); persist(); });
+        ctl.appendChild(b);
       });
-      col.appendChild(pit); col.appendChild(lbl); col.appendChild(val); col.appendChild(rng);
+      col.appendChild(pit); col.appendChild(lbl); col.appendChild(val); col.appendChild(rng); col.appendChild(ctl);
       strip.appendChild(col);
     });
     wrap.appendChild(strip);
-    return wrap;
-  }
-
-  // ── грид поворота/зеркала (best practice: тумблер зеркала + ползунок поворота, живое превью) ──
-  function buildOrientSection() {
-    var wrap = document.createElement("div");
-    wrap.innerHTML =
-      '<div style="font-size:12.5px;color:#c9b48f;margin:2px 0 14px">Персонажи идут к будке (вправо). ' +
-      'Если модель смотрит не туда — включи «Зеркало». Ползунок — <b>поворот</b>. ' +
-      '(Размер каждой модели — внизу в админ-панели, там же где все размеры.) ' +
-      'Меняется у всех персонажей с этой моделью сразу и сохраняется само.</div>';
-    var grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px";
-    ALL_MODELS.forEach(function (m) {
-      var s = Object.assign({ flip: 0, rotate: 0, scale: 1 }, MODEL_SETTINGS[m.key] || {});
-      s.scale = +s.scale || 1;
-      MODEL_SETTINGS[m.key] = s;
-      var card = document.createElement("div");
-      card.className = "q-mcard";
-      card.style.cssText = "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;padding:10px;text-align:center";
-      var img = document.createElement("img");
-      img.alt = ""; img.decoding = "async"; img.loading = "lazy";
-      img.src = webpUrl(m.key);
-      img.style.cssText = "height:96px;width:auto;max-width:100%;object-fit:contain;background:linear-gradient(180deg,#bfe0ea,#8fc36a);border-radius:8px;padding:4px";
-      function applyPreview() {
-        img.style.transform = transformStr(s);
-        img.style.height = Math.round(96 * (s.scale || 1)) + "px";  // превью отражает размер
-      }
-      applyPreview();
-      var lbl = document.createElement("div");
-      lbl.textContent = m.label;
-      lbl.style.cssText = "font-size:12px;color:#f6ead2;margin:6px 0;font-weight:700";
-      var saveT;
-      function save() {
-        applyPreview(); applyModelLive(m.key, s);
-        clearTimeout(saveT);
-        saveT = setTimeout(function () {
-          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale })
-            .catch(function (e) { alert("Не сохранилось (нужен вход админом): " + (e.detail || e.message)); });
-        }, 300);
-      }
-      var mir = document.createElement("button");
-      function paintMir() { mir.textContent = s.flip ? "⇋ Зеркало: вкл" : "⇋ Зеркало: выкл"; mir.style.opacity = s.flip ? "1" : ".7"; }
-      mir.style.cssText = "cursor:pointer;width:100%;margin:0 0 8px;border:1px solid rgba(224,162,74,.5);background:rgba(20,13,7,.7);color:#f0c878;border-radius:8px;padding:7px;font-size:12px;font-weight:700";
-      paintMir();
-      mir.addEventListener("click", function () { s.flip = s.flip ? 0 : 1; paintMir(); save(); });
-      var rd = document.createElement("div");
-      rd.style.cssText = "font-size:11px;color:#a58c68;margin-bottom:2px";
-      rd.textContent = "поворот: " + (s.rotate || 0) + "°";
-      var rng = document.createElement("input");
-      rng.type = "range"; rng.min = "-180"; rng.max = "180"; rng.step = "5"; rng.value = String(s.rotate || 0);
-      rng.style.width = "100%";
-      rng.addEventListener("input", function () { s.rotate = +rng.value; rd.textContent = "поворот: " + s.rotate + "°"; save(); });
-      var rst = document.createElement("button");
-      rst.textContent = "⟲ Сброс"; rst.title = "Без зеркала и поворота";
-      rst.style.cssText = "cursor:pointer;margin-top:8px;border:1px solid rgba(224,162,74,.4);background:none;color:#caa66a;border-radius:8px;padding:5px 10px;font-size:12px";
-      rst.addEventListener("click", function () {
-        s.flip = 0; s.rotate = 0; paintMir();
-        rd.textContent = "поворот: 0°"; rng.value = "0"; save();
-      });
-      card.appendChild(img); card.appendChild(lbl); card.appendChild(mir);
-      card.appendChild(rd); card.appendChild(rng); card.appendChild(rst);
-      grid.appendChild(card);
-    });
-    wrap.appendChild(grid);
     return wrap;
   }
 
