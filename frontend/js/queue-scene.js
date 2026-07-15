@@ -166,8 +166,15 @@
     return !isDay;
   }
 
-  var PLACEMENTS = {};     // key ('item:...'/'mount') -> {x,y} ручная расстановка
+  var PLACEMENTS = {};     // key ('item:...'/'mount'/'env:<id>') -> {x,y} ручная расстановка
   var CONFIG = {};         // key -> string: 'path:N' (JSON точек), 'size:frame|char|item|mount'
+  var ENV = [];            // объекты окружения (загружены админом): [{id,key,w,flip,rotate,z}]
+  function loadEnv() {
+    ENV = [];
+    try { var a = JSON.parse(CONFIG["env_objects"] || "[]"); if (Array.isArray(a)) ENV = a; } catch (e) {}
+  }
+  function saveEnv() { saveCfg("env_objects", JSON.stringify(ENV)); }
+  function envNextId() { var m = 0; ENV.forEach(function (o) { if (+o.id > m) m = +o.id; }); return m + 1; }
   var _placeMode = false;  // режим ручной расстановки предметов
   var _pathMode = false;   // режим редактирования формы очередей
   function getPath(qi) {
@@ -417,8 +424,12 @@
     ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:99999;" +
       "background:url('assets/queue/scene/scene-frame.webp?v=3') center/100% 100% no-repeat;" +
       "filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}" +
-    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-merchant{" +
+    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-merchant,.qs-stage.place .qs-btn-abs,.qs-stage.place .qs-env{" +
       "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
+    /* объекты окружения (деревья/камни/костры), загружаются админом */
+    ".qs-env{position:absolute;transform-origin:50% 100%;pointer-events:none;" +
+      "filter:drop-shadow(0 6px 9px rgba(0,0,0,.45))}" +
+    ".qs-stage.place .qs-env{pointer-events:auto}" +
     /* редактор формы очередей: линия пути + точки */
     ".qs-pathsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8500;overflow:visible}" +
     /* индикатор направления очереди — мягкий след на земле под персонажами */
@@ -441,6 +452,7 @@
     "@keyframes qsGlow{0%,100%{opacity:.35;transform:translate(-50%,-55%) scale(.95)}" +
       "50%{opacity:.65;transform:translate(-50%,-55%) scale(1.06)}}" +
     ".qs-booth{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:9000}" +
+    ".qs-btn-abs{position:absolute;transform:translate(-50%,-50%);z-index:9000;margin:0}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -661,26 +673,35 @@
         var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
         stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
-      // UI: кнопка полного списка + кнопка встать/выйти (число убрано — будет столб-счётчик)
+      // UI: ДВЕ отдельные кнопки — «Список» и «Встать в очередь». Каждую можно
+      // перетащить (в режиме «Расставить предметы»); позиция сохраняется.
       var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
-      var ui = document.createElement("div");
-      ui.className = "qs-booth";
-      ui.style.cssText = "left:" + b.ui.x + "%;top:" + b.ui.y + "%";
-      ui.innerHTML =
-        '<button class="qs-list" style="--gc:' + b.accent + '" title="Показать всю очередь">📋 список</button>' +
-        (_meAcc ? '<button class="qs-join' + (iAmIn ? " leave" : "") + '" data-act="' +
-          (iAmIn ? "leave" : "join") + '">' + (iAmIn ? "Выйти" : "Встать") + "</button>" : "");
-      stage.appendChild(ui);
-      ui.querySelector(".qs-list").addEventListener("click", function () { openFullList(b, entries); });
-      var jb = ui.querySelector(".qs-join");
-      if (jb) jb.addEventListener("click", function () {
-        if (jb.dataset.act === "join") { openResourcePicker(b); return; }  // встать → выбор ресурса
-        jb.disabled = true;
+      // кнопка «Список»
+      var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
+      var listBtn = document.createElement("button");
+      listBtn.className = "qs-list qs-btn-abs";
+      listBtn.style.cssText = "left:" + lp.x.toFixed(2) + "%;top:" + lp.y.toFixed(2) + "%;--gc:" + b.accent;
+      listBtn.title = "Показать всю очередь"; listBtn.textContent = "📋 список";
+      if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
+      else listBtn.addEventListener("click", function () { openFullList(b, entries); });
+      stage.appendChild(listBtn);
+      // кнопка «Встать в очередь» — есть всегда
+      var jp = placedPos("btn-join:" + b.q, b.ui.x, b.ui.y + 2);
+      var joinBtn = document.createElement("button");
+      joinBtn.className = "qs-join qs-btn-abs" + (iAmIn ? " leave" : "");
+      joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
+      joinBtn.textContent = iAmIn ? "Выйти" : "Встать в очередь";
+      if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
+      else joinBtn.addEventListener("click", function () {
+        if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
+        if (!iAmIn) { openResourcePicker(b); return; }       // встать → выбор ресурса
+        joinBtn.disabled = true;
         q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
-          jb.disabled = false;
+          joinBtn.disabled = false;
           alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
       });
+      stage.appendChild(joinBtn);
     });
     // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
     var mpos = placedPos("mount", 85, 70);
@@ -691,6 +712,22 @@
       "%;z-index:" + Math.round(mpos.y * 12);
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
+
+    // объекты окружения (загружены админом): слой back(за всеми)/depth(по глубине)/front(перед),
+    // зеркало/поворот/размер из настроек объекта; drag в режиме расстановки
+    ENV.forEach(function (o) {
+      var url = uploadedUrl(o.key); if (!url) return;
+      var pos = placedPos("env:" + o.id, 50, 55);
+      var img = document.createElement("img");
+      img.className = "qs-env"; img.alt = ""; img.decoding = "async"; img.loading = "lazy";
+      img.dataset.envid = o.id; img.src = url;
+      var zi = o.z === "front" ? 8000 : (o.z === "back" ? 1 : Math.round(pos.y * 12));
+      img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) + "%;width:" +
+        ((+o.w) || 18) + "%;z-index:" + zi + ";transform:translate(-50%,-100%) " +
+        (o.flip ? "scaleX(-1) " : "") + (o.rotate ? "rotate(" + o.rotate + "deg)" : "") + ";";
+      if (_placeMode) makeDraggable(img, "env:" + o.id);
+      stage.appendChild(img);
+    });
 
     // редактор формы очередей: линия пути + перетаскиваемые точки (начало ◉ … конец ⚑)
     if (_pathMode) {
@@ -1038,6 +1075,7 @@
     }
     box.appendChild(buildModelSizePanel());
     box.appendChild(buildUploadPanel());
+    box.appendChild(buildEnvPanel());
     return box;
   }
 
@@ -1091,6 +1129,25 @@
     r.onload = function () { cb(r.result); };
     r.onerror = function () { errcb("Не удалось прочитать файл."); };
     r.readAsDataURL(file);
+  }
+  // оценка оптимальности картинки: вес + размеры, совет по оптимизации
+  function assessImage(file, cb) {
+    if (!file) { cb("файл не выбран", false); return; }
+    var kb = file.size / 1024, img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight, ok = true, msg;
+      if (kb > 350 || w > 1800 || h > 1800) {
+        ok = false; msg = "⚠ тяжеловата (" + Math.round(kb) + " КБ, " + w + "×" + h +
+          ") — оптимизируй: ужми до ~1000 px по большей стороне, сохрани WebP/PNG";
+      } else if (kb > 180 || Math.max(w, h) > 1300) {
+        msg = "◐ нормально, но можно легче (" + Math.round(kb) + " КБ, " + w + "×" + h + ")";
+      } else {
+        msg = "✓ оптимально (" + Math.round(kb) + " КБ, " + w + "×" + h + ")";
+      }
+      cb(msg, ok); URL.revokeObjectURL(url);
+    };
+    img.onerror = function () { cb("не удалось прочитать картинку", false); URL.revokeObjectURL(url); };
+    img.src = url;
   }
   // ── админ: загрузка моделей (классовых с делением муж/жен + персональных) ──
   function buildUploadPanel() {
@@ -1164,6 +1221,146 @@
       if (!nk) { status("Укажи ник игрока."); return; }
       doDelete("person-" + canon(nk), nk);
     });
+    // оценка оптимальности при выборе файла (вес/размеры + совет)
+    ["#qa-up-class-file", "#qa-up-nick-file"].forEach(function (sel) {
+      wrap.querySelector(sel).addEventListener("change", function () {
+        var f = this.files[0];
+        if (!f) return;
+        assessImage(f, function (m, ok) { status("Оценка: " + m, ok); });
+      });
+    });
+    return wrap;
+  }
+
+  function envSlug(name) {
+    return (name || "").trim().toLowerCase().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}\-]+/gu, "").slice(0, 40);
+  }
+  // ── админ: объекты окружения (загрузка, добавление в сцену, поворот/зеркало/слой/размер) ──
+  function buildEnvPanel() {
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin-row";
+    wrap.style.cssText = "flex-direction:column;align-items:stretch;gap:8px";
+    var envKeys = Object.keys(UPLOADED).filter(function (k) { return k.indexOf("env-") === 0; }).sort();
+    var opts = envKeys.map(function (k) {
+      return '<option value="' + esc(k) + '">' + esc(k.slice(4)) + "</option>";
+    }).join("") || '<option value="">— сначала загрузи картинку —</option>';
+    wrap.innerHTML =
+      '<div style="font-size:12px;color:#caa66a">🌳 Объекты окружения ' +
+        '<span style="color:#8a795a;font-size:11px">— деревья, камни, костры и пр. PNG с вырезанным фоном. ' +
+        'Загрузи → добавь в сцену → тащи (в режиме «Расставить предметы»), крути, зеркаль, задавай слой</span></div>' +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:11px;color:#caa66a">Новый:</b>' +
+        '<input id="qa-env-name" placeholder="название (дерево, камень…)" style="min-width:150px" autocomplete="off">' +
+        '<input type="file" id="qa-env-file" accept="image/png,image/webp,image/jpeg">' +
+        '<button class="sec" id="qa-env-up">Загрузить картинку</button>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:11px;color:#caa66a">В сцену:</b>' +
+        '<select id="qa-env-pick" style="min-width:170px">' + opts + "</select>" +
+        '<button class="sec" id="qa-env-add">➕ Добавить в сцену</button>' +
+      "</div>" +
+      '<div id="qa-env-list" style="display:flex;flex-direction:column;gap:6px"></div>' +
+      '<div id="qa-env-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
+    var st = wrap.querySelector("#qa-env-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function reloadUploaded(cb) {
+      q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; (cb || refresh)(); }).catch(refresh);
+    }
+    // загрузка картинки окружения
+    wrap.querySelector("#qa-env-file").addEventListener("change", function () {
+      var f = this.files[0]; if (!f) return;
+      assessImage(f, function (m, ok) { status("Оценка: " + m, ok); });
+    });
+    wrap.querySelector("#qa-env-up").addEventListener("click", function () {
+      var name = wrap.querySelector("#qa-env-name").value.trim();
+      var slug = envSlug(name);
+      if (!slug) { status("Укажи название латиницей/кириллицей."); return; }
+      var file = wrap.querySelector("#qa-env-file").files[0];
+      fileToDataURL(file, function (dataUrl) {
+        status("Загрузка…");
+        q("POST", "/queue/admin/model-upload", { key: "env-" + slug, data: dataUrl })
+          .then(function () { status("✓ Картинка «" + slug + "» загружена — выбери её ниже и добавь в сцену", true); reloadUploaded(); })
+          .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+      }, status);
+    });
+    // добавить экземпляр в сцену
+    wrap.querySelector("#qa-env-add").addEventListener("click", function () {
+      var key = wrap.querySelector("#qa-env-pick").value;
+      if (!key) { status("Сначала загрузи картинку окружения."); return; }
+      ENV.push({ id: envNextId(), key: key, w: 18, flip: 0, rotate: 0, z: "depth" });
+      saveEnv(); status("✓ Добавлено в сцену. Включи «Расставить предметы» и перетащи на место.", true);
+      render(_lastState);
+    });
+    // список размещённых объектов + управление
+    var listHost = wrap.querySelector("#qa-env-list");
+    function rebuildList() {
+      listHost.innerHTML = "";
+      if (!ENV.length) {
+        listHost.innerHTML = '<span style="font-size:11px;color:#8a795a">В сцене пока нет объектов окружения.</span>';
+        return;
+      }
+      ENV.forEach(function (o) {
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 7px;" +
+          "border:1px solid rgba(224,162,74,.2);border-radius:8px;background:rgba(0,0,0,.18)";
+        var thumb = uploadedUrl(o.key) || "";
+        row.innerHTML =
+          '<img src="' + esc(thumb) + '" alt="" style="height:34px;width:auto;max-width:52px;object-fit:contain">' +
+          '<b style="font-size:11.5px;color:#f0dcb4;min-width:90px">' + esc(o.key.slice(4)) + "</b>";
+        // зеркало
+        var flip = document.createElement("button");
+        flip.className = "sec"; flip.style.padding = "3px 8px"; flip.textContent = o.flip ? "⇋ зеркало ✓" : "⇋ зеркало";
+        flip.addEventListener("click", function () { o.flip = o.flip ? 0 : 1; saveEnv(); render(_lastState); });
+        row.appendChild(flip);
+        // поворот
+        ["↺", "↻"].forEach(function (sym, i) {
+          var b = document.createElement("button");
+          b.className = "sec"; b.style.padding = "3px 8px"; b.textContent = sym;
+          b.title = i ? "повернуть +15°" : "повернуть −15°";
+          b.addEventListener("click", function () {
+            o.rotate = (((+o.rotate || 0) + (i ? 15 : -15)) % 360); saveEnv(); render(_lastState);
+          });
+          row.appendChild(b);
+        });
+        var rlbl = document.createElement("span");
+        rlbl.style.cssText = "font-size:11px;color:#c9b48f;min-width:38px";
+        rlbl.textContent = (+o.rotate || 0) + "°";
+        row.appendChild(rlbl);
+        // размер
+        var szWrap = document.createElement("label");
+        szWrap.style.cssText = "display:flex;align-items:center;gap:4px;font-size:11px;color:#caa66a";
+        szWrap.appendChild(document.createTextNode("размер"));
+        var sz = document.createElement("input");
+        sz.type = "range"; sz.min = "4"; sz.max = "60"; sz.step = "1"; sz.value = String((+o.w) || 18); sz.style.width = "110px";
+        var szV = document.createElement("b"); szV.textContent = ((+o.w) || 18) + "%"; szV.style.minWidth = "34px";
+        sz.addEventListener("input", function () {
+          szV.textContent = sz.value + "%";
+          var im = document.querySelector('.qs-env[data-envid="' + o.id + '"]'); if (im) im.style.width = sz.value + "%";
+        });
+        sz.addEventListener("change", function () { o.w = +sz.value; saveEnv(); });
+        szWrap.appendChild(sz); szWrap.appendChild(szV); row.appendChild(szWrap);
+        // слой
+        var lay = document.createElement("select");
+        lay.style.fontSize = "11px";
+        [["back", "фон (за всеми)"], ["depth", "по глубине"], ["front", "перед (спереди)"]].forEach(function (p) {
+          var op = document.createElement("option"); op.value = p[0]; op.textContent = p[1];
+          if ((o.z || "depth") === p[0]) op.selected = true; lay.appendChild(op);
+        });
+        lay.addEventListener("change", function () { o.z = lay.value; saveEnv(); render(_lastState); });
+        row.appendChild(lay);
+        // удалить
+        var del = document.createElement("button");
+        del.className = "danger"; del.style.padding = "3px 9px"; del.textContent = "✕";
+        del.title = "убрать из сцены";
+        del.addEventListener("click", function () {
+          ENV = ENV.filter(function (x) { return x.id !== o.id; });
+          saveEnv(); status("Объект убран из сцены.", true); render(_lastState);
+        });
+        row.appendChild(del);
+        listHost.appendChild(row);
+      });
+    }
+    rebuildList();
     return wrap;
   }
 
@@ -1300,7 +1497,7 @@
         q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
         q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
         q("GET", "/auth/me").then(function (m) { _isAdmin = m && (m.role === "admin"); }).catch(function () { _isAdmin = false; })
-      ]).then(refresh);
+      ]).then(function () { loadEnv(); refresh(); });
     }
   };
 })();
