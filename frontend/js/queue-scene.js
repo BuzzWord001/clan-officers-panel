@@ -16,7 +16,12 @@
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   // ВАЖНО: \W в JS удаляет кириллицу — поэтому берём «не буква/цифра» через
   // юникод-свойства (кириллица сохраняется). Иначе canon("Карася")→"" и модель не находилась.
-  function canon(s) { return (s || "").toString().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
+  // латиница→кириллица (похожие буквы): ники PW часто мешают — «Xимеко», «Aпельсин», «Maнгo»…
+  var HOMO = { a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у" };
+  function canon(s) {
+    return (s || "").toString().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")
+      .replace(/[abcehkmoptxy]/g, function (ch) { return HOMO[ch] || ch; });
+  }
 
   // ── модели ──
   var CLASS_MODEL = {
@@ -28,8 +33,11 @@
     "оборотень": { m: "Оборотень.png" },
     "странник": { m: "Странник.png" }
   };
-  var PERSONAL = { "naomi": "_Naomi.png", "карася": "Карася.png", "кэя": "Кэя.png",
-    "лирия": "Лирия!.png", "химеко": "Химеко.png" };
+  // ключи строим через canon(имя) — чтобы совпадали при латинице/кириллице в никах
+  var PERSONAL_SRC = { "Naomi": "_Naomi.png", "Карася": "Карася.png", "Кэя": "Кэя.png",
+    "Лирия": "Лирия!.png", "Химеко": "Химеко.png" };
+  var PERSONAL = {};
+  Object.keys(PERSONAL_SRC).forEach(function (k) { PERSONAL[canon(k)] = PERSONAL_SRC[k]; });
   var FEMALE_ONLY = ["друид", "стрелок"], MALE_ONLY = ["оборотень", "странник"];
   function genderOf(cls, trueName) {
     var c = (cls || "").toLowerCase();
@@ -39,18 +47,20 @@
     if (/[аяьи]$/i.test(name)) return "f";
     return "m";
   }
+  // key остаётся с .png (логический id для настроек поворота), а файл — .webp
+  function webpUrl(rel) { return "assets/queue/" + rel.replace(/\.png$/i, ".webp"); }
   function modelInfo(e) {
     // персональная модель ищется и по нику-твину, и по мэйну (файл назван по нику)
     var keys = [canon(e.nick), canon(e.main_nick)];
     for (var i = 0; i < keys.length; i++) {
       if (keys[i] && PERSONAL[keys[i]]) { var f = PERSONAL[keys[i]];
-        return { url: "assets/queue/personal/" + f, key: "personal/" + f }; }
+        return { url: webpUrl("personal/" + f), key: "personal/" + f }; }
     }
     var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
     if (set) {
       var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
       var fn = set[g] || set.m || set.f;
-      return { url: "assets/queue/class/" + fn, key: "class/" + fn };
+      return { url: webpUrl("class/" + fn), key: "class/" + fn };
     }
     return null;
   }
@@ -65,12 +75,27 @@
     { key: "class/Странник.png", label: "Странник" },
     { key: "personal/_Naomi.png", label: "Naomi (личн.)" }, { key: "personal/Карася.png", label: "Карася (личн.)" },
     { key: "personal/Кэя.png", label: "Кэя (личн.)" }, { key: "personal/Лирия!.png", label: "Лирия! (личн.)" },
-    { key: "personal/Химеко.png", label: "Химеко (личн.)" }
+    { key: "personal/Химеко.png", label: "Химеко (личн.)" },
+    { key: "scene/merchant-0.png", label: "Торговец: обычные" },
+    { key: "scene/merchant-1.png", label: "Торговец: редкие" },
+    { key: "scene/merchant-2.png", label: "Торговец: легендарные" }
   ];
   var MODEL_SETTINGS = {};   // key -> {flip, rotate}
   function transformStr(s) {
     if (!s) return "";
     return (s.flip ? "scaleX(-1) " : "") + (s.rotate ? ("rotate(" + s.rotate + "deg)") : "");
+  }
+  // живое применение настроек модели (поворот/зеркало/размер) на сцене — персонажи И торговцы
+  function applyModelLive(key, s) {
+    var sel = key.replace(/"/g, '\\"');
+    [].forEach.call(document.querySelectorAll('.qs-char[data-mkey="' + sel + '"]'), function (el) {
+      el.style.setProperty("--qs-mscale", s.scale || 1);
+      var im = el.querySelector(".q-char-img"); if (im) im.style.transform = transformStr(s);
+    });
+    [].forEach.call(document.querySelectorAll('.qs-merchant[data-mkey="' + sel + '"]'), function (el) {
+      el.style.setProperty("--qs-mscale", s.scale || 1);
+      el.style.transform = "translate(-50%,-100%) " + transformStr(s);
+    });
   }
 
   // Координаты под РЕАЛЬНУЮ картинку scene-bg (день/ночь). % от сцены.
@@ -78,10 +103,13 @@
   // path — путь очереди: t=1 у будки (перёд), t=0 хвост (глубже в площадь).
   var BOOTHS = [
     { q: 0, title: "Обычные", accent: "#7ec46a", bx: 50, by: 26, ui: { x: 49, y: 40 }, item: { x: 60, y: 27 },
+      merchant: { x: 43, y: 35 },
       path: [{ x: 45, y: 60 }, { x: 47, y: 51 }, { x: 48, y: 43 }, { x: 49, y: 35 }] },
-    { q: 1, title: "Редкие (R)", accent: "#e0a24a", bx: 65, by: 62, ui: { x: 61, y: 74 }, item: { x: 73, y: 64 },
+    { q: 1, title: "Редкие (R)", accent: "#ff8a2b", bx: 65, by: 62, ui: { x: 61, y: 74 }, item: { x: 73, y: 64 },
+      merchant: { x: 70, y: 59 },
       path: [{ x: 37, y: 80 }, { x: 45, y: 76 }, { x: 53, y: 72 }, { x: 60, y: 69 }] },
     { q: 2, title: "Легендарные (S)", accent: "#c07be0", bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
+      merchant: { x: 88, y: 77 },
       path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] }
   ];
   // ресурсы за каждой будкой (файлы assets/queue/scene/item/*.png)
@@ -90,8 +118,21 @@
     ["gramota", "prikaz-feniksa"],
     ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen"]
   ];
+  var RES_NAME = {
+    "kamen-doblesti": "Камень доблести", "meteorit": "Метеорит", "zhemchuzhina": "Жемчужина Фу Си",
+    "znak-edinstva": "Знак единства", "koloda-kart": "Колода карт", "kamen-bessmertnyh": "Камень бессмертных",
+    "pilyulya": "Пилюля звёздного духа", "gramota": "Запечатанная грамота", "prikaz-feniksa": "Приказ Феникса",
+    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень"
+  };
+  function resName(k) { return RES_NAME[k] || k; }
+  function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
   // ночь: 20:00–07:00 по МСК (МСК = UTC+3), иначе день
-  function isNight() { var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7; }
+  function isNight() {
+    var f = CONFIG["forceTime"];              // админ может зафиксировать день/ночь
+    if (f === "day") return false;
+    if (f === "night") return true;
+    var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7;  // авто по МСК
+  }
 
   var PLACEMENTS = {};     // key ('item:...'/'mount') -> {x,y} ручная расстановка
   var CONFIG = {};         // key -> string: 'path:N' (JSON точек), 'size:frame|char|item|mount'
@@ -151,6 +192,44 @@
   }
   function updateSvgLine(svg, pts) {
     svg._pl.setAttribute("points", pts.map(function (p) { return p.x + "," + p.y; }).join(" "));
+  }
+  // ── индикатор направления очереди: светящийся «бегущий» след к будке + шевроны ──
+  function svgFlow(pts, color) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "qs-flowsvg");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("preserveAspectRatio", "none");
+    var pstr = pts.map(function (p) { return p.x + "," + p.y; }).join(" ");
+    var glow = document.createElementNS(ns, "polyline");  // мягкая подсветка дорожки
+    glow.setAttribute("fill", "none"); glow.setAttribute("stroke", color);
+    glow.setAttribute("stroke-width", "1.5"); glow.setAttribute("opacity", "0.18");
+    glow.setAttribute("stroke-linecap", "round"); glow.setAttribute("stroke-linejoin", "round");
+    glow.setAttribute("points", pstr);
+    var dash = document.createElementNS(ns, "polyline");  // бегущие точки к будке
+    dash.setAttribute("class", "qs-flowdash");
+    dash.setAttribute("fill", "none"); dash.setAttribute("stroke", color);
+    dash.setAttribute("stroke-width", "0.5"); dash.setAttribute("opacity", "0.62");
+    dash.setAttribute("stroke-linecap", "round"); dash.setAttribute("stroke-dasharray", "0.5 3.3");
+    dash.setAttribute("points", pstr);
+    svg.appendChild(glow); svg.appendChild(dash);
+    return svg;
+  }
+  function renderFlow(b, pth) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(svgFlow(pth, b.accent));
+    var AR = 1.79;  // соотношение сцены — чтобы шеврон смотрел визуально верно
+    [0.30, 0.52, 0.74].forEach(function (t, k) {
+      var p = pathPoint(pth, t), p2 = pathPoint(pth, Math.min(1, t + 0.05));
+      var ang = Math.atan2((p2.y - p.y), (p2.x - p.x) * AR) * 180 / Math.PI;
+      var ch = document.createElement("div");
+      ch.className = "qs-chev";
+      ch.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;--gc:" + b.accent +
+        ";transform:translate(-50%,-50%) rotate(" + ang.toFixed(1) + "deg);animation-delay:" + (k * 0.32).toFixed(2) + "s";
+      ch.textContent = "❯";  // ❯ указывает к будке
+      frag.appendChild(ch);
+    });
+    return frag;
   }
   function makePathDraggable(dot, qi, idx, pts, svg) {
     dot.style.cursor = "grab";
@@ -229,9 +308,14 @@
     ".q-track{position:absolute;left:8px;right:130px;bottom:22px;top:14px}" +
     ".q-char{position:absolute;bottom:0;transform:translateX(-50%);text-align:center;" +
       "animation:qBob 2.4s ease-in-out infinite}" +
-    ".q-char-name{font:700 11px system-ui;color:#fff;white-space:nowrap;margin:0 auto 2px;" +
-      "padding:1px 6px;border-radius:7px;background:rgba(20,13,7,.72);border:1px solid rgba(224,162,74,.4);" +
-      "text-shadow:0 1px 2px #000;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis}" +
+    ".q-char-name{position:relative;font:700 10.5px/1.4 Georgia,serif;color:#f7ecd4;white-space:nowrap;" +
+      "margin:0 auto 4px;padding:1.5px 10px;border-radius:9px;letter-spacing:.3px;" +
+      "background:linear-gradient(180deg,rgba(60,42,20,.95),rgba(26,17,8,.95));" +
+      "border:1px solid rgba(240,200,120,.5);" +
+      "box-shadow:0 1px 4px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,220,150,.16);" +
+      "text-shadow:0 1px 2px #000;display:inline-block;max-width:120px;overflow:hidden;text-overflow:ellipsis}" +
+    ".q-char-name::after{content:'';position:absolute;left:50%;top:calc(100% - 1px);transform:translateX(-50%);" +
+      "border:4px solid transparent;border-top-color:rgba(240,200,120,.5);filter:drop-shadow(0 1px 0 rgba(0,0,0,.4))}" +
     ".q-char-img{height:96px;width:auto;display:block;margin:0 auto;" +
       "filter:drop-shadow(0 4px 5px rgba(0,0,0,.4))}" +
     ".q-char-ph{margin:0 auto;text-align:center;filter:drop-shadow(0 4px 5px rgba(0,0,0,.4))}" +
@@ -288,20 +372,34 @@
     ".q-mcard input[type=range]{accent-color:#e0a24a}" +
     /* ── сцена-стейдж 16:9 в деревянной рамке (Heroes-style) ── */
     ".qs-wrap{max-width:1340px;margin:14px auto 60px;padding:0 12px}" +
-    "#qs-page-bg{position:fixed;inset:-60px;z-index:-3;background-size:cover;background-position:center;" +
-      "filter:blur(42px) brightness(.5) saturate(.9);transform:scale(1.06);pointer-events:none}" +
-    ".qs-frame{position:relative;width:100%;aspect-ratio:16/9}" +
-    ".qs-stage{position:absolute;inset:0;overflow:hidden;border-radius:8px;" +
-      "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 44px rgba(0,0,0,.35)}" +
-    ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.jpg')}" +
-    ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.jpg')}" +
-    /* рамка ПОВЕРХ сцены (передний план, центр прозрачный) — ровно закрывает края */
-    ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:9500;" +
-      "background:url('assets/queue/scene/scene-frame.png') center/100% 100% no-repeat}" +
-    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount{" +
+    /* рамка и сцена одной пропорции (1.79) → равные отступы не искажают картинку */
+    ".qs-frame{position:relative;width:100%;aspect-ratio:2400/1340}" +
+    /* сцена заходит под дерево по всему периметру (окно рамки ~16%/22%, сцена 13%) —
+       дерево перекрывает край картинки как настоящая рама, без зазоров */
+    /* inset ~15% ≈ окно рамки (16%/22%) → дерево закрывает лишь тонкую кромку, видна почти вся картина */
+    ".qs-stage{position:absolute;inset:15%;overflow:hidden;border-radius:4px;" +
+      "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 18px rgba(0,0,0,.18)}" +
+    ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.webp')}" +
+    ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.webp')}" +
+    /* рамка ПОВЕРХ сцены (передний план, центр прозрачный) — на весь прямоугольник */
+    ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:99999;" +
+      "background:url('assets/queue/scene/scene-frame.webp?v=3') center/100% 100% no-repeat;" +
+      "filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}" +
+    ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-merchant{" +
       "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
     /* редактор формы очередей: линия пути + точки */
     ".qs-pathsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8500;overflow:visible}" +
+    /* индикатор направления очереди — мягкий след на земле под персонажами */
+    ".qs-flowsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible;" +
+      "filter:drop-shadow(0 0 3px rgba(255,224,160,.28))}" +
+    ".qs-flowdash{animation:qsFlowMove 1.15s linear infinite}" +
+    "@keyframes qsFlowMove{to{stroke-dashoffset:-3.8}}" +
+    ".qs-chev{position:absolute;z-index:6;font:900 15px system-ui;line-height:1;color:var(--gc);pointer-events:none;" +
+      "text-shadow:0 0 5px var(--gc),0 1px 1px rgba(0,0,0,.6);opacity:.22;animation:qsChevPulse 1.5s ease-in-out infinite}" +
+    "@keyframes qsChevPulse{0%,100%{opacity:.18}45%{opacity:.88}}" +
+    /* торговец у будки */
+    ".qs-merchant{position:absolute;height:calc(20% * var(--qs-merch-scale,1) * var(--qs-mscale,1));width:auto;" +
+      "transform-origin:50% 100%;pointer-events:none;filter:drop-shadow(0 5px 7px rgba(0,0,0,.5))}" +
     ".qs-pathdot{position:absolute;width:22px;height:22px;transform:translate(-50%,-50%);z-index:8600;" +
       "border-radius:50%;background:var(--gc);border:2px solid #fff;color:#1b1006;font:800 11px system-ui;" +
       "display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.55);touch-action:none}" +
@@ -318,13 +416,46 @@
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}" +
     ".qs-mount{position:absolute;height:calc(22% * var(--qs-mount-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;" +
-      "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5));animation:qsBob 3.4s ease-in-out infinite}" +
+      "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5))}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
     ".qs-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b)}" +
     ".qs-join:hover{filter:brightness(1.07)}" +
-    ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1));transform-origin:bottom center;text-align:center}" +
+    ".qs-list{display:block;margin:0 auto;cursor:pointer;font:700 11px system-ui;color:#f6ead2;" +
+      "border:1px solid var(--gc);border-radius:8px;padding:4px 10px;background:rgba(20,13,7,.82);" +
+      "box-shadow:0 2px 6px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
+    ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
+    /* модалки сцены (выбор ресурса / полный список) */
+    ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
+      "display:flex;align-items:center;justify-content:center;padding:20px}" +
+    ".qs-modal{max-width:560px;width:100%;max-height:86vh;overflow:auto;background:linear-gradient(180deg,#241608,#160d06);" +
+      "border:1px solid rgba(224,162,74,.45);border-radius:16px;box-shadow:0 0 50px rgba(0,0,0,.7)}" +
+    ".qs-modal-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;" +
+      "padding:14px 18px;background:linear-gradient(180deg,#2c1c0b,#1c1207);border-bottom:1px solid rgba(224,162,74,.3);" +
+      "font:700 16px Georgia,serif;color:#f0c878}" +
+    ".qs-modal-x{background:none;border:0;color:#caa66a;font-size:18px;cursor:pointer;line-height:1}" +
+    ".qs-modal-x:hover{color:#fff}" +
+    ".qs-respick{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;padding:16px}" +
+    ".qs-rescard{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" +
+      "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;color:#f6ead2;" +
+      "font:700 12px system-ui;text-align:center}" +
+    ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
+    ".qs-rescard img{height:64px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-fulllist{padding:10px 14px 16px}" +
+    ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
+    ".qs-fl-row.waiting{opacity:.62}" +
+    ".qs-fl-num{width:24px;text-align:center;font:700 13px system-ui;color:#caa66a;flex:0 0 auto}" +
+    ".qs-fl-mdl{height:44px;width:36px;object-fit:contain;flex:0 0 auto;" +
+      "background:linear-gradient(180deg,rgba(190,224,234,.18),rgba(143,195,106,.18));border-radius:6px}" +
+    ".qs-fl-mdl.ph{display:flex;align-items:center;justify-content:center;color:#8a795a;font-weight:700}" +
+    ".qs-fl-nick{font:700 13px system-ui;color:#f6ead2;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-fl-res{height:26px;width:26px;object-fit:contain;flex:0 0 auto}" +
+    ".qs-fl-rname{font-size:11px;color:#c9b48f;flex:0 0 auto}" +
+    ".qs-fl-tag{font:700 10px system-ui;padding:2px 7px;border-radius:6px;flex:0 0 auto}" +
+    ".qs-fl-tag.shown{background:rgba(126,196,106,.2);color:#a9e08f;border:1px solid rgba(126,196,106,.4)}" +
+    ".qs-fl-tag.wait{background:rgba(224,162,74,.16);color:#e6c48f;border:1px solid rgba(224,162,74,.35)}" +
+    ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1) * var(--qs-mscale,1));transform-origin:bottom center;text-align:center}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
     ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
@@ -344,13 +475,15 @@
     var mine = canon(e.main_nick) === meCanon;
     var body = mi
       ? '<img class="q-char-img" src="' + esc(mi.url) + '" data-mkey="' + esc(mi.key) +
-          '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy">'
+          '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy" decoding="async">'
       : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
     el.className = "qs-char" + (mine ? " q-char-me" : "");
     el.dataset.id = e.id || "";
-    el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;" +
+    if (mi) el.dataset.mkey = mi.key;   // для точечной регулировки размера этой модели
+    var mscale = (mi && MODEL_SETTINGS[mi.key] && +MODEL_SETTINGS[mi.key].scale) || 1;
+    el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;--qs-mscale:" + mscale + ";" +
       "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + Math.round(p.y * 12) + ";";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
@@ -375,6 +508,69 @@
     return el;
   }
 
+  // ── универсальная модалка сцены ──
+  function sceneModal(title, bodyNode) {
+    var ov = document.createElement("div");
+    ov.className = "qs-modal-ov";
+    var box = document.createElement("div");
+    box.className = "qs-modal";
+    var head = document.createElement("div");
+    head.className = "qs-modal-head";
+    head.innerHTML = "<span>" + esc(title) + "</span>";
+    var x = document.createElement("button");
+    x.className = "qs-modal-x"; x.textContent = "✕";
+    function close() { ov.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    x.addEventListener("click", close);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    document.addEventListener("keydown", onKey);
+    head.appendChild(x); box.appendChild(head); box.appendChild(bodyNode);
+    ov.appendChild(box); document.body.appendChild(ov);
+    return { close: close };
+  }
+  // выбор ресурса при вставании в очередь
+  function openResourcePicker(b) {
+    var body = document.createElement("div");
+    body.className = "qs-respick";
+    var m = null;
+    (BOOTH_ITEMS[b.q] || []).forEach(function (it) {
+      var card = document.createElement("button");
+      card.className = "qs-rescard";
+      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span>' + esc(resName(it)) + "</span>";
+      card.addEventListener("click", function () {
+        if (m) m.close();
+        q("POST", "/queue/join", { queue: b.q, resource: it }).then(refresh).catch(function (e2) {
+          alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
+                e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+        });
+      });
+      body.appendChild(card);
+    });
+    m = sceneModal("Выбери ресурс — очередь «" + b.title + "»", body);
+  }
+  // полный список очереди (все, включая тех, кто ещё не на сцене) с модельками
+  function openFullList(b, entries) {
+    var limit = Math.round(getSize("limit", 6));
+    var body = document.createElement("div");
+    body.className = "qs-fulllist";
+    if (!entries.length) {
+      body.innerHTML = '<div style="padding:22px;text-align:center;color:#c9b48f">Очередь пуста.</div>';
+    } else entries.forEach(function (e, i) {
+      var mi = modelInfo(e), waiting = i >= limit;
+      var row = document.createElement("div");
+      row.className = "qs-fl-row" + (waiting ? " waiting" : "");
+      row.innerHTML =
+        '<span class="qs-fl-num">' + (i + 1) + "</span>" +
+        (mi ? '<img class="qs-fl-mdl" src="' + esc(mi.url) + '" alt="">' : '<span class="qs-fl-mdl ph">?</span>') +
+        '<span class="qs-fl-nick">' + esc(e.nick) + "</span>" +
+        (e.resource ? '<img class="qs-fl-res" src="' + resImg(e.resource) + '" title="' + esc(resName(e.resource)) + '" alt="">' +
+          '<span class="qs-fl-rname">' + esc(resName(e.resource)) + "</span>" : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>') +
+        (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
+      body.appendChild(row);
+    });
+    sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел.", body);
+  }
+
   // ── сцена: рамка + фон день/ночь + будки (свечение, предметы, счётчик, кнопка) + модельки ──
   function renderStage(state) {
     var frame = document.createElement("div");
@@ -384,6 +580,8 @@
     stage.style.setProperty("--qs-char-scale", getSize("char", 1));
     stage.style.setProperty("--qs-item-scale", getSize("item", 1));
     stage.style.setProperty("--qs-mount-scale", getSize("mount", 1));
+    stage.style.setProperty("--qs-merch-scale", getSize("merch", 1));
+    stage.style.inset = getSize("inset", 15) + "%";   // край рамки (сохраняется, макс ~15.5%)
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
     BOOTHS.forEach(function (b) {
@@ -397,46 +595,63 @@
       (BOOTH_ITEMS[b.q] || []).forEach(function (it, k) {
         var pos = placedPos("item:" + it, b.item.x + (k % 3) * 3.4, b.item.y + Math.floor(k / 3) * 4.6);
         var img = document.createElement("img");
-        img.className = "qs-item"; img.alt = "";
-        img.src = "assets/queue/scene/item/" + it + ".png";
+        img.className = "qs-item"; img.alt = ""; img.decoding = "async"; img.loading = "lazy";
+        img.src = "assets/queue/scene/item/" + it + ".webp";
         img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
           "%;z-index:" + Math.round(pos.y * 12);
         if (_placeMode) makeDraggable(img, "item:" + it);
         stage.appendChild(img);
       });
-      // персонажи РАВНОМЕРНО от начала (t=0, хвост) до будки (t=1, перёд).
-      // первый в очереди (i=0) — у будки; последний — в самом хвосте.
-      var pth = getPath(b.q), n = entries.length;
+      // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей)
+      var mkey = "scene/merchant-" + b.q + ".png";
+      var mset = MODEL_SETTINGS[mkey] || {};
+      var mp = placedPos("merchant:" + b.q, b.merchant.x, b.merchant.y);
+      var merch = document.createElement("img");
+      merch.className = "qs-merchant"; merch.alt = ""; merch.decoding = "async"; merch.loading = "lazy";
+      merch.dataset.mkey = mkey;
+      merch.src = "assets/queue/scene/merchant-" + b.q + ".webp";
+      merch.style.cssText = "left:" + mp.x.toFixed(2) + "%;top:" + mp.y.toFixed(2) +
+        "%;--qs-mscale:" + ((+mset.scale) || 1) + ";z-index:" + Math.round(mp.y * 12) +
+        ";transform:translate(-50%,-100%) " + transformStr(mset) + ";";
+      if (_placeMode) makeDraggable(merch, "merchant:" + b.q);
+      stage.appendChild(merch);
+      // индикатор направления очереди (к будке) — под персонажами
+      var pth = getPath(b.q);
+      if (!_pathMode && !_placeMode) stage.appendChild(renderFlow(b, pth));
+      // персонажи от будки (перёд, t=1) назад по пути; показываем только лимит, остальные ждут
+      var gap = getSize("gap", 0.15);   // расстояние между людьми (доля пути)
+      var limit = Math.round(getSize("limit", 6));
       entries.forEach(function (e, i) {
-        var t = n <= 1 ? 0.9 : 1 - (i / (n - 1));
+        if (i >= limit) return;   // не поместились — видны в полном списке (кнопка «список»)
+        var t = Math.max(0, 1 - i * gap);
         stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
-      // UI: счётчик + кнопка
+      // UI: кнопка полного списка + кнопка встать/выйти (число убрано — будет столб-счётчик)
       var iAmIn = entries.some(function (e) { return canon(e.main_nick) === meCanon; });
       var ui = document.createElement("div");
       ui.className = "qs-booth";
       ui.style.cssText = "left:" + b.ui.x + "%;top:" + b.ui.y + "%";
       ui.innerHTML =
-        '<div class="qs-cnt-line"><span class="qs-cnt" style="--gc:' + b.accent + '">' +
-          entries.length + " в очереди</span></div>" +
+        '<button class="qs-list" style="--gc:' + b.accent + '" title="Показать всю очередь">📋 список</button>' +
         (_meAcc ? '<button class="qs-join' + (iAmIn ? " leave" : "") + '" data-act="' +
           (iAmIn ? "leave" : "join") + '">' + (iAmIn ? "Выйти" : "Встать") + "</button>" : "");
       stage.appendChild(ui);
+      ui.querySelector(".qs-list").addEventListener("click", function () { openFullList(b, entries); });
       var jb = ui.querySelector(".qs-join");
       if (jb) jb.addEventListener("click", function () {
+        if (jb.dataset.act === "join") { openResourcePicker(b); return; }  // встать → выбор ресурса
         jb.disabled = true;
-        q("POST", "/queue/" + jb.dataset.act, { queue: b.q }).then(refresh).catch(function (e2) {
+        q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
           jb.disabled = false;
-          alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
-                e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+          alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
       });
     });
     // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
     var mpos = placedPos("mount", 85, 70);
     var mount = document.createElement("img");
-    mount.className = "qs-mount"; mount.alt = "";
-    mount.src = "assets/queue/scene/item/mount-cilin.png";
+    mount.className = "qs-mount"; mount.alt = ""; mount.decoding = "async"; mount.loading = "lazy";
+    mount.src = "assets/queue/scene/item/mount-cilin.webp";
     mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
       "%;z-index:" + Math.round(mpos.y * 12);
     if (_placeMode) makeDraggable(mount, "mount");
@@ -478,6 +693,7 @@
     host.innerHTML = "";
     var wrap = document.createElement("div");
     wrap.className = "qs-wrap";
+    wrap.style.maxWidth = Math.round(1340 * getSize("frame", 1)) + "px";  // размер рамки (сохраняется)
     if (_isAdmin) wrap.appendChild(gearBar());
     var banner = document.createElement("div");
     banner.className = "q-banner";
@@ -501,7 +717,7 @@
       pbg.id = "qs-page-bg";
       document.body.insertBefore(pbg, document.body.firstChild);
     }
-    pbg.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (isNight() ? "night" : "day") + ".jpg')";
+    pbg.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (isNight() ? "night" : "day") + ".webp')";
   }
 
   // ── админ-панель ──
@@ -529,10 +745,35 @@
         '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
         '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
       "</div>" +
+      '<div class="q-admin-row" style="align-items:center">' +
+        '<span style="font-size:12.5px;color:#caa66a">Фон сцены:</span>' +
+        '<button class="sec" data-time="auto">🕒 Авто (по времени)</button>' +
+        '<button class="sec" data-time="day">☀️ День</button>' +
+        '<button class="sec" data-time="night">🌙 Ночь</button>' +
+      "</div>" +
       '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
         '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
-        sizeSlider("char", "Модели") + sizeSlider("item", "Предметы") +
-        sizeSlider("mount", "Питомец") +
+        sizeSlider("frame", "Рамка/сцена", 0.5, 4) + sizeSlider("char", "Модели") +
+        sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") +
+        sizeSlider("merch", "Торговцы") +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
+        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+          'Сколько видно картины (край рамки): <b id="qa-inset-v">' + getSize("inset", 15).toFixed(1) + '%</b>' +
+          '<input type="range" id="qa-inset" min="4" max="50" step="0.5" value="' + getSize("inset", 15) + '" style="width:300px"></label>' +
+        '<span style="font-size:11px;color:#8a795a">← фон крупнее · правее — фон меньше (регулируй на глаз) →</span>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
+        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+          'Интервал между людьми в очереди: <b id="qa-gap-v">' + getSize("gap", 0.15).toFixed(2) + '</b>' +
+          '<input type="range" id="qa-gap" min="0.05" max="0.4" step="0.01" value="' + getSize("gap", 0.15) + '" style="width:300px"></label>' +
+        '<span style="font-size:11px;color:#8a795a">← плотнее друг к другу · дальше друг от друга →</span>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
+        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+          'Сколько человек показывать в очереди (лимит): <b id="qa-limit-v">' + Math.round(getSize("limit", 6)) + '</b>' +
+          '<input type="range" id="qa-limit" min="1" max="20" step="1" value="' + Math.round(getSize("limit", 6)) + '" style="width:300px"></label>' +
+        '<span style="font-size:11px;color:#8a795a">остальные «придут позже» — видны по кнопке «список»</span>' +
       "</div>" +
       '<div class="q-admin-row">' +
         '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
@@ -626,11 +867,12 @@
     box.querySelector("#qa-gm").addEventListener("click", function () { setGender("m"); });
     box.querySelector("#qa-gf").addEventListener("click", function () { setGender("f"); });
     box.querySelector("#qa-gr").addEventListener("click", function () { setGender(""); });
-    function sizeSlider(key, label) {
+    function sizeSlider(key, label, mn, mx) {
       var v = getSize(key, 1).toFixed(2);
       return '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
         label + ': <b id="qa-sz-' + key + '-v">' + v + '×</b>' +
-        '<input type="range" id="qa-sz-' + key + '" min="0.4" max="2.2" step="0.05" value="' + v + '" style="width:118px"></label>';
+        '<input type="range" id="qa-sz-' + key + '" min="' + (mn || 0.4) + '" max="' + (mx || 2.2) +
+        '" step="0.05" value="' + v + '" style="width:118px"></label>';
     }
     box.querySelector("#qa-place").addEventListener("click", function () {
       _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState);
@@ -638,14 +880,40 @@
     box.querySelector("#qa-path").addEventListener("click", function () {
       _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState);
     });
-    ["char", "item", "mount"].forEach(function (key) {
+    // переключатель фона день/ночь/авто
+    var curTime = CONFIG["forceTime"] || "auto";
+    [].forEach.call(box.querySelectorAll("[data-time]"), function (btn) {
+      if (btn.dataset.time === curTime) { btn.style.background = "rgba(224,162,74,.4)"; btn.style.color = "#fff"; }
+      btn.addEventListener("click", function () { saveCfg("forceTime", btn.dataset.time); render(_lastState); });
+    });
+    ["frame", "char", "item", "mount", "merch"].forEach(function (key) {
       var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
       el.addEventListener("input", function () {
         var v = +el.value; vl.textContent = v.toFixed(2) + "×";
-        var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v);
+        if (key === "frame") { var w = document.querySelector(".qs-wrap"); if (w) w.style.maxWidth = Math.round(1340 * v) + "px"; }
+        else { var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v); }
         clearTimeout(t); t = setTimeout(function () { saveCfg("size:" + key, v); }, 300);
       });
     });
+    // ползунок «сколько видно картины» — двигает край рамки (inset сцены), сохраняется
+    var insEl = box.querySelector("#qa-inset"), insV = box.querySelector("#qa-inset-v"), insT;
+    if (insEl) insEl.addEventListener("input", function () {
+      var v = +insEl.value; insV.textContent = v.toFixed(1) + "%";
+      var s = document.querySelector(".qs-stage"); if (s) s.style.inset = v + "%";
+      clearTimeout(insT); insT = setTimeout(function () { saveCfg("size:inset", v); }, 300);
+    });
+    // ползунок интервала между людьми — требует пересборки очереди, поэтому по отпусканию
+    var gEl = box.querySelector("#qa-gap"), gV = box.querySelector("#qa-gap-v");
+    if (gEl) {
+      gEl.addEventListener("input", function () { gV.textContent = (+gEl.value).toFixed(2); });
+      gEl.addEventListener("change", function () { saveCfg("size:gap", +gEl.value); render(_lastState); });
+    }
+    var lEl = box.querySelector("#qa-limit"), lV = box.querySelector("#qa-limit-v");
+    if (lEl) {
+      lEl.addEventListener("input", function () { lV.textContent = lEl.value; });
+      lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
+    }
+    box.appendChild(buildModelSizePanel());
     return box;
   }
 
@@ -684,39 +952,91 @@
     document.body.appendChild(ov);
   }
 
+  // ── панель размеров КАЖДОЙ модели с визуальным сравнением (общая базовая линия) ──
+  function buildModelSizePanel() {
+    var BASE = 58;  // px высоты модели при 1.00×
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin-row";
+    wrap.style.cssText = "flex-direction:column;align-items:stretch;gap:4px";
+    wrap.innerHTML = '<div style="font-size:12px;color:#caa66a">Размер каждой модели ' +
+      '<span style="color:#8a795a;font-size:11px">— все стоят на одной линии, видно относительный размер; ' +
+      'тяни ползунок под нужной. Общий «Модели» умножает все сразу.</span></div>';
+    var strip = document.createElement("div");
+    strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:8px 4px;align-items:flex-end;" +
+      "background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.22);border-radius:10px";
+    ALL_MODELS.forEach(function (m) {
+      var s = Object.assign({ flip: 0, rotate: 0, scale: 1 }, MODEL_SETTINGS[m.key] || {});
+      s.scale = +s.scale || 1; MODEL_SETTINGS[m.key] = s;
+      var col = document.createElement("div");
+      col.style.cssText = "flex:0 0 auto;width:82px;display:flex;flex-direction:column;align-items:center;gap:3px";
+      var pit = document.createElement("div");   // общая базовая линия (низ) для сравнения
+      pit.style.cssText = "height:" + (BASE * 2 + 16) + "px;width:100%;display:flex;align-items:flex-end;" +
+        "justify-content:center;background:linear-gradient(180deg,rgba(190,224,234,.14),rgba(143,195,106,.16));" +
+        "border:1px solid rgba(224,162,74,.2);border-radius:8px;overflow:hidden";
+      var img = document.createElement("img");
+      img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.src = webpUrl(m.key);
+      img.style.cssText = "width:auto;max-width:100%;object-fit:contain;transform:" + transformStr(s);
+      function sizeImg() { img.style.height = Math.round(BASE * s.scale) + "px"; }
+      sizeImg(); pit.appendChild(img);
+      var lbl = document.createElement("div");
+      lbl.textContent = m.label;
+      lbl.style.cssText = "font-size:10px;color:#e8dcc4;text-align:center;line-height:1.05;height:22px;overflow:hidden";
+      var val = document.createElement("div");
+      val.textContent = s.scale.toFixed(2) + "×";
+      val.style.cssText = "font-size:10.5px;color:#f0c878;font-weight:700";
+      var rng = document.createElement("input");
+      rng.type = "range"; rng.min = "0.4"; rng.max = "2"; rng.step = "0.05"; rng.value = String(s.scale);
+      rng.style.cssText = "width:100%;accent-color:#e0a24a";
+      var t;
+      rng.addEventListener("input", function () {
+        s.scale = +rng.value; val.textContent = s.scale.toFixed(2) + "×"; sizeImg();
+        applyModelLive(m.key, s);
+        clearTimeout(t); t = setTimeout(function () {
+          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale }).catch(function () {});
+        }, 300);
+      });
+      col.appendChild(pit); col.appendChild(lbl); col.appendChild(val); col.appendChild(rng);
+      strip.appendChild(col);
+    });
+    wrap.appendChild(strip);
+    return wrap;
+  }
+
   // ── грид поворота/зеркала (best practice: тумблер зеркала + ползунок поворота, живое превью) ──
   function buildOrientSection() {
     var wrap = document.createElement("div");
     wrap.innerHTML =
       '<div style="font-size:12.5px;color:#c9b48f;margin:2px 0 14px">Персонажи идут к будке (вправо). ' +
-      'Если модель смотрит не туда — включи «Зеркало». Ползунок — поворот. Меняется у всех персонажей ' +
-      'с этой моделью сразу и автоматически сохраняется.</div>';
+      'Если модель смотрит не туда — включи «Зеркало». Ползунок — <b>поворот</b>. ' +
+      '(Размер каждой модели — внизу в админ-панели, там же где все размеры.) ' +
+      'Меняется у всех персонажей с этой моделью сразу и сохраняется само.</div>';
     var grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px";
     ALL_MODELS.forEach(function (m) {
-      var s = Object.assign({ flip: 0, rotate: 0 }, MODEL_SETTINGS[m.key] || {});
+      var s = Object.assign({ flip: 0, rotate: 0, scale: 1 }, MODEL_SETTINGS[m.key] || {});
+      s.scale = +s.scale || 1;
       MODEL_SETTINGS[m.key] = s;
       var card = document.createElement("div");
       card.className = "q-mcard";
       card.style.cssText = "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;padding:10px;text-align:center";
       var img = document.createElement("img");
-      img.src = "assets/queue/" + m.key;
+      img.alt = ""; img.decoding = "async"; img.loading = "lazy";
+      img.src = webpUrl(m.key);
       img.style.cssText = "height:96px;width:auto;max-width:100%;object-fit:contain;background:linear-gradient(180deg,#bfe0ea,#8fc36a);border-radius:8px;padding:4px";
-      function applyPreview() { img.style.transform = transformStr(s); }
+      function applyPreview() {
+        img.style.transform = transformStr(s);
+        img.style.height = Math.round(96 * (s.scale || 1)) + "px";  // превью отражает размер
+      }
       applyPreview();
       var lbl = document.createElement("div");
       lbl.textContent = m.label;
       lbl.style.cssText = "font-size:12px;color:#f6ead2;margin:6px 0;font-weight:700";
-      function applyScene() {
-        [].forEach.call(document.querySelectorAll('.q-char-img[data-mkey="' + m.key.replace(/"/g, '\\"') + '"]'),
-          function (el) { el.style.transform = transformStr(s); });
-      }
       var saveT;
       function save() {
-        applyPreview(); applyScene();
+        applyPreview(); applyModelLive(m.key, s);
         clearTimeout(saveT);
         saveT = setTimeout(function () {
-          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate })
+          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale })
             .catch(function (e) { alert("Не сохранилось (нужен вход админом): " + (e.detail || e.message)); });
         }, 300);
       }
@@ -735,7 +1055,10 @@
       var rst = document.createElement("button");
       rst.textContent = "⟲ Сброс"; rst.title = "Без зеркала и поворота";
       rst.style.cssText = "cursor:pointer;margin-top:8px;border:1px solid rgba(224,162,74,.4);background:none;color:#caa66a;border-radius:8px;padding:5px 10px;font-size:12px";
-      rst.addEventListener("click", function () { s.flip = 0; s.rotate = 0; paintMir(); rd.textContent = "поворот: 0°"; rng.value = "0"; save(); });
+      rst.addEventListener("click", function () {
+        s.flip = 0; s.rotate = 0; paintMir();
+        rd.textContent = "поворот: 0°"; rng.value = "0"; save();
+      });
       card.appendChild(img); card.appendChild(lbl); card.appendChild(mir);
       card.appendChild(rd); card.appendChild(rng); card.appendChild(rst);
       grid.appendChild(card);

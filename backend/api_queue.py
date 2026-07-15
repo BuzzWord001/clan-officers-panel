@@ -89,6 +89,7 @@ def ensure_queue_tables() -> None:
               main_canon TEXT    NOT NULL DEFAULT '',
               nick       TEXT    NOT NULL,          -- отображаемый ник (мэйн/твин, которым встал)
               cls        TEXT    NOT NULL DEFAULT '',
+              resource   TEXT    NOT NULL DEFAULT '',   -- выбранный ресурс (ключ item)
               added_by   TEXT    NOT NULL DEFAULT '',   -- 'self' или 'admin:<имя>'
               added_at   TEXT    NOT NULL DEFAULT ''
             );
@@ -109,6 +110,7 @@ def ensure_queue_tables() -> None:
               model_key  TEXT PRIMARY KEY,          -- 'class/Воин(м).png' | 'personal/Карася.png'
               flip       INTEGER NOT NULL DEFAULT 0, -- 1 = отзеркалить по горизонтали
               rotate     INTEGER NOT NULL DEFAULT 0, -- градусы
+              scale      REAL    NOT NULL DEFAULT 1, -- индивидуальный размер модели
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
@@ -126,12 +128,22 @@ def ensure_queue_tables() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS queue_kv (
-              key        TEXT PRIMARY KEY,           -- 'path:0' (JSON точек) | 'size:frame|char|item|mount'
+              key        TEXT PRIMARY KEY,           -- 'path:0' (JSON точек) | 'size:frame|char|item|mount|inset'
               val        TEXT NOT NULL DEFAULT '',
               updated_at TEXT NOT NULL DEFAULT ''
             );
             """
         )
+        # миграция для существующих БД: индивидуальный размер модели
+        try:
+            conn.execute("ALTER TABLE queue_models ADD COLUMN scale REAL NOT NULL DEFAULT 1")
+        except Exception:
+            pass
+        # миграция: выбранный ресурс у записи очереди
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN resource TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -247,6 +259,7 @@ class SharedPwIn(BaseModel):
 
 class JoinIn(BaseModel):
     queue: int
+    resource: str = Field(default="", max_length=64)
 
 
 class AdminAddIn(BaseModel):
@@ -273,6 +286,7 @@ class ModelIn(BaseModel):
     key: str = Field(min_length=1, max_length=120)
     flip: int = Field(default=0)
     rotate: int = Field(default=0)
+    scale: float = Field(default=1.0)
 
 
 class GenderIn(BaseModel):
@@ -449,6 +463,7 @@ def _entry_public(r, idx, gmap) -> dict:
     return {"id": r["id"], "nick": r["nick"], "cls": cls,
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
+            "resource": (r["resource"] if "resource" in r.keys() else ""),
             "added_by": r["added_by"]}
 
 
@@ -507,10 +522,11 @@ def join(payload: JoinIn, request: Request) -> dict:
             raise HTTPException(status.HTTP_409_CONFLICT, "already_in_queue")
         p = _people(conn).get(acc["main_canon"]) or {}
         nick = acc["main_nick"] or acc["reg_nick"]
+        res = (payload.resource or "").strip()[:64]
         conn.execute(
-            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, added_by, added_at)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), "self", _now()))
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, added_by, added_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request)
     return {"ok": True}
 
@@ -588,20 +604,22 @@ def admin_clear(payload: ClearIn, request: Request, actor: dict = Depends(requir
 @router.get("/models")
 def models() -> dict:
     with db.connection() as conn:
-        rows = conn.execute("SELECT model_key, flip, rotate FROM queue_models").fetchall()
-    return {"settings": {r["model_key"]: {"flip": r["flip"], "rotate": r["rotate"]} for r in rows}}
+        rows = conn.execute("SELECT model_key, flip, rotate, scale FROM queue_models").fetchall()
+    return {"settings": {r["model_key"]: {"flip": r["flip"], "rotate": r["rotate"],
+                                          "scale": r["scale"]} for r in rows}}
 
 
 @router.post("/admin/model")
 def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
     flip = 1 if payload.flip else 0
     rot = max(-180, min(180, int(payload.rotate)))
+    scl = max(0.2, min(3.0, float(payload.scale)))
     with db.connection() as conn:
         conn.execute(
-            "INSERT INTO queue_models (model_key, flip, rotate, updated_at) VALUES (?,?,?,?)"
+            "INSERT INTO queue_models (model_key, flip, rotate, scale, updated_at) VALUES (?,?,?,?,?)"
             " ON CONFLICT(model_key) DO UPDATE SET flip=excluded.flip,"
-            " rotate=excluded.rotate, updated_at=excluded.updated_at",
-            (payload.key, flip, rot, _now()))
+            " rotate=excluded.rotate, scale=excluded.scale, updated_at=excluded.updated_at",
+            (payload.key, flip, rot, scl, _now()))
     return {"ok": True}
 
 

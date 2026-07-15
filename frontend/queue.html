@@ -15,6 +15,9 @@
       font-family:system-ui,Segoe UI,Arial,sans-serif;min-height:100%}
     body::before{content:"";position:fixed;inset:0;z-index:-1;
       background:radial-gradient(1200px 700px at 50% -10%,rgba(224,162,74,.08),transparent 60%),rgba(20,13,7,.42)}
+    /* полноэкранный размытый фон-картинка (сцена день/ночь) — не пустой фон */
+    #qs-page-bg{position:fixed;inset:-60px;z-index:-3;background:#140d07 center/cover no-repeat;
+      filter:blur(38px) brightness(.52) saturate(.9);transform:scale(1.06);pointer-events:none}
     a{color:var(--gold)}
     .q-top{display:flex;align-items:center;gap:12px;padding:14px 20px}
     .q-top img{width:40px;height:40px;border-radius:8px}
@@ -66,7 +69,7 @@
     .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
 
     /* раздел очереди */
-    .q-section{max-width:1400px;margin:2vh auto 60px;padding:0 16px}
+    .q-section{max-width:min(2600px,99vw);margin:2vh auto 60px;padding:0 16px}
     .q-welcome{padding:16px 18px;background:linear-gradient(180deg,#231607,#150c05);
       border:1px solid var(--bd);border-radius:14px}
     .q-welcome b{color:var(--gold)}
@@ -79,6 +82,14 @@
   </style>
 </head>
 <body>
+  <div id="qs-page-bg"></div>
+  <script>
+    (function () {
+      var h = (new Date().getUTCHours() + 3) % 24, night = (h >= 20 || h < 7);
+      var b = document.getElementById("qs-page-bg");
+      if (b) b.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (night ? "night" : "day") + ".webp')";
+    })();
+  </script>
   <div class="q-app">
     <div class="q-top">
       <img src="assets/logo.png?v=1798200000" alt="">
@@ -89,7 +100,7 @@
 
     <!-- ОКНО ВХОДА -->
     <main class="q-auth" id="auth" hidden>
-      <img class="q-auth-ic" src="assets/queue/trader-enter.png" alt="">
+      <img class="q-auth-ic" src="assets/queue/trader-enter.webp" alt="">
       <h1>Вход в очередь</h1>
       <p class="sub" id="auth-sub">Выбери свой игровой ник, чтобы войти</p>
 
@@ -156,6 +167,6 @@
 
   <script src="config.js?v=1791600000"></script>
   <script src="js/queue.js?v=1800600000"></script>
-  <script src="js/queue-scene.js?v=1801400000"></script>
+  <script src="js/queue-scene.js?v=1802800000"></script>
 </body>
 </html>
