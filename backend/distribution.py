@@ -128,7 +128,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             who = e.get("nick", "")
             to = (e.get("recipient") or "").strip()
             is_top = e.get("main_canon") in top3 or e.get("canon_nick") in top3
-            row = {"nick": who, "recipient": to, "resource": res, "valor": v,
+            row = {"id": e.get("id"), "nick": who, "recipient": to, "resource": res, "valor": v,
                    "top3": is_top, "amount": 0, "status": "", "res_name": res}
             if not res or res not in REWARDS:
                 row["status"] = "no_res"

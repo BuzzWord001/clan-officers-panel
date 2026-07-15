@@ -1507,6 +1507,7 @@
       "</div>" +
       '<div class="q-admin-row" style="gap:8px">' +
         '<button id="qd-report" style="font-weight:700">📋 Получить отчёт о распределении</button>' +
+        '<button class="sec" id="qd-advance" title="Получившие ресурс уходят в конец очереди">✅ Распределение завершено — сдвинуть очередь</button>' +
       "</div>" +
       '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
     var st = wrap.querySelector("#qd-status");
@@ -1547,6 +1548,13 @@
       status("Считаю отчёт…");
       q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    });
+    wrap.querySelector("#qd-advance").addEventListener("click", function () {
+      if (!confirm("Сдвинуть очередь? Получившие ресурс уйдут в конец, остальные останутся в начале.")) return;
+      status("Сдвигаю…");
+      q("POST", "/queue/admin/advance").then(function (d) {
+        status("✓ Сдвинуто в конец: " + (d.moved || 0) + " чел.", true); refresh();
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     return wrap;
   }

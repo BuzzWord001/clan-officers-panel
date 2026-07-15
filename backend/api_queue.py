@@ -905,32 +905,64 @@ def rewards() -> dict:
     return {"stages": stages, "rewards": distribution.reward_meta(stages)}
 
 
+def _build_report(conn) -> dict:
+    import json
+    idx = _people(conn)
+    gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+    queues = [[], [], []]
+    for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
+        if r["queue"] in QUEUES:
+            e = _entry_public(r, idx, gmap)
+            e["main_canon"] = r["main_canon"]
+            e["canon_nick"] = db._valor_canon(e["nick"])
+            queues[r["queue"]].append(e)
+    valor_map = _valor_map(conn)
+    try:
+        shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
+    except (ValueError, TypeError):
+        shooters = []
+    report = distribution.compute(
+        {"queues": queues}, valor_map,
+        {"stages": _cfg_int(conn, "stages_closed", 0),
+         "pet_count": _cfg_int(conn, "pet_count", 0),
+         "shooters": shooters})
+    report["has_valor"] = bool(valor_map)
+    return report
+
+
 @router.get("/admin/distribute")
 def distribute(_: dict = Depends(require_admin)) -> dict:
     """Полный отчёт о распределении по текущим очередям, этапам, доблести и шотёрам."""
-    import json
     with db.connection() as conn:
-        idx = _people(conn)
-        gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
-        queues = [[], [], []]
-        for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
-            if r["queue"] in QUEUES:
-                e = _entry_public(r, idx, gmap)
-                e["main_canon"] = r["main_canon"]
-                e["canon_nick"] = db._valor_canon(e["nick"])
-                queues[r["queue"]].append(e)
-        valor_map = _valor_map(conn)
-        stages = _cfg_int(conn, "stages_closed", 0)
-        pet_count = _cfg_int(conn, "pet_count", 0)
-        try:
-            shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
-        except (ValueError, TypeError):
-            shooters = []
-    report = distribution.compute(
-        {"queues": queues}, valor_map,
-        {"stages": stages, "pet_count": pet_count, "shooters": shooters})
-    report["has_valor"] = bool(valor_map)
-    return report
+        return _build_report(conn)
+
+
+@router.post("/admin/advance")
+def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Сдвиг очереди после распределения: получившие ресурс уходят В КОНЕЦ,
+    остальные (не хватило доблести / ресурс кончился / не выбран) остаются
+    в начале в прежнем порядке. Порядок внутри групп сохраняется."""
+    with db.connection() as conn:
+        report = _build_report(conn)
+        served_by_q = {}
+        for Q in report["queues"]:
+            served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
+                                       if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
+        moved_total = 0
+        for q in QUEUES:
+            ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,))]
+            served = served_by_q.get(q, set())
+            keep = [i for i in ids if i not in served]
+            moved = [i for i in ids if i in served]
+            pos = 1
+            for i in keep + moved:            # оставшиеся впереди, получившие — в конец
+                conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
+                pos += 1
+            moved_total += len(moved)
+        _log(conn, "advance", actor=_actor_name(actor), request=request,
+             detail="сдвинуто в конец: %d" % moved_total)
+    return {"ok": True, "moved": moved_total}
 
 
 @router.get("/admin/log")
