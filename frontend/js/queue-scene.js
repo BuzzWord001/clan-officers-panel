@@ -56,6 +56,7 @@
   // key остаётся с .png (логический id для настроек поворота), а файл — .webp
   function webpUrl(rel) { return "assets/queue/" + rel.replace(/\.png$/i, ".webp"); }
   var UPLOADED = {};   // ключ (person-<canon> | class-<Класс>-<m|f>) -> mtime (загружено админом)
+  var REWARDS_META = {};   // ключ ресурса -> {mode,unit,threshold,total,text} (движок распределения)
   var SPOUSES = {};        // бэк-канон мэйна -> ник получателя (как хранит сервер)
   var SPOUSE_BY_NICK = {}; // фронт-канон ника -> получатель (для префилла: каноны сторон могут расходиться)
   function applySpouses(d) {
@@ -480,6 +481,19 @@
     ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
     ".qs-rescard.sel{border-color:#7ec46a;background:rgba(126,196,106,.16);box-shadow:0 0 0 1px #7ec46a}" +
     ".qs-rescard img{height:64px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-rc-name{font:700 12px system-ui}" +
+    ".qs-rc-stack{font:600 10.5px system-ui;color:#8fc36a}" +
+    ".qs-rc-total{font-size:9.5px;color:#8a795a}" +
+    /* отчёт распределения */
+    ".qs-distrep{padding:12px 16px 18px}" +
+    ".qs-dr-head{font-size:12.5px;color:#c9b48f;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid rgba(224,162,74,.2)}" +
+    ".qs-dr-sec{margin:0 0 12px}" +
+    ".qs-dr-sec h4{margin:0 0 6px;font:800 13px Georgia,serif;color:#f0c878}" +
+    ".qs-dr-row{font-size:12.5px;color:#f6ead2;padding:3px 6px;border-bottom:1px solid rgba(224,162,74,.08);display:flex;flex-wrap:wrap;gap:5px;align-items:center}" +
+    ".qs-dr-empty{font-size:11.5px;color:#8a795a;padding:4px 6px}" +
+    ".qs-dr-val{font-size:11px;color:#a58c68}" +
+    ".qs-dr-to{font:700 11px system-ui;color:#8fc36a}" +
+    ".qs-dr-top{font:800 9.5px system-ui;color:#1b1006;background:#ffd24a;padding:1px 6px;border-radius:6px}" +
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
@@ -605,7 +619,11 @@
     (BOOTH_ITEMS[b.q] || []).forEach(function (it) {
       var card = document.createElement("button");
       card.className = "qs-rescard" + (edit && edit.resource === it ? " sel" : "");
-      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span>' + esc(resName(it)) + "</span>";
+      var rm = REWARDS_META[it] || {};
+      var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
+      var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">всего накоплено: ' + rm.total + "</span>" : "";
+      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' +
+        esc(resName(it)) + "</span>" + stack + total;
       card.addEventListener("click", function () { commit(it); });
       grid.appendChild(card);
     });
@@ -1123,6 +1141,7 @@
       lEl.addEventListener("input", function () { lV.textContent = lEl.value; });
       lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
     }
+    box.appendChild(buildDistPanel());
     box.appendChild(buildModelSizePanel());
     box.appendChild(buildUploadPanel());
     box.appendChild(buildEnvPanel());
@@ -1457,6 +1476,129 @@
     return wrap;
   }
 
+  // ── админ: данные распределения (этапы КХ, питомец, шотеры) + отчёт ──
+  function buildDistPanel() {
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin-row";
+    wrap.style.cssText = "flex-direction:column;align-items:stretch;gap:8px";
+    var stages = parseInt(CONFIG["stages_closed"] || "0", 10) || 0;
+    var pet = parseInt(CONFIG["pet_count"] || "0", 10) || 0;
+    var shooters = [];
+    try { shooters = JSON.parse(CONFIG["shooters"] || "[]"); } catch (e) { shooters = []; }
+    var dl = _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
+    wrap.innerHTML =
+      '<div style="font-size:12px;color:#caa66a">🎁 Распределение ресурсов ' +
+        '<span style="color:#8a795a;font-size:11px">— порог: обычные ≥60, редкие/легенд ≥100 доблести; ' +
+        'шотерам по 10% камней доблести и метеоритов; доблесть берётся из последнего сбора</span></div>' +
+      '<div class="q-admin-row" style="gap:14px;align-items:flex-end;flex-wrap:wrap">' +
+        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+          'Закрыто этапов КХ (1–7): <b id="qd-stages-v">' + stages + '</b>' +
+          '<input type="range" id="qd-stages" min="0" max="7" step="1" value="' + stages + '" style="width:220px"></label>' +
+        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+          'Огненных цилиней (питомец): ' +
+          '<input type="number" id="qd-pet" min="0" value="' + pet + '" style="width:90px"></label>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:11px;color:#caa66a">🎯 Шотеры (+10%):</b>' +
+        '<input id="qd-shnick" list="qd-dl" placeholder="ник шотера…" autocomplete="off" style="min-width:150px">' +
+        '<button class="sec" id="qd-shadd">＋ добавить</button>' +
+        '<datalist id="qd-dl">' + dl + '</datalist>' +
+        '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
+      "</div>" +
+      '<div class="q-admin-row" style="gap:8px">' +
+        '<button id="qd-report" style="font-weight:700">📋 Получить отчёт о распределении</button>' +
+      "</div>" +
+      '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
+    var st = wrap.querySelector("#qd-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function renderShooters() {
+      var host = wrap.querySelector("#qd-shlist");
+      host.innerHTML = shooters.length ? "" : '<span style="font-size:11px;color:#8a795a">пока никого</span>';
+      shooters.forEach(function (nk, i) {
+        var chip = document.createElement("span");
+        chip.style.cssText = "display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#f0dcb4;" +
+          "padding:2px 6px 2px 9px;border:1px solid rgba(255,150,70,.4);border-radius:11px;background:rgba(255,150,70,.1)";
+        chip.innerHTML = esc(nk);
+        var x = document.createElement("button");
+        x.className = "sec"; x.style.cssText = "padding:0 6px;font-size:12px"; x.textContent = "✕";
+        x.addEventListener("click", function () {
+          shooters.splice(i, 1); saveCfg("shooters", JSON.stringify(shooters)); renderShooters();
+        });
+        chip.appendChild(x); host.appendChild(chip);
+      });
+    }
+    renderShooters();
+    var stEl = wrap.querySelector("#qd-stages"), stV = wrap.querySelector("#qd-stages-v"), stT;
+    stEl.addEventListener("input", function () {
+      stV.textContent = stEl.value;
+      clearTimeout(stT); stT = setTimeout(function () { saveCfg("stages_closed", stEl.value); }, 250);
+    });
+    wrap.querySelector("#qd-pet").addEventListener("change", function () {
+      saveCfg("pet_count", String(Math.max(0, parseInt(this.value, 10) || 0)));
+    });
+    wrap.querySelector("#qd-shadd").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qd-shnick").value.trim();
+      if (!nk) { status("Укажи ник шотера."); return; }
+      if (shooters.indexOf(nk) < 0) shooters.push(nk);
+      saveCfg("shooters", JSON.stringify(shooters));
+      wrap.querySelector("#qd-shnick").value = ""; renderShooters(); status("✓ Шотер добавлен: " + nk, true);
+    });
+    wrap.querySelector("#qd-report").addEventListener("click", function () {
+      status("Считаю отчёт…");
+      q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    });
+    return wrap;
+  }
+
+  // ── модалка отчёта распределения ──
+  function renderDistReport(rep) {
+    var QN = ["Обычные (≥60)", "Редкие R (≥100)", "Легендарные S (≥100)"];
+    var body = document.createElement("div");
+    body.className = "qs-distrep";
+    var STAT = {
+      ok: ["получает", "#a9e08f"], ok_pack: ["ЗАБИРАЕТ ВСЮ ПАЧКУ", "#ffd24a"],
+      low_valor: ["не хватает доблести", "#e08a8a"], empty: ["ресурс кончился — ждёт след. недели", "#e0a86a"],
+      no_res: ["ресурс не выбран", "#8a795a"]
+    };
+    var html = '<div class="qs-dr-head">Закрыто этапов: <b>' + rep.stages + "</b> · " +
+      (rep.has_valor ? "доблесть из последнего сбора" : '<span style="color:#e08a8a">нет данных доблести — собери сбор</span>') +
+      (rep.pet_count ? ' · 🐲 Огненный цилинь: <b>' + rep.pet_count + " шт</b>" : "") + "</div>";
+    if (rep.shooters && rep.shooters.length) {
+      html += '<div class="qs-dr-sec"><h4>🎯 Шотеры (+' + rep.shooter_pct + "%)</h4>";
+      rep.shooters.forEach(function (s) {
+        html += '<div class="qs-dr-row"><b>' + esc(s.nick) + "</b> — Камень доблести ×" +
+          s.got["kamen-doblesti"] + ", Метеорит ×" + s.got["meteorit"] + "</div>";
+      });
+      html += "</div>";
+    }
+    (rep.queues || []).forEach(function (Q) {
+      html += '<div class="qs-dr-sec"><h4>' + QN[Q.queue] + "</h4>";
+      if (!Q.rows.length) html += '<div class="qs-dr-empty">пусто</div>';
+      Q.rows.forEach(function (r) {
+        var s = STAT[r.status] || ["?", "#ccc"];
+        var amt = (r.status === "ok" || r.status === "ok_pack") ? " ×" + r.amount : "";
+        var to = r.recipient ? ' <span class="qs-dr-to">→ ' + esc(r.recipient) + "</span>" : "";
+        html += '<div class="qs-dr-row">' +
+          (r.top3 ? '<span class="qs-dr-top">ТОП-3</span>' : "") +
+          '<b>' + esc(r.nick) + "</b> " +
+          '<span class="qs-dr-val">' + r.valor + " добл.</span> · " +
+          (r.res_name ? esc(resName(r.res_name)) : "—") +
+          '<span style="color:' + s[1] + '"> — ' + s[0] + amt + "</span>" + to + "</div>";
+      });
+      html += "</div>";
+    });
+    var lo = rep.leftovers || {};
+    var loKeys = Object.keys(lo);
+    if (loKeys.length) {
+      html += '<div class="qs-dr-sec"><h4>Остатки (распределить в клане)</h4>';
+      loKeys.forEach(function (k) { html += '<div class="qs-dr-row">' + esc(resName(k)) + " ×" + lo[k] + "</div>"; });
+      html += "</div>";
+    }
+    body.innerHTML = html;
+    sceneModal("📋 Отчёт о распределении ресурсов", body);
+  }
+
   function buildModelSizePanel() {
     var BASE = 58;  // px высоты модели при 1.00×
     var wrap = document.createElement("div");
@@ -1542,6 +1684,7 @@
         q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
         q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
         q("GET", "/queue/spouses").then(function (d) { applySpouses(d); }).catch(function () { applySpouses(null); }),
+        q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
           .catch(function () { _role = ""; _isAdmin = false; })
       ]).then(function () { loadEnv(); refresh(); });

@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import db
+import distribution
 from config import settings
 from session import require_admin, current_session
 
@@ -867,6 +868,69 @@ def set_config(payload: KVIn, _: dict = Depends(require_admin)) -> dict:
             " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
             (payload.key, payload.val, _now()))
     return {"ok": True}
+
+
+def _cfg_val(conn, key, dflt=""):
+    row = conn.execute("SELECT val FROM queue_kv WHERE key=?", (key,)).fetchone()
+    return row["val"] if row else dflt
+
+
+def _cfg_int(conn, key, dflt=0):
+    try:
+        return int(float(_cfg_val(conn, key, "")))
+    except (ValueError, TypeError):
+        return dflt
+
+
+def _valor_map(conn) -> dict:
+    """canon -> доблесть из последнего снапшота (для порогов и топ-3)."""
+    snap = conn.execute("SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+    if not snap:
+        return {}
+    out: dict[str, int] = {}
+    for r in conn.execute(
+            "SELECT nick_canon, valor FROM valor_members WHERE snapshot_id=?", (snap["id"],)):
+        c = r["nick_canon"]
+        v = r["valor"]
+        if c and v is not None and v > out.get(c, -1):
+            out[c] = v
+    return out
+
+
+@router.get("/rewards")
+def rewards() -> dict:
+    """Метаданные наград (режим/стак/порог/накопленный объём) — для пикера ресурса."""
+    with db.connection() as conn:
+        stages = _cfg_int(conn, "stages_closed", 0)
+    return {"stages": stages, "rewards": distribution.reward_meta(stages)}
+
+
+@router.get("/admin/distribute")
+def distribute(_: dict = Depends(require_admin)) -> dict:
+    """Полный отчёт о распределении по текущим очередям, этапам, доблести и шотёрам."""
+    import json
+    with db.connection() as conn:
+        idx = _people(conn)
+        gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+        queues = [[], [], []]
+        for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
+            if r["queue"] in QUEUES:
+                e = _entry_public(r, idx, gmap)
+                e["main_canon"] = r["main_canon"]
+                e["canon_nick"] = db._valor_canon(e["nick"])
+                queues[r["queue"]].append(e)
+        valor_map = _valor_map(conn)
+        stages = _cfg_int(conn, "stages_closed", 0)
+        pet_count = _cfg_int(conn, "pet_count", 0)
+        try:
+            shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
+        except (ValueError, TypeError):
+            shooters = []
+    report = distribution.compute(
+        {"queues": queues}, valor_map,
+        {"stages": stages, "pet_count": pet_count, "shooters": shooters})
+    report["has_valor"] = bool(valor_map)
+    return report
 
 
 @router.get("/admin/log")
