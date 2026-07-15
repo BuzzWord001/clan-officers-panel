@@ -179,15 +179,31 @@
     $("q-pass").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
 
     wireDevAdmin();
-    // ВРЕМЕННО: раздел в разработке — пускаем ТОЛЬКО админа (по админ-паролю).
-    // Офицерам/игрокам показываем табличку «в разработке» (вход временно закрыт).
-    api("GET", "/auth/me").then(function (m) {
-      if (m && m.role === "admin") {
+    // Раздел открыт/закрыт админом (config queue_open). Закрыт → все кроме админа видят
+    // табличку «в разработке». Админ входит всегда (по админ-паролю).
+    Promise.all([
+      api("GET", "/queue/config").catch(function () { return { config: {} }; }),
+      api("GET", "/auth/me").catch(function () { return null; })
+    ]).then(function (r) {
+      var open = ((r[0] && r[0].config) || {})["queue_open"] === "1";
+      var m = r[1], isAdmin = m && m.role === "admin";
+      if (isAdmin) {
         $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
-        $("who").textContent = (m.name || "админ") + " · разработка";
+        $("who").textContent = (m.name || "админ") + (open ? "" : " · разработка");
         if (window.QueueScene) window.QueueScene.enter(null);
-      } else { showDev(); }
-    }).catch(function () { showDev(); });
+        return;
+      }
+      if (!open) { showDev(); return; }
+      // раздел ОТКРЫТ — обычный вход
+      api("GET", "/queue/me").then(function (d) {
+        if (d.account) { showSection(d.account); return; }
+        if (m && m.role === "officer") {
+          $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
+          $("who").textContent = (m.name || "офицер") + " · просмотр";
+          if (window.QueueScene) window.QueueScene.enter(null);
+        } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
+      }).catch(function () { showAuth(); });
+    });
   }
 
   function showDev() { $("auth").hidden = true; $("section").hidden = true; $("dev").hidden = false; }

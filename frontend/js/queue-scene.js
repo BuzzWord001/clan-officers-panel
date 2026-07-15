@@ -769,8 +769,16 @@
   function adminPanel(state) {
     var box = document.createElement("div");
     box.className = "q-admin";
+    var _open = CONFIG["queue_open"] === "1";
     box.innerHTML =
       "<h3>⚙️ Управление очередью (админ)</h3>" +
+      '<div class="q-admin-row" style="align-items:center">' +
+        '<span style="font-size:12.5px;color:#caa66a">Доступ в раздел:</span>' +
+        '<button class="' + (_open ? "danger" : "sec") + '" id="qa-toggle-open" style="font-weight:700">' +
+          (_open ? "🔓 ОТКРЫТ для всех — закрыть (в разработку)" : "🔒 ЗАКРЫТ (в разработке) — открыть для всех") + "</button>" +
+        '<span style="font-size:11px;color:#8a795a">' +
+          (_open ? "офицеры и игроки могут входить" : "видят табличку «в разработке», входишь только ты (админ)") + "</span>" +
+      "</div>" +
       '<div class="q-admin-row q-adm-sugg">' +
         '<input id="qa-nick" placeholder="ник игрока…" autocomplete="off" style="min-width:170px">' +
         '<div class="q-adm-list" id="qa-list"></div>' +
@@ -967,6 +975,10 @@
         '<input type="range" id="qa-sz-' + key + '" min="' + (mn || 0.4) + '" max="' + (mx || 2.2) +
         '" step="0.05" value="' + v + '" style="width:118px"></label>';
     }
+    box.querySelector("#qa-toggle-open").addEventListener("click", function () {
+      saveCfg("queue_open", CONFIG["queue_open"] === "1" ? "0" : "1");
+      render(_lastState);
+    });
     box.querySelector("#qa-place").addEventListener("click", function () {
       _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState);
     });
