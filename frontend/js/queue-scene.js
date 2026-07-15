@@ -68,7 +68,8 @@
       var fn = set[g] || set.m || set.f;
       return { url: webpUrl("class/" + fn), key: "class/" + fn };
     }
-    return null;
+    // класса нет или для него ещё нет модели → универсальная заглушка «Вопрос»
+    return { url: "assets/queue/class/_placeholder.webp", key: "class/_placeholder.png" };
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
 
@@ -84,7 +85,8 @@
     { key: "personal/Химеко.png", label: "Химеко (личн.)" },
     { key: "scene/merchant-0.png", label: "Торговец: обычные" },
     { key: "scene/merchant-1.png", label: "Торговец: редкие" },
-    { key: "scene/merchant-2.png", label: "Торговец: легендарные" }
+    { key: "scene/merchant-2.png", label: "Торговец: легендарные" },
+    { key: "class/_placeholder.png", label: "Заглушка «нет модели»" }
   ];
   var MODEL_SETTINGS = {};   // key -> {flip, rotate}
   function transformStr(s) {
