@@ -178,18 +178,35 @@
     $("q-newpass").addEventListener("keydown", function (e) { if (e.key === "Enter") doRegister(); });
     $("q-pass").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
 
-    // уже вошёл как игрок?
-    api("GET", "/queue/me").then(function (d) {
-      if (d.account) { showSection(d.account); return; }
-      // не игрок — но, возможно, админ/офицер: пусть смотрит пример и управляет
-      api("GET", "/auth/me").then(function (m) {
-        if (m && (m.role === "admin" || m.role === "officer")) {
-          $("auth").hidden = true; $("section").hidden = false;
-          $("who").textContent = (m.name || "админ") + " · просмотр";
-          if (window.QueueScene) window.QueueScene.enter(null);
-        } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
-      }).catch(function () { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); });
-    }).catch(function () { showAuth(); });
+    wireDevAdmin();
+    // ВРЕМЕННО: раздел в разработке — пускаем ТОЛЬКО админа (по админ-паролю).
+    // Офицерам/игрокам показываем табличку «в разработке» (вход временно закрыт).
+    api("GET", "/auth/me").then(function (m) {
+      if (m && m.role === "admin") {
+        $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
+        $("who").textContent = (m.name || "админ") + " · разработка";
+        if (window.QueueScene) window.QueueScene.enter(null);
+      } else { showDev(); }
+    }).catch(function () { showDev(); });
+  }
+
+  function showDev() { $("auth").hidden = true; $("section").hidden = true; $("dev").hidden = false; }
+  function wireDevAdmin() {
+    var btn = $("dev-admin-btn"); if (!btn) return;
+    function tryAdmin() {
+      var u = ($("dev-admin-user").value || "").trim(), p = $("dev-admin-pass").value || "";
+      var e = $("dev-admin-err");
+      if (!u || !p) { e.textContent = "Введи логин и пароль администратора."; return; }
+      btn.disabled = true; e.textContent = "";
+      api("POST", "/auth/admin/login", { username: u, password: p })
+        .then(function () { location.reload(); })
+        .catch(function (er) {
+          btn.disabled = false;
+          e.textContent = er.status === 401 ? "Неверный логин или пароль." : ("Ошибка: " + (er.detail || er.message));
+        });
+    }
+    btn.addEventListener("click", tryAdmin);
+    $("dev-admin-pass").addEventListener("keydown", function (ev) { if (ev.key === "Enter") tryAdmin(); });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

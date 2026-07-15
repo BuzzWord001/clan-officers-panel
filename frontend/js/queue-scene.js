@@ -16,11 +16,17 @@
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   // ВАЖНО: \W в JS удаляет кириллицу — поэтому берём «не буква/цифра» через
   // юникод-свойства (кириллица сохраняется). Иначе canon("Карася")→"" и модель не находилась.
-  // латиница→кириллица (похожие буквы): ники PW часто мешают — «Xимеко», «Aпельсин», «Maнгo»…
-  var HOMO = { a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у" };
+  // латиница + ГРЕЧЕСКИЕ двойники → кириллица: ники PW часто мешают шрифты
+  // «Xимеко», «Aпельсин», «Βαζυλυκ»(Базилик), «Τοмατ»(Томат), «Φασολь»(Фасоль)…
+  var FOLD = {
+    a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у",
+    "α": "а", "β": "б", "γ": "г", "δ": "д", "ε": "е", "ζ": "з", "η": "н", "θ": "о", "ι": "и", "κ": "к",
+    "λ": "л", "μ": "м", "ν": "н", "ο": "о", "π": "п", "ρ": "р", "σ": "с", "ς": "с", "τ": "т", "υ": "и",
+    "φ": "ф", "χ": "х", "ω": "о"
+  };
   function canon(s) {
     return (s || "").toString().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")
-      .replace(/[abcehkmoptxy]/g, function (ch) { return HOMO[ch] || ch; });
+      .split("").map(function (ch) { return FOLD[ch] || ch; }).join("");
   }
 
   // ── модели ──
@@ -126,12 +132,23 @@
   };
   function resName(k) { return RES_NAME[k] || k; }
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
-  // ночь: 20:00–07:00 по МСК (МСК = UTC+3), иначе день
+  function _cfgMin(key, dflt) {                 // "ЧЧ:ММ" из конфига → минуты (или дефолт)
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(CONFIG[key] || "").trim());
+    return m ? (Math.min(23, +m[1]) * 60 + Math.min(59, +m[2])) : dflt;
+  }
+  // день/ночь: админ может зафиксировать (forceTime) либо задать ТОЧНОЕ время по МСК
   function isNight() {
-    var f = CONFIG["forceTime"];              // админ может зафиксировать день/ночь
+    var f = CONFIG["forceTime"];
     if (f === "day") return false;
     if (f === "night") return true;
-    var h = (new Date().getUTCHours() + 3) % 24; return h >= 20 || h < 7;  // авто по МСК
+    var now = new Date();
+    var mskMin = ((now.getUTCHours() + 3) % 24) * 60 + now.getUTCMinutes();  // МСК = UTC+3
+    var dayStart = _cfgMin("dayFrom", 7 * 60);      // день с 07:00 МСК (по умолч.)
+    var nightStart = _cfgMin("nightFrom", 20 * 60); // ночь с 20:00 МСК (по умолч.)
+    var isDay = dayStart <= nightStart
+      ? (mskMin >= dayStart && mskMin < nightStart)
+      : (mskMin >= dayStart || mskMin < nightStart);
+    return !isDay;
   }
 
   var PLACEMENTS = {};     // key ('item:...'/'mount') -> {x,y} ручная расстановка
@@ -619,11 +636,14 @@
       var pth = getPath(b.q);
       if (!_pathMode && !_placeMode) stage.appendChild(renderFlow(b, pth));
       // персонажи от будки (перёд, t=1) назад по пути; показываем только лимит, остальные ждут
-      var gap = getSize("gap", 0.15);   // расстояние между людьми (доля пути)
+      // РАВНОМЕРНО распределяем видимых (первых limit) по пути: i=0 у будки (t=1),
+      // последний — в хвосте. Больше людей → меньше расстояние (очередь сжимается).
+      var spread = getSize("spread", 1);            // 0.4–1: какую долю пути занимает очередь
       var limit = Math.round(getSize("limit", 6));
+      var shown = Math.min(entries.length, limit);  // сколько реально на сцене
       entries.forEach(function (e, i) {
-        if (i >= limit) return;   // не поместились — видны в полном списке (кнопка «список»)
-        var t = Math.max(0, 1 - i * gap);
+        if (i >= limit) return;   // за лимитом — не на сцене, но виден в полном списке (кнопка «список»)
+        var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
         stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
       // UI: кнопка полного списка + кнопка встать/выйти (число убрано — будет столб-счётчик)
@@ -707,9 +727,12 @@
     wrap.appendChild(renderStage(state));
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     host.appendChild(wrap);
+    updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
   }
 
   // размытый фон страницы (из сцены день/ночь) — заполняет коричневые края
+  // полный мир (world-day/night) как фон страницы: центр карты совмещаем с рамкой сцены,
+  // а края (остальной мир) вылезают вокруг и размываются
   function updatePageBg() {
     var pbg = document.getElementById("qs-page-bg");
     if (!pbg) {
@@ -717,7 +740,29 @@
       pbg.id = "qs-page-bg";
       document.body.insertBefore(pbg, document.body.firstChild);
     }
-    pbg.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (isNight() ? "night" : "day") + ".webp')";
+    pbg.style.backgroundImage = "url('assets/queue/scene/world-" + (isNight() ? "night" : "day") + ".webp')";
+    pbg.style.backgroundRepeat = "no-repeat";
+    if (!updatePageBg._bound) {          // пересчёт позиции при скролле/ресайзе — фон едет вместе с рамкой
+      updatePageBg._bound = true;
+      var raf = 0;
+      var recompute = function () { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; updatePageBg(); }); };
+      window.addEventListener("resize", recompute, { passive: true });
+      window.addEventListener("scroll", recompute, { passive: true });
+    }
+    var stage = document.querySelector(".qs-stage");
+    if (!stage) return;                       // логин-страница: фон как есть (cover из CSS)
+    var r = stage.getBoundingClientRect();
+    if (!r.width) return;
+    // «наша сцена» = центральная часть полного мира: доля ширины SW, центр (CX,CY)
+    var SW = 0.55, CX = 0.46, CY = 0.55, AR = 1.792;
+    var bw = r.width / SW, bh = bw / AR;
+    var scx = r.left + r.width / 2, scy = r.top + r.height / 2;
+    pbg.style.inset = "auto";
+    pbg.style.width = bw + "px";
+    pbg.style.height = bh + "px";
+    pbg.style.left = (scx - CX * bw) + "px";
+    pbg.style.top = (scy - CY * bh) + "px";
+    pbg.style.backgroundSize = "100% 100%";
   }
 
   // ── админ-панель ──
@@ -745,11 +790,16 @@
         '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
         '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
       "</div>" +
-      '<div class="q-admin-row" style="align-items:center">' +
+      '<div class="q-admin-row" style="align-items:center;flex-wrap:wrap">' +
         '<span style="font-size:12.5px;color:#caa66a">Фон сцены:</span>' +
         '<button class="sec" data-time="auto">🕒 Авто (по времени)</button>' +
         '<button class="sec" data-time="day">☀️ День</button>' +
         '<button class="sec" data-time="night">🌙 Ночь</button>' +
+        '<span style="font-size:11px;color:#8a795a;margin-left:8px">Авто по МСК:</span>' +
+        '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">☀️ день с ' +
+          '<input type="time" id="qa-dayfrom" value="' + (CONFIG["dayFrom"] || "07:00") + '"></label>' +
+        '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">🌙 ночь с ' +
+          '<input type="time" id="qa-nightfrom" value="' + (CONFIG["nightFrom"] || "20:00") + '"></label>' +
       "</div>" +
       '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
         '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
@@ -765,9 +815,9 @@
       "</div>" +
       '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
         '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
-          'Интервал между людьми в очереди: <b id="qa-gap-v">' + getSize("gap", 0.15).toFixed(2) + '</b>' +
-          '<input type="range" id="qa-gap" min="0.05" max="0.4" step="0.01" value="' + getSize("gap", 0.15) + '" style="width:300px"></label>' +
-        '<span style="font-size:11px;color:#8a795a">← плотнее друг к другу · дальше друг от друга →</span>' +
+          'Растянутость очереди (сколько пути занимает): <b id="qa-spread-v">' + getSize("spread", 1).toFixed(2) + '</b>' +
+          '<input type="range" id="qa-spread" min="0.4" max="1" step="0.05" value="' + getSize("spread", 1) + '" style="width:300px"></label>' +
+        '<span style="font-size:11px;color:#8a795a">люди распределяются РАВНОМЕРНО и сжимаются при добавлении; тут — общая длина очереди</span>' +
       "</div>" +
       '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
         '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
@@ -782,6 +832,11 @@
         '<button class="sec" id="qa-gm">♂ Мужской</button>' +
         '<button class="sec" id="qa-gf">♀ Женский</button>' +
         '<button class="sec" id="qa-gr">Сброс (по имени)</button>' +
+      "</div>" +
+      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px">' +
+        '<div style="font-size:12px;color:#caa66a">❓ Кому уточнить пол ' +
+          '<span style="color:#8a795a;font-size:11px">(в очередях, классы воин/жрец — модель зависит от пола; «авто» = угадано по имени мэйна, проверь)</span></div>' +
+        '<div id="qa-gender-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
       "</div>" +
       '<div class="q-adm-status" id="qa-status"></div>' +
       '<div class="q-log" id="qa-log" hidden></div>';
@@ -867,6 +922,44 @@
     box.querySelector("#qa-gm").addEventListener("click", function () { setGender("m"); });
     box.querySelector("#qa-gf").addEventListener("click", function () { setGender("f"); });
     box.querySelector("#qa-gr").addEventListener("click", function () { setGender(""); });
+    // список тех, кому нужно уточнить пол (классы с двумя моделями: воин/жрец)
+    function quickGender(nk, g) {
+      q("POST", "/queue/admin/gender", { nick: nk, gender: g })
+        .then(function () { st("✓ " + nk + " → " + (g === "m" ? "муж" : g === "f" ? "жен" : "авто"), true); refresh(); })
+        .catch(function (e) { st(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    (function buildGenderList() {
+      var host = box.querySelector("#qa-gender-list"); if (!host) return;
+      var seen = {}, rows = [];
+      ((_lastState && _lastState.queues) || []).forEach(function (q2) {
+        (q2 || []).forEach(function (e) {
+          var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
+          if (!(set && set.m && set.f)) return;             // нужен пол только где есть И муж И жен модель
+          var key = canon(e.main_nick || e.nick);
+          if (seen[key]) return; seen[key] = 1; rows.push(e);
+        });
+      });
+      if (!rows.length) {
+        host.innerHTML = '<span style="font-size:11px;color:#8a795a">Некому — в очередях нет классов воин/жрец.</span>'; return;
+      }
+      rows.sort(function (a, b) { return (a.gender_by === "manual" ? 1 : 0) - (b.gender_by === "manual" ? 1 : 0); });
+      rows.forEach(function (e) {
+        var auto = e.gender_by !== "manual", g = e.gender === "f" ? "Ж" : "М", nk = e.main_nick || e.nick;
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;color:#f6ead2;padding:3px 6px;border:1px solid rgba(224,162,74,.18);border-radius:8px";
+        row.innerHTML = '<b style="min-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nk) + "</b>" +
+          '<span style="color:#c9b48f;min-width:64px">' + esc(e.cls || "") + "</span>" +
+          '<span style="min-width:92px;color:' + (auto ? "#e6c48f" : "#a9e08f") + '">' + (auto ? "авто: " : "вручную: ") + g + "</span>";
+        ["♂ М m", "♀ Ж f", "авто "].forEach(function (spec) {
+          var parts = spec.split(" "), b = document.createElement("button");
+          b.className = "sec"; b.textContent = parts[0] + (parts[1] || ""); b.style.padding = "3px 9px";
+          var gv = parts[2] || "";
+          b.addEventListener("click", function () { quickGender(nk, gv); });
+          row.appendChild(b);
+        });
+        host.appendChild(row);
+      });
+    })();
     function sizeSlider(key, label, mn, mx) {
       var v = getSize(key, 1).toFixed(2);
       return '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
@@ -886,6 +979,9 @@
       if (btn.dataset.time === curTime) { btn.style.background = "rgba(224,162,74,.4)"; btn.style.color = "#fff"; }
       btn.addEventListener("click", function () { saveCfg("forceTime", btn.dataset.time); render(_lastState); });
     });
+    var dfEl = box.querySelector("#qa-dayfrom"), nfEl = box.querySelector("#qa-nightfrom");
+    if (dfEl) dfEl.addEventListener("change", function () { saveCfg("dayFrom", dfEl.value || "07:00"); render(_lastState); });
+    if (nfEl) nfEl.addEventListener("change", function () { saveCfg("nightFrom", nfEl.value || "20:00"); render(_lastState); });
     ["frame", "char", "item", "mount", "merch"].forEach(function (key) {
       var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
       el.addEventListener("input", function () {
@@ -903,10 +999,10 @@
       clearTimeout(insT); insT = setTimeout(function () { saveCfg("size:inset", v); }, 300);
     });
     // ползунок интервала между людьми — требует пересборки очереди, поэтому по отпусканию
-    var gEl = box.querySelector("#qa-gap"), gV = box.querySelector("#qa-gap-v");
-    if (gEl) {
-      gEl.addEventListener("input", function () { gV.textContent = (+gEl.value).toFixed(2); });
-      gEl.addEventListener("change", function () { saveCfg("size:gap", +gEl.value); render(_lastState); });
+    var spEl = box.querySelector("#qa-spread"), spV = box.querySelector("#qa-spread-v");
+    if (spEl) {
+      spEl.addEventListener("input", function () { spV.textContent = (+spEl.value).toFixed(2); });
+      spEl.addEventListener("change", function () { saveCfg("size:spread", +spEl.value); render(_lastState); });
     }
     var lEl = box.querySelector("#qa-limit"), lV = box.querySelector("#qa-limit-v");
     if (lEl) {

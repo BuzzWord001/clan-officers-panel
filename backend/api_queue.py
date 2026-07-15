@@ -463,6 +463,7 @@ def _entry_public(r, idx, gmap) -> dict:
     return {"id": r["id"], "nick": r["nick"], "cls": cls,
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
+            "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
             "resource": (r["resource"] if "resource" in r.keys() else ""),
             "added_by": r["added_by"]}
 

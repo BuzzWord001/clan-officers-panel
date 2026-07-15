@@ -11,13 +11,16 @@
   <style>
     :root{--gold:#f0c878;--bd:rgba(224,162,74,.4)}
     *{box-sizing:border-box}
-    html,body{margin:0;background:#140d07;color:#f3e8d2;
+    html{background:#140d07}          /* канва — база (НЕ на body, иначе перекроет фон-мир) */
+    html,body{margin:0;color:#f3e8d2;
       font-family:system-ui,Segoe UI,Arial,sans-serif;min-height:100%}
-    body::before{content:"";position:fixed;inset:0;z-index:-1;
-      background:radial-gradient(1200px 700px at 50% -10%,rgba(224,162,74,.08),transparent 60%),rgba(20,13,7,.42)}
-    /* полноэкранный размытый фон-картинка (сцена день/ночь) — не пустой фон */
+    body{background:transparent}      /* прозрачный body — чтобы #qs-page-bg (z-3) был виден */
+    /* лёгкая виньетка ТОЛЬКО по самым краям (чтобы мир-фон было видно) */
+    body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+      background:radial-gradient(150% 105% at 50% 42%,transparent 58%,rgba(8,5,2,.4) 100%)}
+    /* полноэкранный размытый фон — ПОЛНАЯ карта мира (world-day/night), выравнивается в JS */
     #qs-page-bg{position:fixed;inset:-60px;z-index:-3;background:#140d07 center/cover no-repeat;
-      filter:blur(38px) brightness(.52) saturate(.9);transform:scale(1.06);pointer-events:none}
+      filter:blur(13px) brightness(.82) saturate(1.02);pointer-events:none}
     a{color:var(--gold)}
     .q-top{display:flex;align-items:center;gap:12px;padding:14px 20px}
     .q-top img{width:40px;height:40px;border-radius:8px}
@@ -27,12 +30,13 @@
     .q-back:hover{opacity:1}
 
     /* окно входа */
-    .q-auth{max-width:420px;margin:6vh auto 40px;padding:26px 24px 22px;
-      background:linear-gradient(180deg,#241608,#160d06);
-      border:1px solid var(--bd);border-radius:16px;
-      box-shadow:0 0 50px rgba(245,200,120,.14),inset 0 0 30px rgba(0,0,0,.5)}
-    .q-auth-ic{display:block;width:120px;height:auto;margin:-8px auto 6px;
-      filter:drop-shadow(0 6px 16px rgba(0,0,0,.55))}
+    .q-auth{max-width:430px;margin:clamp(24px,11vh,130px) auto 48px;padding:28px 26px 24px;
+      background:linear-gradient(180deg,#2e1d0c,#1a1006 60%,#140c05);
+      border:1px solid rgba(240,200,120,.55);border-radius:18px;
+      box-shadow:0 18px 60px rgba(0,0,0,.6),0 0 40px rgba(245,200,120,.12),
+        inset 0 1px 0 rgba(255,224,160,.14),inset 0 0 34px rgba(0,0,0,.45)}
+    .q-auth-ic{display:block;width:210px;max-width:100%;height:auto;margin:-6px auto 8px;
+      filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,160,60,.28))}
     .q-auth h1{font:700 20px/1.25 Georgia,serif;text-align:center;color:var(--gold);
       margin:2px 0 4px;text-shadow:0 0 12px rgba(245,200,120,.4)}
     .q-auth .sub{font-size:12.5px;text-align:center;color:#dcc9ad;opacity:.9;margin:0 0 16px}
@@ -68,6 +72,29 @@
     .q-sugg-twin{color:#e0a86a}
     .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
 
+    /* панель «в разработке» */
+    .q-dev{max-width:520px;margin:clamp(24px,10vh,120px) auto 48px;padding:30px 28px 26px;text-align:center;
+      background:linear-gradient(180deg,#2e1d0c,#1a1006 60%,#140c05);
+      border:1px solid rgba(240,200,120,.55);border-radius:18px;
+      box-shadow:0 18px 60px rgba(0,0,0,.6),0 0 40px rgba(245,200,120,.12),inset 0 1px 0 rgba(255,224,160,.14)}
+    .q-dev-ic{display:block;width:220px;max-width:100%;height:auto;margin:-4px auto 6px;
+      filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,160,60,.28))}
+    .q-dev-badge{display:inline-block;font:700 12px system-ui;letter-spacing:.5px;color:#1b1006;
+      background:linear-gradient(180deg,#f3d489,#d09b2e);border-radius:20px;padding:4px 14px;margin:0 0 10px}
+    .q-dev h1{font:700 24px Georgia,serif;color:var(--gold);margin:2px 0 10px;text-shadow:0 0 12px rgba(245,200,120,.4)}
+    .q-dev-txt{font-size:13.5px;line-height:1.6;color:#e7d6b7;margin:0 auto 18px;max-width:420px}
+    .q-dev-back{display:inline-block;font-size:13px;color:#caa66a;text-decoration:none}
+    .q-dev-back:hover{color:var(--gold)}
+    .q-dev-admin{margin-top:20px;text-align:left;border-top:1px solid rgba(224,162,74,.2);padding-top:14px}
+    .q-dev-admin summary{cursor:pointer;font-size:12px;color:#8a795a;list-style:none;text-align:center}
+    .q-dev-admin summary:hover{color:#caa66a}
+    .q-dev-admin input{width:100%;margin:8px 0 0;padding:10px 12px;font-size:14px;color:#f5ecda;
+      background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:9px;outline:none}
+    .q-dev-admin input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(224,162,74,.22)}
+    .q-dev-admin button{width:100%;margin-top:10px;padding:11px;cursor:pointer;font:700 13px system-ui;color:#1b1006;
+      background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:10px}
+    .q-dev-admin button:hover{filter:brightness(1.06)}
+    .q-dev-err{min-height:14px;margin:8px 0 0;font-size:12px;text-align:center;color:#ff8a7a}
     /* раздел очереди */
     .q-section{max-width:min(2600px,99vw);margin:2vh auto 60px;padding:0 16px}
     .q-welcome{padding:16px 18px;background:linear-gradient(180deg,#231607,#150c05);
@@ -87,7 +114,7 @@
     (function () {
       var h = (new Date().getUTCHours() + 3) % 24, night = (h >= 20 || h < 7);
       var b = document.getElementById("qs-page-bg");
-      if (b) b.style.backgroundImage = "url('assets/queue/scene/scene-bg-" + (night ? "night" : "day") + ".webp')";
+      if (b) b.style.backgroundImage = "url('assets/queue/scene/world-" + (night ? "night" : "day") + ".webp')";
     })();
   </script>
   <div class="q-app">
@@ -98,9 +125,26 @@
       <a class="q-back" href="clan-valor.html">← на сайт</a>
     </div>
 
+    <!-- ВРЕМЕННО: раздел в разработке (вход закрыт всем, кроме админа) -->
+    <main class="q-dev" id="dev" hidden>
+      <img class="q-dev-ic" src="assets/queue/queue-enter.webp?v=2" alt="">
+      <div class="q-dev-badge">🏗️ в разработке</div>
+      <h1>Скоро откроем!</h1>
+      <p class="q-dev-txt">Раздел «Очередь за ресурсами с КХ» ещё готовится — мы наводим последний блеск.
+        Вход временно закрыт, но совсем скоро он распахнётся для всех офицеров и игроков. Спасибо, что заглянул(а)! ✨</p>
+      <a class="q-dev-back" href="clan-valor.html">← вернуться на сайт</a>
+      <details class="q-dev-admin">
+        <summary>Вход для администратора</summary>
+        <input id="dev-admin-user" placeholder="логин админа" autocomplete="username" maxlength="32">
+        <input id="dev-admin-pass" type="password" placeholder="админский пароль" autocomplete="current-password" maxlength="200">
+        <button id="dev-admin-btn" type="button">Войти как админ</button>
+        <p class="q-dev-err" id="dev-admin-err" role="alert"></p>
+      </details>
+    </main>
+
     <!-- ОКНО ВХОДА -->
     <main class="q-auth" id="auth" hidden>
-      <img class="q-auth-ic" src="assets/queue/trader-enter.webp" alt="">
+      <img class="q-auth-ic" src="assets/queue/queue-enter.webp?v=2" alt="">
       <h1>Вход в очередь</h1>
       <p class="sub" id="auth-sub">Выбери свой игровой ник, чтобы войти</p>
 
@@ -166,7 +210,7 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/queue.js?v=1800600000"></script>
-  <script src="js/queue-scene.js?v=1802800000"></script>
+  <script src="js/queue.js?v=1816700000"></script>
+  <script src="js/queue-scene.js?v=1803500000"></script>
 </body>
 </html>
