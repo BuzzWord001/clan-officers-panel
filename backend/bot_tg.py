@@ -75,13 +75,21 @@ def _chunks(text: str, size: int = 4000):
         yield text[i:i + size]
 
 
-async def send_text(text: str) -> None:
-    """Отправляет обычное текстовое сообщение в офицерский TG-чат (с разбивкой)."""
-    if not (settings.tg_bot_token and settings.tg_officer_chat_id):
+async def send_text(text: str, token: str = "", chat_id: str = "") -> None:
+    """Отправляет текст в TG-чат (по умолчанию офицерский; можно задать свой токен/чат
+    — например пробный @pw_spamer_bot в личку). С разбивкой на части."""
+    token = token or settings.tg_bot_token
+    chat_id = chat_id or settings.tg_officer_chat_id
+    if not (token and chat_id):
         raise RuntimeError("tg_not_configured")
     for chunk in _chunks(text):
-        await _call("sendMessage", chat_id=settings.tg_officer_chat_id,
-                    text=chunk, disable_web_page_preview=True)
+        url = _BASE.format(token=token, method="sendMessage")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(url, json={"chat_id": chat_id, "text": chunk,
+                                             "disable_web_page_preview": True})
+        data = r.json()
+        if not data.get("ok"):
+            raise RuntimeError("telegram.sendMessage failed: %s" % data)
 
 
 async def delete_message_safe(message_id: int) -> None:

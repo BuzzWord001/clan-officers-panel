@@ -1654,6 +1654,9 @@
         '<datalist id="qd-dl">' + dl + '</datalist>' +
         '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
       "</div>" +
+      '<label class="q-admin-row" style="gap:7px;align-items:center;cursor:pointer;font-size:12px;color:#f0dcb4">' +
+        '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] === "1" ? " checked" : "") + '> ' +
+        '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерский чат</label>' +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-report" style="font-weight:700">📋 Получить отчёт о распределении</button>' +
         '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +
@@ -1694,6 +1697,10 @@
       saveCfg("shooters", JSON.stringify(shooters));
       wrap.querySelector("#qd-shnick").value = ""; renderShooters(); status("✓ Проводник добавлен: " + nk, true);
     });
+    wrap.querySelector("#qd-testmode").addEventListener("change", function () {
+      saveCfg("queue_test_send", this.checked ? "1" : "0");
+      status(this.checked ? "🧪 Пробный режим ВКЛ — отчёт пойдёт в личку (@pw_spamer_bot)" : "Пробный режим выкл — отчёт в офицерский чат", true);
+    });
     wrap.querySelector("#qd-report").addEventListener("click", function () {
       status("Считаю отчёт…");
       q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
@@ -1704,10 +1711,10 @@
       status("Финализирую неделю…");
       q("POST", "/queue/admin/advance").then(function (d) {
         var c = d.channels || {};
+        var rep = c.test ? ("проба: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
         status("✓ Вылетевших: " + (d.pruned || 0) + " · не забрали (остались): " + (d.stayed_uncollected || 0) +
-          " · авто-переочередь: " + (d.requeued || 0) + " · вышли: " + (d.left_removed || 0) +
-          " · отчёт TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"),
-          c.tg === "ok" && c.vk === "ok");
+          " · авто-переочередь: " + (d.requeued || 0) + " · вышли: " + (d.left_removed || 0) + " · отчёт " + rep,
+          (c.test || c.tg) === "ok");
         refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
@@ -1777,8 +1784,8 @@
       sendBtn.disabled = true; sendMsg.textContent = "Отправляю…"; sendMsg.style.color = "#c9b48f";
       q("POST", "/queue/admin/distribute/send").then(function (d) {
         var c = d.channels || {};
-        var okAll = c.tg === "ok" && c.vk === "ok";
-        sendMsg.textContent = "TG: " + (c.tg || "?") + " · VK: " + (c.vk || "?");
+        var okAll = c.test ? (c.test === "ok") : (c.tg === "ok" && c.vk === "ok");
+        sendMsg.textContent = c.test ? ("🧪 проба (@pw_spamer_bot): " + c.test) : ("TG: " + (c.tg || "?") + " · VK: " + (c.vk || "?"));
         sendMsg.style.color = okAll ? "#9fe0a0" : "#e0a86a";
         sendBtn.disabled = false;
       }).catch(function (e) {

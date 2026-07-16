@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     tg_officer_chat_id: str = ""
     tg_login_bot_token: str = ""
 
+    # Пробный режим отчёта: слать НЕ в офицерский чат, а в личку Лиру через @pw_spamer_bot
+    test_bot_token: str = ""
+    test_chat_id: str = ""
+
     vk_group_token: str = ""
     vk_officer_peer_id: str = ""
 

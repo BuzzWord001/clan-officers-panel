@@ -952,7 +952,7 @@ def get_config() -> dict:
 
 # значимые настройки — логируем (кто менял); размеры/пути/расстановку — нет (спам)
 _LOGGED_CFG = {"queue_open", "stages_closed", "pet_count", "shooters", "forceTime",
-               "dayFrom", "nightFrom", "env_objects"}
+               "dayFrom", "nightFrom", "env_objects", "queue_test_send"}
 
 
 @router.post("/admin/config")
@@ -1040,10 +1040,25 @@ def _now_msk_str() -> str:
     return datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M мск")
 
 
+def _is_test_mode() -> bool:
+    with db.connection() as conn:
+        return _cfg_val(conn, "queue_test_send", "") == "1"
+
+
 async def _send_report_to_chats(report: dict) -> dict:
-    """Шлёт текст отчёта в офицерский TG и VK чат. Возвращает статус по каналам."""
+    """Шлёт текст отчёта. В ПРОБНОМ режиме — только в личку Лиру через @pw_spamer_bot;
+    иначе — в офицерский TG и VK чат. Возвращает статус по каналам."""
     text = distribution.format_report_text(report, _now_msk_str())
     channels: dict[str, str] = {}
+    if _is_test_mode():
+        try:
+            if not (settings.test_bot_token and settings.test_chat_id):
+                raise RuntimeError("test_bot_not_configured")
+            await bot_tg.send_text(text, token=settings.test_bot_token, chat_id=settings.test_chat_id)
+            channels["test"] = "ok"
+        except Exception as exc:
+            channels["test"] = "error: %s" % exc
+        return channels
     try:
         await bot_tg.send_text(text)
         channels["tg"] = "ok"

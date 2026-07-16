@@ -182,9 +182,9 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                 prov_res.append({"key": res, "name": res_name(res), "per": per,
                                  "count": n, "total": per * n, "mode": "stack"})
         if prov_res:
-            groups.insert(0, {
-                "people": [{"receiver": s["nick"], "via": "", "ok": True} for s in shooter_rows],
-                "resources": prov_res, "provodnik": True})
+            prov_people = [{"receiver": s["nick"], "via": "", "ok": True} for s in shooter_rows]
+            prov_people.sort(key=lambda p: p["receiver"].casefold())
+            groups.insert(0, {"people": prov_people, "resources": prov_res, "provodnik": True})
 
     return {
         "stages": stages,
@@ -236,6 +236,9 @@ def _build_groups(queues_out) -> list:
             g = {"people": people, "resources": [info]}
             by_key[key] = g
             groups.append(g)
+    # ники в группе — как есть (реальное написание), по алфавиту для удобства
+    for g in groups:
+        g["people"].sort(key=lambda p: p["receiver"].casefold())
     return groups
 
 
