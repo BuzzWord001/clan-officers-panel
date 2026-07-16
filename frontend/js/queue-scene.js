@@ -203,6 +203,16 @@
   };
   function resName(k) { return RES_NAME[k] || k; }
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
+  // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
+  // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
+  var RES_WARN = {
+    "vysshiy-kamen": "Падает только начиная с 6 этапа КХ — в конце недели его может не быть в наличии. " +
+      "Ничего страшного: ты займёшь очередь и станешь ПЕРВЫМ претендентом. Как только предмет выпадет на " +
+      "следующих неделях — получишь его первым и останешься в очереди, пока не заберёшь.",
+    "mount-cilin": "Питомец падает С ШАНСОМ — в конце недели его может не оказаться в наличии. " +
+      "Ты не потеряешь место: встав в очередь, станешь ПЕРВЫМ претендентом. Как только цилинь выпадет на " +
+      "следующих неделях — получишь его первым и будешь стоять в очереди, пока не заберёшь."
+  };
   function _cfgMin(key, dflt) {                 // "ЧЧ:ММ" из конфига → минуты (или дефолт)
     var m = /^(\d{1,2}):(\d{2})$/.exec(String(CONFIG[key] || "").trim());
     return m ? (Math.min(23, +m[1]) * 60 + Math.min(59, +m[2])) : dflt;
@@ -583,28 +593,34 @@
     "@media(max-width:640px){.qs-merch-box{width:220px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
-    ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
-      "padding:4px 3px;border:1px solid rgba(224,162,74,.16);border-radius:9px;background:rgba(0,0,0,.22);position:relative}" +
-    ".qs-cell.me{border-color:var(--gc);background:rgba(224,162,74,.14);box-shadow:0 0 10px -2px var(--gc)}" +
-    ".qs-cell.priv{border-color:#ffd24a;background:rgba(255,210,74,.16);animation:qsCellPriv 1.6s ease-in-out infinite}" +
-    "@keyframes qsCellPriv{0%,100%{box-shadow:0 0 8px -2px #ffd24a}50%{box-shadow:0 0 16px 0 #ffd24a}}" +
-    ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 6px #ffd24a)}" +
-    ".qs-cell-priv{position:absolute;top:-7px;left:50%;transform:translateX(-50%);white-space:nowrap;" +
-      "font:800 8px system-ui;color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);padding:1px 5px;border-radius:6px;z-index:2}" +
-    ".qs-cell-num{position:absolute;top:-6px;left:-4px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
-      "min-width:15px;text-align:center;border-radius:6px;padding:0 3px}" +
-    ".qs-cell-img{height:38px;width:auto;max-width:52px;object-fit:contain;" +
-      "background:linear-gradient(180deg,rgba(190,224,234,.15),rgba(143,195,106,.15));border-radius:6px}" +
-    ".qs-cell-img.ph{display:flex;align-items:center;justify-content:center;width:38px;color:#8a795a;font-weight:700}" +
-    ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}" +
-    ".qs-cell-res{height:14px;width:14px;object-fit:contain;flex:0 0 auto}" +
-    ".qs-cell-resn{display:flex;align-items:center;gap:2px;max-width:56px;margin-top:1px}" +
-    ".qs-cell-resnm{font:600 7.5px system-ui;color:#c9b48f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
-    ".qs-cell-resn.none{font:600 7.5px system-ui;color:#7a6a4a;font-style:italic}" +
-    ".qs-cell.clk{cursor:pointer}.qs-cell.clk:hover{border-color:var(--gc);background:rgba(224,162,74,.2)}" +
-    ".qs-cell-edit{margin-top:2px;font:800 7.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
-      "padding:1px 5px;border-radius:6px;white-space:nowrap}" +
-    "@media(max-width:640px){.qs-cell{width:50px}.qs-cell-img{height:32px}}" +
+    // ── ячейка полосы: только вырезанная фигурка (без рамки) + облачко-мысль с ресурсом над головой ──
+    ".qs-cell{flex:0 0 auto;width:76px;display:flex;flex-direction:column;align-items:center;gap:2px;" +
+      "padding:2px 2px 4px;background:none;border:0;position:relative}" +
+    ".qs-cell.me .qs-cell-img{filter:drop-shadow(0 0 7px var(--gc)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
+    ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 8px #ffd24a) drop-shadow(0 0 14px rgba(255,210,74,.6));animation:qsCellPriv 1.6s ease-in-out infinite}" +
+    "@keyframes qsCellPriv{0%,100%{filter:drop-shadow(0 0 6px #ffd24a) drop-shadow(0 2px 3px rgba(0,0,0,.5))}50%{filter:drop-shadow(0 0 15px #ffd24a) drop-shadow(0 0 22px rgba(255,210,74,.7))}}" +
+    // облачко-мысль над головой
+    ".qs-bubble{display:inline-flex;align-items:center;gap:3px;max-width:74px;padding:3px 8px;border-radius:12px;position:relative;" +
+      "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);" +
+      "box-shadow:0 2px 7px rgba(0,0,0,.32);z-index:2}" +
+    ".qs-bubble::after{content:'';position:absolute;bottom:-4px;left:16px;width:7px;height:7px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55);border-top:0;border-left:0}" +
+    ".qs-bubble::before{content:'';position:absolute;bottom:-9px;left:12px;width:4px;height:4px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
+    ".qs-bubble-ic{width:15px;height:15px;object-fit:contain;flex:0 0 auto}" +
+    ".qs-bubble-nm{font:700 8px system-ui;color:#5a3d12;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-bubble.empty{background:linear-gradient(180deg,#efe6d4,#ddcfb2);border-color:rgba(150,130,95,.5)}" +
+    ".qs-bubble.empty .qs-bubble-nm{color:#7a6a4a;font-style:italic;font-weight:600}" +
+    ".qs-bubble.priv{background:linear-gradient(180deg,#fff2c2,#ffdf7a);border-color:#eab531}" +
+    ".qs-cell-mdl{position:relative;display:flex;align-items:flex-end;justify-content:center;min-height:40px}" +
+    ".qs-cell-img{height:44px;width:auto;max-width:60px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
+    ".qs-cell-img.ph{display:flex;align-items:center;justify-content:center;width:40px;height:40px;color:#8a795a;font-weight:700}" +
+    ".qs-cell-badge{position:absolute;bottom:-2px;left:-2px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
+      "min-width:15px;text-align:center;border-radius:8px;padding:1px 4px;box-shadow:0 1px 3px rgba(0,0,0,.5)}" +
+    ".qs-cell-badge.priv{background:linear-gradient(180deg,#ffe486,#eab531);left:50%;bottom:-3px;transform:translateX(-50%);font-size:8px}" +
+    ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;text-shadow:0 1px 2px #000}" +
+    ".qs-cell.clk{cursor:pointer}.qs-cell.clk:hover .qs-cell-img{filter:drop-shadow(0 0 9px var(--gc)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
+    ".qs-cell-edit{margin-top:1px;font:800 7.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
+      "padding:1px 6px;border-radius:7px;white-space:nowrap}" +
+    "@media(max-width:640px){.qs-cell{width:64px}.qs-cell-img{height:38px}.qs-bubble{max-width:62px}}" +
     ".qs-change-note{display:flex;align-items:flex-start;gap:9px;margin:8px 0 4px;padding:9px 13px;border-radius:12px;" +
       "background:linear-gradient(180deg,rgba(60,42,16,.92),rgba(36,24,9,.92));border:1px solid rgba(240,200,120,.5);" +
       "box-shadow:inset 0 1px 0 rgba(255,224,160,.12)}" +
@@ -618,6 +634,24 @@
     ".qs-off-tx{display:flex;flex-direction:column;gap:1px}" +
     ".qs-off-tx b{font:800 14.5px system-ui;color:#cfcfff;letter-spacing:.2px}" +
     ".qs-off-sub{font:500 11.5px/1.4 system-ui;color:#b7b7d6}" +
+    // «реклама» жетона ТОП-3
+    ".qs-token-ad{display:flex;align-items:center;gap:13px;margin:8px 0 6px;padding:11px 16px;border-radius:15px;position:relative;overflow:hidden;" +
+      "background:linear-gradient(110deg,#3a2a0c,#5b400f 45%,#3a2a0c);border:1px solid rgba(255,210,110,.6);" +
+      "box-shadow:0 6px 24px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,230,160,.22),0 0 34px rgba(245,200,120,.14)}" +
+    ".qs-token-ad::before{content:'';position:absolute;top:0;left:-40%;width:35%;height:100%;pointer-events:none;" +
+      "background:linear-gradient(100deg,transparent,rgba(255,240,190,.35),transparent);animation:qTaShine 4.5s ease-in-out infinite}" +
+    "@keyframes qTaShine{0%{left:-40%}55%,100%{left:130%}}" +
+    ".qs-ta-star{font-size:30px;flex:0 0 auto;filter:drop-shadow(0 0 8px rgba(255,210,120,.8));animation:qTaStar 2.6s ease-in-out infinite}" +
+    "@keyframes qTaStar{0%,100%{transform:scale(1) rotate(-6deg)}50%{transform:scale(1.14) rotate(6deg)}}" +
+    ".qs-ta-body{flex:1 1 auto;min-width:0}" +
+    ".qs-ta-title{font:800 15px Georgia,serif;color:#ffe08a;text-shadow:0 0 10px rgba(245,200,120,.5)}" +
+    ".qs-ta-title span{font:600 12px system-ui;color:#d8b877}" +
+    ".qs-ta-tx{margin-top:2px;font:500 12px/1.5 system-ui;color:#f2e3c2}.qs-ta-tx b{color:#ffd98a}" +
+    ".qs-ta-badge{flex:0 0 auto;align-self:center;font:800 12px system-ui;color:#5a2d0a;white-space:nowrap;" +
+      "background:linear-gradient(180deg,#ffe486,#eab531);padding:6px 12px;border-radius:20px;transform:rotate(4deg);" +
+      "box-shadow:0 3px 10px rgba(0,0,0,.4);animation:qTaBadge 1.8s ease-in-out infinite}" +
+    "@keyframes qTaBadge{0%,100%{transform:rotate(4deg) scale(1)}50%{transform:rotate(4deg) scale(1.07)}}" +
+    "@media(max-width:640px){.qs-ta-badge{display:none}.qs-ta-title{font-size:13.5px}.qs-ta-tx{font-size:11px}}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -661,6 +695,10 @@
     ".qs-p2-inp{width:100%;box-sizing:border-box;padding:8px 11px;font-size:14px;border-radius:9px;" +
       "border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.82);color:#f3e8d2}" +
     ".qs-p2-warn{display:none;font-size:11.5px;margin:5px 0 0}" +
+    ".qs-res-warn{display:none;margin:2px 0 4px;padding:9px 12px;border-radius:10px;font:500 12px/1.5 system-ui;" +
+      "color:#ffe0b0;background:linear-gradient(180deg,rgba(150,70,20,.4),rgba(90,40,10,.35));" +
+      "border:1px solid rgba(240,150,70,.55);box-shadow:inset 0 1px 0 rgba(255,200,120,.12)}" +
+    ".qs-res-warn b{color:#ffd18a}" +
     ".qs-p2-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#f0dcb4;margin:9px 0 2px;cursor:pointer}" +
     ".qs-p2-planrow{display:flex;gap:6px;align-items:center}" +
     ".qs-p2-planrow select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:rgba(20,13,7,.82);color:#f3e8d2;border:1px solid rgba(224,162,74,.4)}" +
@@ -740,6 +778,18 @@
       "border:1px solid rgba(120,80,20,.35);text-shadow:0 1px 0 rgba(255,255,255,.25);" +
       "animation:qsPrivLbl 1.6s ease-in-out infinite}" +
     "@keyframes qsPrivLbl{0%,100%{box-shadow:0 2px 6px rgba(255,200,80,.4)}50%{box-shadow:0 2px 12px rgba(255,220,120,.85)}}" +
+    // над головой в сцене: стопка метка-ТОП3 → облачко-ресурс → ник
+    ".qs-char .q-char-head{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;" +
+      "flex-direction:column;align-items:center;gap:2px;margin-bottom:3px;pointer-events:none;z-index:9}" +
+    ".qs-char .q-char-head .q-char-name{position:static;transform:none;margin:0}" +
+    ".qs-char .q-char-head .q-char-priv-lbl{position:static;transform:none;bottom:auto;left:auto}" +
+    ".qs-char-bubble{display:inline-flex;align-items:center;gap:3px;max-width:118px;padding:2px 8px;border-radius:12px;position:relative;" +
+      "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);box-shadow:0 2px 7px rgba(0,0,0,.32)}" +
+    ".qs-char-bubble::after{content:'';position:absolute;bottom:-4px;left:14px;width:6px;height:6px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
+    ".qs-char-bubble::before{content:'';position:absolute;bottom:-8px;left:11px;width:3px;height:3px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
+    ".qs-char-bubble img{width:15px;height:15px;object-fit:contain;flex:0 0 auto}" +
+    ".qs-char-bubble span{font:700 8.5px system-ui;color:#5a3d12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:98px}" +
+    ".qs-char-bubble.priv{background:linear-gradient(180deg,#fff2c2,#ffdf7a);border-color:#eab531}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
@@ -765,10 +815,20 @@
     var mscale = (mi && MODEL_SETTINGS[mi.key] && +MODEL_SETTINGS[mi.key].scale) || 1;
     el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;--qs-mscale:" + mscale + ";" +
       "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + (e.privileged ? 8800 : Math.round(p.y * 12)) + ";";
+    // hover-подсказка привилегии: коротко и понятно, почему человек вне очереди
+    if (e.privileged)
+      el.title = "⚡ Берёт ресурс ВНЕ очереди — использовал жетон ТОП-3 по доблести. Топ-3 недели получают такую привилегию.";
+    var resBubble = e.resource
+      ? '<div class="qs-char-bubble' + (e.privileged ? " priv" : "") + '"><img src="' + resImg(e.resource) +
+        '" alt=""><span>' + esc(resName(e.resource)) + "</span></div>"
+      : "";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
-      (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
-      '<div class="q-char-name">' + esc(e.nick) + "</div>" +
+      '<div class="q-char-head">' +
+        (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
+        resBubble +
+        '<div class="q-char-name">' + esc(e.nick) + "</div>" +
+      "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
       (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
         '<button data-mv="1" title="назад">▶</button></div>' : "");
@@ -835,6 +895,7 @@
     body.innerHTML =
       '<div class="qs-p2-lbl">1 · Выбери ресурс:</div>' +
       '<div class="qs-respick" id="qs-p2-grid"></div>' +
+      '<div id="qs-res-warn" class="qs-res-warn"></div>' +
       '<div class="qs-p2-lbl">2 · Кому передать <span style="color:#8a795a;font-weight:400">(необязательно — только твин или супруг)</span>:</div>' +
       '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
       '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
@@ -853,6 +914,11 @@
       var go = body.querySelector("#qs-p2-go");
       go.textContent = edit ? "💾 Сохранить" : (sel ? "Встать в очередь" : "Сначала выбери ресурс");
       go.disabled = !sel && !edit;
+      var warn = body.querySelector("#qs-res-warn");        // предупреждение по «капризному» ресурсу
+      if (warn) {
+        if (RES_WARN[sel]) { warn.innerHTML = "⚠️ <b>" + esc(resName(sel)) + ".</b> " + esc(RES_WARN[sel]); warn.style.display = "block"; }
+        else warn.style.display = "none";
+      }
     }
     items.forEach(function (it) {
       var card = document.createElement("button");
@@ -1144,6 +1210,21 @@
     return el;
   }
 
+  // «Реклама» жетона ТОП-3 — над всей картинкой, для всех. Коротко: что это и как работает.
+  function buildTokenAd() {
+    var el = document.createElement("div");
+    el.className = "qs-token-ad";
+    el.innerHTML =
+      '<div class="qs-ta-star">🌟</div>' +
+      '<div class="qs-ta-body">' +
+        '<div class="qs-ta-title">Жетон ТОП-3 <span>— награда за доблесть</span></div>' +
+        '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. С ним берёшь ресурсы ' +
+        'из обычной очереди <b>вне очереди</b>, сразу первым у торговца. Жетон копится по 1 за неделю в топ-3 и не сгорает.</div>' +
+      "</div>" +
+      '<div class="qs-ta-badge">без очереди!</div>';
+    return el;
+  }
+
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
@@ -1201,16 +1282,22 @@
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
-        cell.title = e.nick + (e.privileged ? " — ⚡ жетон ТОП-3 (вне очереди)" : (e.resource ? " — стоит за: " + resName(e.resource) : "")) +
-          (mine ? "  (нажми, чтобы сменить ресурс)" : "");
+        cell.title = e.privileged
+          ? e.nick + " — ⚡ берёт ресурс ВНЕ очереди: использовал жетон ТОП-3 по доблести (привилегия за топ-3 недели)"
+          : e.nick + (e.resource ? " — стоит за: " + resName(e.resource) : " — ресурс не выбран") +
+            (mine ? "  (нажми, чтобы сменить ресурс)" : "");
+        // облачко-мысль над головой с ресурсом (обновляется при смене ресурса)
+        var bubble = e.resource
+          ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' + resImg(e.resource) +
+            '" alt=""><span class="qs-bubble-nm">' + esc(resName(e.resource)) + "</span></div>"
+          : '<div class="qs-bubble empty"><span class="qs-bubble-nm">выбирает…</span></div>';
         cell.innerHTML =
-          (e.privileged ? '<span class="qs-cell-priv">⚡ ТОП-3</span>' : '<span class="qs-cell-num">' + (i + 1) + "</span>") +
-          (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
+          bubble +
+          '<div class="qs-cell-mdl">' +
+            (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
+            (e.privileged ? '<span class="qs-cell-badge priv">⚡ ТОП-3</span>' : '<span class="qs-cell-badge">' + (i + 1) + "</span>") +
+          "</div>" +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
-          // подпись «за каким ресурсом стоит» — прямо под ником
-          (e.resource ? '<span class="qs-cell-resn"><img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' +
-            '<span class="qs-cell-resnm">' + esc(resName(e.resource)) + "</span></span>"
-            : '<span class="qs-cell-resn none">— ресурс не выбран</span>') +
           (mine ? '<span class="qs-cell-edit">✏️ сменить</span>' : "");
         if (mine) {
           cell.classList.add("clk");
@@ -1370,6 +1457,7 @@
         : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
+    if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenAd());  // «реклама» жетона ТОП-3 (всем)
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
     wrap.appendChild(renderStage(state));
     if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
