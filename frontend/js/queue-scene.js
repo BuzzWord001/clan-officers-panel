@@ -1655,8 +1655,9 @@
         '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
       "</div>" +
       '<label class="q-admin-row" style="gap:7px;align-items:center;cursor:pointer;font-size:12px;color:#f0dcb4">' +
-        '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] === "1" ? " checked" : "") + '> ' +
-        '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерский чат</label>' +
+        '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] !== "0" ? " checked" : "") + '> ' +
+        '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерский чат ' +
+        '<span style="color:#8a795a">(вкл по умолчанию до запуска)</span></label>' +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-report" style="font-weight:700">📋 Получить отчёт о распределении</button>' +
         '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +

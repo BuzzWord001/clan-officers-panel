@@ -1041,8 +1041,10 @@ def _now_msk_str() -> str:
 
 
 def _is_test_mode() -> bool:
+    # ПО УМОЛЧАНИЮ ВКЛ (пока раздел не запущен): отчёт идёт в личку через @pw_spamer_bot,
+    # а не в офицерский чат. Чтобы слать в офицерский чат — явно queue_test_send="0".
     with db.connection() as conn:
-        return _cfg_val(conn, "queue_test_send", "") == "1"
+        return _cfg_val(conn, "queue_test_send", "1") != "0"
 
 
 async def _send_report_to_chats(report: dict) -> dict:
