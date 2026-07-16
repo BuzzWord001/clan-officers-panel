@@ -385,6 +385,18 @@
     ".q-admin{margin:20px 0 0;padding:14px 16px;border-radius:14px;background:linear-gradient(180deg,#1c1207,#140c05);" +
       "border:1px solid rgba(224,162,74,.35)}" +
     ".q-admin h3{margin:0 0 10px;font:800 15px Georgia,serif;color:#f0c878}" +
+    /* сворачиваемые секции админ-панели */
+    ".q-sec{margin:0 0 8px;border:1px solid rgba(224,162,74,.22);border-radius:11px;background:rgba(0,0,0,.16);overflow:hidden}" +
+    ".q-sec>summary{cursor:pointer;list-style:none;padding:11px 14px;font:800 13.5px system-ui;color:#f0c878;" +
+      "display:flex;align-items:center;gap:10px;flex-wrap:wrap;user-select:none}" +
+    ".q-sec>summary::-webkit-details-marker{display:none}" +
+    ".q-sec>summary::before{content:'▸';color:#caa66a;font-size:12px;transition:transform .15s}" +
+    ".q-sec[open]>summary::before{transform:rotate(90deg)}" +
+    ".q-sec>summary:hover{background:rgba(224,162,74,.06)}" +
+    ".q-sec[open]>summary{border-bottom:1px solid rgba(224,162,74,.16);background:rgba(224,162,74,.05)}" +
+    ".q-sec-hint{font:400 11px system-ui;color:#8a795a}" +
+    ".q-sec-body{padding:12px 14px}" +
+    ".q-sec-body>.q-admin-row:last-child{margin-bottom:0}" +
     ".q-admin-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}" +
     ".q-admin input,.q-admin select{padding:8px 10px;font-size:13px;color:#f5ecda;background:rgba(0,0,0,.35);" +
       "border:1px solid rgba(224,162,74,.35);border-radius:8px;outline:none}" +
@@ -975,83 +987,116 @@
     box.className = "q-admin";
     var _open = CONFIG["queue_open"] === "1";
     box.innerHTML =
-      "<h3>⚙️ Управление очередью (админ)</h3>" +
-      '<div class="q-admin-row" style="align-items:center">' +
-        '<span style="font-size:12.5px;color:#caa66a">Доступ в раздел:</span>' +
-        '<button class="' + (_open ? "danger" : "sec") + '" id="qa-toggle-open" style="font-weight:700">' +
-          (_open ? "🔓 ОТКРЫТ для всех — закрыть (в разработку)" : "🔒 ЗАКРЫТ (в разработке) — открыть для всех") + "</button>" +
-        '<span style="font-size:11px;color:#8a795a">' +
-          (_open ? "офицеры и игроки могут входить" : "видят табличку «в разработке», входишь только ты (админ)") + "</span>" +
-      "</div>" +
-      '<div class="q-admin-row q-adm-sugg">' +
-        '<input id="qa-nick" placeholder="ник игрока…" autocomplete="off" style="min-width:170px">' +
-        '<div class="q-adm-list" id="qa-list"></div>' +
-        '<select id="qa-queue"><option value="0">Очередь 1 (обычные)</option>' +
-          '<option value="1">Очередь 2 (редкие R)</option><option value="2">Очередь 3 (легенд. S)</option></select>' +
-        '<input id="qa-pos" type="number" min="0" placeholder="место (пусто = в конец)" style="width:170px">' +
-        '<button id="qa-add">Добавить в очередь</button>' +
-      "</div>" +
-      '<div class="q-admin-row">' +
-        '<button class="sec" data-clear="0">Очистить оч.1</button>' +
-        '<button class="sec" data-clear="1">Очистить оч.2</button>' +
-        '<button class="sec" data-clear="2">Очистить оч.3</button>' +
-        '<button class="danger" data-clear="all">Очистить ВСЕ</button>' +
-        '<button class="sec" id="qa-log-btn">Показать лог и входы</button>' +
-      "</div>" +
-      '<div class="q-admin-row">' +
-        '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
-        '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
-      "</div>" +
-      '<div class="q-admin-row" style="align-items:center;flex-wrap:wrap">' +
-        '<span style="font-size:12.5px;color:#caa66a">Фон сцены:</span>' +
-        '<button class="sec" data-time="auto">🕒 Авто (по времени)</button>' +
-        '<button class="sec" data-time="day">☀️ День</button>' +
-        '<button class="sec" data-time="night">🌙 Ночь</button>' +
-        '<span style="font-size:11px;color:#8a795a;margin-left:8px">Авто по МСК:</span>' +
-        '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">☀️ день с ' +
-          '<input type="time" id="qa-dayfrom" value="' + (CONFIG["dayFrom"] || "07:00") + '"></label>' +
-        '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">🌙 ночь с ' +
-          '<input type="time" id="qa-nightfrom" value="' + (CONFIG["nightFrom"] || "20:00") + '"></label>' +
-      "</div>" +
-      '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
-        '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
-        sizeSlider("frame", "Рамка/сцена", 0.5, 4) + sizeSlider("char", "Модели") +
-        sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") +
-        sizeSlider("merch", "Торговцы") +
-      "</div>" +
-      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
-        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
-          'Сколько видно картины (край рамки): <b id="qa-inset-v">' + getSize("inset", 15).toFixed(1) + '%</b>' +
-          '<input type="range" id="qa-inset" min="4" max="50" step="0.5" value="' + getSize("inset", 15) + '" style="width:300px"></label>' +
-        '<span style="font-size:11px;color:#8a795a">← фон крупнее · правее — фон меньше (регулируй на глаз) →</span>' +
-      "</div>" +
-      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
-        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
-          'Растянутость очереди (сколько пути занимает): <b id="qa-spread-v">' + getSize("spread", 1).toFixed(2) + '</b>' +
-          '<input type="range" id="qa-spread" min="0.4" max="1" step="0.05" value="' + getSize("spread", 1) + '" style="width:300px"></label>' +
-        '<span style="font-size:11px;color:#8a795a">люди распределяются РАВНОМЕРНО и сжимаются при добавлении; тут — общая длина очереди</span>' +
-      "</div>" +
-      '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
-        '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
-          'Сколько человек показывать в очереди (лимит): <b id="qa-limit-v">' + Math.round(getSize("limit", 6)) + '</b>' +
-          '<input type="range" id="qa-limit" min="1" max="20" step="1" value="' + Math.round(getSize("limit", 6)) + '" style="width:300px"></label>' +
-        '<span style="font-size:11px;color:#8a795a">остальные «придут позже» — видны по кнопке «список»</span>' +
-      "</div>" +
-      '<div class="q-admin-row">' +
-        '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
-        '<input id="qa-gnick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off" style="min-width:150px">' +
-        '<datalist id="qa-roster-dl"></datalist>' +
-        '<button class="sec" id="qa-gm">♂ Мужской</button>' +
-        '<button class="sec" id="qa-gf">♀ Женский</button>' +
-        '<button class="sec" id="qa-gr">Сброс (по имени)</button>' +
-      "</div>" +
-      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px">' +
-        '<div style="font-size:12px;color:#caa66a">❓ Кому уточнить пол ' +
-          '<span style="color:#8a795a;font-size:11px">(в очередях, классы воин/жрец — модель зависит от пола; «авто» = угадано по имени мэйна, проверь)</span></div>' +
-        '<div id="qa-gender-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
-      "</div>" +
+      "<h3>⚙️ Управление разделом «Очередь за ресурсами с КХ» (админ)</h3>" +
       '<div class="q-adm-status" id="qa-status"></div>' +
-      '<div class="q-log" id="qa-log" hidden></div>';
+
+      // ── 🎁 РАСПРЕДЕЛЕНИЕ (главное) — панели догружаются ниже ──
+      '<details class="q-sec" open><summary>🎁 Распределение ресурсов' +
+        '<span class="q-sec-hint">этапы КХ · проводники · отчёт · финализация · кто не забрал</span></summary>' +
+        '<div class="q-sec-body" id="qsec-dist"></div></details>' +
+
+      // ── 💞 ОФИЦЕРСКОЕ ──
+      '<details class="q-sec"><summary>💞 Связки супругов' +
+        '<span class="q-sec-hint">кому передавать рес · доступно и офицерам</span></summary>' +
+        '<div class="q-sec-body" id="qsec-officer"></div></details>' +
+
+      // ── 🔒 ДОСТУП И ОЧЕРЕДЬ ──
+      '<details class="q-sec"><summary>🔒 Доступ и управление очередью' +
+        '<span class="q-sec-hint">открыть/закрыть · добавить · очистить · лимиты</span></summary>' +
+        '<div class="q-sec-body">' +
+          '<div class="q-admin-row" style="align-items:center">' +
+            '<span style="font-size:12.5px;color:#caa66a">Доступ в раздел:</span>' +
+            '<button class="' + (_open ? "danger" : "sec") + '" id="qa-toggle-open" style="font-weight:700">' +
+              (_open ? "🔓 ОТКРЫТ — закрыть (в разработку)" : "🔒 ЗАКРЫТ — открыть для всех") + "</button>" +
+            '<span style="font-size:11px;color:#8a795a">' +
+              (_open ? "офицеры и игроки могут входить" : "остальные видят «в разработке», входишь только ты") + "</span>" +
+          "</div>" +
+          '<div class="q-admin-row q-adm-sugg">' +
+            '<input id="qa-nick" placeholder="ник игрока…" autocomplete="off" style="min-width:170px">' +
+            '<div class="q-adm-list" id="qa-list"></div>' +
+            '<select id="qa-queue"><option value="0">Очередь 1 (обычные)</option>' +
+              '<option value="1">Очередь 2 (редкие R)</option><option value="2">Очередь 3 (легенд. S)</option></select>' +
+            '<input id="qa-pos" type="number" min="0" placeholder="место (пусто = в конец)" style="width:170px">' +
+            '<button id="qa-add">Добавить в очередь</button>' +
+          "</div>" +
+          '<div class="q-admin-row">' +
+            '<button class="sec" data-clear="0">Очистить оч.1</button>' +
+            '<button class="sec" data-clear="1">Очистить оч.2</button>' +
+            '<button class="sec" data-clear="2">Очистить оч.3</button>' +
+            '<button class="danger" data-clear="all">Очистить ВСЕ</button>' +
+          "</div>" +
+          '<div class="q-admin-row" style="gap:20px;align-items:flex-end">' +
+            '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+              'Показывать в очереди (лимит): <b id="qa-limit-v">' + Math.round(getSize("limit", 6)) + '</b>' +
+              '<input type="range" id="qa-limit" min="1" max="20" step="1" value="' + Math.round(getSize("limit", 6)) + '" style="width:240px"></label>' +
+            '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+              'Растянутость очереди: <b id="qa-spread-v">' + getSize("spread", 1).toFixed(2) + '</b>' +
+              '<input type="range" id="qa-spread" min="0.4" max="1" step="0.05" value="' + getSize("spread", 1) + '" style="width:240px"></label>' +
+          "</div>" +
+        "</div></details>" +
+
+      // ── 🎨 СЦЕНА: фон, размеры, расстановка ──
+      '<details class="q-sec"><summary>🎨 Сцена: фон, размеры, расстановка' +
+        '<span class="q-sec-hint">день/ночь · размеры моделей · перетаскивание предметов</span></summary>' +
+        '<div class="q-sec-body">' +
+          '<div class="q-admin-row">' +
+            '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
+            '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
+          "</div>" +
+          '<div class="q-admin-row" style="align-items:center;flex-wrap:wrap">' +
+            '<span style="font-size:12.5px;color:#caa66a">Фон:</span>' +
+            '<button class="sec" data-time="auto">🕒 Авто</button>' +
+            '<button class="sec" data-time="day">☀️ День</button>' +
+            '<button class="sec" data-time="night">🌙 Ночь</button>' +
+            '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px;margin-left:8px">☀️ день с ' +
+              '<input type="time" id="qa-dayfrom" value="' + (CONFIG["dayFrom"] || "07:00") + '"></label>' +
+            '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">🌙 ночь с ' +
+              '<input type="time" id="qa-nightfrom" value="' + (CONFIG["nightFrom"] || "20:00") + '"></label>' +
+          "</div>" +
+          '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
+            '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
+            sizeSlider("frame", "Рамка/сцена", 0.5, 4) + sizeSlider("char", "Модели") +
+            sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") + sizeSlider("merch", "Торговцы") +
+          "</div>" +
+          '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
+            '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
+              'Сколько видно картины (край рамки): <b id="qa-inset-v">' + getSize("inset", 15).toFixed(1) + '%</b>' +
+              '<input type="range" id="qa-inset" min="4" max="50" step="0.5" value="' + getSize("inset", 15) + '" style="width:300px"></label>' +
+            '<span style="font-size:11px;color:#8a795a">← фон крупнее · правее меньше →</span>' +
+          "</div>" +
+        "</div></details>" +
+
+      // ── 🧍 МОДЕЛИ ИГРОКОВ: пол + размеры/загрузка (панели догружаются) ──
+      '<details class="q-sec"><summary>🧍 Модели игроков: пол, размеры, загрузка' +
+        '<span class="q-sec-hint">пол для модели · размер/поворот · загрузка PNG</span></summary>' +
+        '<div class="q-sec-body" id="qsec-models">' +
+          '<div class="q-admin-row">' +
+            '<span style="font-size:12.5px;color:#caa66a">Пол игрока (для модели):</span>' +
+            '<input id="qa-gnick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off" style="min-width:150px">' +
+            '<datalist id="qa-roster-dl"></datalist>' +
+            '<button class="sec" id="qa-gm">♂ Мужской</button>' +
+            '<button class="sec" id="qa-gf">♀ Женский</button>' +
+            '<button class="sec" id="qa-gr">Сброс (по имени)</button>' +
+          "</div>" +
+          '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px">' +
+            '<div style="font-size:12px;color:#caa66a">❓ Кому уточнить пол ' +
+              '<span style="color:#8a795a;font-size:11px">(классы воин/жрец — модель зависит от пола; «авто» = угадано по имени)</span></div>' +
+            '<div id="qa-gender-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
+          "</div>" +
+        "</div></details>" +
+
+      // ── 🌳 ОКРУЖЕНИЕ (панель догружается) ──
+      '<details class="q-sec"><summary>🌳 Объекты окружения' +
+        '<span class="q-sec-hint">деревья, камни, костры — загрузка и расстановка</span></summary>' +
+        '<div class="q-sec-body" id="qsec-env"></div></details>' +
+
+      // ── 📋 ЛОГИ ──
+      '<details class="q-sec"><summary>📋 Логи и входы' +
+        '<span class="q-sec-hint">кто что делал в разделе</span></summary>' +
+        '<div class="q-sec-body">' +
+          '<div class="q-admin-row"><button class="sec" id="qa-log-btn">Показать лог и входы</button></div>' +
+          '<div class="q-log" id="qa-log" hidden></div>' +
+        "</div></details>";
 
     var nick = box.querySelector("#qa-nick"), list = box.querySelector("#qa-list");
     var chosen = "";
@@ -1225,12 +1270,15 @@
       lEl.addEventListener("input", function () { lV.textContent = lEl.value; });
       lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
     }
-    box.appendChild(buildDistPanel());
-    box.appendChild(buildDuePanel(false));
-    box.appendChild(buildModelSizePanel());
-    box.appendChild(buildUploadPanel());
-    box.appendChild(buildEnvPanel());
-    box.appendChild(buildSpousePanel(false));
+    // панели — каждая в свою секцию (best practice: по смыслу)
+    var secDist = box.querySelector("#qsec-dist");
+    secDist.appendChild(buildDistPanel());
+    secDist.appendChild(buildDuePanel(false));
+    box.querySelector("#qsec-officer").appendChild(buildSpousePanel(false));
+    var secModels = box.querySelector("#qsec-models");
+    secModels.appendChild(buildModelSizePanel());
+    secModels.appendChild(buildUploadPanel());
+    box.querySelector("#qsec-env").appendChild(buildEnvPanel());
     return box;
   }
 
