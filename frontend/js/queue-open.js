@@ -25,20 +25,23 @@
     var st = document.createElement("style");
     st.id = "qopen-style";
     st.textContent =
-      ".qopen-timer{display:inline-flex;flex-direction:column;align-items:center;gap:2px;" +
-        "padding:8px 15px;border-radius:13px;font-family:system-ui,Segoe UI,Arial,sans-serif;" +
-        "background:linear-gradient(180deg,rgba(46,29,12,.96),rgba(20,12,5,.96));" +
-        "border:1px solid rgba(240,200,120,.55);box-shadow:0 6px 22px rgba(0,0,0,.5)," +
-        "inset 0 1px 0 rgba(255,224,160,.14),0 0 26px rgba(245,200,120,.1)}" +
-      ".qopen-lbl{font:700 10px system-ui;letter-spacing:.5px;text-transform:uppercase;color:#caa66a;white-space:nowrap}" +
-      ".qopen-clock{font:800 24px/1 'Segoe UI',Consolas,monospace;color:#ffd98a;letter-spacing:1px;" +
-        "text-shadow:0 0 12px rgba(245,200,120,.55);font-variant-numeric:tabular-nums}" +
-      ".qopen-when{font:600 10.5px system-ui;color:#9fe0a0;white-space:nowrap}" +
-      ".qopen-live{font:800 15px system-ui;color:#9fe0a0;text-shadow:0 0 10px rgba(120,220,140,.5)}" +
-      ".qopen-timer.big{padding:14px 26px;gap:4px}" +
-      ".qopen-timer.big .qopen-clock{font-size:38px}" +
-      ".qopen-timer.big .qopen-lbl{font-size:12px}.qopen-timer.big .qopen-when{font-size:12.5px}" +
-      "@media(max-width:560px){.qopen-clock{font-size:20px}.qopen-timer.big .qopen-clock{font-size:30px}}";
+      ".qopen-timer{display:inline-flex;flex-direction:column;align-items:center;gap:6px;" +
+        "padding:11px 20px 12px;border-radius:15px;font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1;" +
+        "background:linear-gradient(180deg,rgba(52,33,13,.97),rgba(22,13,5,.97));" +
+        "border:1px solid rgba(240,200,120,.5);box-shadow:0 8px 26px rgba(0,0,0,.5)," +
+        "inset 0 1px 0 rgba(255,224,160,.16),0 0 30px rgba(245,200,120,.1)}" +
+      ".qopen-lbl{display:flex;align-items:center;gap:5px;font:800 9.5px/1 system-ui;letter-spacing:1.3px;" +
+        "text-transform:uppercase;color:#d9b06a;white-space:nowrap}" +
+      ".qopen-clock{font:800 27px/1 'Segoe UI',Consolas,monospace;color:#ffe0a0;letter-spacing:1.5px;" +
+        "text-shadow:0 0 15px rgba(245,200,120,.6);font-variant-numeric:tabular-nums}" +
+      ".qopen-when{font:600 11px/1 system-ui;color:#9fe0a0;white-space:nowrap}" +
+      ".qopen-live{font:800 16px system-ui;color:#9fe0a0;text-shadow:0 0 10px rgba(120,220,140,.5)}" +
+      ".qopen-timer.big{padding:16px 30px 17px;gap:9px}" +
+      ".qopen-timer.big .qopen-lbl{font-size:11.5px}" +
+      ".qopen-timer.big .qopen-clock{font-size:42px}" +
+      ".qopen-timer.big .qopen-when{font-size:12.5px}" +
+      "@media(max-width:560px){.qopen-timer{padding:9px 15px 10px;gap:5px}.qopen-clock{font-size:22px}" +
+        ".qopen-timer.big .qopen-clock{font-size:32px}}";
     document.head.appendChild(st);
   }
 
@@ -82,9 +85,12 @@
       var e = document.getElementById("qopen-near"); if (e) { if (e.__stop) e.__stop(); e.remove(); }
     } });
     t.id = "qopen-near";
-    t.style.marginRight = "auto";                      // прижать к кнопке слева
-    row.style.justifyContent = "space-between";
-    row.insertBefore(t, row.firstChild);
+    // таймер стоит ВПЛОТНУЮ к кнопке (оба прижаты вправо, между ними аккуратный зазор)
+    row.style.gap = "14px";
+    row.style.alignItems = "center";
+    row.style.flexWrap = "wrap";
+    var btn = row.querySelector(".q-enter");
+    if (btn) row.insertBefore(t, btn); else row.insertBefore(t, row.firstChild);
   }
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", injectNearButton);
