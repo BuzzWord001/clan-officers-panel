@@ -203,6 +203,17 @@
   };
   function resName(k) { return RES_NAME[k] || k; }
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
+  // HTML для всплывающей подсказки над человеком (ник + за каким ресурсом стоит)
+  function tipHtml(e) {
+    var nick = esc(e.nick);
+    if (e.privileged)
+      return '<span class="qtip-nick">' + nick + "</span>" +
+        '<span class="qtip-priv">⚡ Берёт ресурс ВНЕ очереди — жетон ТОП-3 по доблести</span>' +
+        (e.resource ? '<span class="qtip-res">за: <b>' + esc(resName(e.resource)) + "</b></span>" : "");
+    return '<span class="qtip-nick">' + nick + "</span>" +
+      (e.resource ? '<span class="qtip-res">стоит за: <b>' + esc(resName(e.resource)) + "</b></span>"
+                  : '<span class="qtip-res none">ресурс ещё не выбран</span>');
+  }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
   var RES_WARN = {
@@ -603,8 +614,8 @@
     ".qs-bubble{display:inline-flex;align-items:center;gap:3px;max-width:74px;padding:3px 8px;border-radius:12px;position:relative;" +
       "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);" +
       "box-shadow:0 2px 7px rgba(0,0,0,.32);z-index:2}" +
-    ".qs-bubble::after{content:'';position:absolute;bottom:-4px;left:16px;width:7px;height:7px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55);border-top:0;border-left:0}" +
-    ".qs-bubble::before{content:'';position:absolute;bottom:-9px;left:12px;width:4px;height:4px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
+    ".qs-bubble::after{content:'';position:absolute;bottom:-4px;left:50%;margin-left:-3px;width:7px;height:7px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
+    ".qs-bubble::before{content:'';position:absolute;bottom:-9px;left:50%;margin-left:-2px;width:4px;height:4px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
     ".qs-bubble-ic{width:15px;height:15px;object-fit:contain;flex:0 0 auto}" +
     ".qs-bubble-nm{font:700 8px system-ui;color:#5a3d12;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-bubble.empty{background:linear-gradient(180deg,#efe6d4,#ddcfb2);border-color:rgba(150,130,95,.5)}" +
@@ -783,19 +794,56 @@
       "flex-direction:column;align-items:center;gap:2px;margin-bottom:3px;pointer-events:none;z-index:9}" +
     ".qs-char .q-char-head .q-char-name{position:static;transform:none;margin:0}" +
     ".qs-char .q-char-head .q-char-priv-lbl{position:static;transform:none;bottom:auto;left:auto}" +
-    ".qs-char-bubble{display:inline-flex;align-items:center;gap:3px;max-width:118px;padding:2px 8px;border-radius:12px;position:relative;" +
-      "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);box-shadow:0 2px 7px rgba(0,0,0,.32)}" +
-    ".qs-char-bubble::after{content:'';position:absolute;bottom:-4px;left:14px;width:6px;height:6px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
-    ".qs-char-bubble::before{content:'';position:absolute;bottom:-8px;left:11px;width:3px;height:3px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
-    ".qs-char-bubble img{width:15px;height:15px;object-fit:contain;flex:0 0 auto}" +
-    ".qs-char-bubble span{font:700 8.5px system-ui;color:#5a3d12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:98px}" +
-    ".qs-char-bubble.priv{background:linear-gradient(180deg,#fff2c2,#ffdf7a);border-color:#eab531}" +
+    // ресурс — просто иконка ровно над головой (без облачка)
+    ".qs-char-res{width:23px;height:23px;object-fit:contain;pointer-events:auto;cursor:default;filter:drop-shadow(0 0 3px rgba(0,0,0,.7)) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
+    ".qs-char .q-char-head .q-char-name{pointer-events:auto}" +
+    ".q-char-priv .qs-char-res{filter:drop-shadow(0 0 5px #ffd24a) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
+    // всплывающая подсказка (ник + ресурс) для полосы и сцены
+    ".qtip{position:fixed;z-index:2147483600;pointer-events:none;max-width:250px;padding:9px 12px;border-radius:11px;" +
+      "background:linear-gradient(180deg,#33210d,#190f05);border:1px solid rgba(240,200,120,.6);" +
+      "box-shadow:0 12px 32px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,224,160,.16);display:flex;flex-direction:column;gap:3px}" +
+    ".qtip::after{content:'';position:absolute;bottom:-6px;left:50%;transform:translateX(-50%) rotate(45deg);width:11px;height:11px;" +
+      "background:#190f05;border-right:1px solid rgba(240,200,120,.6);border-bottom:1px solid rgba(240,200,120,.6)}" +
+    ".qtip.below::after{bottom:auto;top:-6px;border:0;border-left:1px solid rgba(240,200,120,.6);border-top:1px solid rgba(240,200,120,.6)}" +
+    ".qtip-nick{font:800 13.5px Georgia,serif;color:#ffe08a;text-shadow:0 0 8px rgba(245,200,120,.4)}" +
+    ".qtip-res{font:600 12px system-ui;color:#e7d6b7}.qtip-res b{color:#ffd98a}.qtip-res.none{color:#9a8a68;font-style:italic}" +
+    ".qtip-priv{font:700 11.5px/1.35 system-ui;color:#ffd24a}" +
+    ".qtip-hint{font:600 11px system-ui;color:#9fe0a0}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
       ".q-char-name{font:700 9px/1.3 Georgia,serif;max-width:74px}" +
       ".q-admin{padding:11px 10px}.q-admin-row{gap:6px}}";
     document.head.appendChild(st);
+    setupTip();
+  }
+
+  // ── единая всплывающая подсказка (ник + ресурс) для полосы и сцены ──
+  var _tipEl = null;
+  function setupTip() {
+    if (_tipEl) return;
+    _tipEl = document.createElement("div");
+    _tipEl.className = "qtip"; _tipEl.style.display = "none";
+    document.body.appendChild(_tipEl);
+    function place(t) {
+      var r = t.getBoundingClientRect();
+      _tipEl.style.display = "flex"; _tipEl.classList.remove("below");
+      var tw = _tipEl.offsetWidth, th = _tipEl.offsetHeight;
+      var x = Math.max(6, Math.min(r.left + r.width / 2 - tw / 2, window.innerWidth - tw - 6));
+      var y = r.top - th - 10;
+      if (y < 6) { y = r.bottom + 10; _tipEl.classList.add("below"); }   // не влезло сверху → снизу
+      _tipEl.style.left = x + "px"; _tipEl.style.top = y + "px";
+    }
+    document.addEventListener("mouseover", function (e) {
+      var t = e.target.closest && e.target.closest("[data-tip]");
+      if (!t) return;
+      _tipEl.innerHTML = t.getAttribute("data-tip"); place(t);
+    });
+    document.addEventListener("mouseout", function (e) {
+      var t = e.target.closest && e.target.closest("[data-tip]");
+      if (t && !(e.relatedTarget && t.contains(e.relatedTarget))) _tipEl.style.display = "none";
+    });
+    window.addEventListener("scroll", function () { if (_tipEl) _tipEl.style.display = "none"; }, true);
   }
 
   // ── одна моделька на сцене: позиция %, масштаб по глубине (ниже=крупнее), y-сортировка ──
@@ -815,19 +863,17 @@
     var mscale = (mi && MODEL_SETTINGS[mi.key] && +MODEL_SETTINGS[mi.key].scale) || 1;
     el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;--qs-mscale:" + mscale + ";" +
       "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + (e.privileged ? 8800 : Math.round(p.y * 12)) + ";";
-    // hover-подсказка привилегии: коротко и понятно, почему человек вне очереди
-    if (e.privileged)
-      el.title = "⚡ Берёт ресурс ВНЕ очереди — использовал жетон ТОП-3 по доблести. Топ-3 недели получают такую привилегию.";
-    var resBubble = e.resource
-      ? '<div class="qs-char-bubble' + (e.privileged ? " priv" : "") + '"><img src="' + resImg(e.resource) +
-        '" alt=""><span>' + esc(resName(e.resource)) + "</span></div>"
-      : "";
+    // всплывающая подсказка (ник + ресурс, для привилегии — пояснение)
+    el.setAttribute("data-tip", tipHtml(e));
+    // в сцене — просто иконка ресурса РОВНО над головой (без облачка)
+    var resIcon = e.resource
+      ? '<img class="qs-char-res" src="' + resImg(e.resource) + '" alt="" title="">' : "";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
       '<div class="q-char-head">' +
         (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
-        resBubble +
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
+        resIcon +
       "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
       (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
@@ -1282,10 +1328,7 @@
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
-        cell.title = e.privileged
-          ? e.nick + " — ⚡ берёт ресурс ВНЕ очереди: использовал жетон ТОП-3 по доблести (привилегия за топ-3 недели)"
-          : e.nick + (e.resource ? " — стоит за: " + resName(e.resource) : " — ресурс не выбран") +
-            (mine ? "  (нажми, чтобы сменить ресурс)" : "");
+        cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
         // облачко-мысль над головой с ресурсом (обновляется при смене ресурса)
         var bubble = e.resource
           ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' + resImg(e.resource) +
@@ -1350,16 +1393,20 @@
 
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
       rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
+      // запоминаем позицию прокрутки этой полосы, чтобы при перерисовке (удаление в ЛЮБОЙ
+      // очереди пересобирает всё) она не «прыгала» вправо, а осталась на месте
+      strip.addEventListener("scroll", function () { _stripScroll[b.q] = strip.scrollLeft; });
       sw.appendChild(joinCell); sw.appendChild(lArr); sw.appendChild(strip);
       sw.appendChild(rArr); sw.appendChild(merchBox);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
       autoCropAll(merchBox, ".qs-mres img");               // иконки ресурсов заполняют бокс (цилинь крупнее)
-      setTimeout(function () {                              // прокрутка: к своей ячейке, иначе к торговцу (правый край, №1)
-        var c = strip.querySelector(".qs-cell.me");
+      setTimeout(function () {
+        if (_stripScroll[b.q] != null) { strip.scrollLeft = _stripScroll[b.q]; return; }  // вернуть, где было
+        var c = strip.querySelector(".qs-cell.me");        // первый показ: к своей ячейке…
         if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
-        else strip.scrollLeft = strip.scrollWidth;         // показать голову очереди (у торговца)
+        else strip.scrollLeft = strip.scrollWidth;         // …иначе к голове очереди (у торговца)
       }, 70);
     });
     return box;
@@ -1439,6 +1486,7 @@
   }
 
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
+  var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
 
   function render(state) {
     _lastState = state;
@@ -1533,9 +1581,27 @@
           '<div class="q-admin-row" style="align-items:center">' +
             '<span style="font-size:12.5px;color:#caa66a">Людей в каждую очередь:</span>' +
             '<input type="number" id="qa-test-n" value="6" min="1" max="30" style="width:70px">' +
-            '<button id="qa-test-fill">🧪 Заполнить тестовыми</button>' +
+            '<button id="qa-test-fill">🧪 Заполнить тестовыми (случайно)</button>' +
             '<button class="sec" id="qa-test-clear">🧹 Убрать тестовых</button>' +
             '<span id="qa-test-msg" style="font-size:11.5px;color:#8fc36a"></span>' +
+          "</div>" +
+          // массовое добавление с ВЫБОРОМ ресурсов
+          '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(224,162,74,.25)">' +
+            '<div style="font-size:12.5px;color:#f0c878;font-weight:700;margin:0 0 7px">➕ Добавить в очередь с выбором ресурсов</div>' +
+            '<div class="q-admin-row" style="align-items:center">' +
+              '<span style="font-size:12.5px;color:#caa66a">Очередь:</span>' +
+              '<select id="qa-ma-queue"><option value="0">Обычные</option><option value="1">Редкие (R)</option><option value="2">Легендарные (S)</option></select>' +
+            "</div>" +
+            '<div id="qa-ma-rows"></div>' +
+            '<div class="q-admin-row" style="align-items:center;margin-top:2px">' +
+              '<button class="sec" id="qa-ma-more" style="font-size:12px">＋ ещё ресурс</button>' +
+              '<span style="font-size:12.5px;color:#caa66a;margin-left:8px">+ случайных:</span>' +
+              '<input type="number" id="qa-ma-rand" value="0" min="0" max="300" style="width:66px">' +
+            "</div>" +
+            '<div class="q-admin-row" style="align-items:center;margin-top:2px">' +
+              '<button id="qa-ma-add">➕ Добавить в очередь</button>' +
+              '<span id="qa-ma-msg" style="font-size:11.5px;color:#8fc36a"></span>' +
+            "</div>" +
           "</div>" +
         "</div></details>" +
 
@@ -1792,6 +1858,47 @@
         tMsg.style.color = "#8fc36a"; tMsg.textContent = "убрано: " + (d.removed || 0); refresh();
       }).catch(function (e) { tMsg.style.color = "#ff8a7a"; tMsg.textContent = "ошибка: " + (e.detail || e.message); });
     });
+    // ── массовое добавление с выбором ресурсов ──
+    (function () {
+      var qSel = box.querySelector("#qa-ma-queue"), rows = box.querySelector("#qa-ma-rows"), mMsg = box.querySelector("#qa-ma-msg");
+      if (!qSel) return;
+      function resOpts(qn) {
+        return (BOOTH_ITEMS[qn] || []).map(function (it) {
+          return '<option value="' + esc(it) + '">' + esc(resName(it)) + "</option>"; }).join("");
+      }
+      function addRow() {
+        var qn = +qSel.value;
+        var row = document.createElement("div");
+        row.className = "q-admin-row qa-ma-row"; row.style.cssText = "align-items:center;margin:0 0 5px";
+        row.innerHTML = '<select class="qa-ma-res">' + resOpts(qn) + "</select>" +
+          '<input type="number" class="qa-ma-cnt" value="10" min="0" max="300" style="width:66px">' +
+          '<span style="font-size:12px;color:#8a795a">чел</span>' +
+          '<button class="sec qa-ma-del" style="padding:4px 8px;font-size:12px">✕</button>';
+        row.querySelector(".qa-ma-del").addEventListener("click", function () { row.remove(); });
+        rows.appendChild(row);
+      }
+      function rebuildOpts() {   // при смене очереди — обновить варианты во всех строках
+        var qn = +qSel.value;
+        [].forEach.call(rows.querySelectorAll(".qa-ma-res"), function (s) { s.innerHTML = resOpts(qn); });
+      }
+      qSel.addEventListener("change", rebuildOpts);
+      box.querySelector("#qa-ma-more").addEventListener("click", addRow);
+      addRow();   // одна строка по умолчанию
+      box.querySelector("#qa-ma-add").addEventListener("click", function () {
+        var qn = +qSel.value;
+        var items = [].map.call(rows.querySelectorAll(".qa-ma-row"), function (r) {
+          return { resource: r.querySelector(".qa-ma-res").value, count: Math.max(0, +r.querySelector(".qa-ma-cnt").value || 0) };
+        }).filter(function (it) { return it.count > 0; });
+        var rand = Math.max(0, +box.querySelector("#qa-ma-rand").value || 0);
+        if (!items.length && !rand) { mMsg.style.color = "#e0a86a"; mMsg.textContent = "укажи количество"; return; }
+        mMsg.textContent = "…"; mMsg.style.color = "#8a795a";
+        q("POST", "/queue/admin/test-add", { queue: qn, items: items, random_count: rand }).then(function (d) {
+          mMsg.style.color = "#8fc36a";
+          mMsg.textContent = "добавлено: " + (d.added || 0) + (d.pool_left <= 0 ? " (ростер кончился)" : "");
+          refresh();
+        }).catch(function (e) { mMsg.style.color = "#ff8a7a"; mMsg.textContent = "ошибка: " + (e.detail || e.message); });
+      });
+    })();
     box.querySelector("#qa-place").addEventListener("click", function () {
       _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState);
     });

@@ -400,6 +400,17 @@ class TestFillIn(BaseModel):
     n: int = Field(default=6, ge=1, le=30)   # сколько человек добавить в каждую очередь
 
 
+class TestAddItem(BaseModel):
+    resource: str = Field(default="", max_length=64)
+    count: int = Field(default=0, ge=0, le=300)
+
+
+class TestAddIn(BaseModel):
+    queue: int
+    items: list[TestAddItem] = Field(default_factory=list)   # [{resource, count}] — заданные ресурсы
+    random_count: int = Field(default=0, ge=0, le=300)        # + столько со случайными ресурсами
+
+
 class JoinAsIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     queue: int
@@ -1445,6 +1456,54 @@ def test_fill(payload: TestFillIn, request: Request, actor: dict = Depends(requi
         _log(conn, "test_fill", actor=_actor_name(actor), request=request,
              detail="добавлено тестовых: %d (по %d/очередь)" % (added, payload.n))
     return {"ok": True, "added": added}
+
+
+@router.post("/admin/test-add")
+def test_add(payload: TestAddIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: добавить в ОДНУ очередь людей с ЗАДАННЫМИ ресурсами (напр. 10 с метеоритом,
+    20 с камнем) и/или со случайными. Берёт случайных людей из ростера, кого ещё нет в этой
+    очереди; каждый человек добавляется один раз за вызов."""
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
+    import random
+    qn = payload.queue
+    byq = [k for k, v in distribution.REWARDS.items() if v["q"] == qn]
+    added = 0
+    with db.connection() as conn:
+        existing = {r["main_canon"] for r in conn.execute("SELECT main_canon FROM queue_entries WHERE queue=?", (qn,))}
+        pool, seen = [], set()
+        for p in _people(conn).values():
+            if p["main_canon"] in seen or p["main_canon"] in existing:
+                continue
+            seen.add(p["main_canon"]); pool.append(p)
+        random.shuffle(pool)
+        pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (qn,)).fetchone()["m"] or 0)
+        state = {"i": 0, "pos": pos}
+
+        def add(res):
+            nonlocal added
+            if state["i"] >= len(pool):
+                return False
+            p = pool[state["i"]]; state["i"] += 1; state["pos"] += 1
+            conn.execute(
+                "INSERT INTO queue_entries (queue,pos,main_canon,nick,cls,resource,added_by,added_at) VALUES (?,?,?,?,?,?,?,?)",
+                (qn, state["pos"], p["main_canon"], p["nick"], p["cls"], res, "test", _now()))
+            added += 1
+            return True
+
+        for it in payload.items:
+            res = (it.resource or "").strip()
+            if res not in byq:
+                continue
+            for _ in range(it.count):
+                if not add(res):
+                    break
+        for _ in range(payload.random_count):
+            if not add(random.choice(byq) if byq else ""):
+                break
+        _log(conn, "test_add", actor=_actor_name(actor), queue=qn, request=request,
+             detail="добавлено %d (осталось в пуле %d)" % (added, len(pool) - state["i"]))
+    return {"ok": True, "added": added, "pool_left": len(pool) - state["i"]}
 
 
 @router.post("/admin/test-clear")
