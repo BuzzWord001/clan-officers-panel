@@ -57,10 +57,12 @@
     $("step-nick").hidden = which !== "nick";
     $("step-register").hidden = which !== "register";
     $("step-login").hidden = which !== "login";
+    $("step-officer").hidden = which !== "officer";
     err("");
     var sub = $("auth-sub");
     if (which === "nick") sub.textContent = "Выбери свой игровой ник, чтобы войти";
     else if (which === "register") sub.textContent = "Первый вход — создай личный пароль";
+    else if (which === "officer") sub.textContent = "Это офицерский ник — нужен офицерский пароль";
     else sub.textContent = "С возвращением! Введи свой личный пароль";
   }
   function err(msg, ok) {
@@ -81,8 +83,9 @@
       if (p.cls) meta.push(esc(p.cls));
       if (p.is_twin) meta.push('<span class="q-sugg-twin">твин · мэйн ' + esc(p.main_nick) + "</span>");
       else meta.push("мэйн-аккаунт");
+      if (p.officer) meta.push('<span class="q-sugg-off">✦ офицер</span>');
       return '<div class="q-sugg-item" data-i="' + i + '">' +
-        '<div class="q-sugg-nick">' + esc(p.nick) + "</div>" +
+        '<div class="q-sugg-nick">' + esc(p.nick) + (p.officer ? ' <span class="q-sugg-off">✦</span>' : "") + "</div>" +
         '<div class="q-sugg-meta">' + meta.join(" · ") + "</div></div>";
     }).join("");
     suggBox.classList.add("show");
@@ -142,6 +145,8 @@
         if (!d.ok) { err("Такой ник не найден в реестре и таблице клана. Проверь написание."); return; }
         selectedNick = d.nick;
         $("q-nick").value = d.nick;
+        // Офицерский ник → шаг с офицерским паролем (обычный/личный пароль не подойдёт).
+        if (d.officer) { goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); return; }
         goStep(d.registered ? "login" : "register");
         setTimeout(function () { $(d.registered ? "q-pass" : "q-shared").focus(); }, 30);
       })
@@ -157,10 +162,12 @@
       email: $("q-email").value.trim(),
       personal_password: $("q-newpass").value,
     }).then(function (d) {
+      if (d.role === "officer") { location.reload(); return; }   // ввёл офиц. пароль → входит офицером
       showSection(d.account);
     }).catch(function (e) {
       btn.disabled = false;
-      if (e.status === 401) err("Неверный пароль. Подойдёт общий пароль гильдии (в игре, кнопка G) или офицерский пароль.");
+      if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); }
+      else if (e.status === 401) err("Неверный пароль. Подойдёт общий пароль гильдии (в игре, кнопка G) или офицерский пароль.");
       else if (e.status === 409) { err("На этот аккаунт пароль уже создан — входи по личному паролю."); goStep("login"); }
       else if (e.status === 503) err("Общий пароль ещё не задан админом. Напиши офицеру.");
       else if (e.detail === "nick_not_found") err("Ник не найден. Вернись и выбери из подсказок.");
@@ -175,7 +182,19 @@
       .then(function (d) { showSection(d.account); })
       .catch(function (e) {
         btn.disabled = false;
+        if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); return; }
         err(e.status === 401 ? "Неверный личный пароль." : ("Ошибка входа: " + (e.detail || e.message)));
+      });
+  }
+
+  // ── вход офицером (выбран офицерский ник) ──
+  function doOfficerLogin() {
+    var btn = $("btn-officer"); btn.disabled = true; err("");
+    api("POST", "/queue/officer-login", { nick: selectedNick, password: $("q-off-pass").value })
+      .then(function () { location.reload(); })   // офицерская сессия → перезагрузка → офицерская панель
+      .catch(function (e) {
+        btn.disabled = false;
+        err(e.status === 401 ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : ("Ошибка входа: " + (e.detail || e.message)));
       });
   }
 
@@ -189,6 +208,8 @@
     $("btn-next").addEventListener("click", doNext);
     $("btn-register").addEventListener("click", doRegister);
     $("btn-login").addEventListener("click", doLogin);
+    $("btn-officer").addEventListener("click", doOfficerLogin);
+    $("q-off-pass").addEventListener("keydown", function (e) { if (e.key === "Enter") doOfficerLogin(); });
     $("btn-logout").addEventListener("click", doLogout);
     [].forEach.call(document.querySelectorAll("[data-back]"), function (b) {
       b.addEventListener("click", function () { goStep("nick"); $("q-nick").focus(); });
@@ -218,13 +239,20 @@
       // обойти заглушку закрытого раздела галочкой — увидеть его глазами офицера/игрока.
       var realAdmin = !!(m && m._realRole === "admin");
       if (!open && !(realAdmin && bypassOn())) { showDev(realAdmin, m && m.role); return; }
-      // раздел ОТКРЫТ (или админ-предпросмотр с обходом) — обычный вход по роли
+      // раздел ОТКРЫТ (или админ-предпросмотр с обходом) — вход по роли.
       api("GET", "/queue/me").then(function (d) {
-        if (d.account) { showSection(d.account); return; }
-        if (m && (m.role === "officer" || (realAdmin && !open))) {
+        // ОФИЦЕР (по офицерской сессии) — приоритет над возможным старым queue-аккаунтом:
+        // он должен видеть офицерскую панель, а не игрока.
+        if (m && m.role === "officer") {
           $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
-          $("who").textContent = (m.name || m.role || "просмотр") +
-            (realAdmin && !open ? " · предпросмотр (раздел закрыт)" : " · просмотр");
+          $("who").textContent = (m.name || "офицер") + " · офицер";
+          if (window.QueueScene) window.QueueScene.enter(null);
+          return;
+        }
+        if (d.account) { showSection(d.account); return; }
+        if (realAdmin && !open) {                    // админ-предпросмотр закрытого раздела
+          $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
+          $("who").textContent = (m && m.name || "предпросмотр") + " · предпросмотр (раздел закрыт)";
           if (window.QueueScene) window.QueueScene.enter(null);
         } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
       }).catch(function () { showAuth(); });

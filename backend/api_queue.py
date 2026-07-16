@@ -33,7 +33,7 @@ import bot_tg
 import bot_vk
 import auth_pwd
 from config import settings
-from session import require_admin, current_session
+from session import require_admin, current_session, set_session
 
 
 def require_officer_or_admin(request: Request) -> dict:
@@ -344,6 +344,11 @@ class LoginIn(BaseModel):
     personal_password: str = Field(min_length=1, max_length=200)
 
 
+class OfficerLoginIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=200)
+
+
 class SharedPwIn(BaseModel):
     password: str = Field(min_length=1, max_length=200)
 
@@ -455,6 +460,72 @@ class KVIn(BaseModel):
     val: str = Field(default="", max_length=4000)
 
 
+# ─────────────────────────── офицеры (для входа в очередь) ───────────────────────────
+_OFFICER_CACHE = {"at": 0.0, "set": frozenset()}
+
+
+def _officer_canons(conn) -> frozenset:
+    """Каноны ников, которых считаем ОФИЦЕРАМИ:
+      1) тег 'officer' в valor_tags (роль на сайте);
+      2) участники ОФИЦЕРСКОГО чата TG/VK (chat_messages, chat_group='officers') —
+         их ники (user_display/user_username) сопоставляем с ростером: сначала точным
+         каноном, а если не совпало — фаззи-похожестью (ник в TG/VK может быть написан
+         иначе, напр. «Томат» в TG → офицер «Томат» на сайте).
+    Кэш 5 мин (иначе фаззи-цикл гоняется на каждый keystroke автоподсказки)."""
+    import time
+    now = time.time()
+    if _OFFICER_CACHE["set"] and now - _OFFICER_CACHE["at"] < 300:
+        return _OFFICER_CACHE["set"]
+    officers = set()
+    try:
+        for r in conn.execute("SELECT nick_canon FROM valor_tags WHERE tag='officer'"):
+            if r["nick_canon"]:
+                officers.add(r["nick_canon"])
+    except Exception:
+        pass
+    names = set()
+    try:
+        for r in conn.execute(
+            "SELECT DISTINCT user_display, user_username FROM chat_messages WHERE chat_group='officers'"):
+            for nm in (r["user_display"], r["user_username"]):
+                if nm and nm.strip():
+                    names.add(nm.strip())
+    except Exception:
+        pass
+    if names:
+        idx = _people(conn)
+        roster = list(idx.keys())
+        for nm in names:
+            cn = db._valor_canon(nm)
+            if not cn:
+                continue
+            if cn in idx:                       # точное совпадение канона
+                officers.add(cn)
+                continue
+            best_c, best_r = None, 0.0          # иначе — ближайший по похожести
+            for c in roster:
+                sim = db._valor_similar(cn, c)
+                if sim > best_r:
+                    best_r, best_c = sim, c
+            if best_c and best_r >= 0.9:        # высокий порог — чтобы не путать обычных
+                officers.add(best_c)
+    res = frozenset(officers)
+    _OFFICER_CACHE["at"] = now
+    _OFFICER_CACHE["set"] = res
+    return res
+
+
+def _is_officer_nick(conn, nick: str) -> bool:
+    cn = db._valor_canon(nick)
+    if not cn:
+        return False
+    offs = _officer_canons(conn)
+    if cn in offs:
+        return True
+    p = _people(conn).get(cn)
+    return bool(p and p["main_canon"] in offs)
+
+
 # ─────────────────────────── эндпоинты ───────────────────────────
 @router.get("/nick-suggest")
 def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
@@ -464,12 +535,14 @@ def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
     qcanon = db._valor_canon(ql)
     out = []
     with db.connection() as conn:
+        offs = _officer_canons(conn)
         for cn, p in _people(conn).items():
             if ql in p["nick"].lower() or (qcanon and qcanon in cn):
                 out.append({
                     "nick": p["nick"], "cls": p["cls"], "title": p["title"],
                     "main_nick": p["main_nick"], "is_twin": p["is_twin"],
                     "sources": sorted(p["sources"]),
+                    "officer": (cn in offs or p["main_canon"] in offs),
                 })
     out.sort(key=lambda e: (0 if e["nick"].lower().startswith(ql) else 1, e["nick"].lower()))
     return {"results": out[:12]}
@@ -485,7 +558,8 @@ def check_nick(payload: CheckIn) -> dict:
             return {"ok": False, "reason": "not_found"}
         acc = _account_by_main(conn, p["main_canon"])
         return {"ok": True, "nick": p["nick"], "main_nick": p["main_nick"],
-                "is_twin": p["is_twin"], "registered": bool(acc)}
+                "is_twin": p["is_twin"], "registered": bool(acc),
+                "officer": (cn in _officer_canons(conn) or p["main_canon"] in _officer_canons(conn))}
 
 
 @router.post("/register")
@@ -493,16 +567,26 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
         cfg = conn.execute("SELECT shared_password_hash FROM queue_config WHERE id=1").fetchone()
         shared = cfg["shared_password_hash"] if cfg else ""
-        # Пускаем по ОБЩЕМУ паролю очереди ИЛИ по ЖИВОМУ офицерскому паролю (auth_pwd.verify_officer
-        # берёт актуальный из auth_config — поэтому смена офицерского пароля в будущем сразу работает).
-        pw_ok = (shared and _check(payload.shared_password, shared)) or auth_pwd.verify_officer(payload.shared_password)
-        if not pw_ok:
+        idx = _people(conn)
+        p = idx.get(db._valor_canon(payload.nick))
+        off_ok = auth_pwd.verify_officer(payload.shared_password)     # ЖИВОЙ офицерский пароль
+        # Кто ввёл ОФИЦЕРСКИЙ пароль — входит КАК ОФИЦЕР (сессия + панель), даже если его
+        # нет в чатах TG/VK. Аккаунт игрока не создаём — это отдельная роль.
+        if off_ok:
+            name = p["main_nick"] if p else payload.nick.strip()
+            _log(conn, "officer_login", actor=name, nick=name, request=request,
+                 detail="офицер через вход в очередь")
+            set_session(response, role="officer", name=name)
+            return {"ok": True, "role": "officer", "officer": True}
+        # Не офицерский пароль. Если выбран ОФИЦЕРСКИЙ ник — обычным паролем нельзя.
+        if _is_officer_nick(conn, payload.nick):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
+        # Обычный игрок — по ОБЩЕМУ паролю гильдии.
+        if not (shared and _check(payload.shared_password, shared)):
             if not shared:
                 raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "shared_password_not_set")
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_shared_password")
 
-        idx = _people(conn)
-        p = idx.get(db._valor_canon(payload.nick))
         if not p:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
 
@@ -527,6 +611,9 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
 @router.post("/login")
 def login(payload: LoginIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
+        # Офицерский ник — обычным паролем нельзя, только офицерский (защита ника офицера).
+        if _is_officer_nick(conn, payload.nick):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
         idx = _people(conn)
         p = idx.get(db._valor_canon(payload.nick))
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
@@ -537,6 +624,28 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         _set_device(conn, response, acc["id"], request)
         _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request)
         return {"ok": True, "account": _acc_public(acc)}
+
+
+@router.post("/officer-login")
+def officer_login(payload: OfficerLoginIn, request: Request, response: Response) -> dict:
+    """Вход в очередь КАК ОФИЦЕР по ЖИВОМУ офицерскому паролю (из закрепа чатов TG/VK).
+    Ставит офицерскую сессию → человек видит офицерскую панель. Ник — для отображения."""
+    if not auth_pwd.verify_officer(payload.password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_officer_password")
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        name = p["main_nick"] if p else payload.nick.strip()
+        _log(conn, "officer_login", actor=name, nick=name, request=request,
+             detail="вход офицером через очередь")
+    set_session(response, role="officer", name=name)
+    return {"ok": True, "role": "officer", "nick": name}
+
+
+@router.get("/nick-role")
+def nick_role(nick: str = Query(..., min_length=1, max_length=64)) -> dict:
+    """Является ли ник офицерским (для подсказки на входе — сменить надпись у пароля)."""
+    with db.connection() as conn:
+        return {"officer": _is_officer_nick(conn, nick)}
 
 
 @router.get("/me")

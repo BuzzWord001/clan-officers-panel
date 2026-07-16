@@ -70,6 +70,7 @@
     .q-sugg-nick{font-weight:700;color:#f6ead2;font-size:13.5px}
     .q-sugg-meta{font-size:11px;color:#a58c68;margin-top:1px}
     .q-sugg-twin{color:#e0a86a}
+    .q-sugg-off{color:#bcbcff;font-weight:700}
     .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
 
     /* панель «в разработке» */
@@ -193,6 +194,20 @@
         <button class="q-back-step" data-back>← другой ник</button>
       </div>
 
+      <!-- шаг 2в: ОФИЦЕР (выбран офицерский ник) -->
+      <div id="step-officer" hidden>
+        <div class="q-hint">✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> —
+          он в <b>закреплённом сообщении</b> чата гильдии в Telegram и VK.</div>
+        <div class="q-field">
+          <label for="q-off-pass">Офицерский пароль</label>
+          <input id="q-off-pass" type="password" autocomplete="off" maxlength="200"
+                 placeholder="из закрепа чата TG/VK">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem-off" checked> оставаться в системе</label>
+        <button class="q-btn" id="btn-officer">Войти как офицер</button>
+        <button class="q-back-step" data-back>← другой ник</button>
+      </div>
+
       <!-- шаг 2б: ВХОД (уже регистрировался) -->
       <div id="step-login" hidden>
         <div class="q-field">
@@ -223,7 +238,7 @@
   <script src="config.js?v=1791600000"></script>
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/queue-open.js?v=1815200000"></script>
-  <script src="js/queue.js?v=1817100000"></script>
+  <script src="js/queue.js?v=1817200000"></script>
   <script src="js/queue-scene.js?v=1836000000"></script>
 </body>
 </html>
