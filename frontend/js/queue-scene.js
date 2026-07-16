@@ -611,6 +611,13 @@
     ".qs-cn-ic{font-size:20px;flex:0 0 auto;filter:drop-shadow(0 0 6px rgba(240,200,120,.5))}" +
     ".qs-cn-tx{font:500 12.5px/1.5 system-ui;color:#efe0c2}.qs-cn-tx b{color:#f0c878}" +
     "@media(max-width:640px){.qs-cn-tx{font-size:11.5px}}" +
+    ".qs-off-head{display:flex;align-items:center;gap:11px;margin:20px 0 8px;padding:11px 15px;border-radius:13px;" +
+      "background:linear-gradient(180deg,rgba(46,44,86,.55),rgba(24,22,48,.55));border:1px solid rgba(150,150,235,.45);" +
+      "box-shadow:inset 0 1px 0 rgba(190,190,255,.14)}" +
+    ".qs-off-ic{font-size:22px;flex:0 0 auto;color:#bcbcff;filter:drop-shadow(0 0 7px rgba(150,150,235,.7))}" +
+    ".qs-off-tx{display:flex;flex-direction:column;gap:1px}" +
+    ".qs-off-tx b{font:800 14.5px system-ui;color:#cfcfff;letter-spacing:.2px}" +
+    ".qs-off-sub{font:500 11.5px/1.4 system-ui;color:#b7b7d6}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -1123,6 +1130,18 @@
     return el;
   }
 
+  // Подпись над офицерскими функциями (связки/«не забрал»/история) — чтобы офицер
+  // понимал: эта панель есть ТОЛЬКО у офицеров и админа, обычные игроки её не видят.
+  function buildOfficerHeader() {
+    var el = document.createElement("div");
+    el.className = "qs-off-head";
+    el.innerHTML =
+      '<span class="qs-off-ic">✦</span>' +
+      '<div class="qs-off-tx"><b>Офицерская панель</b>' +
+      '<span class="qs-off-sub">Эти функции доступны только офицерам и админам — обычные игроки их не видят.</span></div>';
+    return el;
+  }
+
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
@@ -1351,6 +1370,7 @@
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
+      wrap.appendChild(buildOfficerHeader());   // подпись «Офицерская панель — только у офицеров»
       wrap.appendChild(buildSpousePanel(true));
       wrap.appendChild(buildDuePanel(true));
       wrap.appendChild(buildHistoryPanel(true));
