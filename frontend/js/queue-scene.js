@@ -1734,15 +1734,7 @@
       html += '<div class="qs-dr-head" style="border:0">★ ТОП-3 клана: ' +
         rep.top3_named.map(function (t) { return esc(t.nick) + " (" + t.valor + ")"; }).join(" · ") + "</div>";
     }
-    if (rep.shooters && rep.shooters.length) {
-      html += '<div class="qs-dr-sec"><h4>🎯 Проводники (+' + rep.shooter_pct + "%)</h4>";
-      rep.shooters.forEach(function (s) {
-        html += '<div class="qs-dr-row"><b>' + esc(s.nick) + "</b> — Камень доблести ×" +
-          s.got["kamen-doblesti"] + ", Метеорит ×" + s.got["meteorit"] + "</div>";
-      });
-      html += "</div>";
-    }
-    // ── ГРУППЫ РАЗДАЧИ ──
+    // ── ГРУППЫ РАЗДАЧИ (проводники — тоже группа) ──
     var groups = rep.groups || [];
     html += '<div class="qs-dr-sec"><h4>📦 Группы раздачи</h4>';
     if (!groups.length) html += '<div class="qs-dr-empty">некому раздавать</div>';
@@ -1755,9 +1747,11 @@
       var res = g.resources.map(function (info) {
         return info.mode === "pack"
           ? "<b>" + esc(info.name) + "</b> — ВСЁ одному (" + info.total + ")"
-          : "<b>" + esc(info.name) + "</b> — по " + info.per + " × " + info.count + " = " + info.total;
+          : "<b>" + esc(info.name) + "</b> — по " + info.per + " = " + info.total;
       }).join("<br>");
-      html += '<div class="qs-dr-group"><div class="qs-dr-gh">Группа ' + (gi + 1) + " · " + g.people.length + " чел</div>" +
+      html += '<div class="qs-dr-group"><div class="qs-dr-gh">Группа ' + (gi + 1) +
+        (g.provodnik ? ' <span class="qs-dr-prov">🎯 проводники</span>' : "") +
+        " · " + g.people.length + " чел</div>" +
         '<div class="qs-dr-gp">' + names + "</div>" +
         '<div class="qs-dr-gr">' + res + "</div></div>";
     });

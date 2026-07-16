@@ -171,6 +171,21 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     # остаток (сюда попадают неполные пачки и нераспределённое) → раздать в клане
     leftovers = {res: pool[res] for res in REWARDS if pool[res] > 0}
 
+    groups = _build_groups(queues_out)
+    # проводники — отдельная ГРУППА раздачи (их +10% кладём как группу, не отдельной секцией)
+    if shooter_rows:
+        prov_res = []
+        n = len(shooter_rows)
+        for res in SHOOTER_RES:
+            per = round(_total(res, stages) * SHOOTER_PCT / 100)
+            if per > 0:
+                prov_res.append({"key": res, "name": res_name(res), "per": per,
+                                 "count": n, "total": per * n, "mode": "stack"})
+        if prov_res:
+            groups.insert(0, {
+                "people": [{"receiver": s["nick"], "via": "", "ok": True} for s in shooter_rows],
+                "resources": prov_res, "provodnik": True})
+
     return {
         "stages": stages,
         "pet_count": pet_count,
@@ -178,7 +193,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "shooter_pct": SHOOTER_PCT,
         "top3": list(top3),
         "queues": queues_out,
-        "groups": _build_groups(queues_out),
+        "groups": groups,
         "leftovers": leftovers,
         "totals": {res: _total(res, stages) for res in REWARDS},
     }
@@ -232,55 +247,45 @@ _STATUS = {
 }
 
 
+_BAR = "━━━━━━━━━━━━━━━━━━━━━━━━"
+
+
 def format_report_text(report: dict, when_msk: str = "") -> str:
-    """Отчёт в виде текста для офицерского чата (TG/VK)."""
-    lines = ["📋 ОТЧЁТ О РАСПРЕДЕЛЕНИИ РЕСУРСОВ КХ"]
-    if when_msk:
-        lines.append(when_msk)
-    lines.append("Закрыто этапов КХ: %d" % report.get("stages", 0))
+    """Красивый компактный отчёт группами для офицерского чата (TG/VK)."""
+    L = []
+    L.append("📋 РАСПРЕДЕЛЕНИЕ РЕСУРСОВ КХ")
+    meta = "🗓 %s · " % when_msk if when_msk else ""
+    L.append(meta + "этапов закрыто: %d" % report.get("stages", 0))
     if not report.get("has_valor"):
-        lines.append("⚠ Нет данных доблести — собери сбор доблести.")
-    if report.get("pet_count"):
-        lines.append("🐲 Огненный цилинь (питомец): %d шт" % report["pet_count"])
+        L.append("⚠ нет данных доблести — собери сбор")
     tn = report.get("top3_named") or []
     if tn:
-        lines.append("★ ТОП-3 клана: " + ", ".join("%s (%d)" % (t["nick"], t["valor"]) for t in tn))
+        L.append("★ ТОП-3: " + " · ".join("%s(%d)" % (t["nick"], t["valor"]) for t in tn))
+    if report.get("pet_count"):
+        L.append("🐲 Огненный цилинь: %d шт" % report["pet_count"])
 
-    sh = report.get("shooters") or []
-    if sh:
-        lines.append("")
-        lines.append("🎯 ПРОВОДНИКИ (+%d%%):" % report.get("shooter_pct", 10))
-        for s in sh:
-            g = s.get("got", {})
-            lines.append(" • %s — Камень доблести ×%d, Метеорит ×%d"
-                         % (s["nick"], g.get("kamen-doblesti", 0), g.get("meteorit", 0)))
-
-    # ── ГРУППЫ РАЗДАЧИ (минимум групп: каждый в группе получает по пачке каждого ресурса) ──
     groups = report.get("groups") or []
-    lines.append("")
-    lines.append("📦 ГРУППЫ РАЗДАЧИ:")
+    L.append(_BAR)
     if not groups:
-        lines.append("   (некому раздавать)")
+        L.append("📦 некому раздавать")
     for gi, g in enumerate(groups, 1):
-        names = ", ".join(_person_label(p) for p in g["people"])
-        lines.append("")
-        lines.append("Группа %d (%d чел): %s" % (gi, len(g["people"]), names))
-        for info in g["resources"]:
+        tag = " · 🎯 проводники" if g.get("provodnik") else ""
+        L.append("📦 Группа %d%s · %d чел" % (gi, tag, len(g["people"])))
+        L.append("   " + ", ".join(_person_label(p) for p in g["people"]))
+        res = g["resources"]
+        for i, info in enumerate(res):
+            branch = "┗" if i == len(res) - 1 else "┣"
             if info["mode"] == "pack":
-                lines.append("   • %s — ВСЁ одному (%d)" % (info["name"], info["total"]))
+                L.append("   %s %s — ВСЁ одному (%d)" % (branch, info["name"], info["total"]))
             else:
-                lines.append("   • %s — по %d × %d чел = %d"
-                             % (info["name"], info["per"], info["count"], info["total"]))
+                L.append("   %s %s — по %d = %d" % (branch, info["name"], info["per"], info["total"]))
+        L.append(_BAR)
 
-    lo = report.get("leftovers") or {}
-    lo = {k: v for k, v in lo.items() if v > 0}
-    lines.append("")
-    lines.append("🔻 ОСТАТОК — РАЗДАТЬ В ЧАТЕ КЛАНА (до вс 00:00, иначе сгорит):")
-    if lo:
-        lines.append("   " + " · ".join("%s ×%d" % (res_name(k), v) for k, v in lo.items()))
-    else:
-        lines.append("   — нет, всё распределено")
-    return "\n".join(lines)
+    lo = {k: v for k, v in (report.get("leftovers") or {}).items() if v > 0}
+    L.append("🔻 ОСТАТОК — в чат клана (до вс 00:00, иначе сгорит):")
+    L.append("   " + (" · ".join("%s ×%d" % (res_name(k), v) for k, v in lo.items())
+                      if lo else "— нет, всё распределено ✅"))
+    return "\n".join(L)
 
 
 def _person_label(p: dict) -> str:
