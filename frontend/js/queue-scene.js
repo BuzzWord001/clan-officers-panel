@@ -638,36 +638,39 @@
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
       "display:flex;align-items:center;justify-content:center;padding:20px}" +
-    ".qs-modal{max-width:560px;width:100%;max-height:86vh;overflow:auto;background:linear-gradient(180deg,#241608,#160d06);" +
-      "border:1px solid rgba(224,162,74,.45);border-radius:16px;box-shadow:0 0 50px rgba(0,0,0,.7)}" +
+    ".qs-modal{max-width:580px;width:100%;max-height:92vh;overflow:auto;background:linear-gradient(180deg,#241608,#160d06);" +
+      "border:1px solid rgba(224,162,74,.45);border-radius:16px;box-shadow:0 0 50px rgba(0,0,0,.7);position:relative}" +
     ".qs-modal-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;" +
       "padding:14px 18px;background:linear-gradient(180deg,#2c1c0b,#1c1207);border-bottom:1px solid rgba(224,162,74,.3);" +
       "font:700 16px Georgia,serif;color:#f0c878}" +
     ".qs-modal-x{background:none;border:0;color:#caa66a;font-size:18px;cursor:pointer;line-height:1}" +
     ".qs-modal-x:hover{color:#fff}" +
-    ".qs-respick{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;padding:16px}" +
-    ".qs-rescard{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" +
-      "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:12px;color:#f6ead2;" +
+    ".qs-respick{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:12px}" +
+    ".qs-rescard{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;" +
+      "background:rgba(0,0,0,.3);border:1px solid rgba(224,162,74,.3);border-radius:11px;color:#f6ead2;" +
       "font:700 12px system-ui;text-align:center}" +
     ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
     ".qs-rescard.sel{border-color:#7ec46a;background:rgba(126,196,106,.16);box-shadow:0 0 0 1px #7ec46a}" +
-    ".qs-rescard img{height:64px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
-    ".qs-rc-name{font:700 12px system-ui}" +
-    ".qs-rc-stack{font:600 10.5px system-ui;color:#8fc36a}" +
-    ".qs-rc-total{font-size:9.5px;color:#8a795a}" +
+    ".qs-rescard img{height:48px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-rc-name{font:700 11.5px/1.15 system-ui}" +
+    ".qs-rc-stack{font:600 10px system-ui;color:#8fc36a}" +
+    ".qs-rc-total{font-size:9px;color:#8a795a}" +
     /* пикер v2 (выбор+получатель+повтор+план) */
-    ".qs-pick2{padding:10px 16px 18px}" +
-    ".qs-p2-lbl{font:700 12.5px system-ui;color:#caa66a;margin:12px 0 6px}" +
-    ".qs-p2-inp{width:100%;box-sizing:border-box;padding:9px 11px;font-size:14px;border-radius:9px;" +
+    ".qs-pick2{padding:8px 16px 0}" +
+    ".qs-p2-lbl{font:700 12px system-ui;color:#caa66a;margin:9px 0 5px}" +
+    ".qs-p2-inp{width:100%;box-sizing:border-box;padding:8px 11px;font-size:14px;border-radius:9px;" +
       "border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.82);color:#f3e8d2}" +
     ".qs-p2-warn{display:none;font-size:11.5px;margin:5px 0 0}" +
-    ".qs-p2-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#f0dcb4;margin:12px 0 2px;cursor:pointer}" +
+    ".qs-p2-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#f0dcb4;margin:9px 0 2px;cursor:pointer}" +
     ".qs-p2-planrow{display:flex;gap:6px;align-items:center}" +
     ".qs-p2-planrow select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:rgba(20,13,7,.82);color:#f3e8d2;border:1px solid rgba(224,162,74,.4)}" +
-    ".qs-p2-plan{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}" +
+    ".qs-p2-plan{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}" +
     ".qs-plan-chip{display:inline-flex;align-items:center;font:600 11.5px system-ui;color:#f0dcb4;" +
       "padding:3px 6px 3px 9px;border:1px solid rgba(126,196,106,.4);border-radius:11px;background:rgba(126,196,106,.1)}" +
-    ".qs-pick2 .qs-join{margin:16px 0 0;width:100%;max-width:none}" +
+    /* липкий низ окна: кнопка «Встать» ВСЕГДА видна без прокрутки */
+    ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
+      "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
+    ".qs-pick2-foot .qs-join{margin:0;width:100%;max-width:none}" +
     ".qs-pick2 .qs-join:disabled{opacity:.5;cursor:default}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
@@ -841,7 +844,7 @@
       '<div class="qs-p2-planrow"><select id="qs-plan-sel">' + planOpts + '</select>' +
         '<button class="sec" id="qs-plan-add" type="button">＋ в план</button></div>' +
       '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
-      '<button class="qs-join" id="qs-p2-go"></button>';
+      '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button></div>';
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
     function paintCards() {
@@ -1315,7 +1318,7 @@
         '<b id="qpc-stacks-v" style="min-width:160px;color:#ffd24a"></b></div>' +
       (admin ? '<div style="font-size:11.5px;color:#e6c48f;margin-top:6px">🧪 Админ-тест как <b>' + esc(ADMIN_NICK) +
         '</b>: модель встанет первой и засветится. Жетоны при нехватке добираются автоматически.</div>' : "") +
-      '<button class="qs-join" id="qpc-go" style="margin:14px 0 0;width:100%;max-width:none"></button>';
+      '<div class="qs-pick2-foot"><button class="qs-join" id="qpc-go"></button></div>';
     var grid = body.querySelector("#qpc-grid");
     function stacks() { return +body.querySelector("#qpc-stacks").value; }
     function upd() {
