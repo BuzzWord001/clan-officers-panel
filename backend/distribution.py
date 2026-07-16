@@ -147,6 +147,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             is_top = e.get("main_canon") in top3 or e.get("canon_nick") in top3
             row = {"id": e.get("id"), "nick": who, "recipient": to, "resource": res, "valor": v,
                    "top3": is_top, "provodnik": who.strip().lower() in shooter_lc,
+                   "recipient_ok": e.get("recipient_ok", True),
                    "amount": 0, "status": "", "res_name": res}
             if not res or res not in REWARDS:
                 row["status"] = "no_res"
@@ -223,7 +224,7 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
             if r.get("provodnik"):
                 tag += "🎯проводник "
             amt = (" ×%d" % r["amount"]) if r["status"] in ("ok", "ok_pack") else ""
-            to = (" → %s" % r["recipient"]) if r.get("recipient") else ""
+            to = (" → %s%s" % (r["recipient"], "" if r.get("recipient_ok", True) else " ⚠(не твин/супруг)")) if r.get("recipient") else ""
             rn = res_name(r["res_name"]) if r.get("res_name") else "—"
             lines.append("%2d. %s%s (%d добл.) · %s — %s%s%s"
                          % (i, tag, r["nick"], r.get("valor", 0), rn,

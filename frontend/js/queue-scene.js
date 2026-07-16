@@ -485,6 +485,22 @@
     ".qs-rc-name{font:700 12px system-ui}" +
     ".qs-rc-stack{font:600 10.5px system-ui;color:#8fc36a}" +
     ".qs-rc-total{font-size:9.5px;color:#8a795a}" +
+    /* пикер v2 (выбор+получатель+повтор+план) */
+    ".qs-pick2{padding:10px 16px 18px}" +
+    ".qs-p2-lbl{font:700 12.5px system-ui;color:#caa66a;margin:12px 0 6px}" +
+    ".qs-p2-inp{width:100%;box-sizing:border-box;padding:9px 11px;font-size:14px;border-radius:9px;" +
+      "border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.82);color:#f3e8d2}" +
+    ".qs-p2-warn{display:none;font-size:11.5px;margin:5px 0 0}" +
+    ".qs-p2-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#f0dcb4;margin:12px 0 2px;cursor:pointer}" +
+    ".qs-p2-planrow{display:flex;gap:6px;align-items:center}" +
+    ".qs-p2-planrow select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:rgba(20,13,7,.82);color:#f3e8d2;border:1px solid rgba(224,162,74,.4)}" +
+    ".qs-p2-plan{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}" +
+    ".qs-plan-chip{display:inline-flex;align-items:center;font:600 11.5px system-ui;color:#f0dcb4;" +
+      "padding:3px 6px 3px 9px;border:1px solid rgba(126,196,106,.4);border-radius:11px;background:rgba(126,196,106,.1)}" +
+    ".qs-pick2 .qs-join{margin:16px 0 0;width:100%;max-width:none}" +
+    ".qs-pick2 .qs-join:disabled{opacity:.5;cursor:default}" +
+    ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
+    ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
     ".qs-distrep{padding:12px 16px 18px}" +
     ".qs-dr-head{font-size:12.5px;color:#c9b48f;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid rgba(224,162,74,.2)}" +
@@ -586,58 +602,110 @@
     ov.appendChild(box); document.body.appendChild(ov);
     return { close: close };
   }
-  // выбор ресурса при вставании (или изменение уже стоящей записи, edit={resource,recipient})
+  // кто получатель относительно игрока: "self" | "twin" | "spouse" | "other"
+  function recipientRel(rcpt) {
+    if (!rcpt || !rcpt.trim()) return "self";
+    var rc = canon(rcpt.trim());
+    var myMain = canon(_meAcc && _meAcc.main_nick);
+    if (rc === myMain) return "twin";                       // сам себе (мэйн)
+    var found = _roster.filter(function (p) { return canon(p.nick) === rc; })[0];
+    if (found && canon(found.main_nick) === myMain) return "twin";
+    var sp = SPOUSE_BY_NICK[myMain] || "";
+    if (sp && canon(sp) === rc) return "spouse";
+    return "other";
+  }
+
+  // выбор ресурса при вставании (или правка, edit={resource,recipient,auto_repeat,plan})
   function openResourcePicker(b, edit) {
+    var items = BOOTH_ITEMS[b.q] || [];
+    var sel = edit ? (edit.resource || "") : "";           // выбранный текущий ресурс
+    var planArr = (edit && edit.plan ? edit.plan.slice() : []);
     var body = document.createElement("div");
-    var m = null;
-    // поле получателя (твин/супруг) — необязательно; префилл из связки супругов
+    body.className = "qs-pick2";
     var defRcpt = edit ? (edit.recipient || "")
       : (SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)] || "");
-    var rcptWrap = document.createElement("div");
-    rcptWrap.style.cssText = "margin:0 0 14px;display:flex;flex-direction:column;gap:5px";
-    rcptWrap.innerHTML =
-      '<label style="font-size:12.5px;color:#caa66a">Кому передать ресурс ' +
-        '<span style="color:#8a795a">(необязательно — твин или супруг)</span>:</label>' +
-      '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' +
-        esc(defRcpt) + '" style="padding:9px 11px;font-size:14px;border-radius:9px;' +
-        'border:1px solid rgba(224,162,74,.42);background:rgba(20,13,7,.82);color:#f3e8d2">' +
-      '<datalist id="qs-rcpt-dl">' +
-        _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") +
-      '</datalist>' +
-      '<span style="font-size:11px;color:#8a795a">Ресурс и получателя можно менять в любой момент, пока стоишь.</span>';
-    body.appendChild(rcptWrap);
-    function commit(resource) {
-      var rcpt = (body.querySelector("#qs-rcpt").value || "").trim();
+    var planOpts = items.map(function (it) { return '<option value="' + esc(it) + '">' + esc(resName(it)) + "</option>"; }).join("");
+    body.innerHTML =
+      '<div class="qs-p2-lbl">1 · Выбери ресурс:</div>' +
+      '<div class="qs-respick" id="qs-p2-grid"></div>' +
+      '<div class="qs-p2-lbl">2 · Кому передать <span style="color:#8a795a;font-weight:400">(необязательно — только твин или супруг)</span>:</div>' +
+      '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
+      '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
+      '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
+      '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
+        '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
+      '<div class="qs-p2-lbl">📅 План на будущие недели <span style="color:#8a795a;font-weight:400">(необязательно, до 8 — как дойдёт очередь, ресурс сменится по порядку)</span>:</div>' +
+      '<div class="qs-p2-planrow"><select id="qs-plan-sel">' + planOpts + '</select>' +
+        '<button class="sec" id="qs-plan-add" type="button">＋ в план</button></div>' +
+      '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
+      '<button class="qs-join" id="qs-p2-go"></button>';
+    // карточки-выбор
+    var grid = body.querySelector("#qs-p2-grid");
+    function paintCards() {
+      [].forEach.call(grid.children, function (c) { c.classList.toggle("sel", c.dataset.res === sel); });
+      var go = body.querySelector("#qs-p2-go");
+      go.textContent = edit ? "💾 Сохранить" : (sel ? "Встать в очередь" : "Сначала выбери ресурс");
+      go.disabled = !sel && !edit;
+    }
+    items.forEach(function (it) {
+      var card = document.createElement("button");
+      card.className = "qs-rescard"; card.dataset.res = it; card.type = "button";
+      var rm = REWARDS_META[it] || {};
+      var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
+      var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">накоплено: ' + rm.total + "</span>" : "";
+      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total;
+      card.addEventListener("click", function () { sel = it; paintCards(); });
+      grid.appendChild(card);
+    });
+    // получатель — живая проверка твин/супруг
+    var rcptEl = body.querySelector("#qs-rcpt"), warnEl = body.querySelector("#qs-rcpt-warn");
+    function checkRcpt() {
+      var rel = recipientRel(rcptEl.value);
+      if (rel === "other") { warnEl.textContent = "⚠ этот игрок не твин и не супруг — ресурс уйдёт постороннему"; warnEl.style.display = "block"; }
+      else if (rel === "spouse") { warnEl.textContent = "✓ супруг"; warnEl.style.color = "#8fc36a"; warnEl.style.display = "block"; }
+      else if (rel === "twin") { warnEl.textContent = "✓ твой аккаунт/твин"; warnEl.style.color = "#8fc36a"; warnEl.style.display = "block"; }
+      else { warnEl.style.display = "none"; }
+      if (rel === "other") warnEl.style.color = "#e0a86a";
+    }
+    rcptEl.addEventListener("input", checkRcpt); checkRcpt();
+    // план — чипы
+    var planList = body.querySelector("#qs-plan-list");
+    function renderPlan() {
+      planList.innerHTML = "";
+      planArr.forEach(function (it, i) {
+        var chip = document.createElement("span"); chip.className = "qs-plan-chip";
+        chip.innerHTML = (i + 1) + ". " + esc(resName(it));
+        var x = document.createElement("button"); x.type = "button"; x.className = "sec"; x.textContent = "✕";
+        x.style.cssText = "padding:0 6px;font-size:11px;margin-left:4px";
+        x.addEventListener("click", function () { planArr.splice(i, 1); renderPlan(); });
+        chip.appendChild(x); planList.appendChild(chip);
+      });
+    }
+    renderPlan();
+    body.querySelector("#qs-plan-add").addEventListener("click", function () {
+      if (planArr.length >= 8) { return; }
+      var v = body.querySelector("#qs-plan-sel").value;
+      if (v) { planArr.push(v); renderPlan(); }
+    });
+    var m = sceneModal((edit ? "Изменить запись — очередь «" : "Встать в очередь — «") + b.title + "»", body);
+    paintCards();
+    // commit
+    body.querySelector("#qs-p2-go").addEventListener("click", function () {
+      var resource = sel;
+      if (!edit && !resource) { return; }
+      var rcpt = (rcptEl.value || "").trim();
+      if (rcpt && recipientRel(rcpt) === "other" &&
+          !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
       if (m) m.close();
+      var payload = { queue: b.q, resource: resource, recipient: rcpt,
+                      auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
       var path = edit ? "/queue/set-entry" : "/queue/join";
-      q("POST", path, { queue: b.q, resource: resource, recipient: rcpt }).then(refresh).catch(function (e2) {
+      q("POST", path, payload).then(refresh).catch(function (e2) {
         alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
               e2.status === 401 ? "Сессия истекла, войди заново." :
               e2.status === 404 ? "Тебя нет в этой очереди." : ("Ошибка: " + (e2.detail || e2.message)));
       });
-    }
-    var grid = document.createElement("div");
-    grid.className = "qs-respick";
-    (BOOTH_ITEMS[b.q] || []).forEach(function (it) {
-      var card = document.createElement("button");
-      card.className = "qs-rescard" + (edit && edit.resource === it ? " sel" : "");
-      var rm = REWARDS_META[it] || {};
-      var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
-      var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">всего накоплено: ' + rm.total + "</span>" : "";
-      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' +
-        esc(resName(it)) + "</span>" + stack + total;
-      card.addEventListener("click", function () { commit(it); });
-      grid.appendChild(card);
     });
-    body.appendChild(grid);
-    if (edit) {   // в режиме правки — кнопка «сохранить только получателя»
-      var save = document.createElement("button");
-      save.className = "qs-join"; save.style.cssText = "margin:14px auto 0;max-width:none;width:100%";
-      save.textContent = "💾 Сохранить получателя (ресурс не менять)";
-      save.addEventListener("click", function () { commit(edit.resource || ""); });
-      body.appendChild(save);
-    }
-    m = sceneModal((edit ? "Изменить запись — очередь «" : "Выбери ресурс — очередь «") + b.title + "»", body);
   }
   // полный список очереди (все, включая тех, кто ещё не на сцене) с модельками
   function openFullList(b, entries) {
@@ -656,7 +724,13 @@
         '<span class="qs-fl-nick">' + esc(e.nick) + "</span>" +
         (e.resource ? '<img class="qs-fl-res" src="' + resImg(e.resource) + '" title="' + esc(resName(e.resource)) + '" alt="">' +
           '<span class="qs-fl-rname">' + esc(resName(e.resource)) + "</span>" : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>') +
-        (e.recipient ? '<span class="qs-fl-rcpt" title="кому передать">→ ' + esc(e.recipient) + "</span>" : "") +
+        (e.recipient ? '<span class="qs-fl-rcpt" title="кому передать"' +
+            (e.recipient_ok === false ? ' style="color:#e0a86a;border-color:rgba(224,168,106,.5);background:rgba(224,168,106,.12)"' : "") +
+            '>→ ' + esc(e.recipient) + (e.recipient_ok === false ? " ⚠" : "") + "</span>" : "") +
+        '<span class="qs-fl-flags">' +
+          (e.auto_repeat ? '<span class="qs-fl-flag" style="background:rgba(126,196,106,.16);color:#8fc36a" title="повторяет каждую неделю">🔁</span>' : "") +
+          (e.auto_plan && e.auto_plan.length ? '<span class="qs-fl-flag" style="background:rgba(224,162,74,.16);color:#e6c48f" title="план на ' + e.auto_plan.length + ' нед.">📅' + e.auto_plan.length + "</span>" : "") +
+        "</span>" +
         (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
       body.appendChild(row);
     });
@@ -760,7 +834,8 @@
         editBtn.style.cssText = "left:" + ep.x.toFixed(2) + "%;top:" + ep.y.toFixed(2) + "%;--gc:" + b.accent;
         editBtn.title = "Изменить ресурс и кому передать"; editBtn.textContent = "✎ ресурс/кому";
         editBtn.addEventListener("click", function () {
-          openResourcePicker(b, { resource: myEntry.resource || "", recipient: myEntry.recipient || "" });
+          openResourcePicker(b, { resource: myEntry.resource || "", recipient: myEntry.recipient || "",
+            auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
         });
         stage.appendChild(editBtn);
       } else if (iAmIn && _placeMode) {
@@ -1507,9 +1582,10 @@
         '<datalist id="qd-dl">' + dl + '</datalist>' +
         '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
       "</div>" +
-      '<div class="q-admin-row" style="gap:8px">' +
+      '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-report" style="font-weight:700">📋 Получить отчёт о распределении</button>' +
-        '<button class="sec" id="qd-advance" title="Получившие ресурс уходят в конец очереди">✅ Распределение завершено — сдвинуть очередь</button>' +
+        '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +
+        '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
       '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
     var st = wrap.querySelector("#qd-status");
@@ -1552,11 +1628,22 @@
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-advance").addEventListener("click", function () {
-      if (!confirm("Финализировать неделю?\n\n1) отчёт уйдёт в офицерский чат (TG + VK)\n2) получившие ресурс уйдут в конец очереди, остальные останутся в начале")) return;
-      status("Отправляю отчёт и сдвигаю…");
+      if (!confirm("Финализировать неделю?\n\n1) убрать вылетевших из клана\n2) отчёт уйдёт в офицерский чат (TG + VK)\n3) получившие: с 🔁/планом — в конец (план сменит ресурс), без повтора — выходят; остальные остаются в начале")) return;
+      status("Финализирую неделю…");
       q("POST", "/queue/admin/advance").then(function (d) {
         var c = d.channels || {};
-        status("✓ Сдвинуто: " + (d.moved || 0) + " чел. · отчёт TG: " + (c.tg || "?") + ", VK: " + (c.vk || "?"), c.tg === "ok" && c.vk === "ok");
+        status("✓ Вылетевших: " + (d.pruned || 0) + " · авто-переочередь: " + (d.requeued || 0) +
+          " · вышли: " + (d.left_removed || 0) + " · отчёт TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"),
+          c.tg === "ok" && c.vk === "ok");
+        refresh();
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    });
+    wrap.querySelector("#qd-prune").addEventListener("click", function () {
+      if (!confirm("Убрать из очередей всех, кого нет в текущем списке клана (вылетевших)?")) return;
+      status("Убираю вылетевших…");
+      q("POST", "/queue/admin/prune-left").then(function (d) {
+        var n = (d.removed || []).length;
+        status(n ? ("✓ Убрано вылетевших: " + n + " (" + d.removed.join(", ") + ")") : "Вылетевших нет.", true);
         refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
@@ -1594,7 +1681,8 @@
       Q.rows.forEach(function (r) {
         var s = STAT[r.status] || ["?", "#ccc"];
         var amt = (r.status === "ok" || r.status === "ok_pack") ? " ×" + r.amount : "";
-        var to = r.recipient ? ' <span class="qs-dr-to">→ ' + esc(r.recipient) + "</span>" : "";
+        var to = r.recipient ? ' <span class="qs-dr-to"' + (r.recipient_ok === false ? ' style="color:#e0a86a"' : "") +
+          '>→ ' + esc(r.recipient) + (r.recipient_ok === false ? " ⚠не твин/супруг" : "") + "</span>" : "";
         html += '<div class="qs-dr-row">' +
           (r.top3 ? '<span class="qs-dr-top">ТОП-3</span>' : "") +
           (r.provodnik ? '<span class="qs-dr-prov">🎯 проводник</span>' : "") +

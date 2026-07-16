@@ -179,6 +179,16 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN recipient TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: авто-повтор (вставать за тем же ресурсом каждую неделю)
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN auto_repeat INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+        # миграция: план на будущие недели (JSON-список ключей ресурсов по порядку)
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN auto_plan TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -296,12 +306,16 @@ class JoinIn(BaseModel):
     queue: int
     resource: str = Field(default="", max_length=64)
     recipient: str = Field(default="", max_length=64)   # кому передать (твин/супруг), необязательно
+    auto_repeat: bool = False                            # вставать за этим же ресурсом каждую неделю
+    plan: list[str] = Field(default_factory=list)        # план ресурсов на будущие недели (по порядку)
 
 
 class SetEntryIn(BaseModel):
     queue: int
     resource: str | None = Field(default=None, max_length=64)    # None = не менять
     recipient: str | None = Field(default=None, max_length=64)   # None = не менять; "" = очистить
+    auto_repeat: bool | None = None                              # None = не менять
+    plan: list[str] | None = None                                # None = не менять
 
 
 class SpouseIn(BaseModel):
@@ -508,6 +522,22 @@ def _actor_name(actor: dict) -> str:
     return (actor.get("name") or actor.get("role") or "admin") if actor else "admin"
 
 
+_PLAN_MAX = 8   # макс. длина плана на будущие недели
+
+
+def _clean_plan(plan, queue) -> list[str]:
+    """Оставляет только валидные ресурсы ЭТОЙ очереди, по порядку, без дублей, ≤ _PLAN_MAX."""
+    out: list[str] = []
+    for k in (plan or []):
+        k = (k or "").strip()[:64]
+        r = distribution.REWARDS.get(k)
+        if r and r["q"] == queue and k not in out:
+            out.append(k)
+        if len(out) >= _PLAN_MAX:
+            break
+    return out
+
+
 def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
     ip = ua = ""
     if request is not None:
@@ -518,16 +548,38 @@ def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
         " VALUES (?,?,?,?,?,?,?,?)", (_now(), kind, actor, nick, queue, ip, ua, detail))
 
 
-def _entry_public(r, idx, gmap) -> dict:
+def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
+    """True если получатель — твин (тот же мэйн) или супруг (связка); пусто → True."""
+    if not rcpt:
+        return True
+    rc = db._valor_canon(rcpt)
+    rp = idx.get(rc)
+    if rp and rp.get("main_canon") == main_canon:      # твин: тот же мэйн-аккаунт
+        return True
+    spouse = (smap or {}).get(main_canon, "")           # супруг: связка
+    return bool(spouse and db._valor_canon(spouse) == rc)
+
+
+def _entry_public(r, idx, gmap, smap=None) -> dict:
     p = idx.get(r["main_canon"]) or {}
     cls = r["cls"] or p.get("cls", "")
     tn = p.get("true_name", "")
+    keys = r.keys()
+    rcpt = r["recipient"] if "recipient" in keys else ""
+    import json as _json
+    try:
+        plan = _json.loads(r["auto_plan"]) if ("auto_plan" in keys and r["auto_plan"]) else []
+    except (ValueError, TypeError):
+        plan = []
     return {"id": r["id"], "nick": r["nick"], "cls": cls,
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
             "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
-            "resource": (r["resource"] if "resource" in r.keys() else ""),
-            "recipient": (r["recipient"] if "recipient" in r.keys() else ""),
+            "resource": (r["resource"] if "resource" in keys else ""),
+            "recipient": rcpt,
+            "recipient_ok": _recipient_ok(rcpt, r["main_canon"], idx, smap),
+            "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
+            "auto_plan": plan,
             "added_by": r["added_by"]}
 
 
@@ -559,6 +611,11 @@ def roster() -> dict:
     return {"roster": out}
 
 
+def _spouse_map(conn) -> dict:
+    return {r["canon"]: r["recipient"]
+            for r in conn.execute("SELECT canon, recipient FROM queue_spouses")}
+
+
 @router.get("/state")
 def state() -> dict:
     qs = [[], [], []]
@@ -566,9 +623,10 @@ def state() -> dict:
         idx = _people(conn)
         gmap = {r["canon"]: r["gender"]
                 for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+        smap = _spouse_map(conn)
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx, gmap))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap))
     return {"queues": qs}
 
 
@@ -592,12 +650,16 @@ def join(payload: JoinIn, request: Request) -> dict:
             sp = conn.execute("SELECT recipient FROM queue_spouses WHERE canon=?",
                               (acc["main_canon"],)).fetchone()
             rcpt = (sp["recipient"] if sp else "")[:64]
+        import json as _json
+        plan = _clean_plan(payload.plan, q)
         conn.execute(
-            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient, added_by, added_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, rcpt, "self", _now()))
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
+            " auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, rcpt,
+             1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
-             detail=("res=" + res + (" →" + rcpt if rcpt else "")))
+             detail=("res=" + res + (" →" + rcpt if rcpt else "") +
+                     (" 🔁" if payload.auto_repeat else "") + (" план:%d" % len(plan) if plan else "")))
     return {"ok": True}
 
 
@@ -631,12 +693,18 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
             sets.append("resource=?"); vals.append(payload.resource.strip()[:64])
         if payload.recipient is not None:
             sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
+        if payload.auto_repeat is not None:
+            sets.append("auto_repeat=?"); vals.append(1 if payload.auto_repeat else 0)
+        if payload.plan is not None:
+            import json as _json
+            sets.append("auto_plan=?"); vals.append(_json.dumps(_clean_plan(payload.plan, payload.queue)))
         if sets:
             vals.append(row["id"])
             conn.execute("UPDATE queue_entries SET " + ",".join(sets) + " WHERE id=?", vals)
             _log(conn, "set_entry", actor=acc["main_nick"], nick=acc["main_nick"],
                  queue=payload.queue, request=request,
-                 detail=("res=" + (payload.resource or "—") + " →" + (payload.recipient or "—")))
+                 detail=("res=" + (payload.resource or "—") + " →" + (payload.recipient or "—") +
+                         ("" if payload.auto_repeat is None else (" 🔁" if payload.auto_repeat else " 🚫🔁"))))
     return {"ok": True}
 
 
@@ -931,10 +999,11 @@ def _build_report(conn) -> dict:
     import json
     idx = _people(conn)
     gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+    smap = _spouse_map(conn)
     queues = [[], [], []]
     for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
         if r["queue"] in QUEUES:
-            e = _entry_public(r, idx, gmap)
+            e = _entry_public(r, idx, gmap, smap)
             e["main_canon"] = r["main_canon"]
             e["canon_nick"] = db._valor_canon(e["nick"])
             queues[r["queue"]].append(e)
@@ -996,34 +1065,81 @@ async def distribute_send(request: Request, actor: dict = Depends(require_admin)
     return {"ok": True, "channels": channels, "report": report}
 
 
+def _prune_left_clan(conn, request=None, actor_name="") -> list[str]:
+    """Убирает из очереди тех, кого нет в текущем ростере клана (вылетели).
+    Защита: если ростер пуст (нет снапшота) — НИЧЕГО не трогаем."""
+    idx = _people(conn)
+    if not idx:
+        return []
+    valid = {p["main_canon"] for p in idx.values()} | set(idx.keys())
+    removed = []
+    for r in conn.execute("SELECT id, main_canon, nick FROM queue_entries").fetchall():
+        if r["main_canon"] not in valid:
+            conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+            removed.append(r["nick"])
+            _log(conn, "left_clan", actor=actor_name, nick=r["nick"], request=request,
+                 detail="убран из очереди — нет в списке клана (вылетел)")
+    return removed
+
+
+@router.post("/admin/prune-left")
+def prune_left(request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Ручная чистка: убрать вылетевших из клана из всех очередей."""
+    with db.connection() as conn:
+        removed = _prune_left_clan(conn, request, _actor_name(actor))
+    return {"ok": True, "removed": removed}
+
+
 @router.post("/admin/advance")
 async def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Финализация недели: строит отчёт → шлёт его в офицерский чат (TG+VK) →
-    сдвигает очередь (получившие ресурс уходят В КОНЕЦ, остальные — не хватило
-    доблести / ресурс кончился / не выбран — остаются в начале в прежнем порядке)."""
+    """Финализация недели:
+    1) убрать вылетевших из клана; 2) построить отчёт → отправить в офицерский чат;
+    3) сдвиг очереди: получившие с авто-повтором/планом встают В КОНЕЦ (план — со
+       следующим ресурсом), без авто-повтора — ВЫХОДЯТ из очереди; остальные (не
+       хватило доблести/ресурс кончился/не выбран) остаются в начале."""
+    import json as _json
     with db.connection() as conn:
+        pruned = _prune_left_clan(conn, request, _actor_name(actor))   # (4) вылетевшие
         report = _build_report(conn)
     channels = await _send_report_to_chats(report)     # отчёт по умолчанию уходит в чаты
     served_by_q = {}
     for Q in report["queues"]:
         served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
                                    if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
-    moved_total = 0
+    requeued = left_after = 0
     with db.connection() as conn:
         for q in QUEUES:
-            ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,))]
+            rows = conn.execute(
+                "SELECT id, auto_repeat, auto_plan FROM queue_entries WHERE queue=? ORDER BY pos, id",
+                (q,)).fetchall()
             served = served_by_q.get(q, set())
-            keep = [i for i in ids if i not in served]
-            moved = [i for i in ids if i in served]
+            keep_ids = [r["id"] for r in rows if r["id"] not in served]   # не получили → впереди
+            requeue_ids = []
+            for r in rows:
+                if r["id"] not in served:
+                    continue
+                try:
+                    plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
+                except (ValueError, TypeError):
+                    plan = []
+                if plan:                     # план: берём следующий ресурс, встаём в конец
+                    conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
+                                 (plan[0], _json.dumps(plan[1:]), r["id"]))
+                    requeue_ids.append(r["id"]); requeued += 1
+                elif r["auto_repeat"]:       # повтор: тот же ресурс, в конец
+                    requeue_ids.append(r["id"]); requeued += 1
+                else:                        # разово: выходит из очереди
+                    conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+                    left_after += 1
             pos = 1
-            for i in keep + moved:            # оставшиеся впереди, получившие — в конец
+            for i in keep_ids + requeue_ids:            # оставшиеся впереди, авто → в конец
                 conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
                 pos += 1
-            moved_total += len(moved)
         _log(conn, "advance", actor=_actor_name(actor), request=request,
-             detail="сдвинуто: %d · отчёт tg=%s vk=%s" % (moved_total, channels.get("tg"), channels.get("vk")))
-    return {"ok": True, "moved": moved_total, "channels": channels}
+             detail="вылетевших:%d · авто-переочередь:%d · вышли:%d · отчёт tg=%s vk=%s"
+                    % (len(pruned), requeued, left_after, channels.get("tg"), channels.get("vk")))
+    return {"ok": True, "requeued": requeued, "left_removed": left_after,
+            "pruned": len(pruned), "pruned_nicks": pruned, "channels": channels}
 
 
 @router.get("/admin/log")
