@@ -541,18 +541,22 @@
       "transition:transform .08s,filter .08s}" +
     ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
     ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
-    /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + ресурсы с названиями */
-    ".qs-merch-box{flex:0 0 auto;align-self:stretch;width:190px;display:flex;flex-direction:column;gap:5px;" +
+    /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
+    ".qs-merch-box{flex:0 0 auto;align-self:center;width:190px;display:flex;flex-direction:column;gap:4px;" +
       "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
       "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
-    ".qs-merch-img{height:52px;width:auto;max-width:52px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
+    ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
-    ".qs-merch-res{display:flex;flex-direction:column;gap:3px;border-top:1px dashed rgba(224,162,74,.28);" +
-      "padding-top:5px;max-height:118px;overflow-y:auto;scrollbar-width:thin}" +
+    ".qs-merch-det>summary{cursor:pointer;list-style:none;font:700 10px system-ui;color:#caa66a;" +
+      "padding:3px 2px;border-top:1px dashed rgba(224,162,74,.28);display:flex;align-items:center;gap:5px}" +
+    ".qs-merch-det>summary::-webkit-details-marker{display:none}" +
+    ".qs-merch-det>summary::before{content:'▸';transition:transform .12s}" +
+    ".qs-merch-det[open]>summary::before{transform:rotate(90deg)}" +
+    ".qs-merch-det>summary:hover{color:var(--gc)}" +
+    ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px;max-height:130px;overflow-y:auto;scrollbar-width:thin}" +
     ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4}" +
-    ".qs-mres img{height:18px;width:18px;object-fit:contain;flex:0 0 auto;" +
-      "filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qs-mres img{height:18px;width:18px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
     ".qs-mres span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     "@media(max-width:640px){.qs-merch-box{width:158px}}" +
@@ -1096,14 +1100,16 @@
       // ОТДЕЛЬНЫЙ КВАДРАТ ТОРГОВЦА: НПЦ + иконки и названия ресурсов, что он выдаёт
       var merchBox = document.createElement("div");
       merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
-      var resChips = (BOOTH_ITEMS[b.q] || []).map(function (it) {
+      var resItems = BOOTH_ITEMS[b.q] || [];
+      var resChips = resItems.map(function (it) {
         return '<span class="qs-mres"><img src="' + resImg(it) + '" alt=""><span>' + esc(resName(it)) + "</span></span>";
       }).join("");
       merchBox.innerHTML =
         '<div class="qs-merch-npc">' +
           '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
           '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
-        '<div class="qs-merch-res">' + resChips + "</div>";
+        '<details class="qs-merch-det"><summary>📋 что выдаёт (' + resItems.length + ")</summary>" +
+          '<div class="qs-merch-res">' + resChips + "</div></details>";
 
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
       rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
