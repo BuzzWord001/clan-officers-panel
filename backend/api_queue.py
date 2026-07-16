@@ -172,6 +172,25 @@ def ensure_queue_tables() -> None:
               summary    TEXT NOT NULL DEFAULT '',   -- краткая строка (групп N, роздано, остаток)
               actor      TEXT NOT NULL DEFAULT ''
             );
+
+            -- Суперспособность топ-3: накапливаемые жетоны «взять обычный ресурс вне очереди».
+            -- Топ-3 на 16:00 вс получают +1 жетон каждый при финализации; тратятся на след. неделе.
+            CREATE TABLE IF NOT EXISTS queue_privileges (
+              canon      TEXT PRIMARY KEY,           -- канон мэйна
+              nick       TEXT NOT NULL DEFAULT '',
+              tokens     INTEGER NOT NULL DEFAULT 0, -- сколько внеочередных захватов накоплено
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
+
+            -- Внеочередные захваты ТЕКУЩЕЙ недели (вычитаются из пула, чистятся при финализации).
+            CREATE TABLE IF NOT EXISTS queue_priv_claims (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              canon      TEXT NOT NULL DEFAULT '',
+              nick       TEXT NOT NULL DEFAULT '',
+              resource   TEXT NOT NULL DEFAULT '',   -- ключ обычного ресурса
+              amount     INTEGER NOT NULL DEFAULT 0, -- сколько штук взято
+              created_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         # миграция для существующих БД: индивидуальный размер модели
@@ -343,6 +362,11 @@ class MarkUncollectedIn(BaseModel):
     uncollected: bool = True     # True = не забрал → остаётся в очереди; False = забрал (пройдёт дальше)
 
 
+class PrivClaimIn(BaseModel):
+    resource: str = Field(min_length=1, max_length=64)   # обычный ресурс (очередь 0)
+    stacks: int = Field(default=1, ge=1, le=200)          # сколько пачек взять (= столько жетонов)
+
+
 class AdminAddIn(BaseModel):
     queue: int
     nick: str = Field(min_length=1, max_length=64)
@@ -476,7 +500,12 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
 def me(request: Request) -> dict:
     with db.connection() as conn:
         acc = _account_from_request(conn, request)
-        return {"account": _acc_public(acc) if acc else None}
+        tokens = 0
+        if acc:
+            row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
+                               (acc["main_canon"],)).fetchone()
+            tokens = row["tokens"] if row else 0
+        return {"account": _acc_public(acc) if acc else None, "tokens": tokens}
 
 
 @router.post("/logout")
@@ -1033,11 +1062,13 @@ def _build_report(conn) -> dict:
         shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
     except (ValueError, TypeError):
         shooters = []
+    claims = [{"nick": c["nick"], "resource": c["resource"], "amount": c["amount"]}
+              for c in conn.execute("SELECT nick, resource, amount FROM queue_priv_claims")]
     report = distribution.compute(
         {"queues": queues}, valor_map,
         {"stages": _cfg_int(conn, "stages_closed", 0),
          "pet_count": _cfg_int(conn, "pet_count", 0),
-         "shooters": shooters})
+         "shooters": shooters, "claims": claims})
     report["has_valor"] = bool(valor_map)
     # топ-3 поимённо (для отчёта — видно, у кого привилегия, даже если не в очереди)
     report["top3_named"] = sorted(
@@ -1138,6 +1169,49 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
     return {"ok": True}
 
 
+@router.post("/priv-claim")
+def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
+    """Суперспособность топ-3: взять ОБЫЧНЫЙ ресурс ВНЕ очереди, тратя накопленные жетоны.
+    1 жетон = 1 пачка. Взятое вычитается из недельного пула распределения."""
+    res = payload.resource.strip()
+    r = distribution.REWARDS.get(res)
+    if not r or r["q"] != 0 or r["mode"] == "pack":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "only_regular_stack")
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
+                           (acc["main_canon"],)).fetchone()
+        have = row["tokens"] if row else 0
+        if have < payload.stacks:
+            raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_tokens")
+        amount = payload.stacks * r["unit"]
+        nick = acc["main_nick"] or acc["reg_nick"]
+        conn.execute(
+            "INSERT INTO queue_priv_claims (canon, nick, resource, amount, created_at) VALUES (?,?,?,?,?)",
+            (acc["main_canon"], nick, res, amount, _now()))
+        conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
+                     (payload.stacks, _now(), acc["main_canon"]))
+        _log(conn, "priv_claim", actor=nick, nick=nick, request=request,
+             detail="ВНЕ очереди: %s ×%d (жетонов −%d, осталось %d)"
+                    % (distribution.res_name(res), amount, payload.stacks, have - payload.stacks))
+    return {"ok": True, "tokens": have - payload.stacks, "amount": amount}
+
+
+@router.get("/privileges")
+def privileges(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Кто накопил жетоны суперспособности + внеочередные захваты этой недели (офицер+админ)."""
+    with db.connection() as conn:
+        holders = conn.execute(
+            "SELECT nick, tokens FROM queue_privileges WHERE tokens>0 ORDER BY tokens DESC, nick").fetchall()
+        claims = conn.execute(
+            "SELECT nick, resource, amount, created_at FROM queue_priv_claims ORDER BY id DESC LIMIT 100").fetchall()
+    return {"holders": [dict(h) for h in holders],
+            "claims": [{"nick": c["nick"], "resource": distribution.res_name(c["resource"]),
+                        "amount": c["amount"], "at": c["created_at"]} for c in claims]}
+
+
 def _prune_left_clan(conn, request=None, actor_name="") -> list[str]:
     """Убирает из очереди тех, кого нет в текущем ростере клана (вылетели).
     Защита: если ростер пуст (нет снапшота) — НИЧЕГО не трогаем."""
@@ -1227,8 +1301,24 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
             " VALUES (?,?,?,?,?,?)",
             (_now(), report.get("stages", 0), _json.dumps(report, ensure_ascii=False),
              _json.dumps(channels, ensure_ascii=False), summary, _actor_name(actor)))
+        # СУПЕРСПОСОБНОСТЬ: топ-3 на момент финализации получают +1 жетон (использовать на след. неделе)
+        idx2 = _people(conn)
+        c2n = {p["main_canon"]: p["main_nick"] for p in idx2.values()}
+        granted = []
+        for c in (report.get("top3") or []):
+            nk = c2n.get(c, c)
+            conn.execute(
+                "INSERT INTO queue_privileges (canon, nick, tokens, updated_at) VALUES (?,?,1,?)"
+                " ON CONFLICT(canon) DO UPDATE SET tokens=tokens+1, nick=excluded.nick, updated_at=excluded.updated_at",
+                (c, nk, _now()))
+            granted.append(nk)
+        if granted:
+            _log(conn, "priv_grant", actor=_actor_name(actor), request=request,
+                 detail="жетон вне очереди топ-3: " + ", ".join(granted))
+        # внеочередные захваты недели отработали (уже вычтены) → чистим на новую неделю
+        conn.execute("DELETE FROM queue_priv_claims")
     return {"ok": True, "requeued": requeued, "left_removed": left_after,
-            "stayed_uncollected": stayed_uncollected,
+            "stayed_uncollected": stayed_uncollected, "priv_granted": granted,
             "pruned": len(pruned), "pruned_nicks": pruned, "channels": channels}
 
 

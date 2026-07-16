@@ -510,6 +510,17 @@
     /* анимация нажатия — кнопка «проваливается» */
     ".qs-btn-abs:active{transform:translate(-50%,-50%) translateY(2px) scale(.93)!important;" +
       "filter:brightness(.82);box-shadow:0 0 0 rgba(0,0,0,0)!important}" +
+    /* суперспособность топ-3 */
+    ".qs-super{margin:10px auto 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;" +
+      "border:1px solid rgba(255,210,74,.5);border-radius:12px;" +
+      "background:linear-gradient(180deg,rgba(70,52,18,.55),rgba(40,28,8,.7));box-shadow:0 0 26px -10px #ffd24a}" +
+    ".qs-super.preview{border-color:rgba(224,162,74,.3);box-shadow:none;opacity:.92}" +
+    ".qs-super-ic{font-size:26px;filter:drop-shadow(0 0 8px rgba(255,200,80,.6))}" +
+    ".qs-super-txt{flex:1 1 auto;min-width:180px;font-size:12.5px;color:#f6ead2;line-height:1.35}" +
+    ".qs-super-btn{flex:0 0 auto;cursor:pointer;font:800 13px system-ui;color:#1b1006;border:0;border-radius:10px;" +
+      "padding:10px 16px;background:linear-gradient(180deg,#ffe08a,#eab531);box-shadow:0 3px 12px rgba(255,200,80,.4);" +
+      "transition:transform .08s,filter .08s}" +
+    ".qs-super-btn:hover{filter:brightness(1.08)}.qs-super-btn:active{transform:translateY(2px) scale(.96);filter:brightness(.88)}" +
     /* 3 полосы полных очередей под сценой */
     ".qs-strips{margin:12px auto 0;max-width:100%;display:flex;flex-direction:column;gap:8px}" +
     ".qs-lane{border:1px solid rgba(224,162,74,.28);border-left:3px solid var(--gc);border-radius:11px;" +
@@ -1109,7 +1120,73 @@
     return box;
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _lastState = { queues: [[], [], []] };
+  // ── СУПЕРСПОСОБНОСТЬ топ-3: панель «взять ресурсы вне очереди» (жетоны) ──
+  function renderSuperAbility() {
+    var canUse = _meAcc && _myTokens > 0;
+    if (!canUse && !_isAdmin) return null;        // видят только держатели жетонов и админ (превью)
+    var preview = !canUse;
+    var bar = document.createElement("div");
+    bar.className = "qs-super" + (preview ? " preview" : "");
+    bar.innerHTML =
+      '<span class="qs-super-ic">🌟</span>' +
+      '<span class="qs-super-txt"><b>Суперспособность ТОП-3 — взять обычные ресурсы ВНЕ очереди</b><br>' +
+      (preview
+        ? '<span style="color:#8a795a">превью для админа. Игрок из ТОП-3 копит жетоны (по 1 за неделю) и берёт ими пачки обычных ресурсов вне очереди.</span>'
+        : 'у тебя <b style="color:#ffd24a">' + _myTokens + '</b> жетон(ов) — можно взять сразу несколько пачек') +
+      "</span>";
+    var btn = document.createElement("button");
+    btn.className = "qs-super-btn"; btn.textContent = "⚡ Взять вне очереди";
+    btn.addEventListener("click", function () { openPrivClaim(preview); });
+    bar.appendChild(btn);
+    return bar;
+  }
+
+  function openPrivClaim(preview) {
+    var items = (BOOTH_ITEMS[0] || []).filter(function (it) { return (REWARDS_META[it] || {}).mode !== "pack"; });
+    var sel = "";
+    var body = document.createElement("div"); body.className = "qs-pick2";
+    var maxStacks = Math.max(1, preview ? 10 : _myTokens);
+    body.innerHTML =
+      '<div class="qs-p2-lbl">1 · Выбери обычный ресурс (вне очереди):</div>' +
+      '<div class="qs-respick" id="qpc-grid"></div>' +
+      '<div class="qs-p2-lbl">2 · Сколько пачек взять (1 пачка = 1 жетон' + (preview ? "" : ", у тебя " + _myTokens) + "):</div>" +
+      '<div class="q-admin-row" style="align-items:center;gap:10px">' +
+        '<input type="range" id="qpc-stacks" min="1" max="' + maxStacks + '" step="1" value="1" style="flex:1;min-width:120px">' +
+        '<b id="qpc-stacks-v" style="min-width:160px;color:#ffd24a"></b></div>' +
+      (preview ? '<div style="font-size:11.5px;color:#e0a86a;margin-top:6px">🔎 Превью для оценки — реальный захват доступен игроку из ТОП-3 с жетонами.</div>' : "") +
+      '<button class="qs-join" id="qpc-go" style="margin:14px 0 0;width:100%;max-width:none"></button>';
+    var grid = body.querySelector("#qpc-grid");
+    function stacks() { return +body.querySelector("#qpc-stacks").value; }
+    function upd() {
+      var unit = (REWARDS_META[sel] || {}).unit || 0;
+      body.querySelector("#qpc-stacks-v").textContent = sel ? (stacks() + " пачки = " + (stacks() * unit) + " шт") : "выбери ресурс";
+      var go = body.querySelector("#qpc-go");
+      go.textContent = preview ? "🔎 Только превью" : (sel ? ("⚡ Взять: " + resName(sel) + " ×" + (stacks() * unit)) : "Сначала выбери ресурс");
+      go.disabled = preview || !sel;
+    }
+    items.forEach(function (it) {
+      var card = document.createElement("button"); card.className = "qs-rescard"; card.dataset.res = it; card.type = "button";
+      var rm = REWARDS_META[it] || {};
+      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" +
+        (rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "");
+      card.addEventListener("click", function () { sel = it; [].forEach.call(grid.children, function (c) { c.classList.toggle("sel", c === card); }); upd(); });
+      grid.appendChild(card);
+    });
+    body.querySelector("#qpc-stacks").addEventListener("input", upd);
+    var m = sceneModal("⚡ Взять ресурсы вне очереди" + (preview ? " (превью)" : " · жетонов: " + _myTokens), body);
+    upd();
+    body.querySelector("#qpc-go").addEventListener("click", function () {
+      if (preview || !sel) return;
+      q("POST", "/queue/priv-claim", { resource: sel, stacks: stacks() }).then(function (d) {
+        _myTokens = d.tokens; if (m) m.close(); refresh();
+      }).catch(function (e) {
+        alert(e.status === 409 ? "Не хватает жетонов." : e.status === 400 ? "Только обычные ресурсы (не пачечные)." :
+              e.status === 401 ? "Войди как игрок." : ("Ошибка: " + (e.detail || e.message)));
+      });
+    });
+  }
+
+  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
 
   function render(state) {
     _lastState = state;
@@ -1128,6 +1205,7 @@
         : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
+    var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
     wrap.appendChild(renderStage(state));
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     if (_isAdmin) wrap.appendChild(adminPanel(state));
@@ -2014,9 +2092,22 @@
         '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
+      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px;margin-top:4px">' +
+        '<div style="font-size:12px;color:#caa66a">🌟 Суперспособность топ-3 (жетоны «вне очереди») ' +
+          '<button class="sec" id="qd-priv-btn" style="padding:2px 8px">↻ показать</button></div>' +
+        '<div id="qd-priv" style="font-size:11.5px;color:#c9b48f"></div>' +
+      "</div>" +
       '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
     var st = wrap.querySelector("#qd-status");
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    wrap.querySelector("#qd-priv-btn").addEventListener("click", function () {
+      var host = wrap.querySelector("#qd-priv"); host.textContent = "Загрузка…";
+      q("GET", "/queue/privileges").then(function (d) {
+        var h = (d.holders || []).map(function (x) { return esc(x.nick) + " — " + x.tokens + " жет."; }).join(" · ") || "нет накопленных жетонов";
+        var cl = (d.claims || []).map(function (c) { return esc(c.nick) + ": " + esc(c.resource) + " ×" + c.amount; }).join(" · ");
+        host.innerHTML = "<b>Держатели:</b> " + h + (cl ? '<br><b>Взято вне очереди на этой неделе:</b> ' + cl : "<br><span style='color:#8a795a'>вне очереди на этой неделе ничего не брали</span>");
+      }).catch(function (e) { host.textContent = "Ошибка: " + (e.detail || e.message); });
+    });
     function renderShooters() {
       var host = wrap.querySelector("#qd-shlist");
       host.innerHTML = shooters.length ? "" : '<span style="font-size:11px;color:#8a795a">пока никого</span>';
@@ -2090,6 +2181,13 @@
     if (rep.top3_named && rep.top3_named.length) {
       html += '<div class="qs-dr-head" style="border:0">★ ТОП-3 клана: ' +
         rep.top3_named.map(function (t) { return esc(t.nick) + " (" + t.valor + ")"; }).join(" · ") + "</div>";
+    }
+    if (rep.priv_claims && rep.priv_claims.length) {
+      html += '<div class="qs-dr-sec"><h4>⚡ Взято вне очереди (суперспособность топ-3, уже вычтено)</h4>';
+      rep.priv_claims.forEach(function (c) {
+        html += '<div class="qs-dr-row"><b>' + esc(c.nick) + "</b> — " + esc(c.name) + " ×" + c.amount + "</div>";
+      });
+      html += "</div>";
     }
     var groups = rep.groups || [];
     html += '<div class="qs-dr-sec"><h4>📦 Группы раздачи</h4>';
@@ -2237,7 +2335,8 @@
         q("GET", "/queue/spouses").then(function (d) { applySpouses(d); }).catch(function () { applySpouses(null); }),
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
-          .catch(function () { _role = ""; _isAdmin = false; })
+          .catch(function () { _role = ""; _isAdmin = false; }),
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; }).catch(function () { _myTokens = 0; })
       ]).then(function () { loadEnv(); refresh(); });
     }
   };

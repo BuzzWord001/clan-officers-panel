@@ -104,6 +104,16 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     pool["mount-cilin"] = pet_count               # питомец: объём из pet_count, не из этапов
     shooter_lc = {s.strip().lower() for s in shooters}
 
+    # 0) внеочередные захваты топ-3 (суперспособность) — вычитаем из пула СРАЗУ
+    claims = cfg.get("claims") or []
+    claim_rows = []
+    for c in claims:
+        res = c.get("resource"); amt = int(c.get("amount") or 0)
+        if res in pool and amt > 0:
+            pool[res] = max(0, pool[res] - amt)
+            claim_rows.append({"nick": c.get("nick", ""), "resource": res,
+                               "name": res_name(res), "amount": amt})
+
     # 2) проводники «сверху» — по 10% камней доблести и метеоритов каждому
     shooter_rows = []
     shooter_totals = {r: 0 for r in SHOOTER_RES}
@@ -197,6 +207,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "shooters": shooter_rows,
         "shooter_pct": SHOOTER_PCT,
         "top3": list(top3),
+        "priv_claims": claim_rows,          # взято вне очереди (суперспособность топ-3)
         "queues": queues_out,
         "groups": groups,
         "leftovers": leftovers,
@@ -276,6 +287,12 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
         L.append("★ ТОП-3: " + " · ".join("%s(%d)" % (t["nick"], t["valor"]) for t in tn))
     if report.get("pet_count"):
         L.append("🐲 Огненный цилинь: %d шт" % report["pet_count"])
+    pc = report.get("priv_claims") or []
+    if pc:
+        L.append("")
+        L.append("⚡ ВНЕ ОЧЕРЕДИ (суперспособность топ-3, уже вычтено):")
+        for c in pc:
+            L.append("   • %s — %s ×%d" % (c["nick"], c["name"], c["amount"]))
 
     groups = report.get("groups") or []
     L.append(_BAR)
