@@ -15,10 +15,11 @@
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import bcrypt
@@ -28,6 +29,8 @@ from pydantic import BaseModel, Field
 
 import db
 import distribution
+import bot_tg
+import bot_vk
 from config import settings
 from session import require_admin, current_session
 
@@ -755,7 +758,7 @@ def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
 
 
 @router.post("/admin/model-upload")
-def model_upload(payload: ModelUploadIn, _: dict = Depends(require_admin)) -> dict:
+def model_upload(payload: ModelUploadIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     """Загрузка картинки модели (персональной 'person-<canon>' или классовой
     'class-<Класс>-<m|f>'). Хранится на томе /data, отдаётся через /queue/model-img."""
     key = _safe_key(payload.key)
@@ -777,11 +780,14 @@ def model_upload(payload: ModelUploadIn, _: dict = Depends(require_admin)) -> di
         except OSError:
             pass
     (_UPLOAD_DIR / (key + "." + _IMG_EXT[m.group(1)])).write_bytes(raw)
+    with db.connection() as conn:
+        _log(conn, "model_upload", actor=_actor_name(actor), request=request,
+             detail=key + " (%d КБ)" % (len(raw) // 1024))
     return {"ok": True, "key": key}
 
 
 @router.post("/admin/model-delete")
-def model_delete(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
+def model_delete(payload: ModelIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     """Удалить загруженную модель по ключу (возврат к статической/заглушке)."""
     key = _safe_key(payload.key)
     n = 0
@@ -791,6 +797,9 @@ def model_delete(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
                 f.unlink(); n += 1
             except OSError:
                 pass
+    if n:
+        with db.connection() as conn:
+            _log(conn, "model_delete", actor=_actor_name(actor), request=request, detail=key)
     return {"ok": True, "removed": n}
 
 
@@ -817,7 +826,7 @@ def model_img(key: str) -> FileResponse:
 
 
 @router.post("/admin/gender")
-def set_gender(payload: GenderIn, _: dict = Depends(require_admin)) -> dict:
+def set_gender(payload: GenderIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     g = payload.gender if payload.gender in ("m", "f") else ""
     with db.connection() as conn:
         p = _people(conn).get(db._valor_canon(payload.nick))
@@ -831,6 +840,8 @@ def set_gender(payload: GenderIn, _: dict = Depends(require_admin)) -> dict:
                 "INSERT INTO queue_gender (canon, gender, updated_at) VALUES (?,?,?)"
                 " ON CONFLICT(canon) DO UPDATE SET gender=excluded.gender, updated_at=excluded.updated_at",
                 (cn, g, _now()))
+        _log(conn, "gender", actor=_actor_name(actor), nick=payload.nick, request=request,
+             detail="пол=" + (g or "авто"))
     return {"ok": True, "gender": g}
 
 
@@ -860,13 +871,22 @@ def get_config() -> dict:
     return {"config": {r["key"]: r["val"] for r in rows}}
 
 
+# значимые настройки — логируем (кто менял); размеры/пути/расстановку — нет (спам)
+_LOGGED_CFG = {"queue_open", "stages_closed", "pet_count", "shooters", "forceTime",
+               "dayFrom", "nightFrom", "env_objects"}
+
+
 @router.post("/admin/config")
-def set_config(payload: KVIn, _: dict = Depends(require_admin)) -> dict:
+def set_config(payload: KVIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     with db.connection() as conn:
         conn.execute(
             "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?)"
             " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
             (payload.key, payload.val, _now()))
+        if payload.key in _LOGGED_CFG:
+            v = payload.val if len(payload.val) <= 60 else (payload.val[:57] + "…")
+            _log(conn, "config", actor=_actor_name(actor), request=request,
+                 detail=payload.key + "=" + v)
     return {"ok": True}
 
 
@@ -930,6 +950,27 @@ def _build_report(conn) -> dict:
     return report
 
 
+def _now_msk_str() -> str:
+    return datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M мск")
+
+
+async def _send_report_to_chats(report: dict) -> dict:
+    """Шлёт текст отчёта в офицерский TG и VK чат. Возвращает статус по каналам."""
+    text = distribution.format_report_text(report, _now_msk_str())
+    channels: dict[str, str] = {}
+    try:
+        await bot_tg.send_text(text)
+        channels["tg"] = "ok"
+    except Exception as exc:
+        channels["tg"] = "error: %s" % exc
+    try:
+        await asyncio.to_thread(bot_vk.send_text, text)
+        channels["vk"] = "ok"
+    except Exception as exc:
+        channels["vk"] = "error: %s" % exc
+    return channels
+
+
 @router.get("/admin/distribute")
 def distribute(_: dict = Depends(require_admin)) -> dict:
     """Полный отчёт о распределении по текущим очередям, этапам, доблести и шотёрам."""
@@ -937,18 +978,32 @@ def distribute(_: dict = Depends(require_admin)) -> dict:
         return _build_report(conn)
 
 
-@router.post("/admin/advance")
-def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Сдвиг очереди после распределения: получившие ресурс уходят В КОНЕЦ,
-    остальные (не хватило доблести / ресурс кончился / не выбран) остаются
-    в начале в прежнем порядке. Порядок внутри групп сохраняется."""
+@router.post("/admin/distribute/send")
+async def distribute_send(request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Строит отчёт и отправляет его в офицерский чат TG + VK (по кнопке)."""
     with db.connection() as conn:
         report = _build_report(conn)
-        served_by_q = {}
-        for Q in report["queues"]:
-            served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
-                                       if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
-        moved_total = 0
+    channels = await _send_report_to_chats(report)
+    with db.connection() as conn:
+        _log(conn, "report_sent", actor=_actor_name(actor), request=request,
+             detail="tg=%s · vk=%s" % (channels.get("tg"), channels.get("vk")))
+    return {"ok": True, "channels": channels, "report": report}
+
+
+@router.post("/admin/advance")
+async def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Финализация недели: строит отчёт → шлёт его в офицерский чат (TG+VK) →
+    сдвигает очередь (получившие ресурс уходят В КОНЕЦ, остальные — не хватило
+    доблести / ресурс кончился / не выбран — остаются в начале в прежнем порядке)."""
+    with db.connection() as conn:
+        report = _build_report(conn)
+    channels = await _send_report_to_chats(report)     # отчёт по умолчанию уходит в чаты
+    served_by_q = {}
+    for Q in report["queues"]:
+        served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
+                                   if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
+    moved_total = 0
+    with db.connection() as conn:
         for q in QUEUES:
             ids = [r["id"] for r in conn.execute(
                 "SELECT id FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,))]
@@ -961,8 +1016,8 @@ def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
                 pos += 1
             moved_total += len(moved)
         _log(conn, "advance", actor=_actor_name(actor), request=request,
-             detail="сдвинуто в конец: %d" % moved_total)
-    return {"ok": True, "moved": moved_total}
+             detail="сдвинуто: %d · отчёт tg=%s vk=%s" % (moved_total, channels.get("tg"), channels.get("vk")))
+    return {"ok": True, "moved": moved_total, "channels": channels}
 
 
 @router.get("/admin/log")

@@ -70,6 +70,20 @@ async def _edit_photo(message_id: int, image_path: Path, caption: str) -> bool:
     return bool(data.get("ok"))
 
 
+def _chunks(text: str, size: int = 4000):
+    for i in range(0, len(text), size):
+        yield text[i:i + size]
+
+
+async def send_text(text: str) -> None:
+    """Отправляет обычное текстовое сообщение в офицерский TG-чат (с разбивкой)."""
+    if not (settings.tg_bot_token and settings.tg_officer_chat_id):
+        raise RuntimeError("tg_not_configured")
+    for chunk in _chunks(text):
+        await _call("sendMessage", chat_id=settings.tg_officer_chat_id,
+                    text=chunk, disable_web_page_preview=True)
+
+
 async def delete_message_safe(message_id: int) -> None:
     """Удаляет сообщение в офицерском TG-чате, не падает если уже нет."""
     if not (settings.tg_bot_token and settings.tg_officer_chat_id):

@@ -1019,7 +1019,7 @@
         logEl.hidden = false;
         var rows = (d.log || []).map(function (r) {
           return "<tr><td>" + esc((r.at || "").replace("T", " ").slice(0, 16)) + "</td><td>" + esc(r.kind) +
-            "</td><td>" + esc(r.nick || r.actor) + "</td><td>" + (r.queue == null ? "" : (+r.queue + 1)) +
+            "</td><td>" + esc(r.actor || "—") + "</td><td>" + esc(r.nick || "") + "</td><td>" + (r.queue == null ? "" : (+r.queue + 1)) +
             "</td><td>" + esc(r.ip || "") + "</td><td>" + esc(r.detail || "") + "</td></tr>";
         }).join("");
         var accs = (d.accounts || []).map(function (a) {
@@ -1027,8 +1027,8 @@
             esc((a.created_at || "").slice(0, 10)) + "</td><td>" + esc((a.last_login_at || "").replace("T", " ").slice(0, 16)) + "</td></tr>";
         }).join("");
         logEl.innerHTML =
-          '<table><thead><tr><th>время</th><th>событие</th><th>ник</th><th>оч.</th><th>IP</th><th>детали</th></tr></thead><tbody>' +
-          (rows || '<tr><td colspan="6">пусто</td></tr>') + "</tbody></table>" +
+          '<table><thead><tr><th>время</th><th>событие</th><th>кто (офицер/админ)</th><th>ник</th><th>оч.</th><th>IP</th><th>детали</th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="7">пусто</td></tr>') + "</tbody></table>" +
           '<table style="margin-top:8px"><thead><tr><th>аккаунт (мэйн)</th><th>почта</th><th>создан</th><th>последний вход</th></tr></thead><tbody>' +
           (accs || '<tr><td colspan="4">аккаунтов нет</td></tr>') + "</tbody></table>";
       }).catch(function (e) { st("Лог доступен только админу: " + (e.detail || e.message)); });
@@ -1550,10 +1550,12 @@
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-advance").addEventListener("click", function () {
-      if (!confirm("Сдвинуть очередь? Получившие ресурс уйдут в конец, остальные останутся в начале.")) return;
-      status("Сдвигаю…");
+      if (!confirm("Финализировать неделю?\n\n1) отчёт уйдёт в офицерский чат (TG + VK)\n2) получившие ресурс уйдут в конец очереди, остальные останутся в начале")) return;
+      status("Отправляю отчёт и сдвигаю…");
       q("POST", "/queue/admin/advance").then(function (d) {
-        status("✓ Сдвинуто в конец: " + (d.moved || 0) + " чел.", true); refresh();
+        var c = d.channels || {};
+        status("✓ Сдвинуто: " + (d.moved || 0) + " чел. · отчёт TG: " + (c.tg || "?") + ", VK: " + (c.vk || "?"), c.tg === "ok" && c.vk === "ok");
+        refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     return wrap;
@@ -1604,6 +1606,29 @@
       html += "</div>";
     }
     body.innerHTML = html;
+    // кнопка ручной отправки отчёта в офицерский чат
+    var sendBar = document.createElement("div");
+    sendBar.style.cssText = "margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+    var sendBtn = document.createElement("button");
+    sendBtn.className = "qs-join"; sendBtn.style.cssText = "margin:0;max-width:none";
+    sendBtn.textContent = "📤 Отправить отчёт в офицерский чат (TG + VK)";
+    var sendMsg = document.createElement("span");
+    sendMsg.style.cssText = "font-size:12px;color:#c9b48f";
+    sendBtn.addEventListener("click", function () {
+      sendBtn.disabled = true; sendMsg.textContent = "Отправляю…"; sendMsg.style.color = "#c9b48f";
+      q("POST", "/queue/admin/distribute/send").then(function (d) {
+        var c = d.channels || {};
+        var okAll = c.tg === "ok" && c.vk === "ok";
+        sendMsg.textContent = "TG: " + (c.tg || "?") + " · VK: " + (c.vk || "?");
+        sendMsg.style.color = okAll ? "#9fe0a0" : "#e0a86a";
+        sendBtn.disabled = false;
+      }).catch(function (e) {
+        sendMsg.textContent = "Ошибка: " + (e.detail || e.message); sendMsg.style.color = "#e08a8a";
+        sendBtn.disabled = false;
+      });
+    });
+    sendBar.appendChild(sendBtn); sendBar.appendChild(sendMsg);
+    body.appendChild(sendBar);
     sceneModal("📋 Отчёт о распределении ресурсов", body);
   }
 

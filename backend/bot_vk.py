@@ -40,6 +40,16 @@ def _upload_photo(session, image_path: Path, peer_id: int) -> str:
     return f"photo{photo['owner_id']}_{photo['id']}"
 
 
+def send_text(text: str) -> None:
+    """Отправляет обычное текстовое сообщение в офицерский VK-чат (с разбивкой)."""
+    if not (settings.vk_group_token and settings.vk_officer_peer_id):
+        raise RuntimeError("vk_not_configured")
+    session, api = _api()
+    peer_id = _peer_id()
+    for i in range(0, len(text), 4000):
+        api.messages.send(peer_id=peer_id, message=text[i:i + 4000], random_id=0)
+
+
 def delete_message_safe(cm_id: int) -> None:
     """Удаляет conversation_message в офицерском VK-чате, не падает если уже нет."""
     if not (settings.vk_group_token and settings.vk_officer_peer_id):

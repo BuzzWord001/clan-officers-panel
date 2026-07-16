@@ -37,6 +37,17 @@ SHOOTER_PCT = 10                       # % камней доблести и ме
 SHOOTER_RES = ("kamen-doblesti", "meteorit")
 MAX_STAGES = 7
 
+RES_NAME = {
+    "kamen-doblesti": "Камень доблести", "meteorit": "Метеорит", "zhemchuzhina": "Жемчужина Фу Си",
+    "znak-edinstva": "Знак единства", "koloda-kart": "Колода карт", "kamen-bessmertnyh": "Камень бессмертных",
+    "pilyulya": "Пилюля звёздного духа", "gramota": "Запечатанная грамота", "prikaz-feniksa": "Приказ Феникса",
+    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень",
+}
+
+
+def res_name(k: str) -> str:
+    return RES_NAME.get(k, k)
+
 
 def _total(res: str, stages: int) -> int:
     """Суммарное количество ресурса за `stages` закрытых этапов."""
@@ -162,3 +173,54 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "leftovers": leftovers,
         "totals": {res: _total(res, stages) for res in REWARDS},
     }
+
+
+_QNAMES = {0: "ОБЫЧНЫЕ (≥60)", 1: "РЕДКИЕ R (≥100)", 2: "ЛЕГЕНДАРНЫЕ S (≥100)"}
+_STATUS = {
+    "ok": "получает", "ok_pack": "ЗАБИРАЕТ ВСЮ ПАЧКУ",
+    "low_valor": "не хватает доблести", "empty": "ресурс кончился — ждёт след. недели",
+    "no_res": "ресурс не выбран",
+}
+
+
+def format_report_text(report: dict, when_msk: str = "") -> str:
+    """Отчёт в виде текста для офицерского чата (TG/VK)."""
+    lines = ["📋 ОТЧЁТ О РАСПРЕДЕЛЕНИИ РЕСУРСОВ КХ"]
+    if when_msk:
+        lines.append(when_msk)
+    lines.append("Закрыто этапов КХ: %d" % report.get("stages", 0))
+    if not report.get("has_valor"):
+        lines.append("⚠ Нет данных доблести — собери сбор доблести.")
+    if report.get("pet_count"):
+        lines.append("🐲 Огненный цилинь: %d шт" % report["pet_count"])
+
+    sh = report.get("shooters") or []
+    if sh:
+        lines.append("")
+        lines.append("🎯 ШОТЕРЫ (+%d%%):" % report.get("shooter_pct", 10))
+        for s in sh:
+            g = s.get("got", {})
+            lines.append(" • %s — Камень доблести ×%d, Метеорит ×%d"
+                         % (s["nick"], g.get("kamen-doblesti", 0), g.get("meteorit", 0)))
+
+    for Q in report.get("queues", []):
+        lines.append("")
+        lines.append("— %s —" % _QNAMES.get(Q["queue"], "Очередь %d" % Q["queue"]))
+        if not Q["rows"]:
+            lines.append("   (пусто)")
+        for i, r in enumerate(Q["rows"], 1):
+            tag = "★ТОП-3 " if r.get("top3") else ""
+            amt = (" ×%d" % r["amount"]) if r["status"] in ("ok", "ok_pack") else ""
+            to = (" → %s" % r["recipient"]) if r.get("recipient") else ""
+            rn = res_name(r["res_name"]) if r.get("res_name") else "—"
+            lines.append("%2d. %s%s (%d добл.) · %s — %s%s%s"
+                         % (i, tag, r["nick"], r.get("valor", 0), rn,
+                            _STATUS.get(r["status"], r["status"]), amt, to))
+
+    lo = report.get("leftovers") or {}
+    if lo:
+        lines.append("")
+        lines.append("Остатки (распределить в клане):")
+        for k, v in lo.items():
+            lines.append(" • %s ×%d" % (res_name(k), v))
+    return "\n".join(lines)
