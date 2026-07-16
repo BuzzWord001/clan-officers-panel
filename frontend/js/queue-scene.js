@@ -1606,7 +1606,7 @@
           row.appendChild(cb);
           var info = document.createElement("span"); info.style.cssText = "flex:1;min-width:0";
           info.innerHTML = '<b>' + esc(r.nick) + '</b> <span style="color:#a58c68">· ' + esc(QN[r.queue] || "") + "</span> · " +
-            esc(resName(r.resource)) + (r.amount ? " ×" + r.amount : "") +
+            esc(r.got || "") +
             (r.recipient ? ' <span style="color:#8fc36a">→ ' + esc(r.recipient) + "</span>" : "");
           row.appendChild(info);
           var tag = document.createElement("span");

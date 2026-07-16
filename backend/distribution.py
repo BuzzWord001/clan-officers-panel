@@ -127,48 +127,53 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                 return valor_map[key]
         return 0
 
-    # 4) распределение по очередям
+    # 4) РАСПРЕДЕЛЕНИЕ ПО ОЧЕРЕДЯМ — пуловая модель (математическая оптимизация):
+    #    Приоритет 1 (минимум остатка): каждый ресурс раздаём на min(вместимость, людей)
+    #      полными пачками — остаток минимален (в идеале 0 среди тех, кто в очереди).
+    #    Приоритет 2 (минимум групп): люди, получившие ОДИНАКОВЫЙ набор ресурсов, идут в
+    #      одну группу («полосы» вместимости) → максимум эффективности при раздаче.
     queues_out = []
     for q in (0, 1, 2):
-        entries = list((state.get("queues") or [[], [], []])[q])
+        raw = list((state.get("queues") or [[], [], []])[q])
+        # защита: один игрок в очереди учитывается ОДИН раз (в проде join это гарантирует)
+        seen = set()
+        dedup = []
+        for e in raw:
+            mc = e.get("main_canon") or e.get("canon_nick") or id(e)
+            if mc in seen:
+                continue
+            seen.add(mc)
+            dedup.append(e)
+        raw = dedup
         thr = QUEUE_THRESHOLD[q]
-        # топ-3 всплывают вперёд (по убыванию доблести), остальные — в порядке очереди
-        top_here = [e for e in entries if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
+        elig = [e for e in raw if entry_valor(e) >= thr]
+        low = [e for e in raw if entry_valor(e) < thr]
+        # приоритет: топ-3 вперёд (по доблести), остальные — в порядке очереди
+        top_here = [e for e in elig if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
         top_here.sort(key=entry_valor, reverse=True)
-        rest = [e for e in entries if e not in top_here]
-        ordered = top_here + rest
-
-        rows = []
-        for e in ordered:
-            v = entry_valor(e)
-            res = (e.get("resource") or "").strip()
-            who = e.get("nick", "")
-            to = (e.get("recipient") or "").strip()
-            is_top = e.get("main_canon") in top3 or e.get("canon_nick") in top3
-            row = {"id": e.get("id"), "nick": who, "recipient": to, "resource": res, "valor": v,
-                   "top3": is_top, "provodnik": who.strip().lower() in shooter_lc,
-                   "recipient_ok": e.get("recipient_ok", True),
-                   "not_collected": e.get("not_collected", False),
-                   "amount": 0, "status": "", "res_name": res}
-            if not res or res not in REWARDS:
-                row["status"] = "no_res"
-            elif v < thr:
-                row["status"] = "low_valor"
-            else:
-                r = REWARDS[res]
-                have = pool.get(res, 0)
-                if have <= 0:
-                    row["status"] = "empty"
-                elif r["mode"] == "pack":
-                    row["amount"] = have; pool[res] = 0; row["status"] = "ok_pack"
-                elif have >= r["unit"]:      # только ПОЛНАЯ пачка/порция
-                    row["amount"] = r["unit"]; pool[res] = have - r["unit"]; row["status"] = "ok"
-                else:                        # остаток < пачки — человеку не даём, уйдёт в клан
-                    row["status"] = "empty"
-            rows.append(row)
+        ordered = top_here + [e for e in elig if e not in top_here]
+        N = len(ordered)
+        got = [dict() for _ in range(N)]           # {res: amount} на каждого
+        for res in [r for r in RES_ORDER if REWARDS[r]["q"] == q]:
+            have = pool.get(res, 0)
+            if have <= 0 or N == 0:
+                continue
+            r = REWARDS[res]
+            if r["mode"] == "pack":                # пачка целиком — первому в очереди
+                got[0][res] = have
+                pool[res] = 0
+            else:                                  # полными пачками/порциями сверху вниз
+                unit = r["unit"]
+                k = min(have // unit, N)           # скольким хватит ПОЛНОЙ пачки
+                for i in range(k):
+                    got[i][res] = unit
+                pool[res] = have - k * unit         # остаток < пачки → в клан
+        rows = [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
+                for i, e in enumerate(ordered)]
+        rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in low]
         queues_out.append({"queue": q, "threshold": thr, "rows": rows})
 
-    # остаток (сюда попадают неполные пачки и нераспределённое) → раздать в клане
+    # остаток (неполные пачки + нераспределённое) → раздать в клане (иначе сгорит)
     leftovers = {res: pool[res] for res in REWARDS if pool[res] > 0}
 
     groups = _build_groups(queues_out)
@@ -205,28 +210,41 @@ RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "kol
              "drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"]
 
 
+def _row(e, v, top3, shooter_lc, got, status) -> dict:
+    who = e.get("nick", "")
+    to = (e.get("recipient") or "").strip()
+    return {
+        "id": e.get("id"), "nick": who, "recipient": to,
+        "receiver": (to or who), "via": (who if to else ""),
+        "valor": v, "top3": (e.get("main_canon") in top3 or e.get("canon_nick") in top3),
+        "provodnik": who.strip().lower() in shooter_lc,
+        "recipient_ok": e.get("recipient_ok", True),
+        "not_collected": e.get("not_collected", False),
+        "got": got, "status": status,
+    }
+
+
 def _build_groups(queues_out) -> list:
-    """Группы раздачи: ресурсы с ОДИНАКОВЫМ списком получателей объединяются в
-    одну группу (минимум групп). Каждый в группе получает по `per` каждого ресурса.
-    Получатель = кому передать (recipient) если указан, иначе сам игрок."""
-    alloc = {}   # res -> [{"receiver","via","ok"}]
-    per = {}     # res -> сколько каждому
+    """Минимум групп: собираем получателей КАЖДОГО ресурса (пуловая раздача сверху вниз),
+    затем ресурсы с ОДИНАКОВЫМ списком получателей объединяем в одну группу.
+    Один человек может попадать в несколько групп (стоял в нескольких очередях / разные полосы)."""
+    alloc = {}   # res -> [{"receiver","via","ok"}] в порядке очереди
+    per = {}     # res -> сколько каждому (пачка: весь объём)
     for Q in queues_out:
         for r in Q["rows"]:
-            if r["status"] not in ("ok", "ok_pack"):
+            if r["status"] != "ok":
                 continue
-            receiver = r["recipient"] or r["nick"]
-            alloc.setdefault(r["resource"], []).append(
-                {"receiver": receiver, "via": (r["nick"] if r["recipient"] else ""),
-                 "ok": r.get("recipient_ok", True)})
-            per[r["resource"]] = r["amount"]
+            for res, amt in r["got"].items():
+                alloc.setdefault(res, []).append(
+                    {"receiver": r["receiver"], "via": r["via"], "ok": r.get("recipient_ok", True)})
+                per[res] = amt
     groups = []
     by_key = {}
     for res in RES_ORDER:
         if res not in alloc:
             continue
         people = alloc[res]
-        key = tuple(sorted(p["receiver"] for p in people))
+        key = tuple(sorted(p["receiver"].casefold() for p in people))   # объединяем по одинак. списку
         mode = REWARDS[res]["mode"]
         info = {"key": res, "name": res_name(res), "per": per[res], "count": len(people),
                 "total": (per[res] if mode == "pack" else per[res] * len(people)), "mode": mode}
@@ -236,18 +254,10 @@ def _build_groups(queues_out) -> list:
             g = {"people": people, "resources": [info]}
             by_key[key] = g
             groups.append(g)
-    # ники в группе — как есть (реальное написание), по алфавиту для удобства
     for g in groups:
         g["people"].sort(key=lambda p: p["receiver"].casefold())
+    groups.sort(key=lambda g: -len(g["people"]))   # крупные группы выше — раздавать эффективнее
     return groups
-
-
-_QNAMES = {0: "ОБЫЧНЫЕ (≥60)", 1: "РЕДКИЕ R (≥100)", 2: "ЛЕГЕНДАРНЫЕ S (≥100)"}
-_STATUS = {
-    "ok": "получает", "ok_pack": "ЗАБИРАЕТ ВСЮ ПАЧКУ",
-    "low_valor": "не хватает доблести", "empty": "ресурс кончился — ждёт след. недели",
-    "no_res": "ресурс не выбран",
-}
 
 
 _BAR = "━━━━━━━━━━━━━━━━━━━━━━━━"

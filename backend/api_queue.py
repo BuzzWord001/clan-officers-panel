@@ -1102,10 +1102,13 @@ def due(_: dict = Depends(require_officer_or_admin)) -> dict:
     out = []
     for Q in report["queues"]:
         for r in Q["rows"]:
-            if r["status"] in ("ok", "ok_pack"):
+            if r["status"] == "ok" and r.get("got"):
+                # что человек получает (может быть несколько ресурсов) — краткой строкой
+                got = r["got"]
+                summary = ", ".join("%s ×%d" % (distribution.res_name(k), v) for k, v in got.items())
                 out.append({"entry_id": r["id"], "queue": Q["queue"], "nick": r["nick"],
-                            "resource": r["res_name"], "amount": r["amount"],
-                            "recipient": r["recipient"], "not_collected": r["not_collected"]})
+                            "got": summary, "recipient": r["recipient"],
+                            "not_collected": r["not_collected"]})
     return {"due": out, "has_valor": report.get("has_valor", False)}
 
 
@@ -1165,7 +1168,7 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
     served_by_q = {}
     for Q in report["queues"]:
         served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
-                                   if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
+                                   if r["status"] == "ok" and r["id"] is not None}
     requeued = left_after = stayed_uncollected = 0
     with db.connection() as conn:
         for q in QUEUES:
