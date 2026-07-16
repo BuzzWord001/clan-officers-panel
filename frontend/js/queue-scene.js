@@ -556,8 +556,10 @@
     ".qs-merch-det>summary:hover{color:var(--gc)}" +
     ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px;max-height:130px;overflow-y:auto;scrollbar-width:thin}" +
     ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4}" +
-    ".qs-mres img{height:18px;width:18px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
-    ".qs-mres span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-mres img{height:20px;width:20px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qs-mres-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-mres-st{flex:0 0 auto;font:700 8.5px system-ui;color:#1b1006;background:var(--gc);" +
+      "padding:1px 5px;border-radius:6px;white-space:nowrap}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     "@media(max-width:640px){.qs-merch-box{width:158px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
@@ -1102,7 +1104,11 @@
       merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
       var resItems = BOOTH_ITEMS[b.q] || [];
       var resChips = resItems.map(function (it) {
-        return '<span class="qs-mres"><img src="' + resImg(it) + '" alt=""><span>' + esc(resName(it)) + "</span></span>";
+        var rm = REWARDS_META[it] || {};
+        var st = rm.mode === "pack" ? "пачкой" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
+        return '<span class="qs-mres"><img src="' + resImg(it) + '" alt="">' +
+          '<span class="qs-mres-nm">' + esc(resName(it)) + "</span>" +
+          '<span class="qs-mres-st">' + esc(st) + "</span></span>";
       }).join("");
       merchBox.innerHTML =
         '<div class="qs-merch-npc">' +
@@ -1118,6 +1124,7 @@
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
+      autoCropAll(merchBox, ".qs-mres img");               // иконки ресурсов заполняют бокс (цилинь крупнее)
       if (myIdx >= 0) setTimeout(function () {              // авто-прокрутка к своему месту
         var c = strip.querySelectorAll(".qs-cell")[myIdx];
         if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
