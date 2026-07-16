@@ -555,7 +555,9 @@
     ".qs-merch-det[open]>summary::before{transform:rotate(90deg)}" +
     ".qs-merch-det>summary:hover{color:var(--gc)}" +
     ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px;max-height:130px;overflow-y:auto;scrollbar-width:thin}" +
-    ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4}" +
+    ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4;cursor:pointer;" +
+      "padding:2px 3px;border-radius:7px;transition:background .1s}" +
+    ".qs-mres:hover{background:rgba(224,162,74,.14)}.qs-mres:active{background:rgba(224,162,74,.24)}" +
     ".qs-mres img{height:20px;width:20px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
     ".qs-mres-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-mres-st{flex:0 0 auto;font:700 8.5px system-ui;color:#1b1006;background:var(--gc);" +
@@ -762,9 +764,9 @@
   }
 
   // выбор ресурса при вставании (или правка, edit={resource,recipient,auto_repeat,plan})
-  function openResourcePicker(b, edit) {
+  function openResourcePicker(b, edit, presel) {
     var items = BOOTH_ITEMS[b.q] || [];
-    var sel = edit ? (edit.resource || "") : "";           // выбранный текущий ресурс
+    var sel = edit ? (edit.resource || "") : (presel || "");  // выбранный/пред-выбранный ресурс
     var planArr = (edit && edit.plan ? edit.plan.slice() : []);
     var body = document.createElement("div");
     body.className = "qs-pick2";
@@ -1057,8 +1059,8 @@
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
-      var myIdx = -1, iAmIn = false;
-      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) { myIdx = i; iAmIn = true; } });
+      var myIdx = -1, iAmIn = false, myEntry = null;
+      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) { myIdx = i; iAmIn = true; myEntry = e; } });
       var lane = document.createElement("div");
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
@@ -1106,7 +1108,8 @@
       var resChips = resItems.map(function (it) {
         var rm = REWARDS_META[it] || {};
         var st = rm.mode === "pack" ? "пачкой" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
-        return '<span class="qs-mres"><img src="' + resImg(it) + '" alt="">' +
+        return '<span class="qs-mres" data-res="' + esc(it) + '" title="Встать в очередь за: ' + esc(resName(it)) + '">' +
+          '<img src="' + resImg(it) + '" alt="">' +
           '<span class="qs-mres-nm">' + esc(resName(it)) + "</span>" +
           '<span class="qs-mres-st">' + esc(st) + "</span></span>";
       }).join("");
@@ -1114,8 +1117,17 @@
         '<div class="qs-merch-npc">' +
           '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
           '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
-        '<details class="qs-merch-det"><summary>📋 что выдаёт (' + resItems.length + ")</summary>" +
+        '<details class="qs-merch-det"><summary>📋 что выдаёт — нажми, чтобы встать (' + resItems.length + ")</summary>" +
           '<div class="qs-merch-res">' + resChips + "</div></details>";
+      // клик по ресурсу в списке торговца → встать в эту очередь за ним (или сменить, если уже стоишь)
+      merchBox.addEventListener("click", function (ev) {
+        var chip = ev.target.closest(".qs-mres"); if (!chip) return;
+        var it = chip.getAttribute("data-res"); if (!it) return;
+        if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
+        if (iAmIn) openResourcePicker(b, { resource: it, recipient: (myEntry && myEntry.recipient) || "",
+          auto_repeat: myEntry && myEntry.auto_repeat, plan: (myEntry && myEntry.auto_plan) || [] });
+        else openResourcePicker(b, null, it);
+      });
 
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
       rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
