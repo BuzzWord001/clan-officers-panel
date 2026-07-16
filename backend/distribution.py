@@ -43,8 +43,8 @@ MAX_STAGES = 7
 RES_NAME = {
     "kamen-doblesti": "Камень доблести", "meteorit": "Метеорит", "zhemchuzhina": "Жемчужина Фу Си",
     "znak-edinstva": "Знак единства", "koloda-kart": "Колода карт", "kamen-bessmertnyh": "Камень бессмертных",
-    "pilyulya": "Пилюля звёздного духа", "gramota": "Запечатанная грамота", "prikaz-feniksa": "Приказ Феникса",
-    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень",
+    "pilyulya": "Пилюля звёздного духа 4 ур.", "gramota": "Запечатанная грамота Лиги", "prikaz-feniksa": "Приказ Феникса",
+    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень божества",
     "mount-cilin": "Огненный цилинь (питомец)",
 }
 
