@@ -28,7 +28,26 @@
   var selectedNick = "";
 
   // ── переключение экранов ──
-  function showAuth() { $("auth").hidden = false; $("section").hidden = true; goStep("nick"); }
+  // Монтирует красивый таймер обратного отсчёта до авто-открытия раздела в контейнер.
+  // Когда время настанет — перезагружает страницу, чтобы раздел открылся автоматически.
+  function mountOpenTimer(host, opts) {
+    if (!host || !window.QueueOpen || window.QueueOpen.isOpen()) return;
+    if (host.querySelector(".qopen-timer")) return;   // уже смонтирован
+    var wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;justify-content:center;margin:" + ((opts && opts.margin) || "0 0 18px");
+    wrap.appendChild(window.QueueOpen.mount({
+      big: !!(opts && opts.big), label: "До открытия раздела",
+      onOpen: function () { location.reload(); }        // настало время — открываем автоматически
+    }));
+    if (opts && opts.prepend && host.firstChild) host.insertBefore(wrap, host.firstChild);
+    else host.appendChild(wrap);
+  }
+
+  function showAuth() {
+    $("auth").hidden = false; $("section").hidden = true; goStep("nick");
+    var box = document.querySelector("#auth .q-auth");
+    mountOpenTimer(box, { prepend: true, margin: "0 0 16px" });
+  }
   function showSection(acc) {
     $("auth").hidden = true; $("section").hidden = false;
     $("who").textContent = (acc && (acc.main_nick || acc.reg_nick)) || "игрок";
@@ -185,7 +204,9 @@
       api("GET", "/queue/config").catch(function () { return { config: {} }; }),
       api("GET", "/auth/me").catch(function () { return null; })
     ]).then(function (r) {
-      var open = ((r[0] && r[0].config) || {})["queue_open"] === "1";
+      // Раздел открыт, если админ открыл (queue_open=1) ЛИБО настало время авто-открытия.
+      var open = ((r[0] && r[0].config) || {})["queue_open"] === "1" ||
+                 !!(window.QueueOpen && window.QueueOpen.isOpen());
       var m = r[1], isAdmin = m && m.role === "admin";
       if (isAdmin) {
         $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
@@ -215,6 +236,15 @@
   var ROLE_RU = { officer: "офицера", guest: "обычного игрока", user: "обычного игрока", "": "обычного игрока" };
   function showDev(realAdmin, role) {
     $("auth").hidden = true; $("section").hidden = true; $("dev").hidden = false;
+    // крупный таймер обратного отсчёта до авто-открытия — под бейджем «в разработке»
+    var badge = $("dev") && $("dev").querySelector(".q-dev-badge");
+    if (badge && window.QueueOpen && !window.QueueOpen.isOpen() && !$("dev").querySelector(".qopen-timer")) {
+      var box = document.createElement("div");
+      box.style.cssText = "display:flex;justify-content:center;margin:6px 0 16px";
+      box.appendChild(window.QueueOpen.mount({ big: true, label: "До открытия раздела",
+        onOpen: function () { location.reload(); } }));
+      badge.parentNode.insertBefore(box, badge.nextSibling);
+    }
     var wrap = $("dev-bypass"); if (!wrap) return;
     // Галочка обхода — ТОЛЬКО когда настоящий админ смотрит раздел «как офицер/игрок».
     if (realAdmin) {
