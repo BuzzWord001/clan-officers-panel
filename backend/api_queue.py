@@ -229,6 +229,12 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN privileged INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: сколько ПАЧЕК взято жетоном на этой записи (источник claim'а —
+        # чтобы при смене ресурса пересчитать объём автоматически)
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN priv_stacks INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -749,13 +755,20 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         row = conn.execute(
-            "SELECT id FROM queue_entries WHERE queue=? AND main_canon=?",
+            "SELECT id, privileged FROM queue_entries WHERE queue=? AND main_canon=?",
             (payload.queue, acc["main_canon"])).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_in_queue")
         sets, vals = [], []
         if payload.resource is not None:
-            sets.append("resource=?"); vals.append(payload.resource.strip()[:64])
+            new_res = payload.resource.strip()[:64]
+            # у привилегированной записи (взял жетоном) можно менять ресурс, но только
+            # на другой ОБЫЧНЫЙ стаковый — объём захвата пересчитается сам (priv_stacks × пачка)
+            if row["privileged"]:
+                rr = distribution.REWARDS.get(new_res)
+                if not rr or rr["q"] != 0 or rr["mode"] == "pack":
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "only_regular_stack")
+            sets.append("resource=?"); vals.append(new_res)
         if payload.recipient is not None:
             sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
         if payload.auto_repeat is not None:
@@ -1060,6 +1073,19 @@ def rewards() -> dict:
     return {"stages": stages, "rewards": distribution.reward_meta(stages)}
 
 
+def _priv_claims(conn) -> list[dict]:
+    """Внеочередные захваты (жетоном) недели — ДЕРИВИРУЮТСЯ из привилегированных
+    записей. Объём = priv_stacks × размер пачки текущего ресурса, поэтому смена
+    ресурса игроком автоматически пересчитывает захват (raw='' — сырой код ресурса)."""
+    out = []
+    for c in conn.execute(
+            "SELECT nick, resource, priv_stacks FROM queue_entries WHERE privileged=1 AND priv_stacks>0"):
+        r = distribution.REWARDS.get(c["resource"]) or {}
+        out.append({"nick": c["nick"], "resource": c["resource"],
+                    "amount": c["priv_stacks"] * (r.get("unit") or 0)})
+    return out
+
+
 def _build_report(conn) -> dict:
     import json
     idx = _people(conn)
@@ -1077,8 +1103,7 @@ def _build_report(conn) -> dict:
         shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
     except (ValueError, TypeError):
         shooters = []
-    claims = [{"nick": c["nick"], "resource": c["resource"], "amount": c["amount"]}
-              for c in conn.execute("SELECT nick, resource, amount FROM queue_priv_claims")]
+    claims = _priv_claims(conn)
     report = distribution.compute(
         {"queues": queues}, valor_map,
         {"stages": _cfg_int(conn, "stages_closed", 0),
@@ -1203,24 +1228,24 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
             raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_tokens")
         amount = payload.stacks * r["unit"]
         nick = acc["main_nick"] or acc["reg_nick"]
-        conn.execute(
-            "INSERT INTO queue_priv_claims (canon, nick, resource, amount, created_at) VALUES (?,?,?,?,?)",
-            (acc["main_canon"], nick, res, amount, _now()))
         conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
                      (payload.stacks, _now(), acc["main_canon"]))
-        # моделька СРАЗУ встаёт ПЕРВОЙ в очереди 0 со свечением «жетон применён»
+        # моделька СРАЗУ встаёт ПЕРВОЙ в очереди 0 со свечением «жетон применён».
+        # priv_stacks КОПИТСЯ на записи — это единый источник объёма захвата; при
+        # смене ресурса (set-entry) объём пересчитывается сам (стаки × размер пачки).
         p = _people(conn).get(acc["main_canon"]) or {}
         front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
-        ex = conn.execute("SELECT id FROM queue_entries WHERE queue=0 AND main_canon=?",
+        ex = conn.execute("SELECT id, priv_stacks, privileged FROM queue_entries WHERE queue=0 AND main_canon=?",
                           (acc["main_canon"],)).fetchone()
         if ex:
-            conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=? WHERE id=?",
-                         (front, res, ex["id"]))
+            new_stacks = (ex["priv_stacks"] if ex["privileged"] else 0) + payload.stacks
+            conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=?, priv_stacks=? WHERE id=?",
+                         (front, res, new_stacks, ex["id"]))
         else:
             conn.execute(
-                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, added_by, added_at)"
-                " VALUES (0,?,?,?,?,?,1,?,?)",
-                (front, acc["main_canon"], nick, p.get("cls", ""), res, "priv", _now()))
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, priv_stacks, added_by, added_at)"
+                " VALUES (0,?,?,?,?,?,1,?,?,?)",
+                (front, acc["main_canon"], nick, p.get("cls", ""), res, payload.stacks, "priv", _now()))
         _log(conn, "priv_claim", actor=nick, nick=nick, queue=0, request=request,
              detail="ВНЕ очереди: %s ×%d (жетонов −%d, осталось %d)"
                     % (distribution.res_name(res), amount, payload.stacks, have - payload.stacks))
@@ -1252,11 +1277,10 @@ def privileges(_: dict = Depends(require_officer_or_admin)) -> dict:
     with db.connection() as conn:
         holders = conn.execute(
             "SELECT nick, tokens FROM queue_privileges WHERE tokens>0 ORDER BY tokens DESC, nick").fetchall()
-        claims = conn.execute(
-            "SELECT nick, resource, amount, created_at FROM queue_priv_claims ORDER BY id DESC LIMIT 100").fetchall()
+        claims = _priv_claims(conn)
     return {"holders": [dict(h) for h in holders],
             "claims": [{"nick": c["nick"], "resource": distribution.res_name(c["resource"]),
-                        "amount": c["amount"], "at": c["created_at"]} for c in claims]}
+                        "amount": c["amount"], "at": ""} for c in claims]}
 
 
 def _prune_left_clan(conn, request=None, actor_name="") -> list[str]:

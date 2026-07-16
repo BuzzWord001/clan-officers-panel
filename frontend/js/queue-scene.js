@@ -570,6 +570,13 @@
     ".qs-mres-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-mres-st{flex:0 0 auto;font:700 8.5px system-ui;color:#1b1006;background:var(--gc);" +
       "padding:1px 5px;border-radius:6px;white-space:nowrap}" +
+    ".qs-mres-cnt{flex:0 0 auto;font:800 8.5px system-ui;color:#e8dcc4;background:rgba(0,0,0,.4);" +
+      "border:1px solid rgba(224,162,74,.3);padding:1px 5px;border-radius:6px;white-space:nowrap}" +
+    ".qs-mres-cnt.free{color:#0e2c12;background:linear-gradient(180deg,#a8f0b0,#6cd07a);border-color:#3a8a45;" +
+      "animation:qsFree 1.5s ease-in-out infinite}" +
+    "@keyframes qsFree{0%,100%{box-shadow:0 0 0 0 rgba(108,208,122,.5)}50%{box-shadow:0 0 8px 1px rgba(108,208,122,.7)}}" +
+    ".qs-merch-free{margin-left:6px;font:800 9px system-ui;color:#0e2c12;background:linear-gradient(180deg,#a8f0b0,#6cd07a);" +
+      "padding:1px 6px;border-radius:6px}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     "@media(max-width:640px){.qs-merch-box{width:158px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
@@ -588,8 +595,20 @@
       "background:linear-gradient(180deg,rgba(190,224,234,.15),rgba(143,195,106,.15));border-radius:6px}" +
     ".qs-cell-img.ph{display:flex;align-items:center;justify-content:center;width:38px;color:#8a795a;font-weight:700}" +
     ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}" +
-    ".qs-cell-res{height:16px;width:16px;object-fit:contain}" +
+    ".qs-cell-res{height:14px;width:14px;object-fit:contain;flex:0 0 auto}" +
+    ".qs-cell-resn{display:flex;align-items:center;gap:2px;max-width:56px;margin-top:1px}" +
+    ".qs-cell-resnm{font:600 7.5px system-ui;color:#c9b48f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-cell-resn.none{font:600 7.5px system-ui;color:#7a6a4a;font-style:italic}" +
+    ".qs-cell.clk{cursor:pointer}.qs-cell.clk:hover{border-color:var(--gc);background:rgba(224,162,74,.2)}" +
+    ".qs-cell-edit{margin-top:2px;font:800 7.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
+      "padding:1px 5px;border-radius:6px;white-space:nowrap}" +
     "@media(max-width:640px){.qs-cell{width:50px}.qs-cell-img{height:32px}}" +
+    ".qs-change-note{display:flex;align-items:flex-start;gap:9px;margin:8px 0 4px;padding:9px 13px;border-radius:12px;" +
+      "background:linear-gradient(180deg,rgba(60,42,16,.92),rgba(36,24,9,.92));border:1px solid rgba(240,200,120,.5);" +
+      "box-shadow:inset 0 1px 0 rgba(255,224,160,.12)}" +
+    ".qs-cn-ic{font-size:20px;flex:0 0 auto;filter:drop-shadow(0 0 6px rgba(240,200,120,.5))}" +
+    ".qs-cn-tx{font:500 12.5px/1.5 system-ui;color:#efe0c2}.qs-cn-tx b{color:#f0c878}" +
+    "@media(max-width:640px){.qs-cn-tx{font-size:11.5px}}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -1080,6 +1099,22 @@
   // ── 3 ПОЛОСЫ полных очередей под сценой (всем): кнопка «встать» в начале,
   //    получатели равномерно растянуты, НПЦ-торговец наград в конце, прокрутка ◀▶ ──
   var MERCH_LABEL = ["обычные ресурсы", "редкие ресурсы (R)", "легендарные (S)"];
+
+  // Заметная плашка: до воскресенья 16:00 мск (пока не собраны данные) КАЖДЫЙ может
+  // в любой момент сменить ресурс, за которым стоит — жми на свою модельку или на
+  // ресурс у торговца. То же для тех, кто взял ⚡ вне очереди.
+  function buildChangeBanner() {
+    var el = document.createElement("div");
+    el.className = "qs-change-note";
+    el.innerHTML =
+      '<span class="qs-cn-ic">🔄</span>' +
+      '<span class="qs-cn-tx"><b>Ресурс можно менять в любой момент — до воскресенья 16:00 мск</b> ' +
+      "(пока не собраны данные по доблести). Нажми на <b>свою модельку</b> в очереди или на нужный " +
+      "<b>ресурс у торговца</b> — и встанешь за ним. Кто взял <b>⚡ вне очереди</b> — тоже может " +
+      "переиграть выбор, жетоны не сгорают.</span>";
+    return el;
+  }
+
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
@@ -1120,32 +1155,54 @@
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
-        cell.title = e.nick + (e.privileged ? " — ⚡ жетон ТОП-3 (вне очереди)" : (e.resource ? " — " + resName(e.resource) : ""));
+        cell.title = e.nick + (e.privileged ? " — ⚡ жетон ТОП-3 (вне очереди)" : (e.resource ? " — стоит за: " + resName(e.resource) : "")) +
+          (mine ? "  (нажми, чтобы сменить ресурс)" : "");
         cell.innerHTML =
           (e.privileged ? '<span class="qs-cell-priv">⚡ ТОП-3</span>' : '<span class="qs-cell-num">' + (i + 1) + "</span>") +
           (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
-          (e.resource ? '<img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' : "");
+          // подпись «за каким ресурсом стоит» — прямо под ником
+          (e.resource ? '<span class="qs-cell-resn"><img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' +
+            '<span class="qs-cell-resnm">' + esc(resName(e.resource)) + "</span></span>"
+            : '<span class="qs-cell-resn none">— ресурс не выбран</span>') +
+          (mine ? '<span class="qs-cell-edit">✏️ сменить</span>' : "");
+        if (mine) {
+          cell.classList.add("clk");
+          cell.addEventListener("click", function () {
+            openResourcePicker(b, { resource: e.resource || "", recipient: e.recipient || "",
+              auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+          });
+        }
         strip.appendChild(cell);
       });
 
-      // ОТДЕЛЬНЫЙ КВАДРАТ ТОРГОВЦА: НПЦ + иконки и названия ресурсов, что он выдаёт
+      // ОТДЕЛЬНЫЙ КВАДРАТ ТОРГОВЦА: НПЦ + иконки и названия ресурсов, что он выдаёт.
+      // Возле каждого ресурса — СКОЛЬКО человек за ним стоит (0 = свободно, шанс встать).
       var merchBox = document.createElement("div");
       merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
       var resItems = BOOTH_ITEMS[b.q] || [];
+      var resCount = {};
+      entries.forEach(function (e) { if (e.resource) resCount[e.resource] = (resCount[e.resource] || 0) + 1; });
+      var anyFree = false;
       var resChips = resItems.map(function (it) {
         var rm = REWARDS_META[it] || {};
         var st = rm.mode === "pack" ? "пачкой" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
-        return '<span class="qs-mres" data-res="' + esc(it) + '" title="Встать в очередь за: ' + esc(resName(it)) + '">' +
+        var cnt = resCount[it] || 0; if (cnt === 0) anyFree = true;
+        var cntHtml = cnt === 0
+          ? '<span class="qs-mres-cnt free">🟢 свободно · 0 чел</span>'
+          : '<span class="qs-mres-cnt">👥 ' + cnt + " чел</span>";
+        return '<span class="qs-mres" data-res="' + esc(it) + '" title="Встать в очередь за: ' + esc(resName(it)) +
+          " (сейчас стоят: " + cnt + ')">' +
           '<img src="' + resImg(it) + '" alt="">' +
           '<span class="qs-mres-nm">' + esc(resName(it)) + "</span>" +
-          '<span class="qs-mres-st">' + esc(st) + "</span></span>";
+          '<span class="qs-mres-st">' + esc(st) + "</span>" + cntHtml + "</span>";
       }).join("");
       merchBox.innerHTML =
         '<div class="qs-merch-npc">' +
           '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
           '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
-        '<details class="qs-merch-det"><summary>📋 что выдаёт — нажми, чтобы встать (' + resItems.length + ")</summary>" +
+        '<details class="qs-merch-det"><summary>📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
+          (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</summary>" +
           '<div class="qs-merch-res">' + resChips + "</div></details>";
       // клик по ресурсу в списке торговца → встать в эту очередь за ним (или сменить, если уже стоишь)
       merchBox.addEventListener("click", function (ev) {
@@ -1260,6 +1317,7 @@
     wrap.appendChild(banner);
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
     wrap.appendChild(renderStage(state));
+    if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
