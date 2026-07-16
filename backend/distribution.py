@@ -161,15 +161,14 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                     row["status"] = "empty"
                 elif r["mode"] == "pack":
                     row["amount"] = have; pool[res] = 0; row["status"] = "ok_pack"
-                else:  # stack | fixed
-                    amt = min(r["unit"], have)
-                    row["amount"] = amt; pool[res] = have - r["unit"]
-                    if pool[res] < 0:
-                        pool[res] = 0
-                    row["status"] = "ok"
+                elif have >= r["unit"]:      # только ПОЛНАЯ пачка/порция
+                    row["amount"] = r["unit"]; pool[res] = have - r["unit"]; row["status"] = "ok"
+                else:                        # остаток < пачки — человеку не даём, уйдёт в клан
+                    row["status"] = "empty"
             rows.append(row)
         queues_out.append({"queue": q, "threshold": thr, "rows": rows})
 
+    # остаток (сюда попадают неполные пачки и нераспределённое) → раздать в клане
     leftovers = {res: pool[res] for res in REWARDS if pool[res] > 0}
 
     return {
@@ -179,9 +178,50 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "shooter_pct": SHOOTER_PCT,
         "top3": list(top3),
         "queues": queues_out,
+        "groups": _build_groups(queues_out),
         "leftovers": leftovers,
         "totals": {res: _total(res, stages) for res in REWARDS},
     }
+
+
+# порядок ресурсов для отчёта (обычные → редкие → легендарные)
+RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart",
+             "kamen-bessmertnyh", "pilyulya", "gramota", "prikaz-feniksa",
+             "drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"]
+
+
+def _build_groups(queues_out) -> list:
+    """Группы раздачи: ресурсы с ОДИНАКОВЫМ списком получателей объединяются в
+    одну группу (минимум групп). Каждый в группе получает по `per` каждого ресурса.
+    Получатель = кому передать (recipient) если указан, иначе сам игрок."""
+    alloc = {}   # res -> [{"receiver","via","ok"}]
+    per = {}     # res -> сколько каждому
+    for Q in queues_out:
+        for r in Q["rows"]:
+            if r["status"] not in ("ok", "ok_pack"):
+                continue
+            receiver = r["recipient"] or r["nick"]
+            alloc.setdefault(r["resource"], []).append(
+                {"receiver": receiver, "via": (r["nick"] if r["recipient"] else ""),
+                 "ok": r.get("recipient_ok", True)})
+            per[r["resource"]] = r["amount"]
+    groups = []
+    by_key = {}
+    for res in RES_ORDER:
+        if res not in alloc:
+            continue
+        people = alloc[res]
+        key = tuple(sorted(p["receiver"] for p in people))
+        mode = REWARDS[res]["mode"]
+        info = {"key": res, "name": res_name(res), "per": per[res], "count": len(people),
+                "total": (per[res] if mode == "pack" else per[res] * len(people)), "mode": mode}
+        if key in by_key:
+            by_key[key]["resources"].append(info)
+        else:
+            g = {"people": people, "resources": [info]}
+            by_key[key] = g
+            groups.append(g)
+    return groups
 
 
 _QNAMES = {0: "ОБЫЧНЫЕ (≥60)", 1: "РЕДКИЕ R (≥100)", 2: "ЛЕГЕНДАРНЫЕ S (≥100)"}
@@ -215,26 +255,39 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
             lines.append(" • %s — Камень доблести ×%d, Метеорит ×%d"
                          % (s["nick"], g.get("kamen-doblesti", 0), g.get("meteorit", 0)))
 
-    for Q in report.get("queues", []):
+    # ── ГРУППЫ РАЗДАЧИ (минимум групп: каждый в группе получает по пачке каждого ресурса) ──
+    groups = report.get("groups") or []
+    lines.append("")
+    lines.append("📦 ГРУППЫ РАЗДАЧИ:")
+    if not groups:
+        lines.append("   (некому раздавать)")
+    for gi, g in enumerate(groups, 1):
+        names = ", ".join(_person_label(p) for p in g["people"])
         lines.append("")
-        lines.append("— %s —" % _QNAMES.get(Q["queue"], "Очередь %d" % Q["queue"]))
-        if not Q["rows"]:
-            lines.append("   (пусто)")
-        for i, r in enumerate(Q["rows"], 1):
-            tag = "★ТОП-3 " if r.get("top3") else ""
-            if r.get("provodnik"):
-                tag += "🎯проводник "
-            amt = (" ×%d" % r["amount"]) if r["status"] in ("ok", "ok_pack") else ""
-            to = (" → %s%s" % (r["recipient"], "" if r.get("recipient_ok", True) else " ⚠(не твин/супруг)")) if r.get("recipient") else ""
-            rn = res_name(r["res_name"]) if r.get("res_name") else "—"
-            lines.append("%2d. %s%s (%d добл.) · %s — %s%s%s"
-                         % (i, tag, r["nick"], r.get("valor", 0), rn,
-                            _STATUS.get(r["status"], r["status"]), amt, to))
+        lines.append("Группа %d (%d чел): %s" % (gi, len(g["people"]), names))
+        for info in g["resources"]:
+            if info["mode"] == "pack":
+                lines.append("   • %s — ВСЁ одному (%d)" % (info["name"], info["total"]))
+            else:
+                lines.append("   • %s — по %d × %d чел = %d"
+                             % (info["name"], info["per"], info["count"], info["total"]))
 
     lo = report.get("leftovers") or {}
+    lo = {k: v for k, v in lo.items() if v > 0}
+    lines.append("")
+    lines.append("🔻 ОСТАТОК — РАЗДАТЬ В ЧАТЕ КЛАНА (до вс 00:00, иначе сгорит):")
     if lo:
-        lines.append("")
-        lines.append("Остатки (распределить в клане):")
-        for k, v in lo.items():
-            lines.append(" • %s ×%d" % (res_name(k), v))
+        lines.append("   " + " · ".join("%s ×%d" % (res_name(k), v) for k, v in lo.items()))
+    else:
+        lines.append("   — нет, всё распределено")
     return "\n".join(lines)
+
+
+def _person_label(p: dict) -> str:
+    """Имя получателя в группе; если ресурс переадресован — «Получатель (за Ник)», ⚠ если не твин/супруг."""
+    s = p["receiver"]
+    if p.get("via"):
+        s += " (за %s)" % p["via"]
+        if not p.get("ok", True):
+            s += " ⚠"
+    return s

@@ -512,6 +512,10 @@
     ".qs-dr-to{font:700 11px system-ui;color:#8fc36a}" +
     ".qs-dr-top{font:800 9.5px system-ui;color:#1b1006;background:#ffd24a;padding:1px 6px;border-radius:6px}" +
     ".qs-dr-prov{font:800 9.5px system-ui;color:#1b1006;background:#ff9a44;padding:1px 6px;border-radius:6px}" +
+    ".qs-dr-group{margin:0 0 10px;padding:8px 10px;border:1px solid rgba(224,162,74,.25);border-radius:9px;background:rgba(0,0,0,.18)}" +
+    ".qs-dr-gh{font:800 12px system-ui;color:#f0c878;margin:0 0 4px}" +
+    ".qs-dr-gp{font-size:12.5px;color:#f6ead2;line-height:1.5;margin:0 0 5px}" +
+    ".qs-dr-gr{font-size:12px;color:#a9e08f;line-height:1.55;border-top:1px dashed rgba(224,162,74,.2);padding-top:5px}" +
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
@@ -1721,14 +1725,8 @@
 
   // ── модалка отчёта распределения ──
   function renderDistReport(rep) {
-    var QN = ["Обычные (≥60)", "Редкие R (≥100)", "Легендарные S (≥100)"];
     var body = document.createElement("div");
     body.className = "qs-distrep";
-    var STAT = {
-      ok: ["получает", "#a9e08f"], ok_pack: ["ЗАБИРАЕТ ВСЮ ПАЧКУ", "#ffd24a"],
-      low_valor: ["не хватает доблести", "#e08a8a"], empty: ["ресурс кончился — ждёт след. недели", "#e0a86a"],
-      no_res: ["ресурс не выбран", "#8a795a"]
-    };
     var html = '<div class="qs-dr-head">Закрыто этапов: <b>' + rep.stages + "</b> · " +
       (rep.has_valor ? "доблесть из последнего сбора" : '<span style="color:#e08a8a">нет данных доблести — собери сбор</span>') +
       (rep.pet_count ? ' · 🐲 Огненный цилинь: <b>' + rep.pet_count + " шт</b>" : "") + "</div>";
@@ -1744,31 +1742,34 @@
       });
       html += "</div>";
     }
-    (rep.queues || []).forEach(function (Q) {
-      html += '<div class="qs-dr-sec"><h4>' + QN[Q.queue] + "</h4>";
-      if (!Q.rows.length) html += '<div class="qs-dr-empty">пусто</div>';
-      Q.rows.forEach(function (r) {
-        var s = STAT[r.status] || ["?", "#ccc"];
-        var amt = (r.status === "ok" || r.status === "ok_pack") ? " ×" + r.amount : "";
-        var to = r.recipient ? ' <span class="qs-dr-to"' + (r.recipient_ok === false ? ' style="color:#e0a86a"' : "") +
-          '>→ ' + esc(r.recipient) + (r.recipient_ok === false ? " ⚠не твин/супруг" : "") + "</span>" : "";
-        html += '<div class="qs-dr-row">' +
-          (r.top3 ? '<span class="qs-dr-top">ТОП-3</span>' : "") +
-          (r.provodnik ? '<span class="qs-dr-prov">🎯 проводник</span>' : "") +
-          '<b>' + esc(r.nick) + "</b> " +
-          '<span class="qs-dr-val">' + r.valor + " добл.</span> · " +
-          (r.res_name ? esc(resName(r.res_name)) : "—") +
-          '<span style="color:' + s[1] + '"> — ' + s[0] + amt + "</span>" + to + "</div>";
-      });
-      html += "</div>";
+    // ── ГРУППЫ РАЗДАЧИ ──
+    var groups = rep.groups || [];
+    html += '<div class="qs-dr-sec"><h4>📦 Группы раздачи</h4>';
+    if (!groups.length) html += '<div class="qs-dr-empty">некому раздавать</div>';
+    groups.forEach(function (g, gi) {
+      var names = g.people.map(function (p) {
+        var s = esc(p.receiver);
+        if (p.via) s += ' <span style="color:#8a795a">(за ' + esc(p.via) + ")</span>" + (p.ok === false ? ' <span style="color:#e0a86a">⚠</span>' : "");
+        return s;
+      }).join(", ");
+      var res = g.resources.map(function (info) {
+        return info.mode === "pack"
+          ? "<b>" + esc(info.name) + "</b> — ВСЁ одному (" + info.total + ")"
+          : "<b>" + esc(info.name) + "</b> — по " + info.per + " × " + info.count + " = " + info.total;
+      }).join("<br>");
+      html += '<div class="qs-dr-group"><div class="qs-dr-gh">Группа ' + (gi + 1) + " · " + g.people.length + " чел</div>" +
+        '<div class="qs-dr-gp">' + names + "</div>" +
+        '<div class="qs-dr-gr">' + res + "</div></div>";
     });
+    html += "</div>";
+    // ── ОСТАТОК В КЛАН ──
     var lo = rep.leftovers || {};
-    var loKeys = Object.keys(lo);
-    if (loKeys.length) {
-      html += '<div class="qs-dr-sec"><h4>Остатки (распределить в клане)</h4>';
-      loKeys.forEach(function (k) { html += '<div class="qs-dr-row">' + esc(resName(k)) + " ×" + lo[k] + "</div>"; });
-      html += "</div>";
-    }
+    var loKeys = Object.keys(lo).filter(function (k) { return lo[k] > 0; });
+    html += '<div class="qs-dr-sec"><h4>🔻 Остаток — раздать в чате клана (до вс 00:00, иначе сгорит)</h4>';
+    html += '<div class="qs-dr-row">' + (loKeys.length
+      ? loKeys.map(function (k) { return esc(resName(k)) + " ×" + lo[k]; }).join(" · ")
+      : '<span style="color:#8fc36a">— нет, всё распределено</span>') + "</div>";
+    html += "</div>";
     body.innerHTML = html;
     // кнопка ручной отправки отчёта в офицерский чат
     var sendBar = document.createElement("div");
