@@ -145,13 +145,14 @@
   var BOOTH_ITEMS = [
     ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
     ["gramota", "prikaz-feniksa"],
-    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen"]
+    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"]
   ];
   var RES_NAME = {
     "kamen-doblesti": "Камень доблести", "meteorit": "Метеорит", "zhemchuzhina": "Жемчужина Фу Си",
     "znak-edinstva": "Знак единства", "koloda-kart": "Колода карт", "kamen-bessmertnyh": "Камень бессмертных",
     "pilyulya": "Пилюля звёздного духа", "gramota": "Запечатанная грамота", "prikaz-feniksa": "Приказ Феникса",
-    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень"
+    "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень",
+    "mount-cilin": "Огненный цилинь"
   };
   function resName(k) { return RES_NAME[k] || k; }
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
@@ -494,6 +495,7 @@
     ".qs-dr-val{font-size:11px;color:#a58c68}" +
     ".qs-dr-to{font:700 11px system-ui;color:#8fc36a}" +
     ".qs-dr-top{font:800 9.5px system-ui;color:#1b1006;background:#ffd24a;padding:1px 6px;border-radius:6px}" +
+    ".qs-dr-prov{font:800 9.5px system-ui;color:#1b1006;background:#ff9a44;padding:1px 6px;border-radius:6px}" +
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
@@ -1476,7 +1478,7 @@
     return wrap;
   }
 
-  // ── админ: данные распределения (этапы КХ, питомец, шотеры) + отчёт ──
+  // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──
   function buildDistPanel() {
     var wrap = document.createElement("div");
     wrap.className = "q-admin-row";
@@ -1489,7 +1491,7 @@
     wrap.innerHTML =
       '<div style="font-size:12px;color:#caa66a">🎁 Распределение ресурсов ' +
         '<span style="color:#8a795a;font-size:11px">— порог: обычные ≥60, редкие/легенд ≥100 доблести; ' +
-        'шотерам по 10% камней доблести и метеоритов; доблесть берётся из последнего сбора</span></div>' +
+        'проводникам по 10% камней доблести и метеоритов; доблесть берётся из последнего сбора</span></div>' +
       '<div class="q-admin-row" style="gap:14px;align-items:flex-end;flex-wrap:wrap">' +
         '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
           'Закрыто этапов КХ (1–7): <b id="qd-stages-v">' + stages + '</b>' +
@@ -1499,8 +1501,8 @@
           '<input type="number" id="qd-pet" min="0" value="' + pet + '" style="width:90px"></label>' +
       "</div>" +
       '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
-        '<b style="font-size:11px;color:#caa66a">🎯 Шотеры (+10%):</b>' +
-        '<input id="qd-shnick" list="qd-dl" placeholder="ник шотера…" autocomplete="off" style="min-width:150px">' +
+        '<b style="font-size:11px;color:#caa66a">🎯 Проводники (+10%):</b>' +
+        '<input id="qd-shnick" list="qd-dl" placeholder="ник проводника…" autocomplete="off" style="min-width:150px">' +
         '<button class="sec" id="qd-shadd">＋ добавить</button>' +
         '<datalist id="qd-dl">' + dl + '</datalist>' +
         '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
@@ -1539,10 +1541,10 @@
     });
     wrap.querySelector("#qd-shadd").addEventListener("click", function () {
       var nk = wrap.querySelector("#qd-shnick").value.trim();
-      if (!nk) { status("Укажи ник шотера."); return; }
+      if (!nk) { status("Укажи ник проводника."); return; }
       if (shooters.indexOf(nk) < 0) shooters.push(nk);
       saveCfg("shooters", JSON.stringify(shooters));
-      wrap.querySelector("#qd-shnick").value = ""; renderShooters(); status("✓ Шотер добавлен: " + nk, true);
+      wrap.querySelector("#qd-shnick").value = ""; renderShooters(); status("✓ Проводник добавлен: " + nk, true);
     });
     wrap.querySelector("#qd-report").addEventListener("click", function () {
       status("Считаю отчёт…");
@@ -1574,8 +1576,12 @@
     var html = '<div class="qs-dr-head">Закрыто этапов: <b>' + rep.stages + "</b> · " +
       (rep.has_valor ? "доблесть из последнего сбора" : '<span style="color:#e08a8a">нет данных доблести — собери сбор</span>') +
       (rep.pet_count ? ' · 🐲 Огненный цилинь: <b>' + rep.pet_count + " шт</b>" : "") + "</div>";
+    if (rep.top3_named && rep.top3_named.length) {
+      html += '<div class="qs-dr-head" style="border:0">★ ТОП-3 клана: ' +
+        rep.top3_named.map(function (t) { return esc(t.nick) + " (" + t.valor + ")"; }).join(" · ") + "</div>";
+    }
     if (rep.shooters && rep.shooters.length) {
-      html += '<div class="qs-dr-sec"><h4>🎯 Шотеры (+' + rep.shooter_pct + "%)</h4>";
+      html += '<div class="qs-dr-sec"><h4>🎯 Проводники (+' + rep.shooter_pct + "%)</h4>";
       rep.shooters.forEach(function (s) {
         html += '<div class="qs-dr-row"><b>' + esc(s.nick) + "</b> — Камень доблести ×" +
           s.got["kamen-doblesti"] + ", Метеорит ×" + s.got["meteorit"] + "</div>";
@@ -1591,6 +1597,7 @@
         var to = r.recipient ? ' <span class="qs-dr-to">→ ' + esc(r.recipient) + "</span>" : "";
         html += '<div class="qs-dr-row">' +
           (r.top3 ? '<span class="qs-dr-top">ТОП-3</span>' : "") +
+          (r.provodnik ? '<span class="qs-dr-prov">🎯 проводник</span>' : "") +
           '<b>' + esc(r.nick) + "</b> " +
           '<span class="qs-dr-val">' + r.valor + " добл.</span> · " +
           (r.res_name ? esc(resName(r.res_name)) : "—") +

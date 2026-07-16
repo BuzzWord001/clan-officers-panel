@@ -8,7 +8,7 @@
   • fixed — по `unit` штук каждому (грамоты по 2, легендарки по 1).
 
 Пороги доблести: обычные (оч.0) ≥60, редкие/легендарные (оч.1/2) ≥100.
-Шотеры получают по 10% камней доблести и метеоритов «сверху» (до очереди).
+Проводники получают по 10% камней доблести и метеоритов «сверху» (до очереди).
 """
 
 from __future__ import annotations
@@ -30,10 +30,13 @@ REWARDS: dict[str, dict] = {
     "drakonya-cheshuya": {"q": 2, "st": [0, 0, 0, 1, 1, 1, 1],           "mode": "fixed", "unit": 1},
     "sushchnost-karty":  {"q": 2, "st": [0, 0, 0, 1, 1, 1, 1],           "mode": "fixed", "unit": 1},
     "vysshiy-kamen":     {"q": 2, "st": [0, 0, 0, 0, 0, 1, 1],           "mode": "fixed", "unit": 1},
+    # Огненный цилинь (питомец) — падает с шансом; объём НЕ из этапов, а из
+    # админского pet_count (переопределяется в compute). По 1 шт каждому.
+    "mount-cilin":       {"q": 2, "st": [0, 0, 0, 0, 0, 0, 0],           "mode": "fixed", "unit": 1},
 }
 
 QUEUE_THRESHOLD = {0: 60, 1: 100, 2: 100}
-SHOOTER_PCT = 10                       # % камней доблести и метеоритов каждому шотеру
+SHOOTER_PCT = 10                       # % камней доблести и метеоритов каждому проводнику
 SHOOTER_RES = ("kamen-doblesti", "meteorit")
 MAX_STAGES = 7
 
@@ -42,6 +45,7 @@ RES_NAME = {
     "znak-edinstva": "Знак единства", "koloda-kart": "Колода карт", "kamen-bessmertnyh": "Камень бессмертных",
     "pilyulya": "Пилюля звёздного духа", "gramota": "Запечатанная грамота", "prikaz-feniksa": "Приказ Феникса",
     "drakonya-cheshuya": "Драконья чешуя", "sushchnost-karty": "Сущность карты", "vysshiy-kamen": "Высший камень",
+    "mount-cilin": "Огненный цилинь (питомец)",
 }
 
 
@@ -88,7 +92,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                resource, recipient, cls (как из _entry_public + canon-хелпер извне).
     valor_map — canon -> доблесть (последний снапшот).
     cfg      — {"stages": int, "pet_count": int, "shooters": [nick,...],
-                "shooter_canons": {nick: canon}}  (каноны шотеров для валора).
+                "shooter_canons": {nick: canon}}  (каноны проводников для валора).
     Возвращает структуру для рендера на фронте.
     """
     stages = max(0, min(MAX_STAGES, int(cfg.get("stages") or 0)))
@@ -97,8 +101,10 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
 
     # 1) накопленные объёмы
     pool = {res: _total(res, stages) for res in REWARDS}
+    pool["mount-cilin"] = pet_count               # питомец: объём из pet_count, не из этапов
+    shooter_lc = {s.strip().lower() for s in shooters}
 
-    # 2) шотеры «сверху» — по 10% камней доблести и метеоритов каждому
+    # 2) проводники «сверху» — по 10% камней доблести и метеоритов каждому
     shooter_rows = []
     shooter_totals = {r: 0 for r in SHOOTER_RES}
     for sh in shooters:
@@ -140,7 +146,8 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             to = (e.get("recipient") or "").strip()
             is_top = e.get("main_canon") in top3 or e.get("canon_nick") in top3
             row = {"id": e.get("id"), "nick": who, "recipient": to, "resource": res, "valor": v,
-                   "top3": is_top, "amount": 0, "status": "", "res_name": res}
+                   "top3": is_top, "provodnik": who.strip().lower() in shooter_lc,
+                   "amount": 0, "status": "", "res_name": res}
             if not res or res not in REWARDS:
                 row["status"] = "no_res"
             elif v < thr:
@@ -192,12 +199,15 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
     if not report.get("has_valor"):
         lines.append("⚠ Нет данных доблести — собери сбор доблести.")
     if report.get("pet_count"):
-        lines.append("🐲 Огненный цилинь: %d шт" % report["pet_count"])
+        lines.append("🐲 Огненный цилинь (питомец): %d шт" % report["pet_count"])
+    tn = report.get("top3_named") or []
+    if tn:
+        lines.append("★ ТОП-3 клана: " + ", ".join("%s (%d)" % (t["nick"], t["valor"]) for t in tn))
 
     sh = report.get("shooters") or []
     if sh:
         lines.append("")
-        lines.append("🎯 ШОТЕРЫ (+%d%%):" % report.get("shooter_pct", 10))
+        lines.append("🎯 ПРОВОДНИКИ (+%d%%):" % report.get("shooter_pct", 10))
         for s in sh:
             g = s.get("got", {})
             lines.append(" • %s — Камень доблести ×%d, Метеорит ×%d"
@@ -210,6 +220,8 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
             lines.append("   (пусто)")
         for i, r in enumerate(Q["rows"], 1):
             tag = "★ТОП-3 " if r.get("top3") else ""
+            if r.get("provodnik"):
+                tag += "🎯проводник "
             amt = (" ×%d" % r["amount"]) if r["status"] in ("ok", "ok_pack") else ""
             to = (" → %s" % r["recipient"]) if r.get("recipient") else ""
             rn = res_name(r["res_name"]) if r.get("res_name") else "—"
