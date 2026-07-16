@@ -542,7 +542,7 @@
     ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
     ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
     /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
-    ".qs-merch-box{flex:0 0 auto;align-self:center;width:236px;display:flex;flex-direction:column;gap:4px;" +
+    ".qs-merch-box{flex:0 0 auto;align-self:center;width:300px;display:flex;flex-direction:column;gap:4px;" +
       "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
       "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
@@ -563,11 +563,12 @@
       "animation:qMerchDrop .17s ease}" +
     "@keyframes qMerchDrop{from{opacity:0;transform:translateY(-6px) scaleY(.85)}to{opacity:1;transform:none}}" +
     ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px}" +
-    ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4;cursor:pointer;" +
-      "padding:2px 3px;border-radius:7px;transition:background .1s}" +
+    ".qs-mres{display:flex;align-items:flex-start;gap:5px;font:600 10.5px system-ui;color:#e8dcc4;cursor:pointer;" +
+      "padding:4px 4px;border-radius:7px;transition:background .1s}" +
+    ".qs-mres img{margin-top:1px}.qs-mres-nm{align-self:center}" +
     ".qs-mres:hover{background:rgba(224,162,74,.14)}.qs-mres:active{background:rgba(224,162,74,.24)}" +
     ".qs-mres img{height:20px;width:20px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
-    ".qs-mres-nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-mres-nm{flex:1 1 120px;min-width:0;white-space:normal;line-height:1.25;word-break:break-word}" +
     ".qs-mres-st{flex:0 0 auto;font:700 8.5px system-ui;color:#1b1006;background:var(--gc);" +
       "padding:1px 5px;border-radius:6px;white-space:nowrap}" +
     ".qs-mres-cnt{flex:0 0 auto;font:800 8.5px system-ui;color:#e8dcc4;background:rgba(0,0,0,.4);" +
@@ -578,7 +579,7 @@
     ".qs-merch-free{margin-left:6px;font:800 9px system-ui;color:#0e2c12;background:linear-gradient(180deg,#a8f0b0,#6cd07a);" +
       "padding:1px 6px;border-radius:6px}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
-    "@media(max-width:640px){.qs-merch-box{width:190px}}" +
+    "@media(max-width:640px){.qs-merch-box{width:220px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
     ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
