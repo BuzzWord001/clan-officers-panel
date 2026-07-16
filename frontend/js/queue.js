@@ -193,20 +193,42 @@
         if (window.QueueScene) window.QueueScene.enter(null);
         return;
       }
-      if (!open) { showDev(); return; }
-      // раздел ОТКРЫТ — обычный вход
+      // АДМИН в режиме «Смотреть как» (view-as помечает ответ _realRole=admin) может
+      // обойти заглушку закрытого раздела галочкой — увидеть его глазами офицера/игрока.
+      var realAdmin = !!(m && m._realRole === "admin");
+      if (!open && !(realAdmin && bypassOn())) { showDev(realAdmin, m && m.role); return; }
+      // раздел ОТКРЫТ (или админ-предпросмотр с обходом) — обычный вход по роли
       api("GET", "/queue/me").then(function (d) {
         if (d.account) { showSection(d.account); return; }
-        if (m && m.role === "officer") {
+        if (m && (m.role === "officer" || (realAdmin && !open))) {
           $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
-          $("who").textContent = (m.name || "офицер") + " · просмотр";
+          $("who").textContent = (m.name || m.role || "просмотр") +
+            (realAdmin && !open ? " · предпросмотр (раздел закрыт)" : " · просмотр");
           if (window.QueueScene) window.QueueScene.enter(null);
         } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
       }).catch(function () { showAuth(); });
     });
   }
 
-  function showDev() { $("auth").hidden = true; $("section").hidden = true; $("dev").hidden = false; }
+  var BYPASS_KEY = "queue_preview_bypass";
+  function bypassOn() { try { return sessionStorage.getItem(BYPASS_KEY) === "1"; } catch (e) { return false; } }
+  var ROLE_RU = { officer: "офицера", guest: "обычного игрока", user: "обычного игрока", "": "обычного игрока" };
+  function showDev(realAdmin, role) {
+    $("auth").hidden = true; $("section").hidden = true; $("dev").hidden = false;
+    var wrap = $("dev-bypass"); if (!wrap) return;
+    // Галочка обхода — ТОЛЬКО когда настоящий админ смотрит раздел «как офицер/игрок».
+    if (realAdmin) {
+      wrap.hidden = false;
+      var rl = $("dev-bypass-role"); if (rl) rl.textContent = ROLE_RU[role] || "выбранной роли";
+      var cb = $("dev-bypass-cb"); if (cb) {
+        cb.checked = bypassOn();
+        cb.onchange = function () {
+          try { if (cb.checked) sessionStorage.setItem(BYPASS_KEY, "1"); else sessionStorage.removeItem(BYPASS_KEY); } catch (e) {}
+          location.reload();
+        };
+      }
+    } else { wrap.hidden = true; }
+  }
   function wireDevAdmin() {
     var btn = $("dev-admin-btn"); if (!btn) return;
     function tryAdmin() {

@@ -85,6 +85,11 @@
     .q-dev-txt{font-size:13.5px;line-height:1.6;color:#e7d6b7;margin:0 auto 18px;max-width:420px}
     .q-dev-back{display:inline-block;font-size:13px;color:#caa66a;text-decoration:none}
     .q-dev-back:hover{color:var(--gold)}
+    .q-dev-bypass{display:flex;align-items:flex-start;gap:9px;margin:14px 0 4px;padding:11px 13px;text-align:left;cursor:pointer;
+      background:linear-gradient(180deg,rgba(60,42,16,.9),rgba(36,24,9,.9));border:1px solid rgba(240,200,120,.55);border-radius:12px}
+    .q-dev-bypass input{margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:#e0a24a;cursor:pointer}
+    .q-dev-bypass span{font-size:12.5px;line-height:1.5;color:#efe0c2}
+    .q-dev-bypass b{color:#f0c878}
     .q-dev-admin{margin-top:20px;text-align:left;border-top:1px solid rgba(224,162,74,.2);padding-top:14px}
     .q-dev-admin summary{cursor:pointer;font-size:12px;color:#8a795a;list-style:none;text-align:center}
     .q-dev-admin summary:hover{color:#caa66a}
@@ -133,6 +138,12 @@
       <p class="q-dev-txt">Раздел «Очередь за ресурсами с КХ» ещё готовится — мы наводим последний блеск.
         Вход временно закрыт, но совсем скоро он распахнётся для всех офицеров и игроков. Спасибо, что заглянул(а)! ✨</p>
       <a class="q-dev-back" href="clan-valor.html">← вернуться на сайт</a>
+      <!-- Обход блокировки для АДМИНА в режиме «Смотреть как» (view-as). Скрыт по умолчанию. -->
+      <label class="q-dev-bypass" id="dev-bypass" hidden>
+        <input type="checkbox" id="dev-bypass-cb">
+        <span>👁 Смотреть раздел вопреки блокировке — предпросмотр глазами
+          <b id="dev-bypass-role">выбранной роли</b> (только для тебя, админ)</span>
+      </label>
       <details class="q-dev-admin">
         <summary>Вход для администратора</summary>
         <input id="dev-admin-user" placeholder="логин админа" autocomplete="username" maxlength="32">
@@ -211,7 +222,7 @@
 
   <script src="config.js?v=1791600000"></script>
   <script src="js/view-as.js?v=1815000000"></script>
-  <script src="js/queue.js?v=1816900000"></script>
+  <script src="js/queue.js?v=1817000000"></script>
   <script src="js/queue-scene.js?v=1831000000"></script>
 </body>
 </html>
