@@ -530,11 +530,21 @@
       "transition:transform .08s,filter .08s}" +
     ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
     ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
-    /* НПЦ-торговец наград в конце полосы */
-    ".qs-lane-merch{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;" +
-      "padding:2px 6px 3px;border-left:2px dashed rgba(224,162,74,.4);margin-left:4px}" +
-    ".qs-lane-merch .qs-cell-img{height:46px;max-width:64px}" +
-    ".qs-lane-merch-lbl{font:700 9px system-ui;color:var(--gc);text-align:center;line-height:1.1;max-width:74px}" +
+    /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + ресурсы с названиями */
+    ".qs-merch-box{flex:0 0 auto;align-self:stretch;width:190px;display:flex;flex-direction:column;gap:5px;" +
+      "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
+      "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
+    ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
+    ".qs-merch-img{height:52px;width:auto;max-width:52px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
+    ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
+    ".qs-merch-res{display:flex;flex-direction:column;gap:3px;border-top:1px dashed rgba(224,162,74,.28);" +
+      "padding-top:5px;max-height:118px;overflow-y:auto;scrollbar-width:thin}" +
+    ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4}" +
+    ".qs-mres img{height:18px;width:18px;object-fit:contain;flex:0 0 auto;" +
+      "filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qs-mres span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
+    "@media(max-width:640px){.qs-merch-box{width:158px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
     ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
@@ -1039,11 +1049,7 @@
         '<span class="qs-lane-cnt">' + entries.length + " чел" +
         (myIdx >= 0 ? ' · <b style="color:var(--gc)">ты #' + (myIdx + 1) + "</b>" : "") + "</span>";
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
-      var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
-      var strip = document.createElement("div"); strip.className = "qs-lane-strip";
-      var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
-
-      // кнопка «Встать/Выйти» в начале очереди (контекстно к этой очереди)
+      // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
       joinCell.className = "qs-lane-join" + (iAmIn ? " leave" : "");
       joinCell.innerHTML = iAmIn ? "Выйти" : "➕ Встать<br>в очередь";
@@ -1056,8 +1062,11 @@
           alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
       });
-      strip.appendChild(joinCell);
+      var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
+      var strip = document.createElement("div"); strip.className = "qs-lane-strip";
+      var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
 
+      // ПОЛОСА — только люди
       if (!entries.length) {
         var em = document.createElement("div"); em.className = "qs-lane-empty"; em.textContent = "очередь пуста";
         strip.appendChild(em);
@@ -1073,17 +1082,22 @@
         strip.appendChild(cell);
       });
 
-      // НПЦ-торговец наград в конце очереди
-      var merch = document.createElement("div");
-      merch.className = "qs-lane-merch";
-      merch.title = "Выдаёт " + MERCH_LABEL[b.q];
-      merch.innerHTML = '<img class="qs-cell-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
-        '<span class="qs-lane-merch-lbl">🏪 выдаёт<br>' + esc(MERCH_LABEL[b.q]) + "</span>";
-      strip.appendChild(merch);
+      // ОТДЕЛЬНЫЙ КВАДРАТ ТОРГОВЦА: НПЦ + иконки и названия ресурсов, что он выдаёт
+      var merchBox = document.createElement("div");
+      merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
+      var resChips = (BOOTH_ITEMS[b.q] || []).map(function (it) {
+        return '<span class="qs-mres"><img src="' + resImg(it) + '" alt=""><span>' + esc(resName(it)) + "</span></span>";
+      }).join("");
+      merchBox.innerHTML =
+        '<div class="qs-merch-npc">' +
+          '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
+          '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
+        '<div class="qs-merch-res">' + resChips + "</div>";
 
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
       rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
-      sw.appendChild(lArr); sw.appendChild(strip); sw.appendChild(rArr);
+      sw.appendChild(joinCell); sw.appendChild(lArr); sw.appendChild(strip);
+      sw.appendChild(rArr); sw.appendChild(merchBox);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
