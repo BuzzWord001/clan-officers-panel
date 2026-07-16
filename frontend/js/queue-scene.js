@@ -1188,11 +1188,14 @@
       var strip = document.createElement("div"); strip.className = "qs-lane-strip";
       var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
 
-      // ПОЛОСА — только люди
+      // ПОЛОСА — только люди. Торговец СПРАВА → №1 (кого обслужат первым) рисуем
+      // ПОСЛЕДНИМ, чтобы он оказался справа ВПЛОТНУЮ к торговцу; новенькие (больший
+      // номер) — слева, дальше всех. Поэтому идём в обратном порядке, номер = i+1.
       if (!entries.length) {
         var em = document.createElement("div"); em.className = "qs-lane-empty"; em.textContent = "очередь пуста";
         strip.appendChild(em);
-      } else entries.forEach(function (e, i) {
+      } else entries.map(function (e, i) { return { e: e, i: i }; }).reverse().forEach(function (o) {
+        var e = o.e, i = o.i;
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
@@ -1264,9 +1267,10 @@
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
       autoCropAll(merchBox, ".qs-mres img");               // иконки ресурсов заполняют бокс (цилинь крупнее)
-      if (myIdx >= 0) setTimeout(function () {              // авто-прокрутка к своему месту
-        var c = strip.querySelectorAll(".qs-cell")[myIdx];
+      setTimeout(function () {                              // прокрутка: к своей ячейке, иначе к торговцу (правый край, №1)
+        var c = strip.querySelector(".qs-cell.me");
         if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
+        else strip.scrollLeft = strip.scrollWidth;         // показать голову очереди (у торговца)
       }, 70);
     });
     return box;
