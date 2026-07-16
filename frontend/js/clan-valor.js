@@ -701,7 +701,7 @@
     for (const th of ths) {
       const lbl = th.querySelector(".ch-label") || th;
       const name = lbl.textContent.replace(/\s+/g, " ").replace(/\?\s*$/, "").trim();
-      if (name === "Роли") {
+      if (name.indexOf("Роли") === 0) {   // «Роли» или «Роли и награды…» (заголовок мог смениться)
         if (th.querySelector(".roles-guide-btn")) return;
         const b = document.createElement("button");
         b.type = "button";

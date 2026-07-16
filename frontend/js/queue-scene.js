@@ -55,6 +55,52 @@
   }
   // key остаётся с .png (логический id для настроек поворота), а файл — .webp
   function webpUrl(rel) { return "assets/queue/" + rel.replace(/\.png$/i, ".webp"); }
+
+  // ── авто-центровка модели: обрезаем прозрачные поля и ставим симметричный отступ,
+  //    чтобы контент был ровно по центру. Работает для любых картинок (в т.ч. загруженных),
+  //    результат кэшируется по URL; зеркало/поворот/масштаб применяются поверх уже центрованной.
+  var _cropCache = {};
+  function autoCropImg(img) {
+    if (!img) return;
+    var key = img.getAttribute("src");
+    if (!key || key.indexOf("data:") === 0) return;
+    if (_cropCache[key]) { if (img.src !== _cropCache[key]) img.src = _cropCache[key]; return; }
+    function run() {
+      if (_cropCache[key]) { img.src = _cropCache[key]; return; }
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return;
+      try {
+        var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+        var ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0);
+        var d = ctx.getImageData(0, 0, w, h).data;
+        var minX = w, minY = h, maxX = -1, maxY = -1;
+        for (var y = 0; y < h; y++) {
+          var rw = y * w;
+          for (var x = 0; x < w; x++) {
+            if (d[(rw + x) * 4 + 3] > 18) {
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX < 0) return;                          // всё прозрачное
+        var cw = maxX - minX + 1, ch = maxY - minY + 1;
+        var pad = Math.round(Math.max(cw, ch) * 0.03); // лёгкий симметричный отступ
+        var out = document.createElement("canvas");
+        out.width = cw + pad * 2; out.height = ch + pad * 2;
+        out.getContext("2d").drawImage(cv, minX, minY, cw, ch, pad, pad, cw, ch);
+        var url = out.toDataURL("image/png");
+        _cropCache[key] = url; img.src = url;
+      } catch (e) { /* CORS/иное — оставляем как есть */ }
+    }
+    if (img.complete && img.naturalWidth) run();
+    else img.addEventListener("load", run, { once: true });
+  }
+  // применить авто-центровку ко всем модель-картинкам внутри контейнера
+  function autoCropAll(root, selector) {
+    if (!root) return;
+    [].forEach.call(root.querySelectorAll(selector), autoCropImg);
+  }
   var UPLOADED = {};   // ключ (person-<canon> | class-<Класс>-<m|f>) -> mtime (загружено админом)
   var REWARDS_META = {};   // ключ ресурса -> {mode,unit,threshold,total,text} (движок распределения)
   var SPOUSES = {};        // бэк-канон мэйна -> ник получателя (как хранит сервер)
@@ -476,7 +522,19 @@
       "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
     ".qs-lane-arrow:hover{filter:brightness(1.2)}.qs-lane-arrow:active{transform:scale(.9)}" +
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
-      "padding:3px 2px;scrollbar-width:thin}" +
+      "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
+    /* кнопка «Встать/Выйти» в начале полосы */
+    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;font:800 10.5px system-ui;line-height:1.15;" +
+      "color:#1b1006;border:0;border-radius:9px;padding:8px 10px;text-align:center;" +
+      "background:linear-gradient(180deg,#f3d489,#d09b2e);box-shadow:0 3px 8px rgba(245,200,120,.35);" +
+      "transition:transform .08s,filter .08s}" +
+    ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
+    ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
+    /* НПЦ-торговец наград в конце полосы */
+    ".qs-lane-merch{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;" +
+      "padding:2px 6px 3px;border-left:2px dashed rgba(224,162,74,.4);margin-left:4px}" +
+    ".qs-lane-merch .qs-cell-img{height:46px;max-width:64px}" +
+    ".qs-lane-merch-lbl{font:700 9px system-ui;color:var(--gc);text-align:center;line-height:1.1;max-width:74px}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
     ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
@@ -795,6 +853,7 @@
         (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
       body.appendChild(row);
     });
+    autoCropAll(body, ".qs-fl-mdl");
     sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел.", body);
   }
 
@@ -962,15 +1021,17 @@
 
   function admErr(e) { alert("Ошибка (нужны права админа?): " + (e.detail || e.message)); }
 
-  // ── 3 ПОЛОСЫ полных очередей под сценой (всем): прокрутка ◀▶, видно своё место ──
+  // ── 3 ПОЛОСЫ полных очередей под сценой (всем): кнопка «встать» в начале,
+  //    получатели равномерно растянуты, НПЦ-торговец наград в конце, прокрутка ◀▶ ──
+  var MERCH_LABEL = ["обычные ресурсы", "редкие ресурсы (R)", "легендарные (S)"];
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
-      var myIdx = -1;
-      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) myIdx = i; });
+      var myIdx = -1, iAmIn = false;
+      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) { myIdx = i; iAmIn = true; } });
       var lane = document.createElement("div");
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
@@ -981,8 +1042,25 @@
       var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
       var strip = document.createElement("div"); strip.className = "qs-lane-strip";
       var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
+
+      // кнопка «Встать/Выйти» в начале очереди (контекстно к этой очереди)
+      var joinCell = document.createElement("button");
+      joinCell.className = "qs-lane-join" + (iAmIn ? " leave" : "");
+      joinCell.innerHTML = iAmIn ? "Выйти" : "➕ Встать<br>в очередь";
+      joinCell.addEventListener("click", function () {
+        if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
+        if (!iAmIn) { openResourcePicker(b); return; }
+        joinCell.disabled = true;
+        q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
+          joinCell.disabled = false;
+          alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+        });
+      });
+      strip.appendChild(joinCell);
+
       if (!entries.length) {
-        strip.innerHTML = '<div class="qs-lane-empty">очередь пуста</div>';
+        var em = document.createElement("div"); em.className = "qs-lane-empty"; em.textContent = "очередь пуста";
+        strip.appendChild(em);
       } else entries.forEach(function (e, i) {
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
@@ -994,15 +1072,25 @@
           (e.resource ? '<img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' : "");
         strip.appendChild(cell);
       });
+
+      // НПЦ-торговец наград в конце очереди
+      var merch = document.createElement("div");
+      merch.className = "qs-lane-merch";
+      merch.title = "Выдаёт " + MERCH_LABEL[b.q];
+      merch.innerHTML = '<img class="qs-cell-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
+        '<span class="qs-lane-merch-lbl">🏪 выдаёт<br>' + esc(MERCH_LABEL[b.q]) + "</span>";
+      strip.appendChild(merch);
+
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
       rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
       sw.appendChild(lArr); sw.appendChild(strip); sw.appendChild(rArr);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
+      autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
       if (myIdx >= 0) setTimeout(function () {              // авто-прокрутка к своему месту
-        var c = strip.children[myIdx];
+        var c = strip.querySelectorAll(".qs-cell")[myIdx];
         if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
-      }, 60);
+      }, 70);
     });
     return box;
   }
