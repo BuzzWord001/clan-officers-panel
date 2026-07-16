@@ -390,6 +390,29 @@ class AdminAddIn(BaseModel):
     position: int = Field(default=9999)      # 0-based индекс; большое число = в конец
 
 
+# ── админ-тест: заполнить очереди людьми и действовать «как ник» (напр. Лирия!) ──
+class TestFillIn(BaseModel):
+    n: int = Field(default=6, ge=1, le=30)   # сколько человек добавить в каждую очередь
+
+
+class JoinAsIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    queue: int
+    resource: str = Field(default="", max_length=64)
+    recipient: str = Field(default="", max_length=64)
+
+
+class PrivClaimAsIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    resource: str = Field(min_length=1, max_length=64)
+    stacks: int = Field(default=1, ge=1, le=50)
+
+
+class LeaveAsIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    queue: int
+
+
 class EntryIn(BaseModel):
     entry_id: int
 
@@ -1209,6 +1232,24 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
     return {"ok": True}
 
 
+def _make_privileged(conn, main_canon, nick, cls, res, add_stacks, added_by):
+    """Ставит модель ПЕРВОЙ в очереди 0 со свечением «жетон применён». priv_stacks
+    КОПИТСЯ на записи — единый источник объёма захвата; при смене ресурса (set-entry)
+    объём пересчитывается сам (стаки × размер пачки)."""
+    front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
+    ex = conn.execute("SELECT id, priv_stacks, privileged FROM queue_entries WHERE queue=0 AND main_canon=?",
+                      (main_canon,)).fetchone()
+    if ex:
+        new_stacks = (ex["priv_stacks"] if ex["privileged"] else 0) + add_stacks
+        conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=?, priv_stacks=? WHERE id=?",
+                     (front, res, new_stacks, ex["id"]))
+    else:
+        conn.execute(
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, priv_stacks, added_by, added_at)"
+            " VALUES (0,?,?,?,?,?,1,?,?,?)",
+            (front, main_canon, nick, cls, res, add_stacks, added_by, _now()))
+
+
 @router.post("/priv-claim")
 def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
     """Суперспособность топ-3: взять ОБЫЧНЫЙ ресурс ВНЕ очереди, тратя накопленные жетоны.
@@ -1230,22 +1271,8 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
         nick = acc["main_nick"] or acc["reg_nick"]
         conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
                      (payload.stacks, _now(), acc["main_canon"]))
-        # моделька СРАЗУ встаёт ПЕРВОЙ в очереди 0 со свечением «жетон применён».
-        # priv_stacks КОПИТСЯ на записи — это единый источник объёма захвата; при
-        # смене ресурса (set-entry) объём пересчитывается сам (стаки × размер пачки).
         p = _people(conn).get(acc["main_canon"]) or {}
-        front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
-        ex = conn.execute("SELECT id, priv_stacks, privileged FROM queue_entries WHERE queue=0 AND main_canon=?",
-                          (acc["main_canon"],)).fetchone()
-        if ex:
-            new_stacks = (ex["priv_stacks"] if ex["privileged"] else 0) + payload.stacks
-            conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=?, priv_stacks=? WHERE id=?",
-                         (front, res, new_stacks, ex["id"]))
-        else:
-            conn.execute(
-                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, priv_stacks, added_by, added_at)"
-                " VALUES (0,?,?,?,?,?,1,?,?,?)",
-                (front, acc["main_canon"], nick, p.get("cls", ""), res, payload.stacks, "priv", _now()))
+        _make_privileged(conn, acc["main_canon"], nick, p.get("cls", ""), res, payload.stacks, "priv")
         _log(conn, "priv_claim", actor=nick, nick=nick, queue=0, request=request,
              detail="ВНЕ очереди: %s ×%d (жетонов −%d, осталось %d)"
                     % (distribution.res_name(res), amount, payload.stacks, have - payload.stacks))
@@ -1269,6 +1296,121 @@ def grant_token(payload: GrantTokenIn, request: Request, actor: dict = Depends(r
         _log(conn, "priv_grant", actor=_actor_name(actor), nick=nick, request=request,
              detail="жетонов %+d (тест) → %d" % (payload.count, row["tokens"]))
     return {"ok": True, "nick": nick, "tokens": row["tokens"]}
+
+
+def _canon_and_person(conn, nick: str):
+    """(canon, nick_для_показа, cls). Если ник не в ростере — используем сам ник
+    (для теста работает даже с непривычным ником), класс пустой."""
+    p = _people(conn).get(db._valor_canon(nick))
+    if p:
+        return p["main_canon"], p["nick"], p.get("cls", "")
+    return db._valor_canon(nick), nick, ""
+
+
+@router.post("/admin/test-fill")
+def test_fill(payload: TestFillIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: набивает каждую очередь случайными людьми из ростера (added_by='test')
+    с случайным подходящим ресурсом — чтобы проверить, как всё работает."""
+    import random
+    added = 0
+    with db.connection() as conn:
+        uniq, seen = [], set()
+        for p in _people(conn).values():
+            if p["main_canon"] in seen:
+                continue
+            seen.add(p["main_canon"]); uniq.append(p)
+        for qn in QUEUES:
+            byq = [k for k, v in distribution.REWARDS.items() if v["q"] == qn]
+            existing = {r["main_canon"] for r in
+                        conn.execute("SELECT main_canon FROM queue_entries WHERE queue=?", (qn,))}
+            cand = [p for p in uniq if p["main_canon"] not in existing]
+            random.shuffle(cand)
+            for p in cand[:payload.n]:
+                pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (qn,)).fetchone()["m"] or 0) + 1
+                res = random.choice(byq) if byq else ""
+                conn.execute(
+                    "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, added_by, added_at)"
+                    " VALUES (?,?,?,?,?,?,?,?)",
+                    (qn, pos, p["main_canon"], p["nick"], p["cls"], res, "test", _now()))
+                added += 1
+        _log(conn, "test_fill", actor=_actor_name(actor), request=request,
+             detail="добавлено тестовых: %d (по %d/очередь)" % (added, payload.n))
+    return {"ok": True, "added": added}
+
+
+@router.post("/admin/test-clear")
+def test_clear(request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Убирает всех тестовых (added_by='test') и записи админ-предпросмотра (admin-as:*)."""
+    with db.connection() as conn:
+        cur = conn.execute("DELETE FROM queue_entries WHERE added_by='test' OR added_by LIKE 'admin-as:%'")
+        n = cur.rowcount
+        _log(conn, "test_clear", actor=_actor_name(actor), request=request, detail="убрано тестовых: %d" % n)
+    return {"ok": True, "removed": n}
+
+
+@router.post("/admin/join-as")
+def join_as(payload: JoinAsIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: админ встаёт в очередь ОТ ИМЕНИ ника (напр. Лирия!). Если уже стоит —
+    просто меняет ресурс. Модель берётся по классу этого ника."""
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
+    res = (payload.resource or "").strip()[:64]
+    with db.connection() as conn:
+        cn, nick, cls = _canon_and_person(conn, payload.nick)
+        ex = conn.execute("SELECT id FROM queue_entries WHERE queue=? AND main_canon=?",
+                          (payload.queue, cn)).fetchone()
+        if ex:
+            conn.execute("UPDATE queue_entries SET resource=?, recipient=? WHERE id=?",
+                         (res, (payload.recipient or "").strip()[:64], ex["id"]))
+        else:
+            pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (payload.queue,)).fetchone()["m"] or 0) + 1
+            conn.execute(
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient, added_by, added_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (payload.queue, pos, cn, nick, cls, res, (payload.recipient or "").strip()[:64],
+                 "admin-as:" + _actor_name(actor), _now()))
+        _log(conn, "join_as", actor=_actor_name(actor), nick=nick, queue=payload.queue, request=request,
+             detail="АДМИН встал как «%s»%s" % (nick, (" за " + distribution.res_name(res)) if res else ""))
+    return {"ok": True, "nick": nick}
+
+
+@router.post("/admin/priv-claim-as")
+def priv_claim_as(payload: PrivClaimAsIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: админ жмёт «Взять вне очереди» ОТ ИМЕНИ ника (напр. Лирия!) — модель
+    встаёт первой со свечением. Жетоны при нехватке добираются (чтобы было видно списание)."""
+    res = payload.resource.strip()
+    r = distribution.REWARDS.get(res)
+    if not r or r["q"] != 0 or r["mode"] == "pack":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "only_regular_stack")
+    with db.connection() as conn:
+        cn, nick, cls = _canon_and_person(conn, payload.nick)
+        row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?", (cn,)).fetchone()
+        have = row["tokens"] if row else 0
+        if have < payload.stacks:                 # для теста добираем недостающие жетоны
+            conn.execute(
+                "INSERT INTO queue_privileges (canon, nick, tokens, updated_at) VALUES (?,?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET tokens=?, nick=excluded.nick, updated_at=excluded.updated_at",
+                (cn, nick, payload.stacks, _now(), payload.stacks))
+            have = payload.stacks
+        conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
+                     (payload.stacks, _now(), cn))
+        _make_privileged(conn, cn, nick, cls, res, payload.stacks, "admin-as:priv")
+        amount = payload.stacks * r["unit"]
+        _log(conn, "priv_claim", actor=_actor_name(actor), nick=nick, queue=0, request=request,
+             detail="АДМИН-ТЕСТ вне очереди как «%s»: %s ×%d (жетонов −%d)"
+                    % (nick, distribution.res_name(res), amount, payload.stacks))
+    return {"ok": True, "nick": nick, "tokens": have - payload.stacks, "amount": amount}
+
+
+@router.post("/admin/leave-as")
+def leave_as(payload: LeaveAsIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: убрать ник (напр. Лирия!) из очереди."""
+    with db.connection() as conn:
+        cn, nick, _ = _canon_and_person(conn, payload.nick)
+        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=?", (payload.queue, cn))
+        _log(conn, "leave_as", actor=_actor_name(actor), nick=nick, queue=payload.queue, request=request,
+             detail="АДМИН убрал «%s» из очереди" % nick)
+    return {"ok": True}
 
 
 @router.get("/privileges")

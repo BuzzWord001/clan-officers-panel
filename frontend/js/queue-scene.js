@@ -5,6 +5,7 @@
 (function () {
   "use strict";
   var API = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
+  var ADMIN_NICK = "Лирия!";   // от чьего имени админ тестирует очередь (это аккаунт Лира)
   function q(m, p, b) {
     return fetch(API + p, { method: m, credentials: "include",
       headers: b ? { "Content-Type": "application/json" } : undefined,
@@ -892,6 +893,12 @@
       if (rcpt && recipientRel(rcpt) === "other" &&
           !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
       if (m) m.close();
+      // Админ без игрового аккаунта встаёт/меняет ресурс ОТ ИМЕНИ Лирия! (тест)
+      if (_isAdmin && !_meAcc) {
+        q("POST", "/queue/admin/join-as", { nick: ADMIN_NICK, queue: b.q, resource: resource, recipient: rcpt })
+          .then(refresh).catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
+        return;
+      }
       var payload = { queue: b.q, resource: resource, recipient: rcpt,
                       auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
       var path = edit ? "/queue/set-entry" : "/queue/join";
@@ -1120,10 +1127,13 @@
     var box = document.createElement("div");
     box.className = "qs-strips";
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
+    var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
       var myIdx = -1, iAmIn = false, myEntry = null;
       entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) { myIdx = i; iAmIn = true; myEntry = e; } });
+      // для админ-теста: считаем «в очереди» наличие Лирия!
+      var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
       var lane = document.createElement("div");
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
@@ -1133,9 +1143,20 @@
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
-      joinCell.className = "qs-lane-join" + (iAmIn ? " leave" : "");
-      joinCell.innerHTML = iAmIn ? "Выйти" : "➕ Встать<br>в очередь";
+      var inNow = iAmIn || adminIn;
+      joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
+      joinCell.innerHTML = inNow
+        ? (adminIn && !iAmIn ? "Убрать<br>" + esc(ADMIN_NICK) : "Выйти")
+        : (adminCanon ? "➕ Встать<br>как " + esc(ADMIN_NICK) : "➕ Встать<br>в очередь");
       joinCell.addEventListener("click", function () {
+        // Админ без игрового аккаунта — тест от имени Лирия!
+        if (_isAdmin && !_meAcc) {
+          if (!adminIn) { openResourcePicker(b); return; }
+          joinCell.disabled = true;
+          q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
+            .catch(function (e2) { joinCell.disabled = false; alert("Ошибка: " + (e2.detail || e2.message)); });
+          return;
+        }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
         if (!iAmIn) { openResourcePicker(b); return; }
         joinCell.disabled = true;
@@ -1209,6 +1230,7 @@
       merchBox.addEventListener("click", function (ev) {
         var chip = ev.target.closest(".qs-mres"); if (!chip) return;
         var it = chip.getAttribute("data-res"); if (!it) return;
+        if (_isAdmin && !_meAcc) { openResourcePicker(b, null, it); return; }   // админ встаёт как Лирия!
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
         if (iAmIn) openResourcePicker(b, { resource: it, recipient: (myEntry && myEntry.recipient) || "",
           auto_repeat: myEntry && myEntry.auto_repeat, plan: (myEntry && myEntry.auto_plan) || [] });
@@ -1234,37 +1256,42 @@
   // ── СУПЕРСПОСОБНОСТЬ топ-3: панель «взять ресурсы вне очереди» (жетоны) ──
   function renderSuperAbility() {
     var canUse = _meAcc && _myTokens > 0;
-    if (!canUse && !_isAdmin) return null;        // видят только держатели жетонов и админ (превью)
-    var preview = !canUse;
+    if (!canUse && !_isAdmin) return null;        // держатели жетонов + админ (тест как Лирия!)
+    var adminMode = !canUse && _isAdmin;          // админ тестирует от имени Лирия!
     var bar = document.createElement("div");
-    bar.className = "qs-super" + (preview ? " preview" : "");
+    bar.className = "qs-super" + (adminMode ? " preview" : "");
     bar.innerHTML =
       '<span class="qs-super-ic">🌟</span>' +
       '<span class="qs-super-txt"><b>Суперспособность ТОП-3 — взять обычные ресурсы ВНЕ очереди</b><br>' +
-      (preview
-        ? '<span style="color:#8a795a">превью для админа. Игрок из ТОП-3 копит жетоны (по 1 за неделю) и берёт ими пачки обычных ресурсов вне очереди.</span>'
+      (adminMode
+        ? '<span style="color:#e6c48f">🧪 админ-тест: жмёшь — и <b>' + esc(ADMIN_NICK) +
+          '</b> берёт ресурс вне очереди, модель встаёт первой и светится. Жетоны добираются автоматически.</span>'
         : 'у тебя <b style="color:#ffd24a">' + _myTokens + '</b> жетон(ов) — можно взять сразу несколько пачек') +
       "</span>";
     var btn = document.createElement("button");
-    btn.className = "qs-super-btn"; btn.textContent = "⚡ Взять вне очереди";
-    btn.addEventListener("click", function () { openPrivClaim(preview); });
+    btn.className = "qs-super-btn";
+    btn.textContent = adminMode ? "⚡ Взять вне очереди (как " + ADMIN_NICK + ")" : "⚡ Взять вне очереди";
+    btn.addEventListener("click", function () { openPrivClaim(adminMode ? "admin" : "player"); });
     bar.appendChild(btn);
     return bar;
   }
 
-  function openPrivClaim(preview) {
+  function openPrivClaim(mode) {
+    var admin = mode === "admin";
+    var preview = false;
     var items = (BOOTH_ITEMS[0] || []).filter(function (it) { return (REWARDS_META[it] || {}).mode !== "pack"; });
     var sel = "";
     var body = document.createElement("div"); body.className = "qs-pick2";
-    var maxStacks = Math.max(1, preview ? 10 : _myTokens);
+    var maxStacks = Math.max(1, admin ? 10 : _myTokens);
     body.innerHTML =
       '<div class="qs-p2-lbl">1 · Выбери обычный ресурс (вне очереди):</div>' +
       '<div class="qs-respick" id="qpc-grid"></div>' +
-      '<div class="qs-p2-lbl">2 · Сколько пачек взять (1 пачка = 1 жетон' + (preview ? "" : ", у тебя " + _myTokens) + "):</div>" +
+      '<div class="qs-p2-lbl">2 · Сколько пачек взять (1 пачка = 1 жетон' + (admin ? "" : ", у тебя " + _myTokens) + "):</div>" +
       '<div class="q-admin-row" style="align-items:center;gap:10px">' +
         '<input type="range" id="qpc-stacks" min="1" max="' + maxStacks + '" step="1" value="1" style="flex:1;min-width:120px">' +
         '<b id="qpc-stacks-v" style="min-width:160px;color:#ffd24a"></b></div>' +
-      (preview ? '<div style="font-size:11.5px;color:#e0a86a;margin-top:6px">🔎 Превью для оценки — реальный захват доступен игроку из ТОП-3 с жетонами.</div>' : "") +
+      (admin ? '<div style="font-size:11.5px;color:#e6c48f;margin-top:6px">🧪 Админ-тест как <b>' + esc(ADMIN_NICK) +
+        '</b>: модель встанет первой и засветится. Жетоны при нехватке добираются автоматически.</div>' : "") +
       '<button class="qs-join" id="qpc-go" style="margin:14px 0 0;width:100%;max-width:none"></button>';
     var grid = body.querySelector("#qpc-grid");
     function stacks() { return +body.querySelector("#qpc-stacks").value; }
@@ -1272,8 +1299,8 @@
       var unit = (REWARDS_META[sel] || {}).unit || 0;
       body.querySelector("#qpc-stacks-v").textContent = sel ? (stacks() + " пачки = " + (stacks() * unit) + " шт") : "выбери ресурс";
       var go = body.querySelector("#qpc-go");
-      go.textContent = preview ? "🔎 Только превью" : (sel ? ("⚡ Взять: " + resName(sel) + " ×" + (stacks() * unit)) : "Сначала выбери ресурс");
-      go.disabled = preview || !sel;
+      go.textContent = sel ? ((admin ? "⚡ " + ADMIN_NICK + " берёт: " : "⚡ Взять: ") + resName(sel) + " ×" + (stacks() * unit)) : "Сначала выбери ресурс";
+      go.disabled = !sel;
     }
     items.forEach(function (it) {
       var card = document.createElement("button"); card.className = "qs-rescard"; card.dataset.res = it; card.type = "button";
@@ -1284,12 +1311,14 @@
       grid.appendChild(card);
     });
     body.querySelector("#qpc-stacks").addEventListener("input", upd);
-    var m = sceneModal("⚡ Взять ресурсы вне очереди" + (preview ? " (превью)" : " · жетонов: " + _myTokens), body);
+    var m = sceneModal("⚡ Взять ресурсы вне очереди" + (admin ? " · тест как " + ADMIN_NICK : " · жетонов: " + _myTokens), body);
     upd();
     body.querySelector("#qpc-go").addEventListener("click", function () {
-      if (preview || !sel) return;
-      q("POST", "/queue/priv-claim", { resource: sel, stacks: stacks() }).then(function (d) {
-        _myTokens = d.tokens; if (m) m.close(); refresh();
+      if (!sel) return;
+      var path = admin ? "/queue/admin/priv-claim-as" : "/queue/priv-claim";
+      var payload = admin ? { nick: ADMIN_NICK, resource: sel, stacks: stacks() } : { resource: sel, stacks: stacks() };
+      q("POST", path, payload).then(function (d) {
+        if (!admin) _myTokens = d.tokens; if (m) m.close(); refresh();
       }).catch(function (e) {
         alert(e.status === 409 ? "Не хватает жетонов." : e.status === 400 ? "Только обычные ресурсы (не пачечные)." :
               e.status === 401 ? "Войди как игрок." : ("Ошибка: " + (e.detail || e.message)));
@@ -1378,6 +1407,23 @@
       '<details class="q-sec" open><summary>🎁 Распределение ресурсов' +
         '<span class="q-sec-hint">этапы КХ · проводники · отчёт · финализация · кто не забрал</span></summary>' +
         '<div class="q-sec-body" id="qsec-dist"></div></details>' +
+
+      // ── 🧪 ТЕСТИРОВАНИЕ ──
+      '<details class="q-sec"><summary>🧪 Тестирование очереди' +
+        '<span class="q-sec-hint">набить людьми · встать и «Взять вне очереди» как ' + esc(ADMIN_NICK) + '</span></summary>' +
+        '<div class="q-sec-body">' +
+          '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 10px">Заполни очереди случайными людьми из ростера, ' +
+            'чтобы посмотреть, как всё работает. Ты можешь <b>встать в очередь</b> и нажать <b>⚡ Взять вне очереди</b> ' +
+            'кнопками прямо в сцене — это сработает от имени <b>' + esc(ADMIN_NICK) + '</b> (твой аккаунт), ' +
+            'модель встанет первой и засветится.</div>' +
+          '<div class="q-admin-row" style="align-items:center">' +
+            '<span style="font-size:12.5px;color:#caa66a">Людей в каждую очередь:</span>' +
+            '<input type="number" id="qa-test-n" value="6" min="1" max="30" style="width:70px">' +
+            '<button id="qa-test-fill">🧪 Заполнить тестовыми</button>' +
+            '<button class="sec" id="qa-test-clear">🧹 Убрать тестовых</button>' +
+            '<span id="qa-test-msg" style="font-size:11.5px;color:#8fc36a"></span>' +
+          "</div>" +
+        "</div></details>" +
 
       // ── 💞 ОФИЦЕРСКОЕ ──
       '<details class="q-sec"><summary>💞 Связки супругов' +
@@ -1616,6 +1662,21 @@
     box.querySelector("#qa-toggle-open").addEventListener("click", function () {
       saveCfg("queue_open", CONFIG["queue_open"] === "1" ? "0" : "1");
       render(_lastState);
+    });
+    // ── тестирование: заполнить/убрать ──
+    var tMsg = box.querySelector("#qa-test-msg");
+    box.querySelector("#qa-test-fill").addEventListener("click", function () {
+      var n = Math.max(1, Math.min(30, +box.querySelector("#qa-test-n").value || 6));
+      tMsg.textContent = "…"; tMsg.style.color = "#8a795a";
+      q("POST", "/queue/admin/test-fill", { n: n }).then(function (d) {
+        tMsg.style.color = "#8fc36a"; tMsg.textContent = "добавлено: " + (d.added || 0); refresh();
+      }).catch(function (e) { tMsg.style.color = "#ff8a7a"; tMsg.textContent = "ошибка: " + (e.detail || e.message); });
+    });
+    box.querySelector("#qa-test-clear").addEventListener("click", function () {
+      tMsg.textContent = "…"; tMsg.style.color = "#8a795a";
+      q("POST", "/queue/admin/test-clear", {}).then(function (d) {
+        tMsg.style.color = "#8fc36a"; tMsg.textContent = "убрано: " + (d.removed || 0); refresh();
+      }).catch(function (e) { tMsg.style.color = "#ff8a7a"; tMsg.textContent = "ошибка: " + (e.detail || e.message); });
     });
     box.querySelector("#qa-place").addEventListener("click", function () {
       _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState);
