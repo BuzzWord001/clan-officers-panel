@@ -524,6 +524,21 @@
     ".qs-dr-to{font:700 11px system-ui;color:#8fc36a}" +
     ".qs-dr-top{font:800 9.5px system-ui;color:#1b1006;background:#ffd24a;padding:1px 6px;border-radius:6px}" +
     ".qs-dr-prov{font:800 9.5px system-ui;color:#1b1006;background:#ff9a44;padding:1px 6px;border-radius:6px}" +
+    /* история и активность очереди */
+    ".q-hist-tabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 8px}" +
+    ".q-hist-tab.active{background:rgba(224,162,74,.38);color:#fff}" +
+    ".q-hist-week{margin:0 0 5px;border:1px solid rgba(224,162,74,.2);border-radius:9px;background:rgba(0,0,0,.16);overflow:hidden}" +
+    ".q-hist-week>summary{cursor:pointer;list-style:none;padding:8px 11px;font-size:12px;color:#f0dcb4}" +
+    ".q-hist-week>summary::-webkit-details-marker{display:none}" +
+    ".q-hist-week[open]>summary{border-bottom:1px solid rgba(224,162,74,.15)}" +
+    ".q-hist-body{padding:6px 10px}" +
+    ".q-act-list{display:flex;flex-direction:column;gap:2px;max-height:420px;overflow:auto}" +
+    ".q-act-row{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12px;padding:3px 6px;border-bottom:1px solid rgba(224,162,74,.08)}" +
+    ".q-act-t{color:#8a795a;font-size:10.5px;min-width:98px;flex:0 0 auto}" +
+    ".q-act-k{color:#f0c878;font-weight:700;min-width:150px;flex:0 0 auto}" +
+    ".q-act-q{color:#caa66a;font-size:10.5px}" +
+    ".q-act-n{color:#f6ead2;font-weight:600}" +
+    ".q-act-d{color:#a58c68;flex:1 1 auto;min-width:120px}" +
     ".qs-dr-group{margin:0 0 10px;padding:8px 10px;border:1px solid rgba(224,162,74,.25);border-radius:9px;background:rgba(0,0,0,.18)}" +
     ".qs-dr-gh{font:800 12px system-ui;color:#f0c878;margin:0 0 4px}" +
     ".qs-dr-gp{font-size:12.5px;color:#f6ead2;line-height:1.5;margin:0 0 5px}" +
@@ -941,6 +956,7 @@
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
       wrap.appendChild(buildSpousePanel(true));
       wrap.appendChild(buildDuePanel(true));
+      wrap.appendChild(buildHistoryPanel(true));
     }
     host.appendChild(wrap);
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
@@ -999,6 +1015,11 @@
       '<details class="q-sec"><summary>💞 Связки супругов' +
         '<span class="q-sec-hint">кому передавать рес · доступно и офицерам</span></summary>' +
         '<div class="q-sec-body" id="qsec-officer"></div></details>' +
+
+      // ── 📜 ИСТОРИЯ И ЛОГИ (офицерам тоже) ──
+      '<details class="q-sec"><summary>📜 История и активность' +
+        '<span class="q-sec-hint">недельные отчёты · кто вставал/выходил/за чем · доступно и офицерам</span></summary>' +
+        '<div class="q-sec-body" id="qsec-hist"></div></details>' +
 
       // ── 🔒 ДОСТУП И ОЧЕРЕДЬ ──
       '<details class="q-sec"><summary>🔒 Доступ и управление очередью' +
@@ -1275,6 +1296,7 @@
     secDist.appendChild(buildDistPanel());
     secDist.appendChild(buildDuePanel(false));
     box.querySelector("#qsec-officer").appendChild(buildSpousePanel(false));
+    box.querySelector("#qsec-hist").appendChild(buildHistoryPanel(false));
     var secModels = box.querySelector("#qsec-models");
     secModels.appendChild(buildModelSizePanel());
     secModels.appendChild(buildUploadPanel());
@@ -1673,6 +1695,109 @@
     return wrap;
   }
 
+  // человекочитаемые названия событий лога
+  var LOG_KIND = {
+    register: "🆕 регистрация", login: "🔑 вход", join: "➡️ встал в очередь", leave: "⬅️ вышел из очереди",
+    set_entry: "✎ сменил ресурс/получателя", spouse: "💞 связка супругов", uncollected: "🕗 отметка «не забрал»",
+    advance: "✅ финализация недели", report_sent: "📤 отчёт отправлен", gender: "⚧ пол игрока",
+    admin_add: "➕ добавлен админом", admin_remove: "✕ убран админом", admin_move: "↕ перемещён админом",
+    admin_clear: "🧹 очистка очереди", left_clan: "🚪 убран (вылетел из клана)", config: "⚙️ настройка",
+    model_upload: "🖼 загрузка модели", model_delete: "🗑 удаление модели"
+  };
+
+  // ── история: недельные отчёты распределения + активность очереди (офицер+админ) ──
+  function buildHistoryPanel(standalone) {
+    var wrap = document.createElement("div");
+    if (standalone) wrap.className = "q-admin";
+    wrap.innerHTML =
+      (standalone ? "<h3>📜 История и логи очереди</h3>" :
+        '<div style="font-size:12px;color:#caa66a">📜 История распределений и активность очереди</div>') +
+      '<div style="font-size:11.5px;color:#8a795a;margin:2px 0 8px">Полная история для ручной проверки: ' +
+        'что раздавали каждую неделю, сколько этапов было закрыто, куда ушёл отчёт, и вся активность (кто вставал/выходил/за чем).</div>' +
+      '<div class="q-hist-tabs">' +
+        '<button class="sec q-hist-tab active" data-tab="weeks">🗓 Недельные отчёты</button>' +
+        '<button class="sec q-hist-tab" data-tab="activity">📋 Активность очереди</button>' +
+        '<button class="sec" id="qh-refresh" style="margin-left:auto">↻ Обновить</button>' +
+      "</div>" +
+      '<div id="qh-weeks"></div>' +
+      '<div id="qh-activity" hidden></div>' +
+      '<div id="qh-status" style="min-height:15px;font-size:11.5px;color:#e0a86a;margin-top:4px"></div>';
+    var st = wrap.querySelector("#qh-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    var weeksHost = wrap.querySelector("#qh-weeks"), actHost = wrap.querySelector("#qh-activity");
+
+    function fmtDate(iso) { return (iso || "").replace("T", " ").slice(0, 16); }
+    function chanLabel(ch) {
+      if (!ch) return "";
+      if (ch.test) return "🧪 в личку: " + ch.test;
+      return "TG:" + (ch.tg || "—") + " VK:" + (ch.vk || "—");
+    }
+    function loadWeeks() {
+      status("Загружаю…");
+      q("GET", "/queue/history").then(function (d) {
+        status("");
+        var reps = d.reports || [];
+        weeksHost.innerHTML = reps.length ? "" :
+          '<div style="font-size:12px;color:#8a795a;padding:8px">Пока нет финализированных недель. ' +
+          'История появится после первой «Финализации недели».</div>';
+        reps.forEach(function (r) {
+          var det = document.createElement("details"); det.className = "q-hist-week";
+          var sum = document.createElement("summary");
+          sum.innerHTML = '<b>' + esc(fmtDate(r.at)) + "</b> · этапов: " + r.stages +
+            ' <span style="color:#8a795a">· ' + esc(r.summary || "") + "</span>" +
+            ' <span style="color:#7c9;font-size:10.5px">' + esc(chanLabel(r.channels)) + "</span>";
+          det.appendChild(sum);
+          var bodyEl = document.createElement("div"); bodyEl.className = "qs-distrep q-hist-body";
+          bodyEl.innerHTML = '<div style="color:#8a795a;font-size:11px">открой, чтобы загрузить отчёт…</div>';
+          det.appendChild(bodyEl);
+          var loaded = false;
+          det.addEventListener("toggle", function () {
+            if (!det.open || loaded) return;
+            loaded = true;
+            q("GET", "/queue/history/" + r.id).then(function (dd) {
+              bodyEl.innerHTML = distReportHtml(dd.report || {});
+            }).catch(function (e) { bodyEl.innerHTML = '<span style="color:#e08a8a">Ошибка: ' + esc(e.detail || e.message) + "</span>"; });
+          });
+          weeksHost.appendChild(det);
+        });
+      }).catch(function (e) {
+        status(e.status === 403 ? "Доступно офицеру/админу." : ("Ошибка: " + (e.detail || e.message)));
+      });
+    }
+    function loadActivity() {
+      status("Загружаю…");
+      q("GET", "/queue/activity-log").then(function (d) {
+        status("");
+        var log = d.log || [];
+        if (!log.length) { actHost.innerHTML = '<div style="font-size:12px;color:#8a795a;padding:8px">Активности пока нет.</div>'; return; }
+        actHost.innerHTML = '<div class="q-act-list">' + log.map(function (r) {
+          var qn = r.queue == null ? "" : (' <span class="q-act-q">оч.' + (+r.queue + 1) + "</span>");
+          return '<div class="q-act-row"><span class="q-act-t">' + esc(fmtDate(r.at)) + "</span>" +
+            '<span class="q-act-k">' + esc(LOG_KIND[r.kind] || r.kind) + "</span>" + qn +
+            '<span class="q-act-n">' + esc(r.nick || r.actor || "") + "</span>" +
+            (r.detail ? '<span class="q-act-d">' + esc(r.detail) + "</span>" : "") + "</div>";
+        }).join("") + "</div>";
+      }).catch(function (e) {
+        status(e.status === 403 ? "Доступно офицеру/админу." : ("Ошибка: " + (e.detail || e.message)));
+      });
+    }
+    var tabs = wrap.querySelectorAll(".q-hist-tab");
+    [].forEach.call(tabs, function (btn) {
+      btn.addEventListener("click", function () {
+        [].forEach.call(tabs, function (b) { b.classList.remove("active"); });
+        btn.classList.add("active");
+        var isWeeks = btn.dataset.tab === "weeks";
+        weeksHost.hidden = !isWeeks; actHost.hidden = isWeeks;
+        if (isWeeks) loadWeeks(); else loadActivity();
+      });
+    });
+    wrap.querySelector("#qh-refresh").addEventListener("click", function () {
+      if (!weeksHost.hidden) loadWeeks(); else loadActivity();
+    });
+    loadWeeks();
+    return wrap;
+  }
+
   // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──
   function buildDistPanel() {
     var wrap = document.createElement("div");
@@ -1779,18 +1904,15 @@
     return wrap;
   }
 
-  // ── модалка отчёта распределения ──
-  function renderDistReport(rep) {
-    var body = document.createElement("div");
-    body.className = "qs-distrep";
-    var html = '<div class="qs-dr-head">Закрыто этапов: <b>' + rep.stages + "</b> · " +
-      (rep.has_valor ? "доблесть из последнего сбора" : '<span style="color:#e08a8a">нет данных доблести — собери сбор</span>') +
+  // ── HTML содержимого отчёта распределения (переиспользуется в модалке и истории) ──
+  function distReportHtml(rep) {
+    var html = '<div class="qs-dr-head">Закрыто этапов: <b>' + (rep.stages || 0) + "</b> · " +
+      (rep.has_valor ? "доблесть из последнего сбора" : '<span style="color:#e08a8a">нет данных доблести</span>') +
       (rep.pet_count ? ' · 🐲 Огненный цилинь: <b>' + rep.pet_count + " шт</b>" : "") + "</div>";
     if (rep.top3_named && rep.top3_named.length) {
       html += '<div class="qs-dr-head" style="border:0">★ ТОП-3 клана: ' +
         rep.top3_named.map(function (t) { return esc(t.nick) + " (" + t.valor + ")"; }).join(" · ") + "</div>";
     }
-    // ── ГРУППЫ РАЗДАЧИ (проводники — тоже группа) ──
     var groups = rep.groups || [];
     html += '<div class="qs-dr-sec"><h4>📦 Группы раздачи</h4>';
     if (!groups.length) html += '<div class="qs-dr-empty">некому раздавать</div>';
@@ -1812,15 +1934,20 @@
         '<div class="qs-dr-gr">' + res + "</div></div>";
     });
     html += "</div>";
-    // ── ОСТАТОК В КЛАН ──
     var lo = rep.leftovers || {};
     var loKeys = Object.keys(lo).filter(function (k) { return lo[k] > 0; });
     html += '<div class="qs-dr-sec"><h4>🔻 Остаток — раздать в чате клана (до вс 00:00, иначе сгорит)</h4>';
     html += '<div class="qs-dr-row">' + (loKeys.length
       ? loKeys.map(function (k) { return esc(resName(k)) + " ×" + lo[k]; }).join(" · ")
-      : '<span style="color:#8fc36a">— нет, всё распределено</span>') + "</div>";
-    html += "</div>";
-    body.innerHTML = html;
+      : '<span style="color:#8fc36a">— нет, всё распределено</span>') + "</div></div>";
+    return html;
+  }
+
+  // ── модалка отчёта распределения ──
+  function renderDistReport(rep) {
+    var body = document.createElement("div");
+    body.className = "qs-distrep";
+    body.innerHTML = distReportHtml(rep);
     // кнопка ручной отправки отчёта в офицерский чат
     var sendBar = document.createElement("div");
     sendBar.style.cssText = "margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap";

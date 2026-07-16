@@ -162,6 +162,16 @@ def ensure_queue_tables() -> None:
               updated_by TEXT NOT NULL DEFAULT '',
               updated_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS queue_reports (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              created_at TEXT NOT NULL,              -- когда финализировали неделю (ISO)
+              stages     INTEGER NOT NULL DEFAULT 0, -- сколько этапов КХ было закрыто
+              report     TEXT NOT NULL DEFAULT '',   -- JSON полного отчёта распределения
+              channels   TEXT NOT NULL DEFAULT '',   -- JSON: куда ушёл (tg/vk/test)
+              summary    TEXT NOT NULL DEFAULT '',   -- краткая строка (групп N, роздано, остаток)
+              actor      TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         # миграция для существующих БД: индивидуальный размер модели
@@ -1206,6 +1216,17 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
         _log(conn, "advance", actor=_actor_name(actor), request=request,
              detail="вылетевших:%d · не забрали (остались):%d · авто-переочередь:%d · вышли:%d · отчёт tg=%s vk=%s"
                     % (len(pruned), stayed_uncollected, requeued, left_after, channels.get("tg"), channels.get("vk")))
+        # снимок недели в архив (для ручной проверки истории распределений)
+        n_groups = len(report.get("groups") or [])
+        n_people = sum(len(g.get("people") or []) for g in (report.get("groups") or []))
+        lo = {k: v for k, v in (report.get("leftovers") or {}).items() if v > 0}
+        summary = "групп: %d · получателей: %d · остаток: %s" % (
+            n_groups, n_people, (", ".join("%s×%d" % (distribution.res_name(k), v) for k, v in lo.items()) or "нет"))
+        conn.execute(
+            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor)"
+            " VALUES (?,?,?,?,?,?)",
+            (_now(), report.get("stages", 0), _json.dumps(report, ensure_ascii=False),
+             _json.dumps(channels, ensure_ascii=False), summary, _actor_name(actor)))
     return {"ok": True, "requeued": requeued, "left_removed": left_after,
             "stayed_uncollected": stayed_uncollected,
             "pruned": len(pruned), "pruned_nicks": pruned, "channels": channels}
@@ -1225,6 +1246,56 @@ def admin_log(_: dict = Depends(require_admin)) -> dict:
             " LEFT JOIN queue_accounts a ON a.id=d.account_id ORDER BY d.last_seen_at DESC LIMIT 200").fetchall()
     return {"log": [dict(r) for r in rows], "accounts": [dict(a) for a in accs],
             "devices": [dict(x) for x in devs]}
+
+
+@router.get("/activity-log")
+def activity_log(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Активность очереди (без IP/аккаунтов) — доступно офицерам и админу.
+    Кто вставал в очередь/за чем, выходил, менял ресурс, финализации и т.д."""
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT at, kind, actor, nick, queue, detail FROM queue_log"
+            " ORDER BY id DESC LIMIT 400").fetchall()
+    return {"log": [dict(r) for r in rows]}
+
+
+@router.get("/history")
+def history(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Архив недельных распределений (метаданные) — офицерам и админу."""
+    import json as _json
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, stages, channels, summary, actor FROM queue_reports"
+            " ORDER BY id DESC LIMIT 60").fetchall()
+    out = []
+    for r in rows:
+        try:
+            ch = _json.loads(r["channels"]) if r["channels"] else {}
+        except (ValueError, TypeError):
+            ch = {}
+        out.append({"id": r["id"], "at": r["created_at"], "stages": r["stages"],
+                    "channels": ch, "summary": r["summary"], "actor": r["actor"]})
+    return {"reports": out}
+
+
+@router.get("/history/{rid}")
+def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
+    """Полный отчёт распределения за конкретную неделю — офицерам и админу."""
+    import json as _json
+    with db.connection() as conn:
+        row = conn.execute(
+            "SELECT created_at, stages, report, channels FROM queue_reports WHERE id=?", (rid,)).fetchone()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+    try:
+        rep = _json.loads(row["report"]) if row["report"] else {}
+    except (ValueError, TypeError):
+        rep = {}
+    try:
+        ch = _json.loads(row["channels"]) if row["channels"] else {}
+    except (ValueError, TypeError):
+        ch = {}
+    return {"report": rep, "at": row["created_at"], "channels": ch}
 
 
 # таблицы создаём при импорте модуля (db-файл уже сконфигурирован settings)
