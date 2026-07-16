@@ -31,6 +31,7 @@ import db
 import distribution
 import bot_tg
 import bot_vk
+import auth_pwd
 from config import settings
 from session import require_admin, current_session
 
@@ -223,6 +224,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN not_collected INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: применён жетон суперспособности (топ-3 взял вне очереди) → первый + свечение
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN privileged INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -367,6 +373,11 @@ class PrivClaimIn(BaseModel):
     stacks: int = Field(default=1, ge=1, le=200)          # сколько пачек взять (= столько жетонов)
 
 
+class GrantTokenIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    count: int = Field(default=1, ge=-50, le=50)          # +N дать / -N снять (для теста админом)
+
+
 class AdminAddIn(BaseModel):
     queue: int
     nick: str = Field(min_length=1, max_length=64)
@@ -453,9 +464,12 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
         cfg = conn.execute("SELECT shared_password_hash FROM queue_config WHERE id=1").fetchone()
         shared = cfg["shared_password_hash"] if cfg else ""
-        if not shared:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "shared_password_not_set")
-        if not _check(payload.shared_password, shared):
+        # Пускаем по ОБЩЕМУ паролю очереди ИЛИ по ЖИВОМУ офицерскому паролю (auth_pwd.verify_officer
+        # берёт актуальный из auth_config — поэтому смена офицерского пароля в будущем сразу работает).
+        pw_ok = (shared and _check(payload.shared_password, shared)) or auth_pwd.verify_officer(payload.shared_password)
+        if not pw_ok:
+            if not shared:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "shared_password_not_set")
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_shared_password")
 
         idx = _people(conn)
@@ -630,6 +644,7 @@ def _entry_public(r, idx, gmap, smap=None) -> dict:
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
             "auto_plan": plan,
             "not_collected": (bool(r["not_collected"]) if "not_collected" in keys else False),
+            "privileged": (bool(r["privileged"]) if "privileged" in keys else False),
             "added_by": r["added_by"]}
 
 
@@ -1193,10 +1208,42 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
             (acc["main_canon"], nick, res, amount, _now()))
         conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
                      (payload.stacks, _now(), acc["main_canon"]))
-        _log(conn, "priv_claim", actor=nick, nick=nick, request=request,
+        # моделька СРАЗУ встаёт ПЕРВОЙ в очереди 0 со свечением «жетон применён»
+        p = _people(conn).get(acc["main_canon"]) or {}
+        front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
+        ex = conn.execute("SELECT id FROM queue_entries WHERE queue=0 AND main_canon=?",
+                          (acc["main_canon"],)).fetchone()
+        if ex:
+            conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=? WHERE id=?",
+                         (front, res, ex["id"]))
+        else:
+            conn.execute(
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, added_by, added_at)"
+                " VALUES (0,?,?,?,?,?,1,?,?)",
+                (front, acc["main_canon"], nick, p.get("cls", ""), res, "priv", _now()))
+        _log(conn, "priv_claim", actor=nick, nick=nick, queue=0, request=request,
              detail="ВНЕ очереди: %s ×%d (жетонов −%d, осталось %d)"
                     % (distribution.res_name(res), amount, payload.stacks, have - payload.stacks))
     return {"ok": True, "tokens": have - payload.stacks, "amount": amount}
+
+
+@router.post("/admin/grant-token")
+def grant_token(payload: GrantTokenIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Админ выдаёт/снимает жетоны суперспособности игроку (для теста, напр. Лирия!)."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        cn = p["main_canon"] if p else db._valor_canon(payload.nick)
+        nick = p["main_nick"] if p else payload.nick
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        conn.execute(
+            "INSERT INTO queue_privileges (canon, nick, tokens, updated_at) VALUES (?,?,?,?)"
+            " ON CONFLICT(canon) DO UPDATE SET tokens=MAX(0, tokens+?), nick=excluded.nick, updated_at=excluded.updated_at",
+            (cn, nick, max(0, payload.count), _now(), payload.count))
+        row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?", (cn,)).fetchone()
+        _log(conn, "priv_grant", actor=_actor_name(actor), nick=nick, request=request,
+             detail="жетонов %+d (тест) → %d" % (payload.count, row["tokens"]))
+    return {"ok": True, "nick": nick, "tokens": row["tokens"]}
 
 
 @router.get("/privileges")
@@ -1315,7 +1362,9 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
         if granted:
             _log(conn, "priv_grant", actor=_actor_name(actor), request=request,
                  detail="жетон вне очереди топ-3: " + ", ".join(granted))
-        # внеочередные захваты недели отработали (уже вычтены) → чистим на новую неделю
+        # внеочередные захваты недели отработали (уже вычтены) → чистим на новую неделю;
+        # привилегированные записи (взяли жетоном) тоже убираем — ресурс уже получен
+        conn.execute("DELETE FROM queue_entries WHERE privileged=1")
         conn.execute("DELETE FROM queue_priv_claims")
     return {"ok": True, "requeued": requeued, "left_removed": left_after,
             "stayed_uncollected": stayed_uncollected, "priv_granted": granted,

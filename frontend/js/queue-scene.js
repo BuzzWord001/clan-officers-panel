@@ -548,13 +548,21 @@
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
     ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
+    ".qs-merch-det{position:relative}" +
     ".qs-merch-det>summary{cursor:pointer;list-style:none;font:700 10px system-ui;color:#caa66a;" +
       "padding:3px 2px;border-top:1px dashed rgba(224,162,74,.28);display:flex;align-items:center;gap:5px}" +
     ".qs-merch-det>summary::-webkit-details-marker{display:none}" +
     ".qs-merch-det>summary::before{content:'▸';transition:transform .12s}" +
+    ".qs-merch-det[open]>summary{color:var(--gc)}" +
     ".qs-merch-det[open]>summary::before{transform:rotate(90deg)}" +
     ".qs-merch-det>summary:hover{color:var(--gc)}" +
-    ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px;max-height:130px;overflow-y:auto;scrollbar-width:thin}" +
+    /* раскрытый список — ОВЕРЛЕЙ вниз поверх нижних полос, не растягивает высоту полосы */
+    ".qs-merch-det[open] .qs-merch-res{position:absolute;top:calc(100% + 3px);left:-8px;right:-8px;z-index:400;" +
+      "background:linear-gradient(180deg,#241608,#160d06);border:1px solid var(--gc);border-radius:10px;" +
+      "padding:8px 9px;box-shadow:0 14px 34px rgba(0,0,0,.65);transform-origin:top center;" +
+      "animation:qMerchDrop .17s ease}" +
+    "@keyframes qMerchDrop{from{opacity:0;transform:translateY(-6px) scaleY(.85)}to{opacity:1;transform:none}}" +
+    ".qs-merch-res{display:flex;flex-direction:column;gap:3px;padding-top:4px}" +
     ".qs-mres{display:flex;align-items:center;gap:5px;font:600 10px system-ui;color:#e8dcc4;cursor:pointer;" +
       "padding:2px 3px;border-radius:7px;transition:background .1s}" +
     ".qs-mres:hover{background:rgba(224,162,74,.14)}.qs-mres:active{background:rgba(224,162,74,.24)}" +
@@ -569,6 +577,11 @@
     ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
       "padding:4px 3px;border:1px solid rgba(224,162,74,.16);border-radius:9px;background:rgba(0,0,0,.22);position:relative}" +
     ".qs-cell.me{border-color:var(--gc);background:rgba(224,162,74,.14);box-shadow:0 0 10px -2px var(--gc)}" +
+    ".qs-cell.priv{border-color:#ffd24a;background:rgba(255,210,74,.16);animation:qsCellPriv 1.6s ease-in-out infinite}" +
+    "@keyframes qsCellPriv{0%,100%{box-shadow:0 0 8px -2px #ffd24a}50%{box-shadow:0 0 16px 0 #ffd24a}}" +
+    ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 6px #ffd24a)}" +
+    ".qs-cell-priv{position:absolute;top:-7px;left:50%;transform:translateX(-50%);white-space:nowrap;" +
+      "font:800 8px system-ui;color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);padding:1px 5px;border-radius:6px;z-index:2}" +
     ".qs-cell-num{position:absolute;top:-6px;left:-4px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
       "min-width:15px;text-align:center;border-radius:6px;padding:0 3px}" +
     ".qs-cell-img{height:38px;width:auto;max-width:52px;object-fit:contain;" +
@@ -682,6 +695,19 @@
     ".qs-char-inner img{height:100%;width:auto;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
     ".qs-char-inner .q-char-ph{height:100%}" +
     "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
+    /* привилегия «жетон ТОП-3»: божественное свечение + подпись над головой */
+    ".q-char-priv .q-char-img{animation:qsPrivGlow 1.6s ease-in-out infinite}" +
+    "@keyframes qsPrivGlow{0%,100%{filter:drop-shadow(0 0 7px #ffd24a) drop-shadow(0 0 13px #ffae00) drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
+      "50%{filter:drop-shadow(0 0 15px #fff0a0) drop-shadow(0 0 26px #ffc030) drop-shadow(0 5px 5px rgba(0,0,0,.45))}}" +
+    ".q-char-priv::after{content:'';position:absolute;left:50%;bottom:2%;width:70%;height:26%;transform:translateX(-50%);" +
+      "background:radial-gradient(ellipse at center,rgba(255,210,74,.55),transparent 70%);filter:blur(5px);z-index:-1;" +
+      "animation:qsPrivAura 1.6s ease-in-out infinite;pointer-events:none}" +
+    "@keyframes qsPrivAura{0%,100%{opacity:.5;transform:translateX(-50%) scale(.9)}50%{opacity:.85;transform:translateX(-50%) scale(1.1)}}" +
+    ".q-char-priv-lbl{position:absolute;bottom:118%;left:50%;transform:translateX(-50%);white-space:nowrap;" +
+      "font:800 8.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);" +
+      "padding:2px 7px;border-radius:8px;box-shadow:0 2px 6px rgba(255,200,80,.5);z-index:9;" +
+      "animation:qsPrivLbl 1.6s ease-in-out infinite}" +
+    "@keyframes qsPrivLbl{0%,100%{box-shadow:0 2px 6px rgba(255,200,80,.4)}50%{box-shadow:0 2px 12px rgba(255,220,120,.85)}}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
@@ -701,14 +727,15 @@
       : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
-    el.className = "qs-char" + (mine ? " q-char-me" : "");
+    el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "");
     el.dataset.id = e.id || "";
     if (mi) el.dataset.mkey = mi.key;   // для точечной регулировки размера этой модели
     var mscale = (mi && MODEL_SETTINGS[mi.key] && +MODEL_SETTINGS[mi.key].scale) || 1;
     el.style.cssText = "left:" + p.x.toFixed(2) + "%;top:" + p.y.toFixed(2) + "%;--qs-mscale:" + mscale + ";" +
-      "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + Math.round(p.y * 12) + ";";
+      "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + (e.privileged ? 8800 : Math.round(p.y * 12)) + ";";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
+      (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
       '<div class="q-char-name">' + esc(e.nick) + "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
       (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
@@ -1092,9 +1119,10 @@
       } else entries.forEach(function (e, i) {
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
-        cell.className = "qs-cell" + (mine ? " me" : "");
-        cell.title = e.nick + (e.resource ? " — " + resName(e.resource) : "");
-        cell.innerHTML = '<span class="qs-cell-num">' + (i + 1) + "</span>" +
+        cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
+        cell.title = e.nick + (e.privileged ? " — ⚡ жетон ТОП-3 (вне очереди)" : (e.resource ? " — " + resName(e.resource) : ""));
+        cell.innerHTML =
+          (e.privileged ? '<span class="qs-cell-priv">⚡ ТОП-3</span>' : '<span class="qs-cell-num">' + (i + 1) + "</span>") +
           (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
           (e.resource ? '<img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' : "");
@@ -2117,21 +2145,37 @@
         '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
-      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px;margin-top:4px">' +
+      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:4px">' +
         '<div style="font-size:12px;color:#caa66a">🌟 Суперспособность топ-3 (жетоны «вне очереди») ' +
           '<button class="sec" id="qd-priv-btn" style="padding:2px 8px">↻ показать</button></div>' +
+        '<div class="q-admin-row" style="gap:6px;align-items:center;flex-wrap:wrap">' +
+          '<span style="font-size:11px;color:#8a795a">Тест: дать жетоны игроку (напр. Лирия!):</span>' +
+          '<input id="qd-priv-nick" list="qd-dl" placeholder="ник…" autocomplete="off" style="min-width:130px">' +
+          '<input id="qd-priv-n" type="number" value="3" min="-50" max="50" style="width:64px">' +
+          '<button class="sec" id="qd-priv-give">± дать/снять жетоны</button>' +
+        "</div>" +
         '<div id="qd-priv" style="font-size:11.5px;color:#c9b48f"></div>' +
       "</div>" +
       '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
     var st = wrap.querySelector("#qd-status");
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
-    wrap.querySelector("#qd-priv-btn").addEventListener("click", function () {
+    function loadPriv() {
       var host = wrap.querySelector("#qd-priv"); host.textContent = "Загрузка…";
       q("GET", "/queue/privileges").then(function (d) {
         var h = (d.holders || []).map(function (x) { return esc(x.nick) + " — " + x.tokens + " жет."; }).join(" · ") || "нет накопленных жетонов";
         var cl = (d.claims || []).map(function (c) { return esc(c.nick) + ": " + esc(c.resource) + " ×" + c.amount; }).join(" · ");
         host.innerHTML = "<b>Держатели:</b> " + h + (cl ? '<br><b>Взято вне очереди на этой неделе:</b> ' + cl : "<br><span style='color:#8a795a'>вне очереди на этой неделе ничего не брали</span>");
       }).catch(function (e) { host.textContent = "Ошибка: " + (e.detail || e.message); });
+    }
+    wrap.querySelector("#qd-priv-btn").addEventListener("click", loadPriv);
+    wrap.querySelector("#qd-priv-give").addEventListener("click", function () {
+      var nk = wrap.querySelector("#qd-priv-nick").value.trim();
+      var n = parseInt(wrap.querySelector("#qd-priv-n").value, 10) || 0;
+      if (!nk || !n) { status("Укажи ник и число жетонов."); return; }
+      q("POST", "/queue/admin/grant-token", { nick: nk, count: n }).then(function (d) {
+        status("✓ " + d.nick + " — жетонов теперь: " + d.tokens + ". Войди этим ником как игрок, чтобы протестировать «Взять вне очереди».", true);
+        loadPriv();
+      }).catch(function (e) { status(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
     });
     function renderShooters() {
       var host = wrap.querySelector("#qd-shlist");

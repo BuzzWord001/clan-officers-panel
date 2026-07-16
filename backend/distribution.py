@@ -156,8 +156,11 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             dedup.append(e)
         raw = dedup
         thr = QUEUE_THRESHOLD[q]
-        elig = [e for e in raw if entry_valor(e) >= thr]
-        low = [e for e in raw if entry_valor(e) < thr]
+        # привилегированные (взяли вне очереди жетоном) — ПЕРВЫЕ, БЕЗ выдачи из пула
+        priv = [e for e in raw if e.get("privileged")]
+        rest_raw = [e for e in raw if not e.get("privileged")]
+        elig = [e for e in rest_raw if entry_valor(e) >= thr]
+        low = [e for e in rest_raw if entry_valor(e) < thr]
         # приоритет: топ-3 вперёд (по доблести), остальные — в порядке очереди
         top_here = [e for e in elig if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
         top_here.sort(key=entry_valor, reverse=True)
@@ -178,8 +181,9 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                 for i in range(k):
                     got[i][res] = unit
                 pool[res] = have - k * unit         # остаток < пачки → в клан
-        rows = [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
-                for i, e in enumerate(ordered)]
+        rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
+        rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
+                 for i, e in enumerate(ordered)]
         rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in low]
         queues_out.append({"queue": q, "threshold": thr, "rows": rows})
 
