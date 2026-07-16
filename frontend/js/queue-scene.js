@@ -542,7 +542,7 @@
     ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
     ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
     /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
-    ".qs-merch-box{flex:0 0 auto;align-self:center;width:190px;display:flex;flex-direction:column;gap:4px;" +
+    ".qs-merch-box{flex:0 0 auto;align-self:center;width:236px;display:flex;flex-direction:column;gap:4px;" +
       "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
       "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
@@ -578,7 +578,7 @@
     ".qs-merch-free{margin-left:6px;font:800 9px system-ui;color:#0e2c12;background:linear-gradient(180deg,#a8f0b0,#6cd07a);" +
       "padding:1px 6px;border-radius:6px}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
-    "@media(max-width:640px){.qs-merch-box{width:158px}}" +
+    "@media(max-width:640px){.qs-merch-box{width:190px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
     ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
