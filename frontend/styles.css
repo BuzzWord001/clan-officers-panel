@@ -5283,6 +5283,14 @@ tr.reg-row-flash > td { animation: regRowFlash 1.6s ease-out; }
   .gs-wrap { order: 2; flex: 0 0 auto; width: auto; min-width: 0; margin: 0 6px 0 auto; }
 }
 
+/* Вкладка «Очередь за ресурсами с КХ» (js/queue-tab.js) — акцентная, видна всюду */
+.q-tab-link {
+  color: #ffd24a !important;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.35);
+}
+.q-tab-link:hover { color: #fff0b0 !important; }
+
 /* Счётчик Элиты в сводке таблицы Доблести — золотыми буквами со свечением.
    Специфичность через .members-stats — перебить .members-stats span b. */
 .members-stats .val-elite-count,
