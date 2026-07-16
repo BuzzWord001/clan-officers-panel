@@ -148,6 +148,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             row = {"id": e.get("id"), "nick": who, "recipient": to, "resource": res, "valor": v,
                    "top3": is_top, "provodnik": who.strip().lower() in shooter_lc,
                    "recipient_ok": e.get("recipient_ok", True),
+                   "not_collected": e.get("not_collected", False),
                    "amount": 0, "status": "", "res_name": res}
             if not res or res not in REWARDS:
                 row["status"] = "no_res"

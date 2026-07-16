@@ -189,6 +189,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN auto_plan TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: отметка «не забрал ресурс на этой неделе» (офицер/админ) → остаётся в очереди
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN not_collected INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -321,6 +326,11 @@ class SetEntryIn(BaseModel):
 class SpouseIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)               # кому задаём получателя
     recipient: str = Field(default="", max_length=64)            # ник получателя; пусто = удалить связь
+
+
+class MarkUncollectedIn(BaseModel):
+    entry_id: int
+    uncollected: bool = True     # True = не забрал → остаётся в очереди; False = забрал (пройдёт дальше)
 
 
 class AdminAddIn(BaseModel):
@@ -580,6 +590,7 @@ def _entry_public(r, idx, gmap, smap=None) -> dict:
             "recipient_ok": _recipient_ok(rcpt, r["main_canon"], idx, smap),
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
             "auto_plan": plan,
+            "not_collected": (bool(r["not_collected"]) if "not_collected" in keys else False),
             "added_by": r["added_by"]}
 
 
@@ -1065,6 +1076,38 @@ async def distribute_send(request: Request, actor: dict = Depends(require_admin)
     return {"ok": True, "channels": channels, "report": report}
 
 
+@router.get("/due")
+def due(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Кто на этой неделе «дошёл» (получил бы ресурс) — для отметки «не забрал».
+    По умолчанию все они пройдут дальше; отмеченные «не забрал» останутся в очереди."""
+    with db.connection() as conn:
+        report = _build_report(conn)
+    out = []
+    for Q in report["queues"]:
+        for r in Q["rows"]:
+            if r["status"] in ("ok", "ok_pack"):
+                out.append({"entry_id": r["id"], "queue": Q["queue"], "nick": r["nick"],
+                            "resource": r["res_name"], "amount": r["amount"],
+                            "recipient": r["recipient"], "not_collected": r["not_collected"]})
+    return {"due": out, "has_valor": report.get("has_valor", False)}
+
+
+@router.post("/mark-uncollected")
+def mark_uncollected(payload: MarkUncollectedIn, request: Request,
+                     actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Офицер/админ отмечает, что человек НЕ забрал ресурс → он останется в очереди."""
+    with db.connection() as conn:
+        row = conn.execute("SELECT nick, queue FROM queue_entries WHERE id=?",
+                           (payload.entry_id,)).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        conn.execute("UPDATE queue_entries SET not_collected=? WHERE id=?",
+                     (1 if payload.uncollected else 0, payload.entry_id))
+        _log(conn, "uncollected", actor=_actor_name(actor), nick=row["nick"], queue=row["queue"],
+             request=request, detail=("не забрал — остаётся" if payload.uncollected else "забрал — пройдёт"))
+    return {"ok": True}
+
+
 def _prune_left_clan(conn, request=None, actor_name="") -> list[str]:
     """Убирает из очереди тех, кого нет в текущем ростере клана (вылетели).
     Защита: если ростер пуст (нет снапшота) — НИЧЕГО не трогаем."""
@@ -1106,39 +1149,45 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
     for Q in report["queues"]:
         served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
                                    if r["status"] in ("ok", "ok_pack") and r["id"] is not None}
-    requeued = left_after = 0
+    requeued = left_after = stayed_uncollected = 0
     with db.connection() as conn:
         for q in QUEUES:
             rows = conn.execute(
-                "SELECT id, auto_repeat, auto_plan FROM queue_entries WHERE queue=? ORDER BY pos, id",
-                (q,)).fetchall()
+                "SELECT id, auto_repeat, auto_plan, not_collected FROM queue_entries"
+                " WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
             served = served_by_q.get(q, set())
-            keep_ids = [r["id"] for r in rows if r["id"] not in served]   # не получили → впереди
-            requeue_ids = []
+            keep_ids = []          # остаются впереди (не получили ИЛИ не забрали)
+            requeue_ids = []       # авто-повтор/план → в конец
             for r in rows:
                 if r["id"] not in served:
-                    continue
-                try:
-                    plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
-                except (ValueError, TypeError):
-                    plan = []
-                if plan:                     # план: берём следующий ресурс, встаём в конец
-                    conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
-                                 (plan[0], _json.dumps(plan[1:]), r["id"]))
-                    requeue_ids.append(r["id"]); requeued += 1
-                elif r["auto_repeat"]:       # повтор: тот же ресурс, в конец
-                    requeue_ids.append(r["id"]); requeued += 1
-                else:                        # разово: выходит из очереди
-                    conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
-                    left_after += 1
+                    keep_ids.append(r["id"])           # не хватило/кончилось/не выбран → впереди
+                elif r["not_collected"]:               # получил бы, но НЕ забрал → остаётся впереди
+                    keep_ids.append(r["id"])
+                    conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
+                    stayed_uncollected += 1
+                else:                                  # забрал → очередь проходит дальше
+                    try:
+                        plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
+                    except (ValueError, TypeError):
+                        plan = []
+                    if plan:                     # план: берём следующий ресурс, встаём в конец
+                        conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
+                                     (plan[0], _json.dumps(plan[1:]), r["id"]))
+                        requeue_ids.append(r["id"]); requeued += 1
+                    elif r["auto_repeat"]:       # повтор: тот же ресурс, в конец
+                        requeue_ids.append(r["id"]); requeued += 1
+                    else:                        # разово: выходит из очереди
+                        conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+                        left_after += 1
             pos = 1
             for i in keep_ids + requeue_ids:            # оставшиеся впереди, авто → в конец
                 conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
                 pos += 1
         _log(conn, "advance", actor=_actor_name(actor), request=request,
-             detail="вылетевших:%d · авто-переочередь:%d · вышли:%d · отчёт tg=%s vk=%s"
-                    % (len(pruned), requeued, left_after, channels.get("tg"), channels.get("vk")))
+             detail="вылетевших:%d · не забрали (остались):%d · авто-переочередь:%d · вышли:%d · отчёт tg=%s vk=%s"
+                    % (len(pruned), stayed_uncollected, requeued, left_after, channels.get("tg"), channels.get("vk")))
     return {"ok": True, "requeued": requeued, "left_removed": left_after,
+            "stayed_uncollected": stayed_uncollected,
             "pruned": len(pruned), "pruned_nicks": pruned, "channels": channels}
 
 

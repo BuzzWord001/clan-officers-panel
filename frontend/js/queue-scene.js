@@ -922,7 +922,10 @@
     wrap.appendChild(banner);
     wrap.appendChild(renderStage(state));
     if (_isAdmin) wrap.appendChild(adminPanel(state));
-    else if (_role === "officer") wrap.appendChild(buildSpousePanel(true));   // офицеру — только связки
+    else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
+      wrap.appendChild(buildSpousePanel(true));
+      wrap.appendChild(buildDuePanel(true));
+    }
     host.appendChild(wrap);
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
   }
@@ -1219,6 +1222,7 @@
       lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
     }
     box.appendChild(buildDistPanel());
+    box.appendChild(buildDuePanel(false));
     box.appendChild(buildModelSizePanel());
     box.appendChild(buildUploadPanel());
     box.appendChild(buildEnvPanel());
@@ -1553,6 +1557,70 @@
     return wrap;
   }
 
+  // ── офицер/админ: кто «дошёл» на этой неделе — отметить, кто НЕ забрал ресурс ──
+  // По умолчанию все они проходят дальше; отмеченные «не забрал» остаются в очереди.
+  function buildDuePanel(standalone) {
+    var QN = ["Обычные", "Редкие R", "Легендарные S"];
+    var wrap = document.createElement("div");
+    if (standalone) wrap.className = "q-admin";
+    wrap.innerHTML =
+      (standalone ? "<h3>🕗 Не забрал ресурс — остаётся в очереди</h3>" :
+        '<div style="font-size:12px;color:#caa66a">🕗 Кто не забрал ресурс (остаётся в очереди)</div>') +
+      '<div style="font-size:11.5px;color:#8a795a;margin:2px 0 8px">Кому подошла очередь и положен ресурс — по умолчанию ' +
+        'на финализации (вс 00:00) проходят дальше. Отметь тех, кто НЕ успел забрать до 00:00 — они останутся в очереди первыми.</div>' +
+      '<div class="q-admin-row" style="margin:0 0 6px"><button class="sec" id="qdue-refresh">↻ Обновить список</button>' +
+        '<span id="qdue-status" style="font-size:11.5px;color:#e0a86a"></span></div>' +
+      '<div id="qdue-list" style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto"></div>';
+    var listHost = wrap.querySelector("#qdue-list");
+    var st = wrap.querySelector("#qdue-status");
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function reload() {
+      status("Считаю…");
+      q("GET", "/queue/due").then(function (d) {
+        status(d.has_valor ? "" : "⚠ нет данных доблести — собери сбор");
+        listHost.innerHTML = "";
+        var due = d.due || [];
+        if (!due.length) { listHost.innerHTML = '<span style="font-size:11.5px;color:#8a795a">На этой неделе никому не подошла очередь с ресурсом.</span>'; return; }
+        due.forEach(function (r) {
+          var row = document.createElement("label");
+          row.style.cssText = "display:flex;align-items:center;gap:9px;font-size:12.5px;color:#f6ead2;" +
+            "padding:5px 8px;border:1px solid rgba(224,162,74,.2);border-radius:8px;cursor:pointer" +
+            (r.not_collected ? ";background:rgba(224,168,106,.12);border-color:rgba(224,168,106,.5)" : "");
+          var cb = document.createElement("input");
+          cb.type = "checkbox"; cb.checked = !!r.not_collected;
+          cb.addEventListener("change", function () {
+            cb.disabled = true;
+            q("POST", "/queue/mark-uncollected", { entry_id: r.entry_id, uncollected: cb.checked })
+              .then(function () {
+                r.not_collected = cb.checked; cb.disabled = false;
+                row.style.background = cb.checked ? "rgba(224,168,106,.12)" : "";
+                row.style.borderColor = cb.checked ? "rgba(224,168,106,.5)" : "rgba(224,162,74,.2)";
+                status(cb.checked ? ("✓ " + r.nick + " — остаётся (не забрал)") : ("✓ " + r.nick + " — пройдёт дальше"), true);
+              })
+              .catch(function (e) { cb.checked = !cb.checked; cb.disabled = false; status("Ошибка: " + (e.detail || e.message)); });
+          });
+          row.appendChild(cb);
+          var info = document.createElement("span"); info.style.cssText = "flex:1;min-width:0";
+          info.innerHTML = '<b>' + esc(r.nick) + '</b> <span style="color:#a58c68">· ' + esc(QN[r.queue] || "") + "</span> · " +
+            esc(resName(r.resource)) + (r.amount ? " ×" + r.amount : "") +
+            (r.recipient ? ' <span style="color:#8fc36a">→ ' + esc(r.recipient) + "</span>" : "");
+          row.appendChild(info);
+          var tag = document.createElement("span");
+          tag.style.cssText = "font:700 10px system-ui;flex:0 0 auto";
+          tag.textContent = r.not_collected ? "остаётся" : "пройдёт";
+          tag.style.color = r.not_collected ? "#e0a86a" : "#8fc36a";
+          row.appendChild(tag);
+          listHost.appendChild(row);
+        });
+      }).catch(function (e) {
+        status(e.status === 403 ? "Доступно офицеру/админу." : ("Ошибка: " + (e.detail || e.message)));
+      });
+    }
+    wrap.querySelector("#qdue-refresh").addEventListener("click", reload);
+    reload();
+    return wrap;
+  }
+
   // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──
   function buildDistPanel() {
     var wrap = document.createElement("div");
@@ -1628,12 +1696,13 @@
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-advance").addEventListener("click", function () {
-      if (!confirm("Финализировать неделю?\n\n1) убрать вылетевших из клана\n2) отчёт уйдёт в офицерский чат (TG + VK)\n3) получившие: с 🔁/планом — в конец (план сменит ресурс), без повтора — выходят; остальные остаются в начале")) return;
+      if (!confirm("Финализировать неделю?\n\n1) убрать вылетевших из клана\n2) отчёт уйдёт в офицерский чат (TG + VK)\n3) отмеченные «не забрал» останутся в очереди; получившие: с 🔁/планом — в конец, без повтора — выходят; остальные остаются в начале")) return;
       status("Финализирую неделю…");
       q("POST", "/queue/admin/advance").then(function (d) {
         var c = d.channels || {};
-        status("✓ Вылетевших: " + (d.pruned || 0) + " · авто-переочередь: " + (d.requeued || 0) +
-          " · вышли: " + (d.left_removed || 0) + " · отчёт TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"),
+        status("✓ Вылетевших: " + (d.pruned || 0) + " · не забрали (остались): " + (d.stayed_uncollected || 0) +
+          " · авто-переочередь: " + (d.requeued || 0) + " · вышли: " + (d.left_removed || 0) +
+          " · отчёт TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"),
           c.tg === "ok" && c.vk === "ok");
         refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
