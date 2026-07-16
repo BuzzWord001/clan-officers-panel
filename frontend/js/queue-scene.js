@@ -734,9 +734,10 @@
       "background:radial-gradient(ellipse at center,rgba(255,210,74,.55),transparent 70%);filter:blur(5px);z-index:-1;" +
       "animation:qsPrivAura 1.6s ease-in-out infinite;pointer-events:none}" +
     "@keyframes qsPrivAura{0%,100%{opacity:.5;transform:translateX(-50%) scale(.9)}50%{opacity:.85;transform:translateX(-50%) scale(1.1)}}" +
-    ".q-char-priv-lbl{position:absolute;bottom:118%;left:50%;transform:translateX(-50%);white-space:nowrap;" +
-      "font:800 8.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);" +
-      "padding:2px 7px;border-radius:8px;box-shadow:0 2px 6px rgba(255,200,80,.5);z-index:9;" +
+    ".q-char-priv-lbl{position:absolute;bottom:120%;left:50%;transform:translateX(-50%);white-space:nowrap;" +
+      "font:800 12px system-ui;color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);" +
+      "padding:3px 10px;border-radius:9px;box-shadow:0 2px 8px rgba(255,200,80,.6);z-index:9;" +
+      "border:1px solid rgba(120,80,20,.35);text-shadow:0 1px 0 rgba(255,255,255,.25);" +
       "animation:qsPrivLbl 1.6s ease-in-out infinite}" +
     "@keyframes qsPrivLbl{0%,100%{box-shadow:0 2px 6px rgba(255,200,80,.4)}50%{box-shadow:0 2px 12px rgba(255,220,120,.85)}}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
@@ -919,15 +920,14 @@
       });
     });
   }
-  // полный список очереди (все, включая тех, кто ещё не на сцене) с модельками
+  // полный список очереди (все — они же на сцене и в полосе) с модельками
   function openFullList(b, entries) {
-    var limit = Math.round(getSize("limit", 6));
     var body = document.createElement("div");
     body.className = "qs-fulllist";
     if (!entries.length) {
       body.innerHTML = '<div style="padding:22px;text-align:center;color:#c9b48f">Очередь пуста.</div>';
     } else entries.forEach(function (e, i) {
-      var mi = modelInfo(e), waiting = i >= limit;
+      var mi = modelInfo(e), waiting = false;
       var row = document.createElement("div");
       row.className = "qs-fl-row" + (waiting ? " waiting" : "");
       row.innerHTML =
@@ -997,14 +997,13 @@
       // индикатор направления очереди (к будке) — под персонажами
       var pth = getPath(b.q);
       if (!_pathMode && !_placeMode) stage.appendChild(renderFlow(b, pth));
-      // персонажи от будки (перёд, t=1) назад по пути; показываем только лимит, остальные ждут
-      // РАВНОМЕРНО распределяем видимых (первых limit) по пути: i=0 у будки (t=1),
-      // последний — в хвосте. Больше людей → меньше расстояние (очередь сжимается).
+      // персонажи от будки (перёд, t=1) назад по пути. Показываем ВСЕХ — точное
+      // зеркало нижней полосы: кто встал внизу, тот и на картинке, и наоборот.
+      // РАВНОМЕРНО распределяем по пути: i=0 у будки (t=1), последний — в хвосте.
+      // Больше людей → меньше расстояние (очередь сжимается).
       var spread = getSize("spread", 1);            // 0.4–1: какую долю пути занимает очередь
-      var limit = Math.round(getSize("limit", 6));
-      var shown = Math.min(entries.length, limit);  // сколько реально на сцене
+      var shown = entries.length;                   // на сцене — все, кто в очереди
       entries.forEach(function (e, i) {
-        if (i >= limit) return;   // за лимитом — не на сцене, но виден в полном списке (кнопка «список»)
         var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
         stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
