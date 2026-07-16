@@ -288,10 +288,7 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
         res = g["resources"]
         for i, info in enumerate(res):
             branch = "┗" if i == len(res) - 1 else "┣"
-            if info["mode"] == "pack":
-                L.append("   %s %s — ВСЁ одному (%d)" % (branch, info["name"], info["total"]))
-            else:
-                L.append("   %s %s — по %d = %d" % (branch, info["name"], info["per"], info["total"]))
+            L.append("   %s %s — %d шт" % (branch, info["name"], info["total"]))
         L.append(_BAR)
 
     lo = {k: v for k, v in (report.get("leftovers") or {}).items() if v > 0}

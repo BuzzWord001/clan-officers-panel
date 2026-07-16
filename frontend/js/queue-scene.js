@@ -459,7 +459,37 @@
     "@keyframes qsGlow{0%,100%{opacity:.35;transform:translate(-50%,-55%) scale(.95)}" +
       "50%{opacity:.65;transform:translate(-50%,-55%) scale(1.06)}}" +
     ".qs-booth{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:9000}" +
-    ".qs-btn-abs{position:absolute;transform:translate(-50%,-50%);z-index:9000;margin:0}" +
+    ".qs-btn-abs{position:absolute;transform:translate(-50%,-50%);z-index:9000;margin:0;" +
+      "transition:transform .08s ease,filter .08s ease,box-shadow .08s ease}" +
+    /* анимация нажатия — кнопка «проваливается» */
+    ".qs-btn-abs:active{transform:translate(-50%,-50%) translateY(2px) scale(.93)!important;" +
+      "filter:brightness(.82);box-shadow:0 0 0 rgba(0,0,0,0)!important}" +
+    /* 3 полосы полных очередей под сценой */
+    ".qs-strips{margin:12px auto 0;max-width:100%;display:flex;flex-direction:column;gap:8px}" +
+    ".qs-lane{border:1px solid rgba(224,162,74,.28);border-left:3px solid var(--gc);border-radius:11px;" +
+      "background:linear-gradient(180deg,rgba(28,18,9,.6),rgba(18,11,5,.75));padding:7px 9px}" +
+    ".qs-lane-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 6px}" +
+    ".qs-lane-title{font:800 12.5px Georgia,serif;color:var(--gc);text-shadow:0 1px 2px #000}" +
+    ".qs-lane-cnt{font-size:11px;color:#a58c68}" +
+    ".qs-lane-sw{display:flex;align-items:stretch;gap:5px}" +
+    ".qs-lane-arrow{flex:0 0 auto;width:26px;border:1px solid rgba(224,162,74,.35);background:rgba(20,13,7,.7);" +
+      "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
+    ".qs-lane-arrow:hover{filter:brightness(1.2)}.qs-lane-arrow:active{transform:scale(.9)}" +
+    ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
+      "padding:3px 2px;scrollbar-width:thin}" +
+    ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
+    ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
+    ".qs-cell{flex:0 0 auto;width:58px;display:flex;flex-direction:column;align-items:center;gap:1px;" +
+      "padding:4px 3px;border:1px solid rgba(224,162,74,.16);border-radius:9px;background:rgba(0,0,0,.22);position:relative}" +
+    ".qs-cell.me{border-color:var(--gc);background:rgba(224,162,74,.14);box-shadow:0 0 10px -2px var(--gc)}" +
+    ".qs-cell-num{position:absolute;top:-6px;left:-4px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
+      "min-width:15px;text-align:center;border-radius:6px;padding:0 3px}" +
+    ".qs-cell-img{height:38px;width:auto;max-width:52px;object-fit:contain;" +
+      "background:linear-gradient(180deg,rgba(190,224,234,.15),rgba(143,195,106,.15));border-radius:6px}" +
+    ".qs-cell-img.ph{display:flex;align-items:center;justify-content:center;width:38px;color:#8a795a;font-weight:700}" +
+    ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}" +
+    ".qs-cell-res{height:16px;width:16px;object-fit:contain}" +
+    "@media(max-width:640px){.qs-cell{width:50px}.qs-cell-img{height:32px}}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -932,6 +962,51 @@
 
   function admErr(e) { alert("Ошибка (нужны права админа?): " + (e.detail || e.message)); }
 
+  // ── 3 ПОЛОСЫ полных очередей под сценой (всем): прокрутка ◀▶, видно своё место ──
+  function renderQueueStrips(state) {
+    var box = document.createElement("div");
+    box.className = "qs-strips";
+    var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
+    BOOTHS.forEach(function (b) {
+      var entries = state.queues[b.q] || [];
+      var myIdx = -1;
+      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) myIdx = i; });
+      var lane = document.createElement("div");
+      lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
+      var head = document.createElement("div"); head.className = "qs-lane-head";
+      head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
+        '<span class="qs-lane-cnt">' + entries.length + " чел" +
+        (myIdx >= 0 ? ' · <b style="color:var(--gc)">ты #' + (myIdx + 1) + "</b>" : "") + "</span>";
+      var sw = document.createElement("div"); sw.className = "qs-lane-sw";
+      var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
+      var strip = document.createElement("div"); strip.className = "qs-lane-strip";
+      var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
+      if (!entries.length) {
+        strip.innerHTML = '<div class="qs-lane-empty">очередь пуста</div>';
+      } else entries.forEach(function (e, i) {
+        var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
+        var cell = document.createElement("div");
+        cell.className = "qs-cell" + (mine ? " me" : "");
+        cell.title = e.nick + (e.resource ? " — " + resName(e.resource) : "");
+        cell.innerHTML = '<span class="qs-cell-num">' + (i + 1) + "</span>" +
+          (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
+          '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
+          (e.resource ? '<img class="qs-cell-res" src="' + resImg(e.resource) + '" alt="">' : "");
+        strip.appendChild(cell);
+      });
+      lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
+      rArr.addEventListener("click", function () { strip.scrollBy({ left: 260, behavior: "smooth" }); });
+      sw.appendChild(lArr); sw.appendChild(strip); sw.appendChild(rArr);
+      lane.appendChild(head); lane.appendChild(sw);
+      box.appendChild(lane);
+      if (myIdx >= 0) setTimeout(function () {              // авто-прокрутка к своему месту
+        var c = strip.children[myIdx];
+        if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
+      }, 60);
+    });
+    return box;
+  }
+
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _lastState = { queues: [[], [], []] };
 
   function render(state) {
@@ -952,6 +1027,7 @@
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
     wrap.appendChild(renderStage(state));
+    wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
       wrap.appendChild(buildSpousePanel(true));
@@ -1923,9 +1999,7 @@
         return s;
       }).join(", ");
       var res = g.resources.map(function (info) {
-        return info.mode === "pack"
-          ? "<b>" + esc(info.name) + "</b> — ВСЁ одному (" + info.total + ")"
-          : "<b>" + esc(info.name) + "</b> — по " + info.per + " = " + info.total;
+        return "<b>" + esc(info.name) + "</b> — " + info.total + " шт";
       }).join("<br>");
       html += '<div class="qs-dr-group"><div class="qs-dr-gh">Группа ' + (gi + 1) +
         (g.provodnik ? ' <span class="qs-dr-prov">🎯 проводники</span>' : "") +
