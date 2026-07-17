@@ -748,6 +748,28 @@
     ".qs-off-tx b{font:800 14.5px system-ui;color:#cfcfff;letter-spacing:.2px}" +
     ".qs-off-sub{font:500 11.5px/1.4 system-ui;color:#b7b7d6}" +
     // «реклама» жетона ТОП-3
+    // свиток «Держатели жетонов ТОП-3» — сверху справа, для всех
+    ".qs-tboard{margin:6px 0 4px auto;width:min(340px,100%);border-radius:13px;overflow:hidden;" +
+      "background:linear-gradient(180deg,#33240e,#1f1408);border:1px solid rgba(240,190,100,.5);" +
+      "box-shadow:0 6px 22px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,224,160,.15)}" +
+    ".qs-tb-head{width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border:0;" +
+      "background:linear-gradient(180deg,#3f2c10,#2a1c0a);color:#ffd98a;font:800 12.5px system-ui;text-align:left}" +
+    ".qs-tb-head:hover{filter:brightness(1.08)}" +
+    ".qs-tb-coin{width:22px;height:22px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qs-tb-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+    ".qs-tb-cnt{font:700 11px system-ui;color:#caa66a}" +
+    ".qs-tb-arrow{font-size:12px;color:#f0c878}" +
+    ".qs-tb-body{max-height:300px;overflow-y:auto;padding:6px 8px 8px}" +
+    ".qs-tb-empty{padding:10px;font-size:12px;color:#c0a878;font-style:italic;text-align:center}" +
+    ".qs-tb-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px}" +
+    ".qs-tb-row:nth-child(odd){background:rgba(255,220,150,.05)}" +
+    ".qs-tb-row.top{background:rgba(245,200,120,.12);border:1px solid rgba(240,190,100,.28)}" +
+    ".qs-tb-rank{min-width:26px;font:800 14px system-ui;color:#ffd98a;text-align:center}" +
+    ".qs-tb-nick{flex:1;font:700 13px system-ui;color:#f6ead2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+    ".qs-tb-coins{display:flex;align-items:center}" +
+    ".qs-tb-mini{width:15px;height:15px;object-fit:contain;margin-left:-5px}" +
+    ".qs-tb-mini:first-child{margin-left:0}" +
+    ".qs-tb-n{font:800 12.5px system-ui;color:#ffe4a0;min-width:26px;text-align:right}" +
     // личное уведомление «не хватило доблести» — тёплый свиток-предупреждение
     ".qs-notice{position:relative;margin:10px 0 8px;padding:16px 18px 15px;border-radius:16px;" +
       "background:linear-gradient(180deg,#3a2410,#25160a 70%,#1c1006);" +
@@ -1792,6 +1814,43 @@
     return box;
   }
 
+  // Свиток-список «Держатели жетонов ТОП-3» (виден ВСЕМ, сверху справа, разворачивается кликом)
+  function buildTokenBoard() {
+    var holders = _tokenBoard || [];
+    var box = document.createElement("div");
+    box.className = "qs-tboard" + (_tboardOpen ? " open" : "");
+    var head = document.createElement("button");
+    head.className = "qs-tb-head";
+    head.innerHTML =
+      '<img class="qs-tb-coin" src="assets/queue/ui/token.webp?v=2" alt="">' +
+      '<span class="qs-tb-title">Держатели жетонов ТОП-3</span>' +
+      '<span class="qs-tb-cnt">' + (holders.length ? holders.length + " чел." : "нет") + "</span>" +
+      '<span class="qs-tb-arrow">' + (_tboardOpen ? "▾" : "▸") + "</span>";
+    head.addEventListener("click", function () { _tboardOpen = !_tboardOpen; render(_lastState); });
+    box.appendChild(head);
+    if (_tboardOpen) {
+      var body = document.createElement("div");
+      body.className = "qs-tb-body";
+      if (!holders.length) {
+        body.innerHTML = '<div class="qs-tb-empty">Жетоны пока ни у кого. Попади в ТОП-3 недели по доблести — и он твой!</div>';
+      } else {
+        body.innerHTML = holders.map(function (h, i) {
+          var rank = i + 1;
+          var medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "#" + rank;
+          var coins = "";
+          for (var c = 0; c < Math.min(h.tokens, 6); c++) coins += '<img class="qs-tb-mini" src="assets/queue/ui/token.webp?v=2" alt="">';
+          return '<div class="qs-tb-row' + (rank <= 3 ? " top" : "") + '">' +
+            '<span class="qs-tb-rank">' + medal + "</span>" +
+            '<span class="qs-tb-nick">' + esc(h.nick) + "</span>" +
+            '<span class="qs-tb-coins">' + coins + "</span>" +
+            '<span class="qs-tb-n">×' + h.tokens + "</span></div>";
+        }).join("");
+      }
+      box.appendChild(body);
+    }
+    return box;
+  }
+
   function buildTokenAd() {
     var el = document.createElement("div");
     el.className = "qs-token-ad";
@@ -2070,6 +2129,8 @@
 
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
+  var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
+  var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
   var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
   var _scnPanelOpen = true; // раскрыта ли правая панель управления объектами сцены
@@ -2358,6 +2419,8 @@
     wrap.appendChild(banner);
     // личное уведомление «не хватило доблести» — самым верхом, чтобы игрок сразу увидел
     if (!_pathMode && !_placeMode) { var _nb = buildNoticeBanner(); if (_nb) wrap.appendChild(_nb); }
+    // свиток «Держатели жетонов ТОП-3» — сверху справа, виден всем, разворачивается кликом
+    if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenBoard());
     if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenAd());  // «реклама» жетона ТОП-3 (всем)
     if (!_pathMode && !_placeMode) { var mt = buildMyTokens(); if (mt) wrap.appendChild(mt); }  // мои жетоны (сколько их)
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
@@ -3644,7 +3707,8 @@
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
           .catch(function () { _role = ""; _isAdmin = false; }),
         q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; }).catch(function () { _myTokens = 0; }),
-        q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; })
+        q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
+        q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
       ]).then(function () { loadEnv(); refresh(); });
     }
   };

@@ -729,6 +729,16 @@ def get_notices(request: Request) -> dict:
     return {"notices": out}
 
 
+@router.get("/token-board")
+def token_board() -> dict:
+    """Держатели жетонов ТОП-3 (для всех): ник + сколько жетонов, по убыванию.
+    Публично — видят все пользователи в разделе очереди."""
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT nick, tokens FROM queue_privileges WHERE tokens>0 ORDER BY tokens DESC, nick").fetchall()
+    return {"holders": [{"nick": r["nick"], "tokens": r["tokens"]} for r in rows]}
+
+
 @router.post("/notices/seen")
 def mark_notices_seen(request: Request) -> dict:
     """Пометить все уведомления игрока прочитанными (он их увидел)."""
