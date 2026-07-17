@@ -768,7 +768,19 @@
       "border:1px solid var(--gc);border-radius:8px;padding:4px 10px;background:rgba(20,13,7,.82);" +
       "box-shadow:0 2px 6px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
     ".qs-list-btn{cursor:pointer;border:0;background:none;padding:0;position:relative;display:inline-block;transition:transform .08s}" +
-    ".qs-lb-normal,.qs-lb-hover{height:60px;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-lb-normal,.qs-lb-hover{height:100px;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 4px 7px rgba(0,0,0,.55))}" +
+    // кнопка Встать/Выйти НА СЦЕНЕ — тумба (крупнее, чем в полосе)
+    ".qs-js{cursor:pointer;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:0;transition:filter .08s}" +
+    ".qs-js-tot{position:relative;display:flex;justify-content:center;height:106px}" +
+    ".qs-js-dim,.qs-js-lit{height:106px;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
+    ".qs-js-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
+    ".qs-js:hover .qs-js-lit{opacity:1}.qs-js:active{filter:brightness(.9)}" +
+    ".qs-js-tx{margin-top:-4px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
+    // счётчик-сфера НА СЦЕНЕ
+    ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
+    ".qs-scnt-bg{width:64px;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-scnt-n{position:absolute;top:37%;left:50%;transform:translate(-50%,-50%);font:900 19px system-ui;" +
+      "color:#7a4a10;text-shadow:0 1px 1px rgba(255,240,200,.55)}" +
     ".qs-lb-hover{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-list-btn:hover .qs-lb-hover{opacity:1}" +
     ".qs-list-btn:active{filter:brightness(.9)}" +
@@ -1381,12 +1393,18 @@
       if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
-      // кнопка «Встать в очередь» — есть всегда
-      var jp = placedPos("btn-join:" + b.q, b.ui.x, b.ui.y + 2);
+      // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
+      // очереди (перетаскивается в режиме расстановки).
+      var qStart = pathPoint(pth, 0);
+      var jp = placedPos("btn-join:" + b.q, qStart.x - 6, qStart.y + 3);
       var joinBtn = document.createElement("button");
-      joinBtn.className = "qs-join qs-btn-abs" + (iAmIn ? " leave" : "");
+      joinBtn.className = "qs-js qs-btn-abs" + (iAmIn ? " leave" : "");
       joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
-      joinBtn.textContent = iAmIn ? "Выйти" : "Встать в очередь";
+      var jsc = iAmIn ? "join-red" : "join-green";
+      joinBtn.innerHTML =
+        '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=2" alt="">' +
+        '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=2" alt=""></span>' +
+        '<span class="qs-js-tx">' + (iAmIn ? "Выйти из очереди" : "Встать в очередь") + "</span>";
       if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
       else joinBtn.addEventListener("click", function () {
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
@@ -1398,6 +1416,16 @@
         });
       });
       stage.appendChild(joinBtn);
+      // счётчик-сфера на СЦЕНЕ (сколько человек в этой очереди) — перетаскивается
+      var cp = placedPos("cnt:" + b.q, b.ui.x - 10, b.ui.y - 4);
+      var cntEl = document.createElement("div");
+      cntEl.className = "qs-scnt qs-btn-abs";
+      cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) + "%";
+      cntEl.title = entries.length + " чел в очереди «" + b.title + "»";
+      cntEl.innerHTML = '<img class="qs-scnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
+        '<b class="qs-scnt-n">' + entries.length + "</b>";
+      if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
+      stage.appendChild(cntEl);
       // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
       if (iAmIn && !_placeMode && _meAcc) {
         var ep = placedPos("btn-edit:" + b.q, b.ui.x + 9, b.ui.y + 2);
