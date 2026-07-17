@@ -287,6 +287,23 @@
     if (z === "back") return 1;
     return Math.round(y * 12);
   }
+  // размер конкретного объекта (по ключу размещения); откат — категорийный размер/1
+  function objSize(pkey, base) { var v = parseFloat(CONFIG["size:" + pkey]); return (isFinite(v) && v > 0) ? v : (base || 1); }
+  // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
+  function curPlace(key, dx, dy) { var p = PLACEMENTS[key]; return { x: p ? p.x : dx, y: p ? p.y : dy, z: (p && p.z) || "" }; }
+  function savePlacement(key, x, y, z) {
+    x = Math.max(0, Math.min(100, x)); y = Math.max(0, Math.min(100, y));
+    PLACEMENTS[key] = { x: x, y: y, z: z || "" };
+    q("POST", "/queue/admin/placement", { key: key, x: x, y: y, z: z || "" }).catch(function () {});
+  }
+  // подпись объекта на сцене — ТОЛЬКО для админа в режиме расстановки (гость/офицер не видят)
+  function admTag(pos, text) {
+    var t = document.createElement("div");
+    t.className = "qs-adm-tag";
+    t.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) + "%";
+    t.textContent = text;
+    return t;
+  }
   function zToast(txt) {
     var t = document.getElementById("qs-ztoast");
     if (!t) { t = document.createElement("div"); t.id = "qs-ztoast"; document.body.appendChild(t); }
@@ -765,6 +782,37 @@
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
     ".qs-stage.place .qs-lavka,.qs-stage.place .qs-fountain{pointer-events:auto;cursor:move}" +
+    // админ-подпись объекта (какая очередь) — видит только админ в расстановке
+    ".qs-adm-tag{position:absolute;transform:translate(-50%,-125%);z-index:99990;pointer-events:none;" +
+      "font:800 10px system-ui;color:#fff;background:rgba(20,13,7,.9);border:1px solid rgba(240,200,120,.6);" +
+      "padding:2px 7px;border-radius:7px;white-space:nowrap;text-shadow:0 1px 2px #000;box-shadow:0 2px 6px rgba(0,0,0,.5)}" +
+    // правая панель управления объектами сцены (только админ)
+    ".qs-objp{position:fixed;right:8px;top:78px;z-index:100001;width:236px;max-height:82vh;display:flex;" +
+      "flex-direction:column;background:linear-gradient(180deg,rgba(38,24,10,.98),rgba(20,12,5,.98));" +
+      "border:1px solid rgba(224,162,74,.5);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.6);overflow:hidden}" +
+    ".qs-objp-head{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;cursor:default;" +
+      "background:linear-gradient(180deg,#3a2610,#241608);border-bottom:1px solid rgba(224,162,74,.3);" +
+      "font:800 12.5px system-ui;color:#f0c878}" +
+    ".qs-objp-tog{background:none;border:0;color:#f0c878;font-size:15px;cursor:pointer;line-height:1;padding:0 4px}" +
+    ".qs-objp.closed .qs-objp-body{display:none}" +
+    ".qs-objp-body{overflow:auto;padding:8px}" +
+    ".qs-objp-pm{width:100%;margin-bottom:8px;padding:6px;border-radius:8px;cursor:pointer;border:1px solid rgba(224,162,74,.4);" +
+      "background:rgba(60,40,16,.7);color:#f6ead2;font:700 11px system-ui}" +
+    ".qs-objp-pm.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
+    ".qs-objp-row{padding:6px 5px;border-radius:8px;margin-bottom:5px;background:rgba(255,240,200,.05);" +
+      "border:1px solid rgba(224,162,74,.18)}" +
+    ".qs-objp-nm{font:700 11px system-ui;color:#ffe0a0;margin-bottom:5px}" +
+    ".qs-objp-ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
+    ".qs-objp-pad{display:inline-grid;grid-template-columns:repeat(3,1fr);gap:1px;justify-items:center}" +
+    ".qs-objp-lr{display:flex;gap:1px;grid-column:1/4}" +
+    ".qs-objp button{cursor:pointer;border:1px solid rgba(224,162,74,.35);background:rgba(30,20,9,.85);" +
+      "color:#f0dcb4;border-radius:6px;font:800 11px system-ui;min-width:22px;height:22px;line-height:1;padding:0 4px}" +
+    ".qs-objp button:hover{background:rgba(80,54,20,.95);color:#fff}" +
+    ".qs-objp-sz{display:flex;align-items:center;gap:3px}" +
+    ".qs-objp-szv{font:800 11px system-ui;color:#9fe0a0;min-width:34px;text-align:center}" +
+    ".qs-objp-z{display:flex;gap:2px}" +
+    ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
+    "@media(max-width:820px){.qs-objp{position:static;right:auto;top:auto;width:100%;max-height:none;margin:10px 0}}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
@@ -784,9 +832,23 @@
     ".qs-js-tx{margin-top:-4px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
     // счётчик-сфера НА СЦЕНЕ
     ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
-    ".qs-scnt-bg{width:64px;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-scnt-bg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
     ".qs-scnt-n{position:absolute;top:37%;left:50%;transform:translate(-50%,-50%);font:900 19px system-ui;" +
       "color:#7a4a10;text-shadow:0 1px 1px rgba(255,240,200,.55)}" +
+    // кошелёк жетонов ТОП-3 на рамке
+    ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
+      "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
+    ".qs-stage.place .qs-fwallet{pointer-events:auto;cursor:move}" +
+    ".qs-fw-bg{width:100%;height:auto;display:block}" +
+    ".qs-fw-slot{position:absolute;left:30%;right:20%;top:33%;bottom:31%;display:flex;align-items:center;" +
+      "justify-content:center;gap:1px;line-height:1}" +
+    ".qs-fw-coins{display:flex;align-items:center}" +
+    ".qs-fw-coin{height:20px;width:auto;margin-left:-7px;filter:drop-shadow(0 0 4px rgba(255,210,120,.7))}" +
+    ".qs-fw-coin:first-child{margin-left:0}" +
+    ".qs-fw-x{font:900 15px system-ui;color:#ffe4a0;margin-left:3px;text-shadow:0 1px 2px #000,0 0 5px rgba(255,200,120,.6)}" +
+    ".qs-fw-0{font:900 17px system-ui;color:#e8c98a;text-shadow:0 1px 2px #000}" +
+    ".qs-fw-cap{position:absolute;left:0;right:0;bottom:-15px;text-align:center;font:800 9px system-ui;" +
+      "color:#f0dcb4;text-shadow:0 1px 2px #000;white-space:nowrap}" +
     ".qs-lb-hover{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-list-btn:hover .qs-lb-hover{opacity:1}" +
     ".qs-list-btn:active{filter:brightness(.9)}" +
@@ -1353,9 +1415,11 @@
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
       lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=1";
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
-        "%;z-index:" + zOf("lavka:" + b.q, lkpos.y);
+        "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
+        ");z-index:" + zOf("lavka:" + b.q, lkpos.y);
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
       // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей)
       var mkey = "scene/merchant-" + b.q + ".png";
       var mset = MODEL_SETTINGS[mkey] || {};
@@ -1399,6 +1463,7 @@
       if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(lp, "Список · " + b.title));
       // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
       // очереди (перетаскивается в режиме расстановки).
       var qStart = pathPoint(pth, 0);
@@ -1422,16 +1487,24 @@
         });
       });
       stage.appendChild(joinBtn);
-      // счётчик-сфера на СЦЕНЕ (сколько человек в этой очереди) — перетаскивается
-      var cp = placedPos("cnt:" + b.q, b.ui.x - 10, b.ui.y - 4);
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(jp, "Встать/Выйти · " + b.title));
+      // счётчик-сфера на СЦЕНЕ (сколько человек в этой очереди). По умолчанию — в ЦЕНТРЕ
+      // сцены, чуть по диагонали, чтобы все 3 были видны и их можно было растащить.
+      var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }][b.q] || { x: 50, y: 50 };
+      var cp = placedPos("cnt:" + b.q, cnDef.x, cnDef.y);
+      var csz = objSize("cnt:" + b.q, 1);
+      // слой: по умолчанию поверх (UI), но если задан front/back — уважаем выбор
+      var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
       var cntEl = document.createElement("div");
       cntEl.className = "qs-scnt qs-btn-abs";
-      cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) + "%";
+      cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
+        "%;width:" + (64 * csz).toFixed(1) + "px;z-index:" + cnz;
       cntEl.title = entries.length + " чел в очереди «" + b.title + "»";
       cntEl.innerHTML = '<img class="qs-scnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
-        '<b class="qs-scnt-n">' + entries.length + "</b>";
+        '<b class="qs-scnt-n" style="font-size:' + (19 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       stage.appendChild(cntEl);
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Счётчик · " + b.title));
       // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
       if (iAmIn && !_placeMode && _meAcc) {
         var ep = placedPos("btn-edit:" + b.q, b.ui.x + 9, b.ui.y + 2);
@@ -1460,21 +1533,48 @@
     mount.className = "qs-mount"; mount.alt = ""; mount.decoding = "async"; mount.loading = "lazy";
     mount.src = "assets/queue/scene/item/mount-cilin.webp";
     mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
-      "%;z-index:" + zOf("mount", mpos.y);
+      "%;height:calc(22% * " + objSize("mount", getSize("mount", 1)).toFixed(3) +
+      ");z-index:" + zOf("mount", mpos.y);
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
+    if (_isAdmin && _placeMode) stage.appendChild(admTag(mpos, "Огненный цилинь"));
 
     // фонтан: днём — дневная картинка, ночью — ночная; обе одного размера и в одной
-    // точке (выравнены по основанию через translate(-50%,-100%)). Размер — getSize("fountain"),
+    // точке (выравнены по основанию через translate(-50%,-100%)). Размер — objSize("fountain"),
     // слой front/back — правым кликом. Перетаскивается в режиме расстановки.
     var fpos = placedPos("fountain", 50, 62);
     var fountain = document.createElement("img");
     fountain.className = "qs-fountain"; fountain.alt = ""; fountain.decoding = "async"; fountain.loading = "lazy";
     fountain.src = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
     fountain.style.cssText = "left:" + fpos.x.toFixed(2) + "%;top:" + fpos.y.toFixed(2) +
-      "%;z-index:" + zOf("fountain", fpos.y);
+      "%;height:calc(24% * " + objSize("fountain", getSize("fountain", 1)).toFixed(3) +
+      ");z-index:" + zOf("fountain", fpos.y);
     if (_placeMode) makeDraggable(fountain, "fountain");
     stage.appendChild(fountain);
+    if (_isAdmin && _placeMode) stage.appendChild(admTag(fpos, "Фонтан (день/ночь)"));
+
+    // кошелёк жетонов ТОП-3 прямо НА рамке картины (сколько их у тебя). Показываем
+    // вошедшему игроку и админу (чтобы видел/двигал). Перетаскивается, размер/слой — в панели.
+    if (_meAcc || _isAdmin) {
+      var wpos = placedPos("wallet", 17, 17);
+      var wn = _myTokens || 0;
+      var wcoins = "";
+      for (var wi = 0; wi < Math.min(wn, 3); wi++) wcoins += '<img class="qs-fw-coin" src="assets/queue/ui/token.webp?v=2" alt="">';
+      var fw = document.createElement("div");
+      fw.className = "qs-fwallet";
+      fw.style.cssText = "left:" + wpos.x.toFixed(2) + "%;top:" + wpos.y.toFixed(2) +
+        "%;width:calc(20% * " + objSize("wallet", 1).toFixed(3) + ");z-index:" +
+        ((PLACEMENTS["wallet"] && PLACEMENTS["wallet"].z) ? zOf("wallet", wpos.y) : 9300);
+      fw.title = "Твои жетоны ТОП-3: " + wn;
+      fw.innerHTML = '<img class="qs-fw-bg" src="assets/queue/ui/wallet2.webp?v=1" alt="">' +
+        '<div class="qs-fw-slot">' + (wn > 0
+          ? '<span class="qs-fw-coins">' + wcoins + '</span><span class="qs-fw-x">×' + wn + "</span>"
+          : '<span class="qs-fw-0">0</span>') + "</div>" +
+        '<div class="qs-fw-cap">жетоны ТОП-3</div>';
+      if (_placeMode) makeDraggable(fw, "wallet");
+      stage.appendChild(fw);
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(wpos, "Кошелёк жетонов"));
+    }
 
     // объекты окружения (загружены админом): слой back(за всеми)/depth(по глубине)/front(перед),
     // зеркало/поворот/размер из настроек объекта; drag в режиме расстановки
@@ -1834,6 +1934,83 @@
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
   var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
+  var _scnPanelOpen = true; // раскрыта ли правая панель управления объектами сцены
+
+  // ── АДМИН-ПАНЕЛЬ управления объектами сцены (справа): точное перемещение,
+  //    размер, слой (перёд/зад). Работает без режима таскания — правит размещения напрямую.
+  //    Видна ТОЛЬКО админу.
+  function sceneObjPanel() {
+    var objs = [];
+    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1) }); });
+    var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }];
+    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1 }); });
+    objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1) });
+    objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1) });
+    objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1 });
+    BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false }); });
+
+    var panel = document.createElement("div");
+    panel.className = "qs-objp" + (_scnPanelOpen ? "" : " closed");
+    var head = document.createElement("div");
+    head.className = "qs-objp-head";
+    head.innerHTML = '<span>🛠 Объекты сцены</span><button class="qs-objp-tog">' + (_scnPanelOpen ? "▾" : "▸") + "</button>";
+    head.querySelector(".qs-objp-tog").addEventListener("click", function () { _scnPanelOpen = !_scnPanelOpen; render(_lastState); });
+    panel.appendChild(head);
+
+    var bodyEl = document.createElement("div");
+    bodyEl.className = "qs-objp-body";
+    // переключатель режима таскания/подписей
+    var pm = document.createElement("button");
+    pm.className = "qs-objp-pm" + (_placeMode ? " on" : "");
+    pm.textContent = _placeMode ? "🎯 Расстановка ВКЛ (подписи видны)" : "🎯 Вкл. таскание+подписи";
+    pm.addEventListener("click", function () { _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState); });
+    bodyEl.appendChild(pm);
+
+    var MStep = 1.5, SStep = 0.1;
+    objs.forEach(function (o) {
+      var row = document.createElement("div");
+      row.className = "qs-objp-row";
+      var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
+      row.innerHTML =
+        '<div class="qs-objp-nm">' + esc(o.name) + "</div>" +
+        '<div class="qs-objp-ctl">' +
+          '<span class="qs-objp-pad">' +
+            '<button data-a="up" title="выше">▲</button>' +
+            '<span class="qs-objp-lr"><button data-a="left" title="левее">◀</button>' +
+            '<button data-a="ctr" title="в центр">◎</button>' +
+            '<button data-a="right" title="правее">▶</button></span>' +
+            '<button data-a="down" title="ниже">▼</button>' +
+          "</span>" +
+          (o.sz ? '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
+            '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
+          '<span class="qs-objp-z">' +
+            '<button data-a="front" title="на передний план">перёд</button>' +
+            '<button data-a="back" title="на задний план">зад</button>' +
+            '<button data-a="auto" title="авто по глубине">авто</button>' +
+          "</span>" +
+        "</div>";
+      row.addEventListener("click", function (e) {
+        var btn = e.target.closest("button"); if (!btn) return;
+        var a = btn.dataset.a, p = curPlace(o.key, o.dx, o.dy);
+        if (a === "up") savePlacement(o.key, p.x, p.y - MStep, p.z);
+        else if (a === "down") savePlacement(o.key, p.x, p.y + MStep, p.z);
+        else if (a === "left") savePlacement(o.key, p.x - MStep, p.y, p.z);
+        else if (a === "right") savePlacement(o.key, p.x + MStep, p.y, p.z);
+        else if (a === "ctr") savePlacement(o.key, 50, 50, p.z);
+        else if (a === "front") savePlacement(o.key, p.x, p.y, "front");
+        else if (a === "back") savePlacement(o.key, p.x, p.y, "back");
+        else if (a === "auto") savePlacement(o.key, p.x, p.y, "");
+        else if (a === "sz+") saveCfg("size:" + o.key, Math.min(3, objSize(o.key, o.base) + SStep).toFixed(2));
+        else if (a === "sz-") saveCfg("size:" + o.key, Math.max(0.3, objSize(o.key, o.base) - SStep).toFixed(2));
+        else return;
+        render(_lastState);
+      });
+      bodyEl.appendChild(row);
+    });
+    panel.appendChild(bodyEl);
+    return panel;
+  }
 
   function render(state) {
     _lastState = state;
@@ -1866,6 +2043,9 @@
       wrap.appendChild(buildDuePanel(true));
       wrap.appendChild(buildHistoryPanel(true));
     }
+    // правая fixed-панель управления объектами сцены — только админу (внутри wrap, чтобы
+    // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя)
+    if (_isAdmin && !_pathMode) wrap.appendChild(sceneObjPanel());
     host.appendChild(wrap);
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
   }
@@ -2269,6 +2449,8 @@
     var dfEl = box.querySelector("#qa-dayfrom"), nfEl = box.querySelector("#qa-nightfrom");
     if (dfEl) dfEl.addEventListener("change", function () { saveCfg("dayFrom", dfEl.value || "07:00"); render(_lastState); });
     if (nfEl) nfEl.addEventListener("change", function () { saveCfg("nightFrom", nfEl.value || "20:00"); render(_lastState); });
+    // объекты с inline-размером (перекрывают CSS-переменную) — обновляем перерисовкой по отпусканию
+    var INLINE_SZ = { mount: 1, lavka: 1, fountain: 1 };
     ["frame", "char", "mount", "merch", "lavka", "fountain"].forEach(function (key) {
       var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
       el.addEventListener("input", function () {
@@ -2277,6 +2459,8 @@
         else { var s = document.querySelector(".qs-stage"); if (s) s.style.setProperty("--qs-" + key + "-scale", v); }
         clearTimeout(t); t = setTimeout(function () { saveCfg("size:" + key, v); }, 300);
       });
+      // для inline-объектов — перерисовать после отпускания, чтобы размер применился к картинке
+      if (INLINE_SZ[key]) el.addEventListener("change", function () { saveCfg("size:" + key, +el.value); render(_lastState); });
     });
     // ползунок «сколько видно картины» — двигает край рамки (inset сцены), сохраняется
     var insEl = box.querySelector("#qa-inset"), insV = box.querySelector("#qa-inset-v"), insT;
