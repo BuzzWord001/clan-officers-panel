@@ -127,9 +127,25 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     for res in SHOOTER_RES:                       # вычитаем из общего пула
         pool[res] = max(0, pool[res] - shooter_totals[res])
 
-    # 3) топ-3 по доблести (привилегия — обслуживаются первыми в своей очереди)
-    ranked = sorted(valor_map.items(), key=lambda kv: (kv[1] or 0), reverse=True)
-    top3 = {c for c, _ in ranked[:3]}
+    # 3) топ-3 по доблести (привилегия — обслуживаются первыми в своей очереди).
+    #    ЧЕЛОВЕК И ЕГО ТВИНЫ = ОДНА персона: сворачиваем валор по МЭЙН-аккаунту (main_canon),
+    #    ранг персоны = лучший (макс) валор среди её персонажей. Топ-3 РАЗНЫХ персон получают
+    #    жетон на МЭЙН — даже если сам мэйн не набрал доблесть (его подняли твины). Так, если
+    #    топ занят одним человеком и его твинами, реальные 2-е и 3-е места достаются следующим
+    #    ЛЮДЯМ после его твинов.
+    main_map = cfg.get("main_map") or {}         # canon персонажа -> canon мэйна (твин -> мэйн)
+
+    def _person(c):
+        return main_map.get(c, c)
+
+    person_valor: dict = {}
+    for c, v in valor_map.items():
+        p = _person(c)
+        vv = v or 0
+        if vv > person_valor.get(p, -1):
+            person_valor[p] = vv
+    ranked = sorted(person_valor.items(), key=lambda kv: kv[1], reverse=True)
+    top3 = {p for p, _ in ranked[:3]}            # МЭЙН-каноны топ-3 РАЗНЫХ людей
 
     def entry_valor(e) -> int:
         for key in (e.get("canon_nick"), e.get("main_canon")):

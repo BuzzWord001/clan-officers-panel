@@ -1320,6 +1320,20 @@ def _build_report(conn) -> dict:
             e["canon_nick"] = db._valor_canon(e["nick"])
             queues[r["queue"]].append(e)
     valor_map, name_map = _valor_map(conn)
+    # карта: canon персонажа -> canon мэйна (для сворачивания твинов в одну персону в топ-3)
+    main_map = {cn: p["main_canon"] for cn, p in idx.items() if p.get("main_canon")}
+    # имя мэйна по его канону (в т.ч. когда сам мэйн не встречается персонажем, только по титулу твина)
+    main_nick_map: dict[str, str] = {}
+    for cn, p in idx.items():
+        mc, mn = p.get("main_canon"), p.get("main_nick")
+        if mc and mn and mc not in main_nick_map:
+            main_nick_map[mc] = mn
+    # лучший (макс) валор персоны по её мэйн-канону — для отображения топ-3 поимённо
+    person_best: dict[str, int] = {}
+    for c, v in valor_map.items():
+        p = main_map.get(c, c)
+        if (v or 0) > person_best.get(p, -1):
+            person_best[p] = v or 0
     try:
         shooters = [s for s in json.loads(_cfg_val(conn, "shooters", "[]")) if s]
     except (ValueError, TypeError):
@@ -1329,11 +1343,12 @@ def _build_report(conn) -> dict:
         {"queues": queues}, valor_map,
         {"stages": _cfg_int(conn, "stages_closed", 0),
          "pet_count": _cfg_int(conn, "pet_count", 0),
-         "shooters": shooters, "claims": claims})
+         "shooters": shooters, "claims": claims, "main_map": main_map})
     report["has_valor"] = bool(valor_map)
-    # топ-3 поимённо (для отчёта — видно, у кого привилегия, даже если не в очереди)
+    # топ-3 поимённо (для отчёта): имя МЭЙНА персоны + её лучший валор (человек+твины = 1 строка)
     report["top3_named"] = sorted(
-        [{"nick": name_map.get(c, c), "valor": valor_map.get(c, 0)} for c in report.get("top3", [])],
+        [{"nick": main_nick_map.get(c, name_map.get(c, c)),
+          "valor": person_best.get(c, valor_map.get(c, 0))} for c in report.get("top3", [])],
         key=lambda t: t["valor"], reverse=True)
     return report
 
