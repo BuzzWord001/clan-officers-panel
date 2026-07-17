@@ -808,7 +808,12 @@
     ".qs-objp-pm.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
     ".qs-objp-row{padding:6px 5px;border-radius:8px;margin-bottom:5px;background:rgba(255,240,200,.05);" +
       "border:1px solid rgba(224,162,74,.18)}" +
-    ".qs-objp-nm{font:700 11px system-ui;color:#ffe0a0;margin-bottom:5px}" +
+    ".qs-objp-nm{display:flex;align-items:center;gap:7px;font:700 11px system-ui;color:#ffe0a0;margin-bottom:5px}" +
+    ".qs-objp-th{width:34px;height:34px;object-fit:contain;flex:0 0 auto;border-radius:6px;" +
+      "background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.25);padding:1px;" +
+      "filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qs-objp-em{width:34px;height:34px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;" +
+      "font-size:20px;border-radius:6px;background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.25)}" +
     ".qs-objp-ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
     ".qs-objp-pad{display:inline-grid;grid-template-columns:repeat(3,1fr);gap:1px;justify-items:center}" +
     ".qs-objp-lr{display:flex;gap:1px;grid-column:1/4}" +
@@ -2044,6 +2049,25 @@
     bodyEl.appendChild(pm);
 
     var MStep = 1.5, SStep = 0.1;
+    // картинка-миниатюра объекта для строки панели (чтобы было понятно, что это)
+    function objThumb(o) {
+      if (o.env) return uploadedUrl(o.env.key) || "";
+      var k = o.key || "";
+      if (k.indexOf("lavka:") === 0) return "assets/queue/scene/lavka-" + k.slice(6) + ".webp?v=3";
+      if (k.indexOf("cnt:") === 0) return "assets/queue/ui/counter2.webp?v=2";
+      if (k === "mount") return "assets/queue/scene/item/mount-cilin.webp";
+      if (k === "fountain") return "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
+      if (k === "wallet") return "assets/queue/ui/wallet2.webp?v=1";
+      if (k.indexOf("btn-join:") === 0) return "assets/queue/ui/join-green-dim.webp?v=2";
+      if (k.indexOf("btn-list:") === 0) return "assets/queue/ui/list-normal.webp?v=2";
+      return "";
+    }
+    // html имени строки с миниатюрой слева (эмодзи-заглушка, если картинки нет — напр. очередь)
+    function nameHtml(o, emoji) {
+      var t = objThumb(o);
+      var ic = t ? '<img class="qs-objp-th" src="' + esc(t) + '" alt="">' : (emoji ? '<span class="qs-objp-em">' + emoji + "</span>" : "");
+      return '<div class="qs-objp-nm">' + ic + "<span>" + fmtName(o.name) + "</span></div>";
+    }
     // имя строки: тип (до «·») — золотом и жирным, очередь/деталь — тускло (чтобы не путать строки)
     function fmtName(name) {
       var i = name.indexOf(" · ");
@@ -2064,7 +2088,7 @@
       // ── строка ОЧЕРЕДИ: только слой (перёд/зад/авто) для всех людей очереди ──
       if (o.queue !== undefined) {
         var qz = CONFIG["qz:" + o.queue] || "";
-        row.innerHTML = '<div class="qs-objp-nm">👥 ' + fmtName(o.name) + "</div>" +
+        row.innerHTML = nameHtml(o, "👥") +
           '<div class="qs-objp-ctl">' + zBtns(qz) + "</div>";
         row.addEventListener("click", function (e) {
           var btn = e.target.closest("button"); if (!btn) return;
@@ -2084,7 +2108,7 @@
         var evz = (PLACEMENTS["env:" + ev.id] && PLACEMENTS["env:" + ev.id].z) || ev.z || "depth";
         var evzn = evz === "front" ? "front" : evz === "back" ? "back" : "";   // depth == авто
         row.innerHTML =
-          '<div class="qs-objp-nm">📦 ' + fmtName(o.name) + "</div>" +
+          nameHtml(o, "📦") +
           '<div class="qs-objp-ctl">' +
             '<span class="qs-objp-pad">' +
               '<button data-a="up" title="выше">▲</button>' +
@@ -2123,7 +2147,7 @@
       // ── СКРЫТЫЙ встроенный объект: компактная строка с кнопкой «вернуть» ──
       if (isHidden(o.key)) {
         row.className = "qs-objp-row hidden";
-        row.innerHTML = '<div class="qs-objp-nm">🚫 ' + fmtName(o.name) + "</div>" +
+        row.innerHTML = nameHtml(o, "🚫") +
           '<button data-a="show" class="qs-objp-restore">↩ вернуть на сцену</button>';
         row.addEventListener("click", function (e) {
           if (!e.target.closest("button")) return;
@@ -2136,7 +2160,7 @@
       var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
       var curZ = (PLACEMENTS[o.key] && PLACEMENTS[o.key].z) || "";
       row.innerHTML =
-        '<div class="qs-objp-nm">' + fmtName(o.name) + "</div>" +
+        nameHtml(o) +
         '<div class="qs-objp-ctl">' +
           '<span class="qs-objp-pad">' +
             '<button data-a="up" title="выше">▲</button>' +
