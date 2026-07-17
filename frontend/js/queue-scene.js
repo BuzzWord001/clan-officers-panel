@@ -733,6 +733,19 @@
       "box-shadow:0 3px 10px rgba(0,0,0,.4);animation:qTaBadge 1.8s ease-in-out infinite}" +
     "@keyframes qTaBadge{0%,100%{transform:rotate(4deg) scale(1)}50%{transform:rotate(4deg) scale(1.07)}}" +
     "@media(max-width:640px){.qs-ta-badge{display:none}.qs-ta-title{font-size:13.5px}.qs-ta-tx{font-size:11px}}" +
+    // «мой кошелёк жетонов ТОП-3»
+    ".qs-mytok{display:flex;align-items:center;gap:13px;margin:6px 0;padding:9px 15px;border-radius:14px;" +
+      "background:linear-gradient(180deg,rgba(44,30,10,.7),rgba(24,15,6,.7));border:1px solid rgba(224,162,74,.35)}" +
+    ".qs-mytok.has{border-color:rgba(255,210,110,.65);box-shadow:0 0 26px -6px rgba(245,200,120,.5),inset 0 1px 0 rgba(255,224,160,.14)}" +
+    ".qs-mt-coins{display:flex;align-items:center;flex:0 0 auto}" +
+    ".qs-mt-coin{width:40px;height:40px;object-fit:contain;margin-left:-14px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}" +
+    ".qs-mt-coin:first-child{margin-left:0}" +
+    ".qs-mytok.has .qs-mt-coin{filter:drop-shadow(0 0 6px rgba(255,210,120,.7)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
+    ".qs-mt-coin.off{filter:grayscale(1) brightness(.55);opacity:.6}" +
+    ".qs-mt-plus{font:800 14px system-ui;color:#ffd98a;margin-left:2px;text-shadow:0 1px 2px #000}" +
+    ".qs-mt-info{min-width:0}" +
+    ".qs-mt-n{font:800 14.5px system-ui;color:#ffe08a}.qs-mt-n b{color:#fff}" +
+    ".qs-mt-sub{font:500 12px system-ui;color:#d8c39f;margin-top:1px}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -1504,6 +1517,28 @@
     return el;
   }
 
+  // «Мой кошелёк жетонов ТОП-3» — сколько их у тебя, картинкой жетона (для всех вошедших)
+  function buildMyTokens() {
+    if (!_meAcc) return null;                     // личный кошелёк — только у вошедшего игрока
+    var n = _myTokens || 0;
+    var el = document.createElement("div");
+    el.className = "qs-mytok" + (n > 0 ? " has" : "");
+    var coins = "";
+    var show = Math.min(n, 6);
+    for (var i = 0; i < show; i++) coins += '<img class="qs-mt-coin" src="assets/queue/ui/token.webp" alt="">';
+    if (n > 6) coins += '<span class="qs-mt-plus">+' + (n - 6) + "</span>";
+    if (n === 0) coins = '<img class="qs-mt-coin off" src="assets/queue/ui/token.webp" alt="">';
+    el.innerHTML =
+      '<div class="qs-mt-coins">' + coins + "</div>" +
+      '<div class="qs-mt-info">' +
+        '<div class="qs-mt-n">' + (n > 0 ? "Твои жетоны ТОП-3: <b>" + n + "</b>" : "Жетонов ТОП-3: <b>0</b>") + "</div>" +
+        '<div class="qs-mt-sub">' + (n > 0
+          ? "нажми «⚡ Взять вне очереди» — потратишь жетон(ы) и возьмёшь ресурсы сразу"
+          : "попади в ТОП-3 недели по доблести — получишь жетон") + "</div>" +
+      "</div>";
+    return el;
+  }
+
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
@@ -1760,6 +1795,7 @@
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
     if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenAd());  // «реклама» жетона ТОП-3 (всем)
+    if (!_pathMode && !_placeMode) { var mt = buildMyTokens(); if (mt) wrap.appendChild(mt); }  // мои жетоны (сколько их)
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
     wrap.appendChild(renderStage(state));
     if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
