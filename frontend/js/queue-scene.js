@@ -2062,10 +2062,19 @@
       if (k.indexOf("btn-list:") === 0) return "assets/queue/ui/list-normal.webp?v=2";
       return "";
     }
-    // html имени строки с миниатюрой слева (эмодзи-заглушка, если картинки нет — напр. очередь)
+    // html имени строки с миниатюрой слева (эмодзи-заглушка, если картинки нет/битая — напр. очередь)
     function nameHtml(o, emoji) {
-      var t = objThumb(o);
-      var ic = t ? '<img class="qs-objp-th" src="' + esc(t) + '" alt="">' : (emoji ? '<span class="qs-objp-em">' + emoji + "</span>" : "");
+      var t = objThumb(o), ic;
+      if (!t) ic = emoji ? '<span class="qs-objp-em">' + emoji + "</span>" : "";
+      else if (emoji) {
+        // есть картинка + запасной эмодзи: если картинка битая, прячем img и показываем эмодзи
+        ic = '<span class="qs-objp-ic"><img class="qs-objp-th" src="' + esc(t) + '" alt="" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+          '<span class="qs-objp-em" style="display:none">' + emoji + "</span></span>";
+      } else {
+        // встроенный объект: картинка всегда есть; на всякий случай прячем img при ошибке
+        ic = '<img class="qs-objp-th" src="' + esc(t) + '" alt="" onerror="this.style.display=\'none\'">';
+      }
       return '<div class="qs-objp-nm">' + ic + "<span>" + fmtName(o.name) + "</span></div>";
     }
     // имя строки: тип (до «·») — золотом и жирным, очередь/деталь — тускло (чтобы не путать строки)
