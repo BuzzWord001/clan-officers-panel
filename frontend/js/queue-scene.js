@@ -877,6 +877,8 @@
     ".qs-objp-flip{font-size:13px}" +
     // менеджер моделей (модалка)
     ".qs-mm{padding:14px 16px 18px}" +
+    ".qs-mm-lead{font-size:11.5px;line-height:1.5;color:#c9b48f;background:rgba(224,162,74,.08);" +
+      "border:1px solid rgba(224,162,74,.22);border-radius:9px;padding:8px 11px;margin-bottom:6px}" +
     ".qs-mm-h{font:800 13.5px Georgia,serif;color:#ffd98a;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid rgba(224,162,74,.25)}" +
     ".qs-mm-h:first-child{margin-top:0}" +
     ".qs-mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:9px}" +
@@ -3088,23 +3090,28 @@
       });
       f.click();
     }
-    function card(opts) {
-      var up = UPLOADED[opts.key];
-      var thumb = up ? uploadedUrl(opts.key) : "";
-      var rate = optRating(INFO[opts.key]);
-      var ms = MODEL_SETTINGS[opts.key] || {};
+    // o: {uploadKey, staticKey, title, sub, kind:'class'|'person'}
+    function card(o) {
+      var up = UPLOADED[o.uploadKey];                 // загружена ли своя (override)
+      var sKey = up ? o.uploadKey : (o.staticKey || o.uploadKey);   // ключ настроек = как рендерится
+      var thumb = up ? uploadedUrl(o.uploadKey) : (o.staticKey ? webpUrl(o.staticKey) : "");
+      var ms = MODEL_SETTINGS[sKey] || {};
+      var rateHtml;
+      if (up) { var r = optRating(INFO[o.uploadKey]); rateHtml = '<div class="qs-mm-rate ' + r.cls + '">' + r.txt + " · <b>своя</b></div>"; }
+      else if (o.staticKey) rateHtml = '<div class="qs-mm-rate na">📦 встроенная (общая) модель</div>';
+      else rateHtml = '<div class="qs-mm-rate na">— нет модели</div>';
       var el = document.createElement("div"); el.className = "qs-mm-card";
       el.innerHTML =
         (thumb ? '<img class="qs-mm-th" src="' + esc(thumb) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
-               : '<div class="qs-mm-th qs-mm-noimg">нет</div>') +
-        '<div class="qs-mm-info"><div class="qs-mm-name">' + esc(opts.title) + "</div>" +
-          (opts.sub ? '<div class="qs-mm-sub">' + esc(opts.sub) + "</div>" : "") +
-          '<div class="qs-mm-rate ' + (up ? rate.cls : "na") + '">' + (up ? rate.txt : "— не загружена (статичная/заглушка)") + "</div></div>" +
+               : '<div class="qs-mm-th qs-mm-noimg">нет модели</div>') +
+        '<div class="qs-mm-info"><div class="qs-mm-name">' + esc(o.title) + "</div>" +
+          (o.sub ? '<div class="qs-mm-sub">' + esc(o.sub) + "</div>" : "") + rateHtml + "</div>" +
         '<div class="qs-mm-btns">' +
-          '<button data-a="repl">📤 ' + (up ? "заменить" : "загрузить") + "</button>" +
-          (up ? '<button data-a="flip" class="' + (ms.flip ? "on" : "") + '" title="зеркалить">⇋</button>' +
-                '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
-                '<button data-a="del" class="danger" title="удалить загруженную">✕</button>' : "") +
+          '<button data-a="repl">📤 ' + (up ? "заменить" : "загрузить свою") + "</button>" +
+          (thumb ? '<button data-a="flip" class="' + (ms.flip ? "on" : "") + '" title="зеркалить ' +
+                   (o.kind === "class" ? "(всех этого класса)" : "(этого персонажа)") + '">⇋</button>' : "") +
+          (up ? '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
+                '<button data-a="del" class="danger" title="удалить свою (вернётся встроенная)">✕</button>' : "") +
         '</div><div class="qs-mm-st"></div>';
       var stEl = el.querySelector(".qs-mm-st");
       el.addEventListener("click", function (e) {
@@ -3113,22 +3120,22 @@
         if (a === "repl") {
           pickFile(function (data) {
             stEl.textContent = "Загрузка…";
-            q("POST", "/queue/admin/model-upload", { key: opts.key, data: data }).then(function () {
-              UPLOADED[opts.key] = Date.now(); refresh(); loadInfo(rebuild);
+            q("POST", "/queue/admin/model-upload", { key: o.uploadKey, data: data }).then(function () {
+              UPLOADED[o.uploadKey] = Date.now(); refresh(); loadInfo(rebuild);
             }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
           }, stEl);
         } else if (a === "flip") {
-          var cur = MODEL_SETTINGS[opts.key] || {}, nf = cur.flip ? 0 : 1;
-          MODEL_SETTINGS[opts.key] = { flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 };
-          q("POST", "/queue/admin/model", { key: opts.key, flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 })
+          var cur = MODEL_SETTINGS[sKey] || {}, nf = cur.flip ? 0 : 1;
+          MODEL_SETTINGS[sKey] = { flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 };
+          q("POST", "/queue/admin/model", { key: sKey, flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 })
             .then(function () { refresh(); rebuild(); });
         } else if (a === "opt") {
           stEl.textContent = "Оптимизирую…";
-          optimizeExisting(opts.key, function (okk) { if (okk) { refresh(); loadInfo(rebuild); } else stEl.textContent = "Не удалось оптимизировать"; });
+          optimizeExisting(o.uploadKey, function (okk) { if (okk) { refresh(); loadInfo(rebuild); } else stEl.textContent = "Не удалось оптимизировать"; });
         } else if (a === "del") {
-          if (!confirm("Удалить загруженную модель «" + opts.title + "»?")) return;
-          q("POST", "/queue/admin/model-delete", { key: opts.key }).then(function () {
-            delete UPLOADED[opts.key]; refresh(); loadInfo(rebuild);
+          if (!confirm("Удалить загруженную модель «" + o.title + "»? Вернётся встроенная (если есть).")) return;
+          q("POST", "/queue/admin/model-delete", { key: o.uploadKey }).then(function () {
+            delete UPLOADED[o.uploadKey]; refresh(); loadInfo(rebuild);
           });
         }
       });
@@ -3136,19 +3143,29 @@
     }
     function rebuild() {
       body.innerHTML = "";
+      body.appendChild((function () { var d = document.createElement("div"); d.className = "qs-mm-lead";
+        d.innerHTML = "«Загрузить свою» кладёт индивидуальную картинку поверх встроенной. " +
+          "📦 встроенная — общая модель класса. Зеркало общей модели отражает всех персонажей этого класса."; return d; })());
+      // ── ОБЩИЕ (классовые) модели ──
       var clsSet = {};
       ["Воин", "Жрец", "Маг", "Друид", "Стрелок", "Оборотень", "Странник"].forEach(function (c) { clsSet[c] = 1; });
       (_roster || []).forEach(function (p) { if (p.cls) clsSet[p.cls] = 1; });
-      var h1 = document.createElement("div"); h1.className = "qs-mm-h"; h1.textContent = "🛡 Модели классов (муж/жен)";
+      var h1 = document.createElement("div"); h1.className = "qs-mm-h"; h1.textContent = "🛡 Общие модели — по классам (муж/жен)";
       body.appendChild(h1);
       var g1 = document.createElement("div"); g1.className = "qs-mm-grid";
       Object.keys(clsSet).sort().forEach(function (cls) {
+        var set = CLASS_MODEL[(cls || "").toLowerCase()];
         classGenders(cls).forEach(function (g) {
-          g1.appendChild(card({ key: "class-" + cls + "-" + g, title: cls + " (" + (g === "m" ? "муж" : "жен") + ")" }));
+          var fn = set ? (set[g] || set.m || set.f) : null;
+          g1.appendChild(card({
+            uploadKey: "class-" + cls + "-" + g, staticKey: fn ? "class/" + fn : null,
+            title: cls + " (" + (g === "m" ? "муж" : "жен") + ")", kind: "class"
+          }));
         });
       });
       body.appendChild(g1);
-      var h2 = document.createElement("div"); h2.className = "qs-mm-h"; h2.textContent = "👤 Персональные модели";
+      // ── ПЕРСОНАЛЬНЫЕ модели ──
+      var h2 = document.createElement("div"); h2.className = "qs-mm-h"; h2.textContent = "👤 Персональные модели (игроку и его твинам)";
       body.appendChild(h2);
       var add = document.createElement("div"); add.className = "qs-mm-addp";
       add.innerHTML = '<input class="qs-mm-nick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off">' +
@@ -3163,10 +3180,21 @@
         });
       });
       body.appendChild(add);
+      // объединяем встроенные персональные (PERSONAL_SRC) и загруженные (person-*)
+      var persMap = {};
+      Object.keys(PERSONAL_SRC).forEach(function (name) {
+        var cn = canon(name);
+        persMap[cn] = { uploadKey: "person-" + cn, staticKey: "personal/" + PERSONAL_SRC[name], title: name, kind: "person" };
+      });
+      Object.keys(UPLOADED).filter(function (k) { return k.indexOf("person-") === 0; }).forEach(function (k) {
+        var cn = k.slice(7);
+        if (!persMap[cn]) persMap[cn] = { uploadKey: k, staticKey: null, title: nickByCanon(cn), kind: "person" };
+      });
       var g2 = document.createElement("div"); g2.className = "qs-mm-grid";
-      var persons = Object.keys(UPLOADED).filter(function (k) { return k.indexOf("person-") === 0; });
-      if (!persons.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей пока нет — добавь по нику выше."; g2.appendChild(e); }
-      persons.forEach(function (k) { g2.appendChild(card({ key: k, title: nickByCanon(k.slice(7)), sub: "персональная (идёт игроку и его твинам)" })); });
+      var pk = Object.keys(persMap);
+      if (!pk.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей нет — добавь по нику выше."; g2.appendChild(e); }
+      pk.sort(function (a, b) { return persMap[a].title.localeCompare(persMap[b].title, "ru"); })
+        .forEach(function (cn) { var o = persMap[cn]; o.sub = "персональная"; g2.appendChild(card(o)); });
       body.appendChild(g2);
     }
     loadInfo(rebuild);
