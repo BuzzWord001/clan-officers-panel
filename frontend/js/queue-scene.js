@@ -511,7 +511,11 @@
     ".q-sec-hint{font:400 11px system-ui;color:#8a795a}" +
     ".q-sec-body{padding:12px 14px}" +
     ".q-sec-body>.q-admin-row:last-child{margin-bottom:0}" +
-    ".q-admin-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}" +
+    ".q-admin-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px;min-width:0}" +
+    ".qa-model-strip{scrollbar-width:auto}" +
+    ".qa-model-strip::-webkit-scrollbar{height:12px}" +
+    ".qa-model-strip::-webkit-scrollbar-track{background:rgba(0,0,0,.3);border-radius:6px}" +
+    ".qa-model-strip::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#e0a24a,#a5762a);border-radius:6px;border:2px solid rgba(0,0,0,.3)}" +
     ".q-admin input,.q-admin select{padding:8px 10px;font-size:13px;color:#f5ecda;background:rgba(0,0,0,.35);" +
       "border:1px solid rgba(224,162,74,.35);border-radius:8px;outline:none}" +
     ".q-admin input:focus,.q-admin select:focus{border-color:#e0a24a}" +
@@ -1735,6 +1739,7 @@
 
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
+  var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
 
   function render(state) {
     _lastState = state;
@@ -1907,6 +1912,11 @@
             '<button class="sec" id="qa-place">🎯 Расставить предметы: ' + (_placeMode ? "ВКЛ" : "выкл") + "</button>" +
             '<button class="sec" id="qa-path">✏️ Форма очередей: ' + (_pathMode ? "ВКЛ" : "выкл") + "</button>" +
           "</div>" +
+          '<div style="font-size:11.5px;color:#c9b48f;line-height:1.5;margin:-4px 0 8px;padding:7px 10px;' +
+            'background:rgba(224,162,74,.08);border:1px solid rgba(224,162,74,.22);border-radius:9px">' +
+            '👉 <b>Расставить предметы</b> — тащи мышкой предметы, торговца, питомца (позиция сохраняется). ' +
+            '<b>Правый клик</b> по объекту в этом режиме — <b>слой: на передний план → на задний → авто</b>. ' +
+            '<b>Форма очередей</b> — тащи точки пути очереди.</div>' +
           '<div class="q-admin-row" style="align-items:center;flex-wrap:wrap">' +
             '<span style="font-size:12.5px;color:#caa66a">Фон:</span>' +
             '<button class="sec" data-time="auto">🕒 Авто</button>' +
@@ -2200,6 +2210,12 @@
     secModels.appendChild(buildModelSizePanel());
     secModels.appendChild(buildUploadPanel());
     box.querySelector("#qsec-env").appendChild(buildEnvPanel());
+    // СОХРАНЯЕМ раскрытость секций между перерисовками: при клике любой кнопки render()
+    // пересобирает панель — без этого все разделы схлопывались каждый раз.
+    [].forEach.call(box.querySelectorAll("details.q-sec"), function (d, i) {
+      if (_secOpen[i] !== undefined) d.open = _secOpen[i];
+      d.addEventListener("toggle", function () { _secOpen[i] = d.open; });
+    });
     return box;
   }
 
@@ -2916,8 +2932,13 @@
       '<span style="color:#8a795a;font-size:11px">— все на одной линии, видно относительный размер. ' +
       'Ползунок — размер; ⇋ — зеркало (если модель смотрит не туда); ↺/↻ — поворот. ' +
       'Меняется у всех с этой моделью сразу и сохраняется само.</span></div>';
+    var hint = document.createElement("div");
+    hint.style.cssText = "font:700 11px system-ui;color:#e6c48f;margin:2px 0 2px";
+    hint.textContent = "↔ прокрути ленту вправо — там все модели (" + ALL_MODELS.length + " шт)";
+    wrap.appendChild(hint);
     var strip = document.createElement("div");
-    strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:8px 4px;align-items:flex-end;" +
+    strip.className = "qa-model-strip";
+    strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding:8px 4px 10px;align-items:flex-end;max-width:100%;" +
       "background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.22);border-radius:10px";
     ALL_MODELS.forEach(function (m) {
       var s = Object.assign({ flip: 0, rotate: 0, scale: 1 }, MODEL_SETTINGS[m.key] || {});
