@@ -828,12 +828,12 @@
     ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
       "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
     ".qs-pick2-foot .qs-join{display:block;margin:0 auto;width:min(330px,82%);aspect-ratio:420/182;height:auto;min-height:0;" +
-      "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp) center/contain no-repeat;" +
+      "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp?v=2) center/contain no-repeat;" +
       "color:#ffe8bc;font:800 15px/1.15 system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
       "padding:0 8% 0 25%;filter:drop-shadow(0 4px 9px rgba(0,0,0,.4))}" +
     ".qs-pick2-foot .qs-join:hover{filter:drop-shadow(0 4px 12px rgba(255,200,120,.4)) brightness(1.05)}" +
     ".qs-pick2 .qs-join:disabled{opacity:1;color:#c8b892;cursor:default;" +
-      "background:url(assets/queue/ui/btn-join-dim.webp) center/contain no-repeat;filter:grayscale(.15)}" +
+      "background:url(assets/queue/ui/btn-join-dim.webp?v=2) center/contain no-repeat;filter:grayscale(.15)}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
@@ -1376,8 +1376,8 @@
       listBtn.className = "qs-list-btn qs-btn-abs";
       listBtn.style.cssText = "left:" + lp.x.toFixed(2) + "%;top:" + lp.y.toFixed(2) + "%;--gc:" + b.accent;
       listBtn.title = "Показать всю очередь";
-      listBtn.innerHTML = '<img class="qs-lb-normal" src="assets/queue/ui/list-normal.webp" alt="">' +
-        '<img class="qs-lb-hover" src="assets/queue/ui/list-hover.webp" alt="">';
+      listBtn.innerHTML = '<img class="qs-lb-normal" src="assets/queue/ui/list-normal.webp?v=2" alt="">' +
+        '<img class="qs-lb-hover" src="assets/queue/ui/list-hover.webp?v=2" alt="">';
       if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
@@ -1513,7 +1513,7 @@
     var el = document.createElement("div");
     el.className = "qs-token-ad";
     el.innerHTML =
-      '<img class="qs-ta-token" src="assets/queue/ui/token.webp" alt="Жетон ТОП-3">' +
+      '<img class="qs-ta-token" src="assets/queue/ui/token.webp?v=2" alt="Жетон ТОП-3">' +
       '<div class="qs-ta-body">' +
         '<div class="qs-ta-title">Жетон ТОП-3 <span>— награда за доблесть</span></div>' +
         '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. С ним берёшь ресурсы ' +
@@ -1532,12 +1532,12 @@
     el.className = "qs-mytok" + (n > 0 ? " has" : "");
     var coins = "";
     var show = Math.min(n, 5);
-    for (var i = 0; i < show; i++) coins += '<img class="qs-mt-coin" src="assets/queue/ui/token.webp" alt="">';
+    for (var i = 0; i < show; i++) coins += '<img class="qs-mt-coin" src="assets/queue/ui/token.webp?v=2" alt="">';
     var slot = n > 0
       ? '<div class="qs-mt-coins">' + coins + '</div><span class="qs-mt-x">×' + n + "</span>"
       : '<span class="qs-mt-empty">пока пусто</span>';
     el.innerHTML =
-      '<div class="qs-mt-wallet"><img class="qs-mt-frame" src="assets/queue/ui/wallet.webp" alt="">' +
+      '<div class="qs-mt-wallet"><img class="qs-mt-frame" src="assets/queue/ui/wallet.webp?v=2" alt="">' +
         '<div class="qs-mt-slot">' + slot + "</div></div>" +
       '<div class="qs-mt-info">' +
         '<div class="qs-mt-n">' + (n > 0 ? "Твои жетоны ТОП-3: <b>" + n + "</b>" : "Жетонов ТОП-3: <b>0</b>") + "</div>" +
@@ -1565,7 +1565,7 @@
       var head = document.createElement("div"); head.className = "qs-lane-head";
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
         '<span class="qs-lane-cnt" title="' + entries.length + ' чел в очереди">' +
-          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter2.webp" alt="">' +
+          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
           '<b class="qs-lane-cnt-n">' + entries.length + "</b></span>" +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
@@ -1579,8 +1579,8 @@
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
-          '<img class="qs-jt-dim" src="assets/queue/ui/' + jcolor + '-dim.webp" alt="">' +
-          '<img class="qs-jt-lit" src="assets/queue/ui/' + jcolor + '-lit.webp" alt="">' +
+          '<img class="qs-jt-dim" src="assets/queue/ui/' + jcolor + '-dim.webp?v=2" alt="">' +
+          '<img class="qs-jt-lit" src="assets/queue/ui/' + jcolor + '-lit.webp?v=2" alt="">' +
         "</span>" +
         '<span class="qs-lane-join-tx">' + joinTx + "</span>";
       joinCell.addEventListener("click", function () {
@@ -1716,7 +1716,7 @@
     var bar = document.createElement("div");
     bar.className = "qs-super" + (adminMode ? " preview" : "");
     bar.innerHTML =
-      '<img class="qs-super-token" src="assets/queue/ui/token.webp" alt="">' +
+      '<img class="qs-super-token" src="assets/queue/ui/token.webp?v=2" alt="">' +
       '<span class="qs-super-txt"><b>Суперспособность ТОП-3 — взять обычные ресурсы ВНЕ очереди</b><br>' +
       (adminMode
         ? '<span style="color:#e6c48f">🧪 админ-тест как <b>' + esc(ADMIN_NICK) +
