@@ -216,7 +216,7 @@
       var st = e.priv_stacks || 1;
       qty = (unit ? (st * unit) + " шт" : "") + (st > 1 ? " · " + st + " жетон(ов)" : "");
     } else {
-      qty = rm.mode === "pack" ? "пачкой" : (unit ? unit + " шт" : "");
+      qty = rm.mode === "pack" ? "всё за неделю — первому" : (unit ? unit + " шт" : "");
     }
     var res = '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(e.resource) + '" alt=""> ' +
       esc(resName(e.resource)) + (qty ? ' — <b>' + qty + "</b>" : "") + "</span>";
@@ -608,13 +608,16 @@
     ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
     ".qs-merch-det{position:relative}" +
-    ".qs-merch-det>summary{cursor:pointer;list-style:none;font:700 10px system-ui;color:#caa66a;" +
-      "padding:3px 2px;border-top:1px dashed rgba(224,162,74,.28);display:flex;align-items:center;gap:5px}" +
+    // ВЕСЬ верх (НПЦ+строка) — одна кнопка-разворот
+    ".qs-merch-det>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:5px;padding:0;border-radius:9px;transition:background .12s}" +
     ".qs-merch-det>summary::-webkit-details-marker{display:none}" +
-    ".qs-merch-det>summary::before{content:'▸';transition:transform .12s}" +
-    ".qs-merch-det[open]>summary{color:var(--gc)}" +
-    ".qs-merch-det[open]>summary::before{transform:rotate(90deg)}" +
-    ".qs-merch-det>summary:hover{color:var(--gc)}" +
+    ".qs-merch-det>summary:hover{background:rgba(224,162,74,.08)}" +
+    ".qs-merch-sumline{display:flex;align-items:center;gap:5px;font:700 10px system-ui;color:#caa66a;" +
+      "padding:4px 2px 2px;border-top:1px dashed rgba(224,162,74,.28)}" +
+    ".qs-merch-sumline::before{content:'▸';transition:transform .12s;flex:0 0 auto}" +
+    ".qs-merch-det[open] .qs-merch-sumline{color:var(--gc)}" +
+    ".qs-merch-det[open] .qs-merch-sumline::before{transform:rotate(90deg)}" +
+    ".qs-merch-det>summary:hover .qs-merch-sumline{color:var(--gc)}" +
     /* раскрытый список — ОВЕРЛЕЙ вниз поверх нижних полос, не растягивает высоту полосы */
     ".qs-merch-det[open] .qs-merch-res{position:absolute;top:calc(100% + 3px);left:-8px;right:-8px;z-index:400;" +
       "background:linear-gradient(180deg,#241608,#160d06);border:1px solid var(--gc);border-radius:10px;" +
@@ -918,7 +921,7 @@
       .catch(function () { host.innerHTML = '<div class="qsc-sub">Не удалось загрузить.</div>'; });
   }
   function dropsHtml(d) {
-    var MODE = { stack: "по очереди, стаками", pack: "первому — пачкой", fixed: "каждому" };
+    var MODE = { stack: "по очереди, стаками", pack: "всё за неделю разом — первому в очереди", fixed: "каждому" };
     var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)"];
     var cilinName = d.cilin_name || "Огненный цилинь";
     var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
@@ -943,7 +946,8 @@
     h += '<div class="qsc-chance"><div class="qsc-chance-h">🎲 ' + esc(cilinName) + "</div>" +
       '<div class="qsc-chance-tx">' + esc(d.cilin_note || "падает с шансом") + "</div></div>";
     h += '<div class="qsc-sub" style="margin-top:10px">💡 «стаками» — раздаётся по очереди пока есть; ' +
-      '«пачкой» — весь объём первому; «каждому» — фиксировано каждому в очереди.</div>';
+      '«всё за неделю разом первому» — весь недельный объём этого ресурса отдаётся ОДНОМУ, первому в очереди; ' +
+      '«каждому» — фиксировано каждому в очереди.</div>';
     return h;
   }
 
@@ -1512,7 +1516,7 @@
       var anyFree = false;
       var resChips = resItems.map(function (it) {
         var rm = REWARDS_META[it] || {};
-        var st = rm.mode === "pack" ? "пачкой" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
+        var st = rm.mode === "pack" ? "всё 1-му" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
         var cnt = resCount[it] || 0; if (cnt === 0) anyFree = true;
         var cntHtml = cnt === 0
           ? '<span class="qs-mres-cnt free">🟢 свободно · 0 чел</span>'
@@ -1523,13 +1527,16 @@
           '<span class="qs-mres-nm">' + esc(resName(it)) + "</span>" +
           '<span class="qs-mres-st">' + esc(st) + "</span>" + cntHtml + "</span>";
       }).join("");
+      // ВЕСЬ бокс торговца — одна кнопка: клик по НПЦ ИЛИ по строке разворачивает список
       merchBox.innerHTML =
-        '<div class="qs-merch-npc">' +
-          '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
-          '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
-        '<details class="qs-merch-det"><summary>📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
-          (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</summary>" +
-          '<div class="qs-merch-res">' + resChips + "</div></details>";
+        '<details class="qs-merch-det"><summary>' +
+          '<div class="qs-merch-npc">' +
+            '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
+            '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
+          '<div class="qs-merch-sumline">📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
+            (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</div>" +
+        "</summary>" +
+        '<div class="qs-merch-res">' + resChips + "</div></details>";
       // клик по ресурсу в списке торговца → встать в эту очередь за ним (или сменить, если уже стоишь)
       merchBox.addEventListener("click", function (ev) {
         var chip = ev.target.closest(".qs-mres"); if (!chip) return;

@@ -66,7 +66,7 @@ def stack_text(res: str) -> str:
     if not r:
         return ""
     if r["mode"] == "pack":
-        return "вся пачка за все этапы — первому в очереди"
+        return "всё за неделю разом отдаётся первому в очереди"
     if r["mode"] == "fixed":
         return "по %d шт" % r["unit"]
     return "стак по %d шт" % r["unit"]   # stack
