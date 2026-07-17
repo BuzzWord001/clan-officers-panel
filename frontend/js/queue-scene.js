@@ -291,6 +291,8 @@
   function objSize(pkey, base) { var v = parseFloat(CONFIG["size:" + pkey]); return (isFinite(v) && v > 0) ? v : (base || 1); }
   // зеркалирование объекта по ключу
   function isFlipped(pkey) { return CONFIG["flip:" + pkey] === "1"; }
+  // скрыт ли объект со сцены (обратимо; встроенные объекты не удаляются насовсем, а прячутся)
+  function isHidden(pkey) { return CONFIG["hide:" + pkey] === "1"; }
   // суффикс transform с учётом зеркала (base — базовый translate объекта)
   function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
@@ -821,6 +823,10 @@
     ".qs-objp-flip{font-size:13px}" +
     ".qs-objp-del{color:#ff9a86;border-color:rgba(255,120,100,.5)!important}" +
     ".qs-objp-del:hover{background:rgba(120,30,20,.8)!important;color:#fff!important}" +
+    ".qs-objp-row.hidden{opacity:.6;display:flex;align-items:center;justify-content:space-between;gap:6px}" +
+    ".qs-objp-restore{cursor:pointer;border:1px solid rgba(150,220,150,.5);background:rgba(30,60,30,.6);" +
+      "color:#9fe0a0;border-radius:7px;font:700 10.5px system-ui;padding:4px 8px;white-space:nowrap}" +
+    ".qs-objp-restore:hover{background:rgba(40,90,40,.8);color:#fff}" +
     // блок добавления своего предмета
     ".qs-objp-add{margin-top:8px;padding:9px 8px;border-radius:9px;background:rgba(60,42,16,.5);" +
       "border:1px dashed rgba(224,162,74,.5);display:flex;flex-direction:column;gap:6px}" +
@@ -1433,6 +1439,7 @@
       stage.appendChild(glow);
       // лавка (торговый прилавок) этой очереди — перекрывает старые будки, день и ночь.
       // Перетаскивается; размер через getSize("lavka"); слой front/back правым кликом.
+      if (!isHidden("lavka:" + b.q)) {
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
@@ -1444,6 +1451,7 @@
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
+      }
       // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей)
       var mkey = "scene/merchant-" + b.q + ".png";
       var mset = MODEL_SETTINGS[mkey] || {};
@@ -1488,6 +1496,7 @@
       entries.some(function (e) { if (canon(e.main_nick) === meCanon && !e.privileged) { myEntry = e; return true; } return false; });
       var iAmIn = !!myEntry;
       // кнопка «Список»
+      if (!isHidden("btn-list:" + b.q)) {
       var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
       var listBtn = document.createElement("button");
       listBtn.className = "qs-list-btn qs-btn-abs";
@@ -1499,8 +1508,10 @@
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lp, "Список · " + b.title));
+      }
       // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
       // очереди (перетаскивается в режиме расстановки).
+      if (!isHidden("btn-join:" + b.q)) {
       var qStart = pathPoint(pth, 0);
       var jp = placedPos("btn-join:" + b.q, qStart.x - 6, qStart.y + 3);
       var joinBtn = document.createElement("button");
@@ -1523,8 +1534,10 @@
       });
       stage.appendChild(joinBtn);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(jp, "Встать/Выйти · " + b.title));
+      }
       // счётчик-сфера на СЦЕНЕ (сколько человек в этой очереди). По умолчанию — в ЦЕНТРЕ
       // сцены, чуть по диагонали, чтобы все 3 были видны и их можно было растащить.
+      if (!isHidden("cnt:" + b.q)) {
       var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }][b.q] || { x: 50, y: 50 };
       var cp = placedPos("cnt:" + b.q, cnDef.x, cnDef.y);
       var csz = objSize("cnt:" + b.q, 1);
@@ -1541,6 +1554,7 @@
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       stage.appendChild(cntEl);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Счётчик · " + b.title));
+      }
       // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
       if (iAmIn && !_placeMode && _meAcc) {
         var ep = placedPos("btn-edit:" + b.q, b.ui.x + 9, b.ui.y + 2);
@@ -1564,6 +1578,7 @@
       }
     });
     // ездовой питомец «Огненный цилинь» — крупная награда у легендарной будки
+    if (!isHidden("mount")) {
     var mpos = placedPos("mount", 85, 70);
     var mount = document.createElement("img");
     mount.className = "qs-mount"; mount.alt = ""; mount.decoding = "async"; mount.loading = "lazy";
@@ -1575,10 +1590,12 @@
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
     if (_isAdmin && _placeMode) stage.appendChild(admTag(mpos, "Огненный цилинь"));
+    }
 
     // фонтан: днём — дневная картинка, ночью — ночная; обе одного размера и в одной
     // точке (выравнены по основанию через translate(-50%,-100%)). Размер — objSize("fountain"),
     // слой front/back — правым кликом. Перетаскивается в режиме расстановки.
+    if (!isHidden("fountain")) {
     var fpos = placedPos("fountain", 50, 62);
     var fountain = document.createElement("img");
     fountain.className = "qs-fountain"; fountain.alt = ""; fountain.decoding = "async"; fountain.loading = "lazy";
@@ -1590,11 +1607,12 @@
     if (_placeMode) makeDraggable(fountain, "fountain");
     stage.appendChild(fountain);
     if (_isAdmin && _placeMode) stage.appendChild(admTag(fpos, "Фонтан (день/ночь)"));
+    }
 
     // кошелёк жетонов ТОП-3 строим здесь, но вешаем ПОВЕРХ рамки (в .qs-frame после оверлея,
     // см. ниже) — чтобы он был ПЕРЕД рамкой окружения, а не под ней и не обрезался сценой.
     var frameWallet = null;
-    if (_meAcc || _isAdmin) {
+    if ((_meAcc || _isAdmin) && !isHidden("wallet")) {
       var wpos = placedPos("wallet", 17, 17);
       var wn = _myTokens || 0;
       var wcoins = "";
@@ -2102,7 +2120,19 @@
         bodyEl.appendChild(row);
         return;
       }
-      // ── строка ОБЪЕКТА: перемещение + размер + зеркало + слой ──
+      // ── СКРЫТЫЙ встроенный объект: компактная строка с кнопкой «вернуть» ──
+      if (isHidden(o.key)) {
+        row.className = "qs-objp-row hidden";
+        row.innerHTML = '<div class="qs-objp-nm">🚫 ' + fmtName(o.name) + "</div>" +
+          '<button data-a="show" class="qs-objp-restore">↩ вернуть на сцену</button>';
+        row.addEventListener("click", function (e) {
+          if (!e.target.closest("button")) return;
+          saveCfg("hide:" + o.key, "0"); render(_lastState);
+        });
+        bodyEl.appendChild(row);
+        return;
+      }
+      // ── строка ОБЪЕКТА: перемещение + размер + зеркало + слой + удалить(скрыть) ──
       var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
       var curZ = (PLACEMENTS[o.key] && PLACEMENTS[o.key].z) || "";
       row.innerHTML =
@@ -2119,6 +2149,7 @@
             '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
           (o.flip ? '<button data-a="flip" class="qs-objp-flip' + (isFlipped(o.key) ? " on" : "") + '" title="зеркалить">⇋</button>' : "") +
           zBtns(curZ) +
+          '<button data-a="hide" class="qs-objp-del" title="убрать со сцены (можно вернуть)">✕</button>' +
         "</div>";
       row.addEventListener("click", function (e) {
         var btn = e.target.closest("button"); if (!btn) return;
@@ -2134,6 +2165,7 @@
         else if (a === "sz+") saveCfg("size:" + o.key, Math.min(3, objSize(o.key, o.base) + SStep).toFixed(2));
         else if (a === "sz-") saveCfg("size:" + o.key, Math.max(0.3, objSize(o.key, o.base) - SStep).toFixed(2));
         else if (a === "flip") saveCfg("flip:" + o.key, isFlipped(o.key) ? "0" : "1");
+        else if (a === "hide") saveCfg("hide:" + o.key, "1");
         else return;
         render(_lastState);
       });
