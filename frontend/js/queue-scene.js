@@ -3305,10 +3305,12 @@
         '<div style="font-size:12px;color:#caa66a">🌟 Суперспособность топ-3 (жетоны «вне очереди») ' +
           '<button class="sec" id="qd-priv-btn" style="padding:2px 8px">↻ показать</button></div>' +
         '<div class="q-admin-row" style="gap:6px;align-items:center;flex-wrap:wrap">' +
-          '<span style="font-size:11px;color:#8a795a">Тест: дать жетоны игроку (напр. Лирия!):</span>' +
-          '<input id="qd-priv-nick" list="qd-dl" placeholder="ник…" autocomplete="off" style="min-width:130px">' +
-          '<input id="qd-priv-n" type="number" value="3" min="-50" max="50" style="width:64px">' +
-          '<button class="sec" id="qd-priv-give">± дать/снять жетоны</button>' +
+          '<span style="font-size:11px;color:#8a795a">🎫 Выдать/снять жетоны ТОП-3 по никам мэйнов ' +
+          '(можно несколько через запятую или с новой строки):</span>' +
+          '<textarea id="qd-priv-nick" placeholder="ГромМэйн, ТихийОмут, Лирия!…" autocomplete="off" ' +
+          'rows="2" style="min-width:220px;flex:1;resize:vertical"></textarea>' +
+          '<input id="qd-priv-n" type="number" value="1" min="-50" max="50" style="width:64px" title="сколько жетонов каждому (минус — снять)">' +
+          '<button class="sec" id="qd-priv-give">± выдать/снять каждому</button>' +
         "</div>" +
         '<div id="qd-priv" style="font-size:11.5px;color:#c9b48f"></div>' +
       "</div>" +
@@ -3325,13 +3327,27 @@
     }
     wrap.querySelector("#qd-priv-btn").addEventListener("click", loadPriv);
     wrap.querySelector("#qd-priv-give").addEventListener("click", function () {
-      var nk = wrap.querySelector("#qd-priv-nick").value.trim();
+      var raw = wrap.querySelector("#qd-priv-nick").value.trim();
       var n = parseInt(wrap.querySelector("#qd-priv-n").value, 10) || 0;
-      if (!nk || !n) { status("Укажи ник и число жетонов."); return; }
-      q("POST", "/queue/admin/grant-token", { nick: nk, count: n }).then(function (d) {
-        status("✓ " + d.nick + " — жетонов теперь: " + d.tokens + ". Войди этим ником как игрок, чтобы протестировать «Взять вне очереди».", true);
+      var nicks = raw.split(/[\n,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!nicks.length || !n) { status("Укажи хотя бы один ник и число жетонов."); return; }
+      status("Выдаю жетоны (" + nicks.length + ")…", true);
+      var okList = [], errList = [];
+      // последовательно, чтобы порядок и лог были предсказуемы
+      var chain = Promise.resolve();
+      nicks.forEach(function (nk) {
+        chain = chain.then(function () {
+          return q("POST", "/queue/admin/grant-token", { nick: nk, count: n })
+            .then(function (d) { okList.push(d.nick + " → " + d.tokens); })
+            .catch(function (e) { errList.push(nk + " (" + (e.status === 404 ? "не найден" : (e.detail || e.message)) + ")"); });
+        });
+      });
+      chain.then(function () {
+        var msg = (okList.length ? "✓ " + (n > 0 ? "выдано" : "снято") + ": " + okList.join(", ") : "");
+        if (errList.length) msg += (msg ? " · " : "") + "⚠ ошибки: " + errList.join(", ");
+        status(msg || "Ничего не изменено.", errList.length === 0);
         loadPriv();
-      }).catch(function (e) { status(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
+      });
     });
     function renderShooters() {
       var host = wrap.querySelector("#qd-shlist");
