@@ -601,10 +601,11 @@
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
       "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
     /* кнопка «Встать/Выйти» в начале полосы */
-    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;" +
-      "display:flex;flex-direction:column;align-items:center;gap:1px;transition:transform .08s,filter .08s}" +
-    ".qs-lane-join-ic{width:52px;height:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.45))}" +
-    ".qs-lane-join-tx{font:800 9.5px/1.15 system-ui;color:#f6ead2;text-align:center;max-width:62px;text-shadow:0 1px 2px #000}" +
+    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;width:60px;height:76px;" +
+      "display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;transition:filter .08s}" +
+    ".qs-lane-join-ic{width:50px;height:50px;flex:0 0 auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.45))}" +
+    ".qs-lane-join-tx{height:22px;display:flex;align-items:center;justify-content:center;overflow:hidden;" +
+      "font:800 9px/1.1 system-ui;color:#f6ead2;text-align:center;max-width:60px;text-shadow:0 1px 2px #000}" +
     ".qs-lane-join.leave .qs-lane-join-tx{color:#ffcdbf}" +
     ".qs-lane-join:hover{filter:brightness(1.08)}.qs-lane-join:active{transform:translateY(2px) scale(.95)}" +
     /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
@@ -774,13 +775,13 @@
     /* липкий низ окна: кнопка «Встать» ВСЕГДА видна без прокрутки */
     ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
       "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
-    ".qs-pick2-foot .qs-join{margin:0;width:100%;max-width:none;min-height:58px;border:0;box-shadow:none;" +
-      "background:url(assets/queue/ui/btn-join-lit.webp) center/100% 100% no-repeat;" +
-      "color:#ffe8bc;font:800 14px system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
-      "padding:14px 20px 14px 66px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4))}" +
+    ".qs-pick2-foot .qs-join{display:block;margin:0 auto;width:min(330px,82%);aspect-ratio:440/191;height:auto;min-height:0;" +
+      "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp) center/contain no-repeat;" +
+      "color:#ffe8bc;font:800 15px/1.15 system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
+      "padding:0 8% 0 25%;filter:drop-shadow(0 4px 9px rgba(0,0,0,.4))}" +
     ".qs-pick2-foot .qs-join:hover{filter:drop-shadow(0 4px 12px rgba(255,200,120,.4)) brightness(1.05)}" +
-    ".qs-pick2 .qs-join:disabled{opacity:1;color:#b6a684;cursor:default;" +
-      "background:url(assets/queue/ui/btn-join-dim.webp) center/100% 100% no-repeat;filter:grayscale(.2)}" +
+    ".qs-pick2 .qs-join:disabled{opacity:1;color:#c8b892;cursor:default;" +
+      "background:url(assets/queue/ui/btn-join-dim.webp) center/contain no-repeat;filter:grayscale(.15)}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
