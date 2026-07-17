@@ -1271,22 +1271,25 @@ def rewards() -> dict:
 
 @router.get("/drops")
 def drops() -> dict:
-    """Что падает с каждого этапа КХ и что с шансом — для свитка на сцене (всем)."""
+    """Что падает с каждого этапа КХ — ТОЧНО как в таблице наград «Награды за все этапы кх».
+    st[i] = сколько ресурса даёт этап i (пул недели = сумма по закрытым этапам). Огненный
+    цилинь падает С ШАНСОМ с конкретных этапов (4–7)."""
+    CILIN_STAGES = {4, 5, 6, 7}
     st_rows = []
     for si in range(distribution.MAX_STAGES):
+        stage = si + 1
         items = []
         for k, r in distribution.REWARDS.items():
             if k == "mount-cilin":
-                continue                        # питомец — с шансом, отдельно
-            arr = r["st"]
-            inc = arr[si] - (arr[si - 1] if si > 0 else 0)
-            if inc > 0:
-                items.append({"name": distribution.res_name(k), "qty": inc,
+                continue                        # питомец — с шансом, ниже отдельной строкой
+            amt = r["st"][si]                   # дроп ИМЕННО этого этапа (как в файле)
+            if amt > 0:
+                items.append({"name": distribution.res_name(k), "qty": amt,
                               "q": r["q"], "mode": r["mode"]})
-        st_rows.append({"stage": si + 1, "items": items})
+        st_rows.append({"stage": stage, "items": items, "cilin": stage in CILIN_STAGES})
     return {"stages": st_rows,
-            "chance": [{"name": distribution.res_name("mount-cilin"),
-                        "note": "падает с шансом, по 1 шт; может не выпасть на неделе"}],
+            "cilin_name": distribution.res_name("mount-cilin"),
+            "cilin_note": "падает С ШАНСОМ (может не выпасть на неделе), по 1 шт — с этапов 4–7",
             "queues": ["Обычные", "Редкие (R)", "Легендарные (S)"]}
 
 

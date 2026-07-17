@@ -875,6 +875,7 @@
     ".qsc-item{display:flex;justify-content:space-between;gap:8px;font:600 12px system-ui;color:#3a2a10;padding:1px 0}" +
     ".qsc-item .qn{font-weight:800;white-space:nowrap;color:#5a3610}" +
     ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}" +
+    ".qsc-item.qcilin .qname{color:#8a2a6a;font-weight:800}.qsc-item.qcilin .qn{color:#8a2a6a}" +
     ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
     ".qsc-chance{margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(150,60,30,.14);border:1px solid rgba(150,80,30,.4)}" +
     ".qsc-chance-h{font:800 12.5px Georgia,serif;color:#8a3a10;margin:0 0 3px}" +
@@ -916,22 +917,24 @@
   function dropsHtml(d) {
     var MODE = { stack: "по очереди, стаками", pack: "первому — пачкой", fixed: "каждому" };
     var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)"];
+    var cilinName = d.cilin_name || "Огненный цилинь";
     var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
-      '<div class="qsc-sub">что и сколько падает с каждого закрытого этапа</div>';
+      '<div class="qsc-sub">что и сколько падает с каждого этапа (пул недели = сумма закрытых этапов)</div>';
     (d.stages || []).forEach(function (s) {
-      if (!s.items || !s.items.length) return;
+      if ((!s.items || !s.items.length) && !s.cilin) return;
       h += '<div class="qsc-stage"><div class="qsc-stage-h">Этап ' + s.stage + "</div>";
-      s.items.forEach(function (it) {
+      (s.items || []).forEach(function (it) {
         h += '<div class="qsc-item q' + it.q + '"><span class="qname">' + esc(it.name) +
           ' <span class="qsc-mode">(' + esc(qn[it.q] || "") + " · " + esc(MODE[it.mode] || it.mode) + ")</span></span>" +
-          '<span class="qn">+' + it.qty + " шт</span></div>";
+          '<span class="qn">×' + it.qty + "</span></div>";
       });
+      if (s.cilin)   // питомец падает с шансом с этого этапа
+        h += '<div class="qsc-item qcilin"><span class="qname">🎲 ' + esc(cilinName) +
+          ' <span class="qsc-mode">(легендарные · с шансом)</span></span><span class="qn">×1</span></div>';
       h += "</div>";
     });
-    (d.chance || []).forEach(function (c) {
-      h += '<div class="qsc-chance"><div class="qsc-chance-h">🎲 С шансом: ' + esc(c.name) + "</div>" +
-        '<div class="qsc-chance-tx">' + esc(c.note || "") + "</div></div>";
-    });
+    h += '<div class="qsc-chance"><div class="qsc-chance-h">🎲 ' + esc(cilinName) + "</div>" +
+      '<div class="qsc-chance-tx">' + esc(d.cilin_note || "падает с шансом") + "</div></div>";
     h += '<div class="qsc-sub" style="margin-top:10px">💡 «стаками» — раздаётся по очереди пока есть; ' +
       '«пачкой» — весь объём первому; «каждому» — фиксировано каждому в очереди.</div>';
     return h;
