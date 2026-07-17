@@ -819,6 +819,19 @@
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
     ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
     ".qs-objp-flip{font-size:13px}" +
+    ".qs-objp-del{color:#ff9a86;border-color:rgba(255,120,100,.5)!important}" +
+    ".qs-objp-del:hover{background:rgba(120,30,20,.8)!important;color:#fff!important}" +
+    // блок добавления своего предмета
+    ".qs-objp-add{margin-top:8px;padding:9px 8px;border-radius:9px;background:rgba(60,42,16,.5);" +
+      "border:1px dashed rgba(224,162,74,.5);display:flex;flex-direction:column;gap:6px}" +
+    ".qs-objp-add-h{font:800 11.5px system-ui;color:#ffe0a0}" +
+    ".qs-objp-add input[type=text],.qs-objp-add-nm{width:100%;padding:6px 8px;font-size:12px;color:#f5ecda;" +
+      "background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:7px;outline:none}" +
+    ".qs-objp-add-f{font-size:11px;color:#d8c39f;width:100%}" +
+    ".qs-objp-add-go{width:100%;padding:7px;cursor:pointer;font:800 11.5px system-ui;color:#1b1006;" +
+      "background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:8px}" +
+    ".qs-objp-add-go:hover{filter:brightness(1.06)}" +
+    ".qs-objp-add-st{min-height:12px;font-size:10.5px;color:#e0a86a}" +
     "@media(max-width:820px){.qs-objp{position:static;right:auto;top:auto;width:100%;max-height:none;margin:10px 0}}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
@@ -1986,6 +1999,13 @@
     objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true });
     BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false, flip: true }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false, flip: true }); });
+    // добавленные админом предметы окружения (загруженные картинки) — тоже управляемы отсюда
+    ENV.forEach(function (o) { objs.push({ env: o, name: "Предмет · " + o.key.slice(4) }); });
+    // защита от дублей: один ключ — одна строка
+    var _seen = {}; objs = objs.filter(function (o) {
+      var id = o.queue !== undefined ? "q" + o.queue : o.env ? "e" + o.env.id : o.key;
+      if (_seen[id]) return false; _seen[id] = 1; return true;
+    });
 
     var panel = document.createElement("div");
     panel.className = "qs-objp" + (_scnPanelOpen ? "" : " closed");
@@ -2006,6 +2026,12 @@
     bodyEl.appendChild(pm);
 
     var MStep = 1.5, SStep = 0.1;
+    // имя строки: тип (до «·») — золотом и жирным, очередь/деталь — тускло (чтобы не путать строки)
+    function fmtName(name) {
+      var i = name.indexOf(" · ");
+      if (i < 0) return esc(name);
+      return '<b style="color:#ffe0a0">' + esc(name.slice(0, i)) + '</b><span style="color:#b89a6a"> · ' + esc(name.slice(i + 3)) + "</span>";
+    }
     // подсветка активной кнопки слоя: on-класс, если текущий слой совпадает
     function zBtns(curZ) {
       return '<span class="qs-objp-z">' +
@@ -2020,7 +2046,7 @@
       // ── строка ОЧЕРЕДИ: только слой (перёд/зад/авто) для всех людей очереди ──
       if (o.queue !== undefined) {
         var qz = CONFIG["qz:" + o.queue] || "";
-        row.innerHTML = '<div class="qs-objp-nm">👥 ' + esc(o.name) + "</div>" +
+        row.innerHTML = '<div class="qs-objp-nm">👥 ' + fmtName(o.name) + "</div>" +
           '<div class="qs-objp-ctl">' + zBtns(qz) + "</div>";
         row.addEventListener("click", function (e) {
           var btn = e.target.closest("button"); if (!btn) return;
@@ -2034,11 +2060,53 @@
         bodyEl.appendChild(row);
         return;
       }
+      // ── строка ENV-предмета (загруженная картинка): перемещение + размер(w) + зеркало + слой + удалить ──
+      if (o.env) {
+        var ev = o.env;
+        var evz = (PLACEMENTS["env:" + ev.id] && PLACEMENTS["env:" + ev.id].z) || ev.z || "depth";
+        var evzn = evz === "front" ? "front" : evz === "back" ? "back" : "";   // depth == авто
+        row.innerHTML =
+          '<div class="qs-objp-nm">📦 ' + fmtName(o.name) + "</div>" +
+          '<div class="qs-objp-ctl">' +
+            '<span class="qs-objp-pad">' +
+              '<button data-a="up" title="выше">▲</button>' +
+              '<span class="qs-objp-lr"><button data-a="left" title="левее">◀</button>' +
+              '<button data-a="ctr" title="в центр">◎</button>' +
+              '<button data-a="right" title="правее">▶</button></span>' +
+              '<button data-a="down" title="ниже">▼</button>' +
+            "</span>" +
+            '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
+              '<b class="qs-objp-szv">' + ((+ev.w) || 18) + '%</b><button data-a="sz+" title="больше">+</button></span>' +
+            '<button data-a="flip" class="qs-objp-flip' + (ev.flip ? " on" : "") + '" title="зеркалить">⇋</button>' +
+            zBtns(evzn) +
+            '<button data-a="del" class="qs-objp-del" title="убрать из сцены">✕</button>' +
+          "</div>";
+        row.addEventListener("click", function (e) {
+          var btn = e.target.closest("button"); if (!btn) return;
+          var a = btn.dataset.a, ek = "env:" + ev.id, p = curPlace(ek, 50, 55);
+          if (a === "up") savePlacement(ek, p.x, p.y - MStep, p.z);
+          else if (a === "down") savePlacement(ek, p.x, p.y + MStep, p.z);
+          else if (a === "left") savePlacement(ek, p.x - MStep, p.y, p.z);
+          else if (a === "right") savePlacement(ek, p.x + MStep, p.y, p.z);
+          else if (a === "ctr") savePlacement(ek, 50, 50, p.z);
+          else if (a === "front") { savePlacement(ek, p.x, p.y, "front"); ev.z = "front"; saveEnv(); }
+          else if (a === "back") { savePlacement(ek, p.x, p.y, "back"); ev.z = "back"; saveEnv(); }
+          else if (a === "auto") { savePlacement(ek, p.x, p.y, ""); ev.z = "depth"; saveEnv(); }
+          else if (a === "sz+") { ev.w = Math.min(80, ((+ev.w) || 18) + 2); saveEnv(); }
+          else if (a === "sz-") { ev.w = Math.max(3, ((+ev.w) || 18) - 2); saveEnv(); }
+          else if (a === "flip") { ev.flip = ev.flip ? 0 : 1; saveEnv(); }
+          else if (a === "del") { if (!confirm("Убрать предмет из сцены?")) return; ENV = ENV.filter(function (x) { return x.id !== ev.id; }); saveEnv(); }
+          else return;
+          render(_lastState);
+        });
+        bodyEl.appendChild(row);
+        return;
+      }
       // ── строка ОБЪЕКТА: перемещение + размер + зеркало + слой ──
       var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
       var curZ = (PLACEMENTS[o.key] && PLACEMENTS[o.key].z) || "";
       row.innerHTML =
-        '<div class="qs-objp-nm">' + esc(o.name) + "</div>" +
+        '<div class="qs-objp-nm">' + fmtName(o.name) + "</div>" +
         '<div class="qs-objp-ctl">' +
           '<span class="qs-objp-pad">' +
             '<button data-a="up" title="выше">▲</button>' +
@@ -2071,6 +2139,40 @@
       });
       bodyEl.appendChild(row);
     });
+
+    // ── добавить свой предмет: загрузить картинку (PNG с вырезанным фоном) и сразу в сцену ──
+    var add = document.createElement("div");
+    add.className = "qs-objp-add";
+    add.innerHTML =
+      '<div class="qs-objp-add-h">➕ Добавить предмет в сцену</div>' +
+      '<input class="qs-objp-add-nm" placeholder="название (дерево, бочка…)" autocomplete="off">' +
+      '<input class="qs-objp-add-f" type="file" accept="image/png,image/webp,image/jpeg">' +
+      '<button class="qs-objp-add-go">Загрузить и поставить</button>' +
+      '<div class="qs-objp-add-st"></div>';
+    var stEl = add.querySelector(".qs-objp-add-st");
+    function aSt(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#ff9a86"; }
+    add.querySelector(".qs-objp-add-f").addEventListener("change", function () {
+      var f = this.files[0]; if (f) assessImage(f, function (m, ok) { aSt("Оценка: " + m, ok); });
+    });
+    add.querySelector(".qs-objp-add-go").addEventListener("click", function () {
+      var nm = add.querySelector(".qs-objp-add-nm").value.trim();
+      var slug = envSlug(nm);
+      if (!slug) { aSt("Укажи название."); return; }
+      var file = add.querySelector(".qs-objp-add-f").files[0];
+      if (!file) { aSt("Выбери картинку."); return; }
+      aSt("Загрузка…", true);
+      fileToDataURL(file, function (dataUrl) {
+        q("POST", "/queue/admin/model-upload", { key: "env-" + slug, data: dataUrl }).then(function () {
+          UPLOADED["env-" + slug] = 1;
+          ENV.push({ id: envNextId(), key: "env-" + slug, w: 18, flip: 0, rotate: 0, z: "depth" });
+          saveEnv();
+          _scnScroll = 999999;   // прокрутить к новому предмету (он внизу списка)
+          render(_lastState);
+        }).catch(function (e) { aSt("Ошибка: " + (e.detail || e.message)); });
+      }, aSt);
+    });
+    bodyEl.appendChild(add);
+
     panel.appendChild(bodyEl);
     return panel;
   }
