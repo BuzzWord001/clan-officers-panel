@@ -1935,6 +1935,7 @@
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
   var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
   var _scnPanelOpen = true; // раскрыта ли правая панель управления объектами сцены
+  var _scnScroll = 0;       // позиция прокрутки правой панели (чтобы не прыгала наверх при перерисовке)
 
   // ── АДМИН-ПАНЕЛЬ управления объектами сцены (справа): точное перемещение,
   //    размер, слой (перёд/зад). Работает без режима таскания — правит размещения напрямую.
@@ -1960,6 +1961,7 @@
 
     var bodyEl = document.createElement("div");
     bodyEl.className = "qs-objp-body";
+    bodyEl.addEventListener("scroll", function () { _scnScroll = bodyEl.scrollTop; });
     // переключатель режима таскания/подписей
     var pm = document.createElement("button");
     pm.className = "qs-objp-pm" + (_placeMode ? " on" : "");
@@ -2047,6 +2049,8 @@
     // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя)
     if (_isAdmin && !_pathMode) wrap.appendChild(sceneObjPanel());
     host.appendChild(wrap);
+    // вернуть прокрутку правой админ-панели (кнопки вызывают render — иначе перематывает наверх)
+    var _pb = wrap.querySelector(".qs-objp-body"); if (_pb) _pb.scrollTop = _scnScroll;
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
   }
 
