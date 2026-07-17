@@ -770,6 +770,18 @@
     ".qs-p2-planrow{display:flex;gap:6px;align-items:center}" +
     ".qs-p2-planrow select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:rgba(20,13,7,.82);color:#f3e8d2;border:1px solid rgba(224,162,74,.4)}" +
     ".qs-p2-plan{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}" +
+    // сворачиваемый блок необязательных настроек
+    ".qs-p2-more{margin:10px 0 2px;border:1px solid rgba(224,162,74,.28);border-radius:11px;background:rgba(0,0,0,.16);overflow:hidden}" +
+    ".qs-p2-more>summary{cursor:pointer;list-style:none;padding:10px 13px;font:800 13px system-ui;color:#e6c48f;" +
+      "display:flex;align-items:center;gap:6px}" +
+    ".qs-p2-more>summary::-webkit-details-marker{display:none}" +
+    ".qs-p2-more>summary::before{content:'▸';color:#caa66a;transition:transform .15s}" +
+    ".qs-p2-more[open]>summary::before{transform:rotate(90deg)}" +
+    ".qs-p2-more>summary:hover{background:rgba(224,162,74,.06)}" +
+    ".qs-p2-more[open]>summary{border-bottom:1px solid rgba(224,162,74,.18);background:rgba(224,162,74,.05)}" +
+    ".qs-p2-more-sub{font:400 11px system-ui;color:#8a795a}" +
+    ".qs-p2-more-body{padding:4px 13px 12px}" +
+    "@media(max-width:640px){.qs-p2-more-sub{display:none}}" +
     ".qs-plan-chip{display:inline-flex;align-items:center;font:600 11.5px system-ui;color:#f0dcb4;" +
       "padding:3px 6px 3px 9px;border:1px solid rgba(126,196,106,.4);border-radius:11px;background:rgba(126,196,106,.1)}" +
     /* липкий низ окна: кнопка «Встать» ВСЕГДА видна без прокрутки */
@@ -1117,20 +1129,28 @@
     var defRcpt = edit ? (edit.recipient || "")
       : (SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)] || "");
     var planOpts = items.map(function (it) { return '<option value="' + esc(it) + '">' + esc(resName(it)) + "</option>"; }).join("");
+    // необязательные настройки открыты сразу только если они уже заданы (правка)
+    var openMore = !!(edit && (edit.recipient || edit.auto_repeat || (edit.plan && edit.plan.length)));
     body.innerHTML =
       '<div class="qs-p2-lbl">1 · Выбери ресурс:</div>' +
       '<div class="qs-respick" id="qs-p2-grid"></div>' +
       '<div id="qs-res-warn" class="qs-res-warn"></div>' +
-      '<div class="qs-p2-lbl">2 · Кому передать <span style="color:#8a795a;font-weight:400">(необязательно — только твин или супруг)</span>:</div>' +
-      '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
-      '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
-      '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
-      '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
-        '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
-      '<div class="qs-p2-lbl">📅 План на будущие недели <span style="color:#8a795a;font-weight:400">(необязательно, до 8 — как дойдёт очередь, ресурс сменится по порядку)</span>:</div>' +
-      '<div class="qs-p2-planrow"><select id="qs-plan-sel">' + planOpts + '</select>' +
-        '<button class="sec" id="qs-plan-add" type="button">＋ в план</button></div>' +
-      '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
+      // всё необязательное — в сворачиваемый блок, чтобы не путать с обязательным выбором ресурса
+      '<details class="qs-p2-more"' + (openMore ? " open" : "") + '>' +
+        '<summary>⚙️ Дополнительно <span class="qs-p2-more-sub">— кому передать, повтор, план на недели (всё необязательно)</span></summary>' +
+        '<div class="qs-p2-more-body">' +
+          '<div class="qs-p2-lbl">Кому передать <span style="color:#8a795a;font-weight:400">(только твин или супруг)</span>:</div>' +
+          '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
+          '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
+          '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
+          '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
+            '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
+          '<div class="qs-p2-lbl">📅 План на будущие недели <span style="color:#8a795a;font-weight:400">(до 8 — как дойдёт очередь, ресурс сменится по порядку)</span>:</div>' +
+          '<div class="qs-p2-planrow"><select id="qs-plan-sel">' + planOpts + '</select>' +
+            '<button class="sec" id="qs-plan-add" type="button">＋ в план</button></div>' +
+          '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
+        '</div>' +
+      '</details>' +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button></div>';
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
@@ -1404,6 +1424,9 @@
     }
 
     frame.appendChild(stage);
+    // центровка моделей на сцене (как в полосе): обрезаем прозрачные поля и ставим
+    // симметричный отступ → модель ровно под ником/ресурсом, а не «уехала» вбок
+    autoCropAll(stage, ".q-char-img");
     // рамка ПОВЕРХ сцены (передний план) — центр прозрачный
     var ovl = document.createElement("div");
     ovl.className = "qs-frame-ovl";
