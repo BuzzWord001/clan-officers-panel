@@ -748,6 +748,28 @@
     ".qs-off-tx b{font:800 14.5px system-ui;color:#cfcfff;letter-spacing:.2px}" +
     ".qs-off-sub{font:500 11.5px/1.4 system-ui;color:#b7b7d6}" +
     // «реклама» жетона ТОП-3
+    // личное уведомление «не хватило доблести» — тёплый свиток-предупреждение
+    ".qs-notice{position:relative;margin:10px 0 8px;padding:16px 18px 15px;border-radius:16px;" +
+      "background:linear-gradient(180deg,#3a2410,#25160a 70%,#1c1006);" +
+      "border:1px solid rgba(240,180,90,.6);box-shadow:0 10px 34px rgba(0,0,0,.55)," +
+      "inset 0 1px 0 rgba(255,224,160,.18),0 0 30px rgba(230,150,60,.12)}" +
+    ".qs-nt-x{position:absolute;top:9px;right:11px;background:none;border:0;color:#caa66a;font-size:17px;cursor:pointer;line-height:1}" +
+    ".qs-nt-x:hover{color:#fff}" +
+    ".qs-nt-head{font:800 15px Georgia,serif;color:#ffd98a;text-shadow:0 1px 3px #000;margin:0 0 7px}" +
+    ".qs-nt-lead{font-size:13px;line-height:1.55;color:#f0e0c4;margin:0 0 11px}" +
+    ".qs-nt-lead b{color:#ffe0a0}" +
+    ".qs-nt-list{display:flex;flex-direction:column;gap:7px;margin:0 0 12px}" +
+    ".qs-nt-row{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:11px;" +
+      "background:rgba(255,220,150,.06);border:1px solid rgba(240,180,90,.28)}" +
+    ".qs-nt-ic{width:38px;height:38px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}" +
+    ".qs-nt-txt{min-width:0}" +
+    ".qs-nt-res{font-size:13.5px;color:#f6ead2}.qs-nt-res b{color:#ffe0a0}" +
+    ".qs-nt-qty{font-weight:800;color:#ffd98a}" +
+    ".qs-nt-q{font-size:11.5px;color:#c0a878}" +
+    ".qs-nt-need{font-size:12px;color:#d8c39f;margin-top:2px}" +
+    ".qs-nt-thr{color:#ffcf8a}.qs-nt-had{color:#ff9a86}" +
+    ".qs-nt-foot{font-size:12.5px;line-height:1.55;color:#cbe6c0;padding-top:10px;border-top:1px solid rgba(240,180,90,.22)}" +
+    ".qs-nt-foot b{color:#bfe6a8}" +
     ".qs-token-ad{display:flex;align-items:center;gap:13px;margin:8px 0 6px;padding:11px 16px;border-radius:15px;position:relative;overflow:hidden;" +
       "background:linear-gradient(110deg,#3a2a0c,#5b400f 45%,#3a2a0c);border:1px solid rgba(255,210,110,.6);" +
       "box-shadow:0 6px 24px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,230,160,.22),0 0 34px rgba(245,200,120,.14)}" +
@@ -1734,6 +1756,42 @@
   }
 
   // «Реклама» жетона ТОП-3 — над всей картинкой, для всех. Коротко: что это и как работает.
+  // Личное уведомление «очередь подошла, но не хватило доблести» (свиток-предупреждение).
+  function buildNoticeBanner() {
+    if (!_meAcc || !_notices || !_notices.length) return null;
+    var items = [], nick = (_meAcc && _meAcc.main_nick) || "";
+    _notices.filter(function (n) { return n.kind === "low_valor"; }).forEach(function (n) {
+      var d = n.data || {}; if (d.nick) nick = d.nick;
+      (d.items || []).forEach(function (it) { items.push(it); });
+    });
+    if (!items.length) return null;
+    var box = document.createElement("div");
+    box.className = "qs-notice";
+    var rows = items.map(function (it) {
+      var qty = it.qty ? ' <span class="qs-nt-qty">×' + it.qty + "</span>" : "";
+      return '<div class="qs-nt-row">' +
+        '<img class="qs-nt-ic" src="' + resImg(it.resource) + '" alt="" onerror="this.style.display=\'none\'">' +
+        '<div class="qs-nt-txt"><div class="qs-nt-res"><b>' + esc(it.res_name || it.resource) + "</b>" + qty +
+        '<span class="qs-nt-q"> · очередь «' + esc(it.queue_name) + '»</span></div>' +
+        '<div class="qs-nt-need">нужно доблести за неделю: <b class="qs-nt-thr">' + it.threshold +
+        '</b> · у тебя было: <b class="qs-nt-had">' + it.valor + "</b></div></div></div>";
+    }).join("");
+    box.innerHTML =
+      '<button class="qs-nt-x" title="Понятно, скрыть">✕</button>' +
+      '<div class="qs-nt-head">📜 Итоги недели — лично для тебя</div>' +
+      '<div class="qs-nt-lead"><b>' + esc(nick) + "</b>, твоя очередь " +
+        (items.length > 1 ? "за ресурсами подошла" : "за ресурсом подошла") +
+        ", но на этой неделе, к сожалению, <b>не хватило доблести</b>, чтобы получить:</div>" +
+      '<div class="qs-nt-list">' + rows + "</div>" +
+      '<div class="qs-nt-foot">Ты <b>остаёшься в очереди</b> — место не потеряно. Как только наберёшь ' +
+        "нужную доблесть за неделю, получишь свой ресурс. Не сдавайся — у тебя всё получится! 💪</div>";
+    box.querySelector(".qs-nt-x").addEventListener("click", function () {
+      q("POST", "/queue/notices/seen", {}).catch(function () {});
+      _notices = []; box.remove();
+    });
+    return box;
+  }
+
   function buildTokenAd() {
     var el = document.createElement("div");
     el.className = "qs-token-ad";
@@ -2011,6 +2069,7 @@
   }
 
   var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
+  var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
   var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
   var _scnPanelOpen = true; // раскрыта ли правая панель управления объектами сцены
@@ -2297,6 +2356,8 @@
         : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
+    // личное уведомление «не хватило доблести» — самым верхом, чтобы игрок сразу увидел
+    if (!_pathMode && !_placeMode) { var _nb = buildNoticeBanner(); if (_nb) wrap.appendChild(_nb); }
     if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenAd());  // «реклама» жетона ТОП-3 (всем)
     if (!_pathMode && !_placeMode) { var mt = buildMyTokens(); if (mt) wrap.appendChild(mt); }  // мои жетоны (сколько их)
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
@@ -3582,7 +3643,8 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
           .catch(function () { _role = ""; _isAdmin = false; }),
-        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; }).catch(function () { _myTokens = 0; })
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; }).catch(function () { _myTokens = 0; }),
+        q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; })
       ]).then(function () { loadEnv(); refresh(); });
     }
   };

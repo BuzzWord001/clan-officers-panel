@@ -244,6 +244,8 @@ RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "kol
 def _row(e, v, top3, shooter_lc, got, status) -> dict:
     who = e.get("nick", "")
     to = (e.get("recipient") or "").strip()
+    res = e.get("resource") or ""
+    rr = REWARDS.get(res) or {}
     return {
         "id": e.get("id"), "nick": who, "recipient": to,
         "receiver": (to or who), "via": (who if to else ""),
@@ -252,6 +254,10 @@ def _row(e, v, top3, shooter_lc, got, status) -> dict:
         "recipient_ok": e.get("recipient_ok", True),
         "not_collected": e.get("not_collected", False),
         "got": got, "status": status,
+        # для персональных уведомлений (нехватка доблести и т.п.)
+        "main_canon": e.get("main_canon", ""), "resource": res,
+        "res_name": res_name(res) if res else "",
+        "res_unit": rr.get("unit", 0),
     }
 
 

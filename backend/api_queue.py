@@ -192,8 +192,19 @@ def ensure_queue_tables() -> None:
               amount     INTEGER NOT NULL DEFAULT 0, -- сколько штук взято
               created_at TEXT NOT NULL DEFAULT ''
             );
+            -- Персональные уведомления игроку (напр. «не хватило доблести за ресурс»).
+            -- Показываются при следующем входе в раздел, потом помечаются seen.
+            CREATE TABLE IF NOT EXISTS queue_notices (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              canon      TEXT NOT NULL DEFAULT '',    -- МЭЙН-канон получателя
+              kind       TEXT NOT NULL DEFAULT '',    -- 'low_valor' и т.п.
+              payload    TEXT NOT NULL DEFAULT '',    -- JSON деталей
+              created_at TEXT NOT NULL DEFAULT '',
+              seen       INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_queue_notices_canon ON queue_notices(canon, seen)")
         # миграция для существующих БД: индивидуальный размер модели
         try:
             conn.execute("ALTER TABLE queue_models ADD COLUMN scale REAL NOT NULL DEFAULT 1")
@@ -697,6 +708,36 @@ def me(request: Request) -> dict:
                                (acc["main_canon"],)).fetchone()
             tokens = row["tokens"] if row else 0
         return {"account": _acc_public(acc) if acc else None, "tokens": tokens}
+
+
+@router.get("/notices")
+def get_notices(request: Request) -> dict:
+    """Непрочитанные персональные уведомления игрока (напр. «не хватило доблести»)."""
+    import json as _json
+    out = []
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if acc:
+            for r in conn.execute(
+                    "SELECT id, kind, payload, created_at FROM queue_notices"
+                    " WHERE canon=? AND seen=0 ORDER BY id DESC", (acc["main_canon"],)):
+                try:
+                    pl = _json.loads(r["payload"])
+                except (ValueError, TypeError):
+                    pl = {}
+                out.append({"id": r["id"], "kind": r["kind"], "created_at": r["created_at"], "data": pl})
+    return {"notices": out}
+
+
+@router.post("/notices/seen")
+def mark_notices_seen(request: Request) -> dict:
+    """Пометить все уведомления игрока прочитанными (он их увидел)."""
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if acc:
+            conn.execute("UPDATE queue_notices SET seen=1 WHERE canon=? AND seen=0",
+                         (acc["main_canon"],))
+    return {"ok": True}
 
 
 @router.post("/logout")
@@ -1712,6 +1753,38 @@ def prune_left(request: Request, actor: dict = Depends(require_admin)) -> dict:
     return {"ok": True, "removed": removed}
 
 
+_QUEUE_NAMES = ["Обычные", "Редкие (R)", "Легендарные (S)"]
+
+
+def _save_low_valor_notices(conn, report) -> None:
+    """Копит уведомления «очередь подошла, но не хватило доблести» по МЭЙН-канону.
+    Заменяет прошлые непрочитанные (не плодит дубли по неделям)."""
+    import json as _json
+    misses: dict[str, dict] = {}
+    for Q in report.get("queues", []):
+        qn = Q.get("queue", 0)
+        thr = Q.get("threshold", 0)
+        for r in Q.get("rows", []):
+            if r.get("status") != "low_valor":
+                continue
+            mc = r.get("main_canon") or ""
+            if not mc:
+                continue
+            d = misses.setdefault(mc, {"nick": r.get("nick", ""), "items": []})
+            d["items"].append({
+                "queue": qn, "queue_name": _QUEUE_NAMES[qn] if 0 <= qn < 3 else str(qn),
+                "resource": r.get("resource", ""), "res_name": r.get("res_name", ""),
+                "qty": r.get("res_unit", 0), "threshold": thr, "valor": r.get("valor", 0),
+            })
+    # свежая финализация всегда заменяет прошлые непрочитанные low_valor
+    conn.execute("DELETE FROM queue_notices WHERE kind='low_valor' AND seen=0")
+    now = _now()
+    for mc, data in misses.items():
+        conn.execute(
+            "INSERT INTO queue_notices (canon, kind, payload, created_at, seen) VALUES (?,?,?,?,0)",
+            (mc, "low_valor", _json.dumps(data, ensure_ascii=False), now))
+
+
 @router.post("/admin/advance")
 async def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
     """Финализация недели:
@@ -1790,6 +1863,9 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
         if granted:
             _log(conn, "priv_grant", actor=_actor_name(actor), request=request,
                  detail="жетон вне очереди топ-3: " + ", ".join(granted))
+        # УВЕДОМЛЕНИЯ «не хватило доблести»: у кого очередь подошла, но доблести не хватило —
+        # копим по мэйн-канону, покажем при следующем входе в раздел.
+        _save_low_valor_notices(conn, report)
         # внеочередные захваты недели отработали (уже вычтены) → чистим на новую неделю;
         # привилегированные записи (взяли жетоном) тоже убираем — ресурс уже получен
         conn.execute("DELETE FROM queue_entries WHERE privileged=1")
