@@ -879,6 +879,9 @@
     ".qsc-ic{width:24px;height:24px;flex:0 0 auto;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(90,60,20,.4))}" +
     ".qsc-item .qname{flex:1 1 auto;min-width:0}" +
     ".qsc-item .qn{font-weight:800;white-space:nowrap;color:#5a3610;flex:0 0 auto}" +
+    ".qsc-item.qsc-clk{cursor:pointer;border-radius:7px;margin:0 -6px;padding:2px 6px;transition:background .1s,transform .1s}" +
+    ".qsc-item.qsc-clk:hover{background:rgba(150,100,40,.22)}.qsc-item.qsc-clk:hover .qname{color:#7a3a10}" +
+    ".qsc-item.qsc-clk:active{transform:scale(.98)}" +
     ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}" +
     ".qsc-item.qcilin .qname{color:#8a2a6a;font-weight:800}.qsc-item.qcilin .qn{color:#8a2a6a}" +
     ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
@@ -913,6 +916,24 @@
       el.classList.toggle("open");
       if (el.classList.contains("open")) loadDrops(el.querySelector("#qsc-parch"));
     });
+    // клик по ресурсу в свитке → встать в нужную очередь за ним (как у торговца)
+    el.querySelector("#qsc-parch").addEventListener("click", function (ev) {
+      var it = ev.target.closest(".qsc-item[data-res]"); if (!it) return;
+      pickResourceForQueue(+it.getAttribute("data-q"), it.getAttribute("data-res"));
+    });
+  }
+  // Встать/сменить ресурс за ресурсом `res` в очереди `q` — универсально (свиток, торговец)
+  function pickResourceForQueue(q, res) {
+    var b = BOOTHS[q]; if (!b) return;
+    if (_isAdmin && !_meAcc) { openResourcePicker(b, null, res); return; }   // админ встаёт как Лирия!
+    if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
+    var mc = canon(_meAcc.main_nick), mine = null;
+    (_lastState.queues[q] || []).forEach(function (e) {
+      if (canon(e.main_nick) === mc && !e.privileged) mine = e;             // моё обычное место
+    });
+    if (mine) openResourcePicker(b, { resource: res, recipient: mine.recipient || "",
+      auto_repeat: mine.auto_repeat, plan: mine.auto_plan || [] });
+    else openResourcePicker(b, null, res);
   }
   function loadDrops(host) {
     function paint() { autoCropAll(host, ".qsc-ic"); }   // иконки заполняют место (цилинь без пустот)
@@ -925,20 +946,22 @@
     var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)"];
     var cilinName = d.cilin_name || "Огненный цилинь";
     var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
-      '<div class="qsc-sub">что и сколько падает с каждого этапа (пул недели = сумма закрытых этапов)</div>';
+      '<div class="qsc-sub">что и сколько падает с каждого этапа. 👆 <b>Нажми на любой ресурс — встанешь за ним в очередь</b></div>';
     var cilinRes = d.cilin_res || "mount-cilin";
     (d.stages || []).forEach(function (s) {
       if ((!s.items || !s.items.length) && !s.cilin) return;
       h += '<div class="qsc-stage"><div class="qsc-stage-h">Этап ' + s.stage + "</div>";
       (s.items || []).forEach(function (it) {
-        h += '<div class="qsc-item q' + it.q + '">' +
+        h += '<div class="qsc-item qsc-clk q' + it.q + '" data-res="' + esc(it.res) + '" data-q="' + it.q +
+          '" title="Встать в очередь за: ' + esc(it.name) + '">' +
           '<img class="qsc-ic" src="' + resImg(it.res) + '" alt="">' +
           '<span class="qname">' + esc(it.name) +
           ' <span class="qsc-mode">(' + esc(qn[it.q] || "") + " · " + esc(MODE[it.mode] || it.mode) + ")</span></span>" +
           '<span class="qn">×' + it.qty + "</span></div>";
       });
-      if (s.cilin)   // питомец падает с шансом с этого этапа
-        h += '<div class="qsc-item qcilin"><img class="qsc-ic" src="' + resImg(cilinRes) + '" alt="">' +
+      if (s.cilin)   // питомец падает с шансом с этого этапа — тоже можно встать (очередь 2)
+        h += '<div class="qsc-item qsc-clk qcilin" data-res="' + esc(cilinRes) + '" data-q="2" title="Встать в очередь за: ' + esc(cilinName) + '">' +
+          '<img class="qsc-ic" src="' + resImg(cilinRes) + '" alt="">' +
           '<span class="qname">🎲 ' + esc(cilinName) +
           ' <span class="qsc-mode">(легендарные · с шансом)</span></span><span class="qn">×1</span></div>';
       h += "</div>";
