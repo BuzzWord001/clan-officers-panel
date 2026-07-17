@@ -313,21 +313,22 @@
   function makeDraggable(el, pkey) {
     el.style.pointerEvents = "auto"; el.style.cursor = "grab";
     function start(moveEvt, endEvt) {
-      var stage = el.closest(".qs-stage"); if (!stage) return;
+      // объекты сцены считаем от .qs-stage; кошелёк «на рамке» живёт в .qs-frame (поверх рамки)
+      var stage = el.closest(".qs-stage") || el.closest(".qs-frame"); if (!stage) return;
       var rect = stage.getBoundingClientRect(), lx = null, ly = null;
       function move(e) {
         var pt = e.touches ? e.touches[0] : e;
         lx = Math.max(0, Math.min(100, ((pt.clientX - rect.left) / rect.width) * 100));
         ly = Math.max(0, Math.min(100, ((pt.clientY - rect.top) / rect.height) * 100));
         el.style.left = lx.toFixed(2) + "%"; el.style.top = ly.toFixed(2) + "%";
-        el.style.zIndex = Math.round(ly * 12);
+        if (!el.dataset.fixedz) el.style.zIndex = Math.round(ly * 12);   // fixedz (кошелёк) — всегда поверх рамки
       }
       function end() {
         document.removeEventListener(moveEvt, move); document.removeEventListener(endEvt, end);
         if (lx != null) {
           var zc = (PLACEMENTS[pkey] && PLACEMENTS[pkey].z) || "";
           PLACEMENTS[pkey] = { x: lx, y: ly, z: zc };
-          el.style.zIndex = zOf(pkey, ly);
+          if (!el.dataset.fixedz) el.style.zIndex = zOf(pkey, ly);
           q("POST", "/queue/admin/placement", { key: pkey, x: lx, y: ly, z: zc }).catch(function () {});
         }
       }
@@ -838,7 +839,7 @@
     // кошелёк жетонов ТОП-3 на рамке
     ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
       "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
-    ".qs-stage.place .qs-fwallet{pointer-events:auto;cursor:move}" +
+    ".qs-frame.place-on .qs-fwallet{pointer-events:auto;cursor:move}" +
     ".qs-fw-bg{width:100%;height:auto;display:block}" +
     ".qs-fw-slot{position:absolute;left:30%;right:20%;top:33%;bottom:31%;display:flex;align-items:center;" +
       "justify-content:center;gap:1px;line-height:1}" +
@@ -1390,7 +1391,7 @@
   // ── сцена: рамка + фон день/ночь + будки (свечение, предметы, счётчик, кнопка) + модельки ──
   function renderStage(state) {
     var frame = document.createElement("div");
-    frame.className = "qs-frame";
+    frame.className = "qs-frame" + (_placeMode ? " place-on" : "");
     var stage = document.createElement("div");
     stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "") + (_placeMode ? " place" : "");
     stage.style.setProperty("--qs-char-scale", getSize("char", 1));
@@ -1413,7 +1414,7 @@
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
-      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=1";
+      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=2";
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y);
@@ -1553,27 +1554,26 @@
     stage.appendChild(fountain);
     if (_isAdmin && _placeMode) stage.appendChild(admTag(fpos, "Фонтан (день/ночь)"));
 
-    // кошелёк жетонов ТОП-3 прямо НА рамке картины (сколько их у тебя). Показываем
-    // вошедшему игроку и админу (чтобы видел/двигал). Перетаскивается, размер/слой — в панели.
+    // кошелёк жетонов ТОП-3 строим здесь, но вешаем ПОВЕРХ рамки (в .qs-frame после оверлея,
+    // см. ниже) — чтобы он был ПЕРЕД рамкой окружения, а не под ней и не обрезался сценой.
+    var frameWallet = null;
     if (_meAcc || _isAdmin) {
       var wpos = placedPos("wallet", 17, 17);
       var wn = _myTokens || 0;
       var wcoins = "";
       for (var wi = 0; wi < Math.min(wn, 3); wi++) wcoins += '<img class="qs-fw-coin" src="assets/queue/ui/token.webp?v=2" alt="">';
-      var fw = document.createElement("div");
-      fw.className = "qs-fwallet";
-      fw.style.cssText = "left:" + wpos.x.toFixed(2) + "%;top:" + wpos.y.toFixed(2) +
-        "%;width:calc(20% * " + objSize("wallet", 1).toFixed(3) + ");z-index:" +
-        ((PLACEMENTS["wallet"] && PLACEMENTS["wallet"].z) ? zOf("wallet", wpos.y) : 9300);
-      fw.title = "Твои жетоны ТОП-3: " + wn;
-      fw.innerHTML = '<img class="qs-fw-bg" src="assets/queue/ui/wallet2.webp?v=1" alt="">' +
+      frameWallet = document.createElement("div");
+      frameWallet.className = "qs-fwallet";
+      frameWallet.dataset.fixedz = "1";   // всегда поверх рамки, даже при перетаскивании
+      frameWallet.style.cssText = "left:" + wpos.x.toFixed(2) + "%;top:" + wpos.y.toFixed(2) +
+        "%;width:calc(15% * " + objSize("wallet", 1).toFixed(3) + ");z-index:100000";
+      frameWallet.title = "Твои жетоны ТОП-3: " + wn;
+      frameWallet.innerHTML = '<img class="qs-fw-bg" src="assets/queue/ui/wallet2.webp?v=1" alt="">' +
         '<div class="qs-fw-slot">' + (wn > 0
           ? '<span class="qs-fw-coins">' + wcoins + '</span><span class="qs-fw-x">×' + wn + "</span>"
           : '<span class="qs-fw-0">0</span>') + "</div>" +
         '<div class="qs-fw-cap">жетоны ТОП-3</div>';
-      if (_placeMode) makeDraggable(fw, "wallet");
-      stage.appendChild(fw);
-      if (_isAdmin && _placeMode) stage.appendChild(admTag(wpos, "Кошелёк жетонов"));
+      if (_placeMode) makeDraggable(frameWallet, "wallet");
     }
 
     // объекты окружения (загружены админом): слой back(за всеми)/depth(по глубине)/front(перед),
@@ -1618,6 +1618,15 @@
     var ovl = document.createElement("div");
     ovl.className = "qs-frame-ovl";
     frame.appendChild(ovl);
+    // кошелёк жетонов — ПОВЕРХ рамки (последний ребёнок frame, z-index 100000): «на рамке»
+    if (frameWallet) {
+      frame.appendChild(frameWallet);
+      if (_isAdmin && _placeMode) {
+        var wtag = admTag(placedPos("wallet", 17, 17), "Кошелёк жетонов");
+        wtag.style.zIndex = "100001";
+        frame.appendChild(wtag);
+      }
+    }
     return frame;
   }
 
