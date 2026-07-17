@@ -49,11 +49,82 @@
   // ── Ники из таблицы Доблести — для уведомления о дубле при регистрации ──
   const normNick = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "");
   let valorNickSet = new Set();
+  let clanNickList = [];          // отображаемые ники клана (для подсказок в поле «Титул»)
   try {
     const v = await API.valorCurrent();
     const members = (v && (v.members || v.rows || v.list)) || [];
-    members.forEach((m) => { const n = m.nick || m.game_nick; if (n) valorNickSet.add(normNick(n)); });
+    members.forEach((m) => { const n = m.nick || m.game_nick; if (n) { valorNickSet.add(normNick(n)); clanNickList.push(n); } });
   } catch (_) {}
+
+  // Полный список ников клана: из Доблести + из самого реестра (allRows заполнится в reload).
+  function clanNicksAll() {
+    const map = new Map();        // normNick -> отображаемый ник (без дублей)
+    clanNickList.forEach((n) => { if (n) map.set(normNick(n), n); });
+    (allRows || []).forEach((r) => { if (r && r.game_nick) map.set(normNick(r.game_nick), r.game_nick); });
+    return [...map.values()].sort((a, b) => a.localeCompare(b, "ru"));
+  }
+
+  // Автоподсказки ников для поля «Титул»: твин пишется как ~МэйнНик~. Пользователь
+  // набирает часть ника мэйна → выбирает из клана → впишется «~ник~» (твин мэйна).
+  function attachNickSuggest(input) {
+    if (!input || input._nickSuggest) return;
+    input._nickSuggest = true;
+    const dd = document.createElement("div");
+    dd.className = "nick-suggest";
+    dd.style.cssText = "position:fixed;z-index:99999;display:none;max-height:250px;overflow-y:auto;" +
+      "background:#1a1109;border:1px solid rgba(224,162,74,.42);border-radius:10px;" +
+      "box-shadow:0 14px 40px rgba(0,0,0,.6);padding:4px";
+    document.body.appendChild(dd);
+    let items = [], active = -1;
+    const place = () => {
+      const r = input.getBoundingClientRect();
+      dd.style.left = r.left + "px"; dd.style.top = (r.bottom + 3) + "px"; dd.style.width = r.width + "px";
+    };
+    const hide = () => { dd.style.display = "none"; active = -1; };
+    const pick = (nick) => {
+      input.value = "~" + nick + "~"; hide();
+      input.dispatchEvent(new Event("input", { bubbles: true })); input.focus();
+    };
+    function render() {
+      const raw = input.value.trim().replace(/~/g, "").toLowerCase();
+      if (!raw) { hide(); return; }
+      const all = clanNicksAll();
+      items = all.filter((n) => n.toLowerCase().includes(raw)).slice(0, 10);
+      if (!items.length) { hide(); return; }
+      if (active >= items.length) active = items.length - 1;
+      dd.innerHTML =
+        '<div style="padding:5px 9px;font-size:11px;color:#a58c68;border-bottom:1px solid rgba(224,162,74,.15);margin-bottom:3px">' +
+        'Выбери мэйна — впишется как <b style="color:#e0a86a">~ник~</b> (это твин)</div>' +
+        items.map((n, i) =>
+          '<div class="ns-item" data-i="' + i + '" style="padding:7px 10px;border-radius:7px;cursor:pointer;font-size:13.5px;' +
+          'color:#f6ead2' + (i === active ? ';background:rgba(224,162,74,.20)' : '') + '">' +
+          '<span style="color:#e0a86a">~</span>' + esc(n) + '<span style="color:#e0a86a">~</span></div>').join("");
+      place(); dd.style.display = "block";
+      [...dd.querySelectorAll(".ns-item")].forEach((el) => {
+        el.addEventListener("mousedown", (e) => { e.preventDefault(); pick(items[+el.dataset.i]); });
+        el.addEventListener("mouseenter", () => { active = +el.dataset.i; paint(); });
+      });
+    }
+    function paint() {   // только подсветка активного (без пересчёта списка)
+      [...dd.querySelectorAll(".ns-item")].forEach((el) => {
+        el.style.background = (+el.dataset.i === active) ? "rgba(224,162,74,.20)" : "";
+      });
+    }
+    input.addEventListener("input", () => { active = -1; render(); });
+    input.addEventListener("focus", render);
+    input.addEventListener("blur", () => setTimeout(hide, 160));
+    input.addEventListener("keydown", (e) => {
+      if (dd.style.display === "none") return;
+      // список открыт — гасим клавиши, чтобы не сработал Enter=сохранить / Esc=отмена инлайн-редактора
+      if (e.key === "ArrowDown") { e.preventDefault(); e.stopImmediatePropagation(); active = Math.min(active + 1, items.length - 1); paint(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); e.stopImmediatePropagation(); active = Math.max(active - 1, 0); paint(); }
+      else if (e.key === "Enter" && active >= 0) { e.preventDefault(); e.stopImmediatePropagation(); pick(items[active]); }
+      else if (e.key === "Escape") { e.stopImmediatePropagation(); hide(); }
+    });
+    window.addEventListener("scroll", () => { if (dd.style.display !== "none") place(); }, true);
+    window.addEventListener("resize", () => { if (dd.style.display !== "none") place(); });
+  }
+  attachNickSuggest($("f-title"));
   function checkNickDup() {
     const note = $("nick-dup-note");
     if (!note) return;
@@ -412,7 +483,8 @@
     const actions   = tr.querySelector(".row-actions");
 
     nickCell.innerHTML  = `<input type="text" value="${esc(r.game_nick)}" style="width:100%">`;
-    titleCell.innerHTML = `<input type="text" value="${esc(r.title || "")}" placeholder="титул" style="width:100%">`;
+    titleCell.innerHTML = `<input type="text" value="${esc(r.title || "")}" placeholder="титул / ~мэйн~" style="width:100%">`;
+    attachNickSuggest(titleCell.querySelector("input"));   // подсказки ников клана для титула-твина
     dateCell.innerHTML  = `<input type="text" value="${DateRu.fmtRus(r.accepted_date)}" placeholder="ДД.ММ.ГГГГ" style="width:100%">`;
     noteCell.innerHTML  = `<input type="text" value="${esc(r.note || "")}" style="width:100%">`;
     actions.innerHTML =
