@@ -373,6 +373,13 @@
   function renderFlow(b, pth) {
     var frag = document.createDocumentFragment();
     frag.appendChild(svgFlow(pth, b.accent));
+    // КРУГ-ФИНИШ на земле в конце очереди (у торговца) — концентрические кольца в цвете очереди
+    var endP = pathPoint(pth, 1);
+    var spot = document.createElement("div");
+    spot.className = "qs-endspot";
+    spot.style.cssText = "left:" + endP.x.toFixed(2) + "%;top:" + endP.y.toFixed(2) + "%;--gc:" + b.accent;
+    spot.innerHTML = '<span class="qs-endspot-core"></span><span class="qs-endspot-ping"></span>';
+    frag.appendChild(spot);
     var AR = 1.79;  // соотношение сцены — чтобы шеврон смотрел визуально верно
     [0.30, 0.52, 0.74].forEach(function (t, k) {
       var p = pathPoint(pth, t), p2 = pathPoint(pth, Math.min(1, t + 0.05));
@@ -554,6 +561,16 @@
     ".qs-chev{position:absolute;z-index:6;font:900 15px system-ui;line-height:1;color:var(--gc);pointer-events:none;" +
       "text-shadow:0 0 5px var(--gc),0 1px 1px rgba(0,0,0,.6);opacity:.22;animation:qsChevPulse 1.5s ease-in-out infinite}" +
     "@keyframes qsChevPulse{0%,100%{opacity:.18}45%{opacity:.88}}" +
+    // круг-финиш на земле у конца очереди (у торговца)
+    ".qs-endspot{position:absolute;transform:translate(-50%,-50%);width:8.5%;aspect-ratio:2/1;pointer-events:none;z-index:4}" +
+    ".qs-endspot-core{position:absolute;inset:0;border-radius:50%;border:2.5px solid var(--gc);" +
+      "box-shadow:0 0 12px -2px var(--gc),inset 0 0 12px -4px var(--gc);" +
+      "background:radial-gradient(ellipse at center,rgba(255,255,255,.08),transparent 68%)}" +
+    ".qs-endspot-core::after{content:'';position:absolute;left:50%;top:50%;width:30%;aspect-ratio:2/1;" +
+      "transform:translate(-50%,-50%);border-radius:50%;background:var(--gc);box-shadow:0 0 8px 1px var(--gc);opacity:.9}" +
+    ".qs-endspot-ping{position:absolute;inset:0;border-radius:50%;border:2px solid var(--gc);opacity:0;" +
+      "animation:qsEndPing 2.1s ease-out infinite}" +
+    "@keyframes qsEndPing{0%{transform:scale(.5);opacity:.8}100%{transform:scale(1.45);opacity:0}}" +
     /* торговец у будки */
     ".qs-merchant{position:absolute;height:calc(20% * var(--qs-merch-scale,1) * var(--qs-mscale,1));width:auto;" +
       "transform-origin:50% 100%;pointer-events:none;filter:drop-shadow(0 5px 7px rgba(0,0,0,.5))}" +
@@ -787,7 +804,7 @@
     /* липкий низ окна: кнопка «Встать» ВСЕГДА видна без прокрутки */
     ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
       "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
-    ".qs-pick2-foot .qs-join{display:block;margin:0 auto;width:min(330px,82%);aspect-ratio:440/191;height:auto;min-height:0;" +
+    ".qs-pick2-foot .qs-join{display:block;margin:0 auto;width:min(330px,82%);aspect-ratio:420/182;height:auto;min-height:0;" +
       "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp) center/contain no-repeat;" +
       "color:#ffe8bc;font:800 15px/1.15 system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
       "padding:0 8% 0 25%;filter:drop-shadow(0 4px 9px rgba(0,0,0,.4))}" +
