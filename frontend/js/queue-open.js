@@ -4,9 +4,9 @@
  * На странице очереди таймер монтирует queue.js через window.QueueOpen.mount(). */
 (function () {
   "use strict";
-  // Время открытия: 18 июля 2026, 18:00 МСК (МСК = UTC+3).
-  var OPEN_AT = new Date("2026-07-18T18:00:00+03:00");
-  var WHEN_TXT = "18 июля в 18:00 мск";
+  // Время открытия: 17 июля 2026, 18:00 МСК (МСК = UTC+3).
+  var OPEN_AT = new Date("2026-07-17T18:00:00+03:00");
+  var WHEN_TXT = "17 июля в 18:00 мск";
 
   function remaining() { return OPEN_AT.getTime() - Date.now(); }
   function isOpen() { return remaining() <= 0; }
