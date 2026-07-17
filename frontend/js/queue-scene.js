@@ -872,8 +872,10 @@
     ".qsc-stage{margin:0 0 11px;padding:0 0 9px;border-bottom:1px dashed rgba(120,80,30,.4)}" +
     ".qsc-stage:last-child{border-bottom:0}" +
     ".qsc-stage-h{font:800 13px Georgia,serif;color:#7a3a10;margin:0 0 4px}" +
-    ".qsc-item{display:flex;justify-content:space-between;gap:8px;font:600 12px system-ui;color:#3a2a10;padding:1px 0}" +
-    ".qsc-item .qn{font-weight:800;white-space:nowrap;color:#5a3610}" +
+    ".qsc-item{display:flex;align-items:center;gap:7px;font:600 12px system-ui;color:#3a2a10;padding:2px 0}" +
+    ".qsc-ic{width:24px;height:24px;flex:0 0 auto;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(90,60,20,.4))}" +
+    ".qsc-item .qname{flex:1 1 auto;min-width:0}" +
+    ".qsc-item .qn{font-weight:800;white-space:nowrap;color:#5a3610;flex:0 0 auto}" +
     ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}" +
     ".qsc-item.qcilin .qname{color:#8a2a6a;font-weight:800}.qsc-item.qcilin .qn{color:#8a2a6a}" +
     ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
@@ -910,8 +912,9 @@
     });
   }
   function loadDrops(host) {
-    if (_dropsCache) { host.innerHTML = _dropsCache; return; }
-    q("GET", "/queue/drops").then(function (d) { _dropsCache = dropsHtml(d); host.innerHTML = _dropsCache; })
+    function paint() { autoCropAll(host, ".qsc-ic"); }   // иконки заполняют место (цилинь без пустот)
+    if (_dropsCache) { host.innerHTML = _dropsCache; paint(); return; }
+    q("GET", "/queue/drops").then(function (d) { _dropsCache = dropsHtml(d); host.innerHTML = _dropsCache; paint(); })
       .catch(function () { host.innerHTML = '<div class="qsc-sub">Не удалось загрузить.</div>'; });
   }
   function dropsHtml(d) {
@@ -920,16 +923,20 @@
     var cilinName = d.cilin_name || "Огненный цилинь";
     var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
       '<div class="qsc-sub">что и сколько падает с каждого этапа (пул недели = сумма закрытых этапов)</div>';
+    var cilinRes = d.cilin_res || "mount-cilin";
     (d.stages || []).forEach(function (s) {
       if ((!s.items || !s.items.length) && !s.cilin) return;
       h += '<div class="qsc-stage"><div class="qsc-stage-h">Этап ' + s.stage + "</div>";
       (s.items || []).forEach(function (it) {
-        h += '<div class="qsc-item q' + it.q + '"><span class="qname">' + esc(it.name) +
+        h += '<div class="qsc-item q' + it.q + '">' +
+          '<img class="qsc-ic" src="' + resImg(it.res) + '" alt="">' +
+          '<span class="qname">' + esc(it.name) +
           ' <span class="qsc-mode">(' + esc(qn[it.q] || "") + " · " + esc(MODE[it.mode] || it.mode) + ")</span></span>" +
           '<span class="qn">×' + it.qty + "</span></div>";
       });
       if (s.cilin)   // питомец падает с шансом с этого этапа
-        h += '<div class="qsc-item qcilin"><span class="qname">🎲 ' + esc(cilinName) +
+        h += '<div class="qsc-item qcilin"><img class="qsc-ic" src="' + resImg(cilinRes) + '" alt="">' +
+          '<span class="qname">🎲 ' + esc(cilinName) +
           ' <span class="qsc-mode">(легендарные · с шансом)</span></span><span class="qn">×1</span></div>';
       h += "</div>";
     });

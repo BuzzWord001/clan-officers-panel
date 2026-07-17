@@ -1284,10 +1284,11 @@ def drops() -> dict:
                 continue                        # питомец — с шансом, ниже отдельной строкой
             amt = r["st"][si]                   # дроп ИМЕННО этого этапа (как в файле)
             if amt > 0:
-                items.append({"name": distribution.res_name(k), "qty": amt,
+                items.append({"res": k, "name": distribution.res_name(k), "qty": amt,
                               "q": r["q"], "mode": r["mode"]})
         st_rows.append({"stage": stage, "items": items, "cilin": stage in CILIN_STAGES})
     return {"stages": st_rows,
+            "cilin_res": "mount-cilin",
             "cilin_name": distribution.res_name("mount-cilin"),
             "cilin_note": "падает С ШАНСОМ (может не выпасть на неделе), по 1 шт — с этапов 4–7",
             "queues": ["Обычные", "Редкие (R)", "Легендарные (S)"]}
