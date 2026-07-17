@@ -875,6 +875,12 @@
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
     ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
     ".qs-objp-flip{font-size:13px}" +
+    ".qs-objp-bg{margin:2px 0 8px;padding:8px;border-radius:9px;background:rgba(40,60,90,.28);" +
+      "border:1px solid rgba(130,180,240,.35);display:flex;flex-direction:column;gap:6px}" +
+    ".qs-objp-bgh{font:800 11.5px system-ui;color:#bfe0ff}.qs-objp-bgh b{color:#fff}" +
+    ".qs-objp-bgtime{display:flex;gap:4px}" +
+    ".qs-objp-bgtime button{flex:1;font-size:11px;padding:5px 4px}" +
+    ".qs-objp-bghint{font-size:9.5px;color:#9db4cc;align-self:center}" +
     ".qs-objp-repl{font-size:12px;border-color:rgba(130,200,255,.5)!important;color:#bfe0ff!important}" +
     ".qs-objp-repl:hover{background:rgba(30,60,100,.8)!important;color:#fff!important}" +
     ".qs-objp-del{color:#ff9a86;border-color:rgba(255,120,100,.5)!important}" +
@@ -1484,6 +1490,15 @@
     stage.style.setProperty("--qs-lavka-scale", getSize("lavka", 1));
     stage.style.setProperty("--qs-fountain-scale", getSize("fountain", 1));
     stage.style.inset = getSize("inset", 15) + "%";   // край рамки (сохраняется, макс ~15.5%)
+    // центральная картинка (фон день/ночь): загруженная замена + зум/сдвиг, если заданы
+    var bgSlot = isNight() ? "bg-night" : "bg-day";
+    var bgOv = uploadedUrl(overrideKey(bgSlot));
+    if (bgOv) stage.style.backgroundImage = "url('" + bgOv + "')";
+    var bgZ = parseFloat(CONFIG["bgzoom:" + bgSlot]);
+    if (isFinite(bgZ) && bgZ > 0 && bgZ !== 100) {
+      stage.style.backgroundSize = bgZ.toFixed(0) + "% " + bgZ.toFixed(0) + "%";
+      stage.style.backgroundPosition = (CONFIG["bgx:" + bgSlot] || "50") + "% " + (CONFIG["bgy:" + bgSlot] || "50") + "%";
+    }
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
     BOOTHS.forEach(function (b) {
@@ -2182,6 +2197,50 @@
     pe.textContent = _pathMode ? "✏️ Форма очередей: ВКЛ (тащи точки)" : "✏️ Редактировать форму очередей";
     pe.addEventListener("click", function () { _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState); });
     bodyEl.appendChild(pe);
+
+    // ── ЦЕНТР СЦЕНЫ (фон день/ночь): переключатель времени, замена картинки, зум и сдвиг ──
+    var bgSlot2 = isNight() ? "bg-night" : "bg-day";
+    var slotName = isNight() ? "ночь" : "день";
+    var curTime = CONFIG["forceTime"] || "auto";
+    var bgZoom = parseFloat(CONFIG["bgzoom:" + bgSlot2]) || 100;
+    var bg = document.createElement("div");
+    bg.className = "qs-objp-bg";
+    bg.innerHTML =
+      '<div class="qs-objp-bgh">🖼 Центр сцены — фон (сейчас: <b>' + slotName + "</b>)</div>" +
+      '<div class="qs-objp-bgtime">' +
+        '<button data-t="day" class="' + (curTime === "day" ? "on" : "") + '">☀️ день</button>' +
+        '<button data-t="night" class="' + (curTime === "night" ? "on" : "") + '">🌙 ночь</button>' +
+        '<button data-t="auto" class="' + (curTime === "auto" ? "on" : "") + '">🕓 авто</button>' +
+      "</div>" +
+      '<div class="qs-objp-ctl">' +
+        '<button data-b="repl" class="qs-objp-repl">🖼 заменить фон (' + slotName + ")</button>" +
+        '<span class="qs-objp-sz"><button data-b="z-">−</button><b class="qs-objp-szv">' + bgZoom.toFixed(0) +
+          '%</b><button data-b="z+">+</button></span>' +
+      "</div>" +
+      '<div class="qs-objp-ctl"><span class="qs-objp-pad">' +
+        '<button data-b="up">▲</button>' +
+        '<span class="qs-objp-lr"><button data-b="left">◀</button><button data-b="ctr" title="центр">◎</button>' +
+        '<button data-b="right">▶</button></span><button data-b="down">▼</button>' +
+      '</span><span class="qs-objp-bghint">сдвиг фона работает при зуме больше 100%</span></div>';
+    bg.addEventListener("click", function (e) {
+      var btn = e.target.closest("button"); if (!btn) return;
+      if (btn.dataset.t) { saveCfg("forceTime", btn.dataset.t); render(_lastState); return; }
+      var b = btn.dataset.b, sl = isNight() ? "bg-night" : "bg-day";
+      var z = parseFloat(CONFIG["bgzoom:" + sl]) || 100;
+      var bx = parseFloat(CONFIG["bgx:" + sl]); if (!isFinite(bx)) bx = 50;
+      var by = parseFloat(CONFIG["bgy:" + sl]); if (!isFinite(by)) by = 50;
+      if (b === "repl") { replaceModel(overrideKey(sl)); return; }
+      else if (b === "z+") saveCfg("bgzoom:" + sl, Math.min(300, z + 5));
+      else if (b === "z-") saveCfg("bgzoom:" + sl, Math.max(50, z - 5));
+      else if (b === "up") saveCfg("bgy:" + sl, Math.max(0, by - 4));
+      else if (b === "down") saveCfg("bgy:" + sl, Math.min(100, by + 4));
+      else if (b === "left") saveCfg("bgx:" + sl, Math.max(0, bx - 4));
+      else if (b === "right") saveCfg("bgx:" + sl, Math.min(100, bx + 4));
+      else if (b === "ctr") { saveCfg("bgx:" + sl, 50); saveCfg("bgy:" + sl, 50); }
+      else return;
+      render(_lastState);
+    });
+    bodyEl.appendChild(bg);
 
     // Заменить модель: подгрузить новую картинку — старая меняется РОВНО на месте (позиция/размер
     // сохраняются). uploadKey: для встроенных — overrideKey(ключ), для ENV — их собственный ключ.
