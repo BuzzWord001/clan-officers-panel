@@ -875,6 +875,33 @@
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
     ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
     ".qs-objp-flip{font-size:13px}" +
+    // менеджер моделей (модалка)
+    ".qs-mm{padding:14px 16px 18px}" +
+    ".qs-mm-h{font:800 13.5px Georgia,serif;color:#ffd98a;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid rgba(224,162,74,.25)}" +
+    ".qs-mm-h:first-child{margin-top:0}" +
+    ".qs-mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:9px}" +
+    ".qs-mm-card{display:flex;flex-direction:column;gap:6px;padding:9px;border-radius:11px;" +
+      "background:rgba(255,220,150,.05);border:1px solid rgba(224,162,74,.25)}" +
+    ".qs-mm-th{width:100%;height:110px;object-fit:contain;background:rgba(0,0,0,.25);border-radius:8px}" +
+    ".qs-mm-noimg{display:flex;align-items:center;justify-content:center;color:#8a795a;font-size:12px;font-style:italic}" +
+    ".qs-mm-name{font:800 12.5px system-ui;color:#f6ead2}" +
+    ".qs-mm-sub{font-size:10.5px;color:#a58c68}" +
+    ".qs-mm-rate{font-size:10.5px;margin-top:2px;font-weight:700}" +
+    ".qs-mm-rate.good{color:#8fc36a}.qs-mm-rate.mid{color:#e6c48f}.qs-mm-rate.bad{color:#ff9a86}.qs-mm-rate.na{color:#8a795a;font-weight:500;font-style:italic}" +
+    ".qs-mm-btns{display:flex;flex-wrap:wrap;gap:4px}" +
+    ".qs-mm-btns button{cursor:pointer;border:1px solid rgba(224,162,74,.4);background:rgba(30,20,9,.85);color:#f0dcb4;" +
+      "border-radius:7px;font:700 11px system-ui;padding:5px 8px}" +
+    ".qs-mm-btns button:hover{background:rgba(80,54,20,.95);color:#fff}" +
+    ".qs-mm-btns button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
+    ".qs-mm-btns button.danger{color:#ff9a86;border-color:rgba(255,120,100,.5)}" +
+    ".qs-mm-btns button.danger:hover{background:rgba(120,30,20,.8);color:#fff}" +
+    ".qs-mm-st{font-size:10.5px;color:#e0a86a;min-height:12px}" +
+    ".qs-mm-empty{padding:14px;color:#8a795a;font-style:italic;text-align:center;font-size:12.5px}" +
+    ".qs-mm-addp{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}" +
+    ".qs-mm-addp input{padding:7px 10px;font-size:13px;color:#f5ecda;background:rgba(0,0,0,.35);" +
+      "border:1px solid rgba(224,162,74,.35);border-radius:8px;outline:none;min-width:150px}" +
+    ".qs-mm-addbtn{cursor:pointer;border:0;border-radius:8px;padding:8px 12px;font:800 12px system-ui;" +
+      "color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-objp-bg{margin:2px 0 8px;padding:8px;border-radius:9px;background:rgba(40,60,90,.28);" +
       "border:1px solid rgba(130,180,240,.35);display:flex;flex-direction:column;gap:6px}" +
     ".qs-objp-bgh{font:800 11.5px system-ui;color:#bfe0ff}.qs-objp-bgh b{color:#fff}" +
@@ -2241,6 +2268,12 @@
       render(_lastState);
     });
     bodyEl.appendChild(bg);
+    // кнопка менеджера моделей (классы + персональные): превью, замена, зеркало, оптимизация
+    var mmBtn = document.createElement("button");
+    mmBtn.className = "qs-objp-pm";
+    mmBtn.textContent = "🎭 Модели классов и персональные";
+    mmBtn.addEventListener("click", function () { openModelManager(); });
+    bodyEl.appendChild(mmBtn);
 
     // Заменить модель: подгрузить новую картинку — старая меняется РОВНО на месте (позиция/размер
     // сохраняются). uploadKey: для встроенных — overrideKey(ключ), для ENV — их собственный ключ.
@@ -2990,6 +3023,155 @@
     img.onerror = function () { cb("не удалось прочитать картинку", false); URL.revokeObjectURL(url); };
     img.src = url;
   }
+  // насколько «оптимальна» модель по её деталям (из /queue/models-info)
+  function optRating(info) {
+    if (!info) return { cls: "na", txt: "нет данных", pct: 0 };
+    var kb = Math.round((info.bytes || 0) / 1024), mx = Math.max(info.w || 0, info.h || 0);
+    if (kb > 350 || mx > 1800) return { cls: "bad", txt: "⚠ тяжёлая · " + kb + " КБ · " + info.w + "×" + info.h, pct: 30 };
+    if (kb > 180 || mx > 1300) return { cls: "mid", txt: "◐ норм, можно легче · " + kb + " КБ · " + info.w + "×" + info.h, pct: 65 };
+    return { cls: "good", txt: "✓ оптимально · " + kb + " КБ · " + info.w + "×" + info.h, pct: 100 };
+  }
+  // ужать картинку (dataURL) до целевых параметров: ≤1000 px по большей стороне, WebP q0.85
+  function optimizeDataUrl(dataUrl, cb) {
+    var img = new Image();
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight, mx = Math.max(w, h);
+      var s = Math.min(1, 1000 / (mx || 1)), nw = Math.round(w * s), nh = Math.round(h * s);
+      var cv = document.createElement("canvas"); cv.width = nw; cv.height = nh;
+      cv.getContext("2d").drawImage(img, 0, 0, nw, nh);
+      var out = cv.toDataURL("image/webp", 0.85);
+      cb(out, { w: nw, h: nh, kb: Math.round(out.length * 0.75 / 1024) });
+    };
+    img.onerror = function () { cb(null); };
+    img.src = dataUrl;
+  }
+  // оптимизировать УЖЕ загруженную модель по ключу (перекодировать и залить обратно)
+  function optimizeExisting(key, cb) {
+    var url = uploadedUrl(key); if (!url) { cb(false); return; }
+    var img = new Image(); img.crossOrigin = "anonymous";
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, 1000 / (Math.max(w, h) || 1));
+      var nw = Math.round(w * s), nh = Math.round(h * s);
+      var cv = document.createElement("canvas"); cv.width = nw; cv.height = nh;
+      cv.getContext("2d").drawImage(img, 0, 0, nw, nh);
+      var out = cv.toDataURL("image/webp", 0.85);
+      q("POST", "/queue/admin/model-upload", { key: key, data: out })
+        .then(function () { UPLOADED[key] = Date.now(); cb(true); })
+        .catch(function () { cb(false); });
+    };
+    img.onerror = function () { cb(false); };
+    img.src = url;
+  }
+  // ── МЕНЕДЖЕР МОДЕЛЕЙ (админ): все классовые + персональные — превью, оптимизация,
+  //    замена, зеркало, удаление. Открывается кнопкой из правой панели. ──
+  function openModelManager() {
+    var body = document.createElement("div");
+    body.className = "qs-mm";
+    body.innerHTML = '<div class="qs-mm-empty">Загрузка моделей…</div>';
+    sceneModal("🎭 Модели персонажей и классов", body);
+    var INFO = {};
+    function loadInfo(cb) {
+      q("GET", "/queue/models-info").then(function (d) {
+        INFO = {}; (d.models || []).forEach(function (x) { INFO[x.key] = x; }); cb();
+      }).catch(function () { cb(); });
+    }
+    function nickByCanon(cn) {
+      var p = (_roster || []).filter(function (r) { return canon(r.nick) === cn || canon(r.main_nick || "") === cn; })[0];
+      return p ? p.nick : cn;
+    }
+    function pickFile(onData, stEl) {
+      var f = document.createElement("input"); f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
+      f.addEventListener("change", function () {
+        var file = f.files[0]; if (!file) return;
+        fileToDataURL(file, function (du) { optimizeDataUrl(du, function (opt) { onData(opt || du); }); },
+          function (m) { if (stEl) stEl.textContent = m; });
+      });
+      f.click();
+    }
+    function card(opts) {
+      var up = UPLOADED[opts.key];
+      var thumb = up ? uploadedUrl(opts.key) : "";
+      var rate = optRating(INFO[opts.key]);
+      var ms = MODEL_SETTINGS[opts.key] || {};
+      var el = document.createElement("div"); el.className = "qs-mm-card";
+      el.innerHTML =
+        (thumb ? '<img class="qs-mm-th" src="' + esc(thumb) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+               : '<div class="qs-mm-th qs-mm-noimg">нет</div>') +
+        '<div class="qs-mm-info"><div class="qs-mm-name">' + esc(opts.title) + "</div>" +
+          (opts.sub ? '<div class="qs-mm-sub">' + esc(opts.sub) + "</div>" : "") +
+          '<div class="qs-mm-rate ' + (up ? rate.cls : "na") + '">' + (up ? rate.txt : "— не загружена (статичная/заглушка)") + "</div></div>" +
+        '<div class="qs-mm-btns">' +
+          '<button data-a="repl">📤 ' + (up ? "заменить" : "загрузить") + "</button>" +
+          (up ? '<button data-a="flip" class="' + (ms.flip ? "on" : "") + '" title="зеркалить">⇋</button>' +
+                '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
+                '<button data-a="del" class="danger" title="удалить загруженную">✕</button>' : "") +
+        '</div><div class="qs-mm-st"></div>';
+      var stEl = el.querySelector(".qs-mm-st");
+      el.addEventListener("click", function (e) {
+        var btn = e.target.closest("button"); if (!btn) return;
+        var a = btn.dataset.a;
+        if (a === "repl") {
+          pickFile(function (data) {
+            stEl.textContent = "Загрузка…";
+            q("POST", "/queue/admin/model-upload", { key: opts.key, data: data }).then(function () {
+              UPLOADED[opts.key] = Date.now(); refresh(); loadInfo(rebuild);
+            }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
+          }, stEl);
+        } else if (a === "flip") {
+          var cur = MODEL_SETTINGS[opts.key] || {}, nf = cur.flip ? 0 : 1;
+          MODEL_SETTINGS[opts.key] = { flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 };
+          q("POST", "/queue/admin/model", { key: opts.key, flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 })
+            .then(function () { refresh(); rebuild(); });
+        } else if (a === "opt") {
+          stEl.textContent = "Оптимизирую…";
+          optimizeExisting(opts.key, function (okk) { if (okk) { refresh(); loadInfo(rebuild); } else stEl.textContent = "Не удалось оптимизировать"; });
+        } else if (a === "del") {
+          if (!confirm("Удалить загруженную модель «" + opts.title + "»?")) return;
+          q("POST", "/queue/admin/model-delete", { key: opts.key }).then(function () {
+            delete UPLOADED[opts.key]; refresh(); loadInfo(rebuild);
+          });
+        }
+      });
+      return el;
+    }
+    function rebuild() {
+      body.innerHTML = "";
+      var clsSet = {};
+      ["Воин", "Жрец", "Маг", "Друид", "Стрелок", "Оборотень", "Странник"].forEach(function (c) { clsSet[c] = 1; });
+      (_roster || []).forEach(function (p) { if (p.cls) clsSet[p.cls] = 1; });
+      var h1 = document.createElement("div"); h1.className = "qs-mm-h"; h1.textContent = "🛡 Модели классов (муж/жен)";
+      body.appendChild(h1);
+      var g1 = document.createElement("div"); g1.className = "qs-mm-grid";
+      Object.keys(clsSet).sort().forEach(function (cls) {
+        classGenders(cls).forEach(function (g) {
+          g1.appendChild(card({ key: "class-" + cls + "-" + g, title: cls + " (" + (g === "m" ? "муж" : "жен") + ")" }));
+        });
+      });
+      body.appendChild(g1);
+      var h2 = document.createElement("div"); h2.className = "qs-mm-h"; h2.textContent = "👤 Персональные модели";
+      body.appendChild(h2);
+      var add = document.createElement("div"); add.className = "qs-mm-addp";
+      add.innerHTML = '<input class="qs-mm-nick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off">' +
+        '<button class="qs-mm-addbtn">➕ добавить персональную</button>';
+      add.querySelector(".qs-mm-addbtn").addEventListener("click", function () {
+        var nk = add.querySelector(".qs-mm-nick").value.trim(); if (!nk) return;
+        var key = "person-" + canon(nk);
+        pickFile(function (data) {
+          q("POST", "/queue/admin/model-upload", { key: key, data: data }).then(function () {
+            UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild);
+          });
+        });
+      });
+      body.appendChild(add);
+      var g2 = document.createElement("div"); g2.className = "qs-mm-grid";
+      var persons = Object.keys(UPLOADED).filter(function (k) { return k.indexOf("person-") === 0; });
+      if (!persons.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей пока нет — добавь по нику выше."; g2.appendChild(e); }
+      persons.forEach(function (k) { g2.appendChild(card({ key: k, title: nickByCanon(k.slice(7)), sub: "персональная (идёт игроку и его твинам)" })); });
+      body.appendChild(g2);
+    }
+    loadInfo(rebuild);
+  }
+
   // ── админ: загрузка моделей (классовых с делением муж/жен + персональных) ──
   function buildUploadPanel() {
     var wrap = document.createElement("div");

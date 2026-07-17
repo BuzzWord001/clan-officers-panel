@@ -1208,6 +1208,28 @@ def uploaded_models() -> dict:
     return {"keys": out}
 
 
+@router.get("/models-info")
+def models_info(_: dict = Depends(require_admin)) -> dict:
+    """Детали загруженных моделей (ключ, вес в байтах, размеры) — для менеджера моделей
+    и оценки оптимизации. Только админ."""
+    out = []
+    if _UPLOAD_DIR.exists():
+        for f in _UPLOAD_DIR.glob("*.*"):
+            try:
+                sz = f.stat().st_size
+            except OSError:
+                continue
+            w = h = 0
+            try:
+                from PIL import Image
+                with Image.open(f) as im:
+                    w, h = im.size
+            except Exception:
+                pass
+            out.append({"key": f.stem, "bytes": sz, "w": w, "h": h})
+    return {"models": out}
+
+
 @router.get("/model-img/{key}")
 def model_img(key: str) -> FileResponse:
     safe = _safe_key(key)
