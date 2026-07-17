@@ -289,6 +289,10 @@
   }
   // размер конкретного объекта (по ключу размещения); откат — категорийный размер/1
   function objSize(pkey, base) { var v = parseFloat(CONFIG["size:" + pkey]); return (isFinite(v) && v > 0) ? v : (base || 1); }
+  // зеркалирование объекта по ключу
+  function isFlipped(pkey) { return CONFIG["flip:" + pkey] === "1"; }
+  // суффикс transform с учётом зеркала (base — базовый translate объекта)
+  function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
   function curPlace(key, dx, dy) { var p = PLACEMENTS[key]; return { x: p ? p.x : dx, y: p ? p.y : dy, z: (p && p.z) || "" }; }
   function savePlacement(key, x, y, z) {
@@ -813,6 +817,8 @@
     ".qs-objp-szv{font:800 11px system-ui;color:#9fe0a0;min-width:34px;text-align:center}" +
     ".qs-objp-z{display:flex;gap:2px}" +
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
+    ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
+    ".qs-objp-flip{font-size:13px}" +
     "@media(max-width:820px){.qs-objp{position:static;right:auto;top:auto;width:100%;max-height:none;margin:10px 0}}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
@@ -840,6 +846,9 @@
     ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
       "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
     ".qs-frame.place-on .qs-fwallet{pointer-events:auto;cursor:move}" +
+    // слой всей очереди (front/back) — прозрачный, клики проходят к сцене, но люди кликабельны
+    ".qs-qlayer{position:absolute;inset:0;pointer-events:none}" +
+    ".qs-qlayer .qs-char{pointer-events:auto}" +
     ".qs-fw-bg{width:100%;height:auto;display:block}" +
     ".qs-fw-slot{position:absolute;left:30%;right:20%;top:33%;bottom:31%;display:flex;align-items:center;" +
       "justify-content:center;gap:1px;line-height:1}" +
@@ -1414,10 +1423,11 @@
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
-      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=2";
+      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=3";
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
-        ");z-index:" + zOf("lavka:" + b.q, lkpos.y);
+        ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
+        ";transform:" + flipTf("lavka:" + b.q, "translate(-50%,-100%)");
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
@@ -1443,9 +1453,20 @@
       // Больше людей → меньше расстояние (очередь сжимается).
       var spread = getSize("spread", 1);            // 0.4–1: какую долю пути занимает очередь
       var shown = entries.length;                   // на сцене — все, кто в очереди
+      // слой всей очереди: front/back переносит ВСЕХ людей очереди (с предметами над головами)
+      // на передний/задний план; auto — обычная глубина по y (люди вперемешку с объектами).
+      var qz = CONFIG["qz:" + b.q] || "";
+      var charTarget = stage;
+      if (qz === "front" || qz === "back") {
+        var qlayer = document.createElement("div");
+        qlayer.className = "qs-qlayer";
+        qlayer.style.cssText = "z-index:" + (qz === "front" ? 9500 : 2);
+        stage.appendChild(qlayer);
+        charTarget = qlayer;
+      }
       entries.forEach(function (e, i) {
         var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
-        stage.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
+        charTarget.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
       // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
       // Каждую можно перетащить (в режиме «Расставить предметы»); позиция сохраняется.
@@ -1499,7 +1520,8 @@
       var cntEl = document.createElement("div");
       cntEl.className = "qs-scnt qs-btn-abs";
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
-        "%;width:" + (64 * csz).toFixed(1) + "px;z-index:" + cnz;
+        "%;width:" + (64 * csz).toFixed(1) + "px;z-index:" + cnz +
+        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "»";
       cntEl.innerHTML = '<img class="qs-scnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
         '<b class="qs-scnt-n" style="font-size:' + (19 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
@@ -1535,7 +1557,8 @@
     mount.src = "assets/queue/scene/item/mount-cilin.webp";
     mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
       "%;height:calc(22% * " + objSize("mount", getSize("mount", 1)).toFixed(3) +
-      ");z-index:" + zOf("mount", mpos.y);
+      ");z-index:" + zOf("mount", mpos.y) +
+      ";transform:" + flipTf("mount", "translate(-50%,-100%)");
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
     if (_isAdmin && _placeMode) stage.appendChild(admTag(mpos, "Огненный цилинь"));
@@ -1549,7 +1572,8 @@
     fountain.src = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
     fountain.style.cssText = "left:" + fpos.x.toFixed(2) + "%;top:" + fpos.y.toFixed(2) +
       "%;height:calc(24% * " + objSize("fountain", getSize("fountain", 1)).toFixed(3) +
-      ");z-index:" + zOf("fountain", fpos.y);
+      ");z-index:" + zOf("fountain", fpos.y) +
+      ";transform:" + flipTf("fountain", "translate(-50%,-100%)");
     if (_placeMode) makeDraggable(fountain, "fountain");
     stage.appendChild(fountain);
     if (_isAdmin && _placeMode) stage.appendChild(admTag(fpos, "Фонтан (день/ночь)"));
@@ -1566,7 +1590,8 @@
       frameWallet.className = "qs-fwallet";
       frameWallet.dataset.fixedz = "1";   // всегда поверх рамки, даже при перетаскивании
       frameWallet.style.cssText = "left:" + wpos.x.toFixed(2) + "%;top:" + wpos.y.toFixed(2) +
-        "%;width:calc(15% * " + objSize("wallet", 1).toFixed(3) + ");z-index:100000";
+        "%;width:calc(15% * " + objSize("wallet", 1).toFixed(3) + ");z-index:100000" +
+        ";transform:" + flipTf("wallet", "translate(-50%,0)");
       frameWallet.title = "Твои жетоны ТОП-3: " + wn;
       frameWallet.innerHTML = '<img class="qs-fw-bg" src="assets/queue/ui/wallet2.webp?v=1" alt="">' +
         '<div class="qs-fw-slot">' + (wn > 0
@@ -1951,14 +1976,16 @@
   //    Видна ТОЛЬКО админу.
   function sceneObjPanel() {
     var objs = [];
-    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1) }); });
+    // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
+    BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }];
-    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1 }); });
-    objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1) });
-    objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1) });
-    objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1 });
-    BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false }); });
-    BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
+    objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true });
+    objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true });
+    objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true });
+    BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false, flip: true }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false, flip: true }); });
 
     var panel = document.createElement("div");
     panel.className = "qs-objp" + (_scnPanelOpen ? "" : " closed");
@@ -1979,10 +2006,37 @@
     bodyEl.appendChild(pm);
 
     var MStep = 1.5, SStep = 0.1;
+    // подсветка активной кнопки слоя: on-класс, если текущий слой совпадает
+    function zBtns(curZ) {
+      return '<span class="qs-objp-z">' +
+        '<button data-a="front" class="' + (curZ === "front" ? "on" : "") + '" title="на передний план">перёд</button>' +
+        '<button data-a="back" class="' + (curZ === "back" ? "on" : "") + '" title="на задний план">зад</button>' +
+        '<button data-a="auto" class="' + (!curZ ? "on" : "") + '" title="авто по глубине">авто</button>' +
+      "</span>";
+    }
     objs.forEach(function (o) {
       var row = document.createElement("div");
       row.className = "qs-objp-row";
+      // ── строка ОЧЕРЕДИ: только слой (перёд/зад/авто) для всех людей очереди ──
+      if (o.queue !== undefined) {
+        var qz = CONFIG["qz:" + o.queue] || "";
+        row.innerHTML = '<div class="qs-objp-nm">👥 ' + esc(o.name) + "</div>" +
+          '<div class="qs-objp-ctl">' + zBtns(qz) + "</div>";
+        row.addEventListener("click", function (e) {
+          var btn = e.target.closest("button"); if (!btn) return;
+          var a = btn.dataset.a;
+          if (a === "front") saveCfg("qz:" + o.queue, "front");
+          else if (a === "back") saveCfg("qz:" + o.queue, "back");
+          else if (a === "auto") saveCfg("qz:" + o.queue, "");
+          else return;
+          render(_lastState);
+        });
+        bodyEl.appendChild(row);
+        return;
+      }
+      // ── строка ОБЪЕКТА: перемещение + размер + зеркало + слой ──
       var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
+      var curZ = (PLACEMENTS[o.key] && PLACEMENTS[o.key].z) || "";
       row.innerHTML =
         '<div class="qs-objp-nm">' + esc(o.name) + "</div>" +
         '<div class="qs-objp-ctl">' +
@@ -1995,11 +2049,8 @@
           "</span>" +
           (o.sz ? '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
             '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
-          '<span class="qs-objp-z">' +
-            '<button data-a="front" title="на передний план">перёд</button>' +
-            '<button data-a="back" title="на задний план">зад</button>' +
-            '<button data-a="auto" title="авто по глубине">авто</button>' +
-          "</span>" +
+          (o.flip ? '<button data-a="flip" class="qs-objp-flip' + (isFlipped(o.key) ? " on" : "") + '" title="зеркалить">⇋</button>' : "") +
+          zBtns(curZ) +
         "</div>";
       row.addEventListener("click", function (e) {
         var btn = e.target.closest("button"); if (!btn) return;
@@ -2014,6 +2065,7 @@
         else if (a === "auto") savePlacement(o.key, p.x, p.y, "");
         else if (a === "sz+") saveCfg("size:" + o.key, Math.min(3, objSize(o.key, o.base) + SStep).toFixed(2));
         else if (a === "sz-") saveCfg("size:" + o.key, Math.max(0.3, objSize(o.key, o.base) - SStep).toFixed(2));
+        else if (a === "flip") saveCfg("flip:" + o.key, isFlipped(o.key) ? "0" : "1");
         else return;
         render(_lastState);
       });
