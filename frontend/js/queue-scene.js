@@ -278,6 +278,19 @@
     var p = PLACEMENTS[key];
     return p ? { x: p.x, y: p.y } : { x: dx, y: dy };
   }
+  // слой объекта: 'front' всегда спереди, 'back' всегда сзади, иначе авто по глубине (y)
+  function zOf(key, y) {
+    var z = PLACEMENTS[key] && PLACEMENTS[key].z;
+    if (z === "front") return 9200;
+    if (z === "back") return 1;
+    return Math.round(y * 12);
+  }
+  function zToast(txt) {
+    var t = document.getElementById("qs-ztoast");
+    if (!t) { t = document.createElement("div"); t.id = "qs-ztoast"; document.body.appendChild(t); }
+    t.textContent = txt; t.className = "show";
+    clearTimeout(t._h); t._h = setTimeout(function () { t.className = ""; }, 1400);
+  }
   function makeDraggable(el, pkey) {
     el.style.pointerEvents = "auto"; el.style.cursor = "grab";
     function start(moveEvt, endEvt) {
@@ -293,14 +306,28 @@
       function end() {
         document.removeEventListener(moveEvt, move); document.removeEventListener(endEvt, end);
         if (lx != null) {
-          PLACEMENTS[pkey] = { x: lx, y: ly };
-          q("POST", "/queue/admin/placement", { key: pkey, x: lx, y: ly }).catch(function () {});
+          var zc = (PLACEMENTS[pkey] && PLACEMENTS[pkey].z) || "";
+          PLACEMENTS[pkey] = { x: lx, y: ly, z: zc };
+          el.style.zIndex = zOf(pkey, ly);
+          q("POST", "/queue/admin/placement", { key: pkey, x: lx, y: ly, z: zc }).catch(function () {});
         }
       }
       document.addEventListener(moveEvt, move); document.addEventListener(endEvt, end);
     }
     el.addEventListener("mousedown", function (e) { e.preventDefault(); start("mousemove", "mouseup"); });
     el.addEventListener("touchstart", function () { start("touchmove", "touchend"); }, { passive: true });
+    // правый клик — переключить слой: авто → на передний план → на задний → авто
+    el.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      var cur = (PLACEMENTS[pkey] && PLACEMENTS[pkey].z) || "";
+      var next = cur === "" ? "front" : cur === "front" ? "back" : "";
+      var px = parseFloat(el.style.left) || (PLACEMENTS[pkey] && PLACEMENTS[pkey].x) || 0;
+      var py = parseFloat(el.style.top) || (PLACEMENTS[pkey] && PLACEMENTS[pkey].y) || 0;
+      PLACEMENTS[pkey] = { x: px, y: py, z: next };
+      el.style.zIndex = zOf(pkey, py);
+      q("POST", "/queue/admin/placement", { key: pkey, x: px, y: py, z: next }).catch(function () {});
+      zToast(next === "front" ? "⬆️ На передний план" : next === "back" ? "⬇️ На задний план" : "↕️ Авто (по глубине)");
+    });
   }
   // редактор формы очереди — линия пути (SVG) + перетаскиваемые точки
   function svgLine(pts, color) {
@@ -827,6 +854,36 @@
     ".qtip-sub{font:600 10.5px system-ui;color:#9a8a68;letter-spacing:.3px}" +
     ".qtip-priv{font:700 11.5px/1.35 system-ui;color:#ffd24a}" +
     ".qtip-hint{font:600 11px system-ui;color:#9fe0a0}" +
+    // ── свиток «дроп по этапам КХ» слева ──
+    "#qs-scroll{position:fixed;left:0;top:120px;z-index:2147482000;display:flex;align-items:flex-start;max-width:96vw}" +
+    "#qs-scroll .qsc-handle{flex:0 0 auto;cursor:pointer;border:0;width:52px;padding:14px 4px;border-radius:0 12px 12px 0;" +
+      "background:linear-gradient(90deg,#5b3c17,#7a5320 60%,#5b3c17);border-right:2px solid #caa66a;color:#ffe6b0;" +
+      "font:800 11px/1.2 Georgia,serif;text-align:center;box-shadow:3px 4px 14px rgba(0,0,0,.5);writing-mode:initial}" +
+    "#qs-scroll .qsc-handle .qsc-ic{font-size:22px;display:block;margin-bottom:3px;filter:drop-shadow(0 0 5px rgba(255,200,110,.6))}" +
+    "#qs-scroll .qsc-handle:hover{filter:brightness(1.08)}" +
+    "#qs-scroll .qsc-body{flex:0 1 auto;max-width:0;overflow:hidden;transition:max-width .35s ease,opacity .3s ease;opacity:0}" +
+    "#qs-scroll.open .qsc-body{max-width:min(420px,88vw);opacity:1}" +
+    "#qs-scroll .qsc-parch{margin:0;max-height:74vh;overflow-y:auto;width:min(420px,88vw);padding:16px 18px;" +
+      "background:linear-gradient(180deg,#efd9a8,#e6ca92 55%,#d8b876);color:#3a2a10;border:2px solid #8a5a24;" +
+      "border-left:0;border-radius:0 10px 10px 0;box-shadow:6px 8px 26px rgba(0,0,0,.55),inset 0 0 40px rgba(150,100,40,.25)}" +
+    "#qs-scroll .qsc-parch::-webkit-scrollbar{width:7px}#qs-scroll .qsc-parch::-webkit-scrollbar-thumb{background:rgba(120,80,30,.5);border-radius:4px}" +
+    ".qsc-title{font:800 16px Georgia,serif;color:#5a3610;text-align:center;margin:0 0 4px;text-shadow:0 1px 0 rgba(255,240,200,.5)}" +
+    ".qsc-sub{font:600 11px system-ui;color:#7a5a2a;text-align:center;margin:0 0 12px}" +
+    ".qsc-stage{margin:0 0 11px;padding:0 0 9px;border-bottom:1px dashed rgba(120,80,30,.4)}" +
+    ".qsc-stage:last-child{border-bottom:0}" +
+    ".qsc-stage-h{font:800 13px Georgia,serif;color:#7a3a10;margin:0 0 4px}" +
+    ".qsc-item{display:flex;justify-content:space-between;gap:8px;font:600 12px system-ui;color:#3a2a10;padding:1px 0}" +
+    ".qsc-item .qn{font-weight:800;white-space:nowrap;color:#5a3610}" +
+    ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}" +
+    ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
+    ".qsc-chance{margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(150,60,30,.14);border:1px solid rgba(150,80,30,.4)}" +
+    ".qsc-chance-h{font:800 12.5px Georgia,serif;color:#8a3a10;margin:0 0 3px}" +
+    ".qsc-chance-tx{font:600 11.5px/1.45 system-ui;color:#5a3010}" +
+    "@media(max-width:640px){#qs-scroll{top:88px}#qs-scroll .qsc-handle{width:42px;font-size:9.5px;padding:10px 3px}}" +
+    "#qs-ztoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(12px);z-index:2147483600;opacity:0;" +
+      "pointer-events:none;transition:opacity .2s,transform .2s;padding:9px 18px;border-radius:12px;font:800 14px system-ui;" +
+      "color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);box-shadow:0 8px 26px rgba(0,0,0,.5)}" +
+    "#qs-ztoast.show{opacity:1;transform:translateX(-50%) translateY(0)}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
@@ -834,6 +891,50 @@
       ".q-admin{padding:11px 10px}.q-admin-row{gap:6px}}";
     document.head.appendChild(st);
     setupTip();
+    setupDropScroll();
+  }
+
+  // ── свиток «дроп по этапам КХ» слева (для всех) ──
+  var _dropsCache = null;
+  function setupDropScroll() {
+    if (document.getElementById("qs-scroll")) return;
+    var el = document.createElement("div"); el.id = "qs-scroll";
+    el.innerHTML =
+      '<div class="qsc-body"><div class="qsc-parch" id="qsc-parch">Загрузка…</div></div>' +
+      '<button class="qsc-handle" title="Что падает с этапов КХ"><span class="qsc-ic">📜</span>Дроп<br>по этапам</button>';
+    document.body.appendChild(el);
+    el.querySelector(".qsc-handle").addEventListener("click", function () {
+      el.classList.toggle("open");
+      if (el.classList.contains("open")) loadDrops(el.querySelector("#qsc-parch"));
+    });
+  }
+  function loadDrops(host) {
+    if (_dropsCache) { host.innerHTML = _dropsCache; return; }
+    q("GET", "/queue/drops").then(function (d) { _dropsCache = dropsHtml(d); host.innerHTML = _dropsCache; })
+      .catch(function () { host.innerHTML = '<div class="qsc-sub">Не удалось загрузить.</div>'; });
+  }
+  function dropsHtml(d) {
+    var MODE = { stack: "по очереди, стаками", pack: "первому — пачкой", fixed: "каждому" };
+    var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)"];
+    var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
+      '<div class="qsc-sub">что и сколько падает с каждого закрытого этапа</div>';
+    (d.stages || []).forEach(function (s) {
+      if (!s.items || !s.items.length) return;
+      h += '<div class="qsc-stage"><div class="qsc-stage-h">Этап ' + s.stage + "</div>";
+      s.items.forEach(function (it) {
+        h += '<div class="qsc-item q' + it.q + '"><span class="qname">' + esc(it.name) +
+          ' <span class="qsc-mode">(' + esc(qn[it.q] || "") + " · " + esc(MODE[it.mode] || it.mode) + ")</span></span>" +
+          '<span class="qn">+' + it.qty + " шт</span></div>";
+      });
+      h += "</div>";
+    });
+    (d.chance || []).forEach(function (c) {
+      h += '<div class="qsc-chance"><div class="qsc-chance-h">🎲 С шансом: ' + esc(c.name) + "</div>" +
+        '<div class="qsc-chance-tx">' + esc(c.note || "") + "</div></div>";
+    });
+    h += '<div class="qsc-sub" style="margin-top:10px">💡 «стаками» — раздаётся по очереди пока есть; ' +
+      '«пачкой» — весь объём первому; «каждому» — фиксировано каждому в очереди.</div>';
+    return h;
   }
 
   // ── единая всплывающая подсказка (ник + ресурс) для полосы и сцены ──
@@ -1119,7 +1220,7 @@
         img.className = "qs-item"; img.alt = ""; img.decoding = "async"; img.loading = "lazy";
         img.src = "assets/queue/scene/item/" + it + ".webp";
         img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
-          "%;z-index:" + Math.round(pos.y * 12);
+          "%;z-index:" + zOf("item:" + it, pos.y);
         if (_placeMode) makeDraggable(img, "item:" + it);
         stage.appendChild(img);
       });
@@ -1132,7 +1233,7 @@
       merch.dataset.mkey = mkey;
       merch.src = "assets/queue/scene/merchant-" + b.q + ".webp";
       merch.style.cssText = "left:" + mp.x.toFixed(2) + "%;top:" + mp.y.toFixed(2) +
-        "%;--qs-mscale:" + ((+mset.scale) || 1) + ";z-index:" + Math.round(mp.y * 12) +
+        "%;--qs-mscale:" + ((+mset.scale) || 1) + ";z-index:" + zOf("merchant:" + b.q, mp.y) +
         ";transform:translate(-50%,-100%) " + transformStr(mset) + ";";
       if (_placeMode) makeDraggable(merch, "merchant:" + b.q);
       stage.appendChild(merch);
@@ -1209,7 +1310,7 @@
     mount.className = "qs-mount"; mount.alt = ""; mount.decoding = "async"; mount.loading = "lazy";
     mount.src = "assets/queue/scene/item/mount-cilin.webp";
     mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
-      "%;z-index:" + Math.round(mpos.y * 12);
+      "%;z-index:" + zOf("mount", mpos.y);
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
 
@@ -1221,7 +1322,8 @@
       var img = document.createElement("img");
       img.className = "qs-env"; img.alt = ""; img.decoding = "async"; img.loading = "lazy";
       img.dataset.envid = o.id; img.src = url;
-      var zi = o.z === "front" ? 8000 : (o.z === "back" ? 1 : Math.round(pos.y * 12));
+      var pz = (PLACEMENTS["env:" + o.id] || {}).z, zval = pz || o.z;   // правый клик (placement) важнее
+      var zi = zval === "front" ? 8000 : (zval === "back" ? 1 : Math.round(pos.y * 12));
       img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) + "%;width:" +
         ((+o.w) || 18) + "%;z-index:" + zi + ";transform:translate(-50%,-100%) " +
         (o.flip ? "scaleX(-1) " : "") + (o.rotate ? "rotate(" + o.rotate + "deg)" : "") + ";";
@@ -1362,16 +1464,20 @@
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
         cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
-        // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке
+        // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке.
+        // Иконки автокропятся ниже → цилинь заполняет облачко без пустого пространства.
         var bubble = e.resource
-          ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic' +
-            (e.resource === "mount-cilin" ? " big" : "") + '" src="' + resImg(e.resource) + '" alt=""></div>'
+          ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' +
+            resImg(e.resource) + '" alt=""></div>'
           : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
+        // применяем настройку зеркала модели (как в сцене) — иначе флипнутые (заглушка,
+        // Лирия!, Стрелок…) в полосе смотрят назад
+        var cflip = (mi && MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].flip) ? ' style="transform:scaleX(-1)"' : "";
         cell.innerHTML =
           (e.privileged ? '<span class="qs-cell-toplbl">⚡ ТОП-3</span>' : "") +   // метка ТОП-3 НАД облачком
           bubble +
           '<div class="qs-cell-mdl">' +
-            (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
+            (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '"' + cflip + ' alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
             (e.privileged ? "" : '<span class="qs-cell-badge">' + (i + 1) + "</span>") +
           "</div>" +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
@@ -1435,6 +1541,7 @@
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
+      autoCropAll(strip, ".qs-bubble-ic");                 // ресурс заполняет облачко (цилинь без пустот)
       autoCropAll(merchBox, ".qs-mres img");               // иконки ресурсов заполняют бокс (цилинь крупнее)
       setTimeout(function () {
         if (_stripScroll[b.q] != null) { strip.scrollLeft = _stripScroll[b.q]; return; }  // вернуть, где было
@@ -1539,7 +1646,8 @@
     banner.innerHTML = _pathMode
       ? "✏️ <b>Форма очередей.</b> Тащи точки: ◉ начало очереди, ⚑ у будки (конец), цифры — изгибы. У каждой очереди свой цвет. Сохраняется сразу."
       : _placeMode
-        ? "🎯 <b>Режим расстановки.</b> Тащи мышкой предметы и питомца — позиции сразу сохраняются. Выключить — кнопкой в панели ниже."
+        ? "🎯 <b>Режим расстановки.</b> Тащи мышкой предметы, торговца, питомца — позиции сразу сохраняются. " +
+          "<b>Правый клик</b> по объекту — слой: на передний план → на задний → авто. Выключить — кнопкой в панели ниже."
         : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);

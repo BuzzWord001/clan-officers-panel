@@ -235,6 +235,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN priv_stacks INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: слой объекта на сцене — '' (авто по y) | 'front' | 'back'
+        try:
+            conn.execute("ALTER TABLE queue_placements ADD COLUMN z TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -466,6 +471,7 @@ class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
     y: float
+    z: str = Field(default="")   # '' авто | 'front' | 'back' — слой объекта на сцене
 
 
 class KVIn(BaseModel):
@@ -1147,19 +1153,20 @@ def set_gender(payload: GenderIn, request: Request, actor: dict = Depends(requir
 @router.get("/placements")
 def placements() -> dict:
     with db.connection() as conn:
-        rows = conn.execute("SELECT key, x, y FROM queue_placements").fetchall()
-    return {"placements": {r["key"]: {"x": r["x"], "y": r["y"]} for r in rows}}
+        rows = conn.execute("SELECT key, x, y, z FROM queue_placements").fetchall()
+    return {"placements": {r["key"]: {"x": r["x"], "y": r["y"], "z": (r["z"] if "z" in r.keys() else "")} for r in rows}}
 
 
 @router.post("/admin/placement")
 def set_placement(payload: PlacementIn, _: dict = Depends(require_admin)) -> dict:
     x = max(0.0, min(100.0, float(payload.x)))
     y = max(0.0, min(100.0, float(payload.y)))
+    z = payload.z if payload.z in ("front", "back", "") else ""
     with db.connection() as conn:
         conn.execute(
-            "INSERT INTO queue_placements (key, x, y, updated_at) VALUES (?,?,?,?)"
-            " ON CONFLICT(key) DO UPDATE SET x=excluded.x, y=excluded.y, updated_at=excluded.updated_at",
-            (payload.key, x, y, _now()))
+            "INSERT INTO queue_placements (key, x, y, z, updated_at) VALUES (?,?,?,?,?)"
+            " ON CONFLICT(key) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z, updated_at=excluded.updated_at",
+            (payload.key, x, y, z, _now()))
     return {"ok": True}
 
 
@@ -1224,6 +1231,27 @@ def rewards() -> dict:
     with db.connection() as conn:
         stages = _cfg_int(conn, "stages_closed", 0)
     return {"stages": stages, "rewards": distribution.reward_meta(stages)}
+
+
+@router.get("/drops")
+def drops() -> dict:
+    """Что падает с каждого этапа КХ и что с шансом — для свитка на сцене (всем)."""
+    st_rows = []
+    for si in range(distribution.MAX_STAGES):
+        items = []
+        for k, r in distribution.REWARDS.items():
+            if k == "mount-cilin":
+                continue                        # питомец — с шансом, отдельно
+            arr = r["st"]
+            inc = arr[si] - (arr[si - 1] if si > 0 else 0)
+            if inc > 0:
+                items.append({"name": distribution.res_name(k), "qty": inc,
+                              "q": r["q"], "mode": r["mode"]})
+        st_rows.append({"stage": si + 1, "items": items})
+    return {"stages": st_rows,
+            "chance": [{"name": distribution.res_name("mount-cilin"),
+                        "note": "падает с шансом, по 1 шт; может не выпасть на неделе"}],
+            "queues": ["Обычные", "Редкие (R)", "Легендарные (S)"]}
 
 
 def _priv_claims(conn) -> list[dict]:
