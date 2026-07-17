@@ -759,6 +759,12 @@
     ".qs-mount{position:absolute;height:calc(22% * var(--qs-mount-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;" +
       "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5))}" +
+    // лавки и фонтан — выравнены по основанию (translate -50%/-100%), размер через CSS-переменную
+    ".qs-lavka{position:absolute;height:calc(30% * var(--qs-lavka-scale,1));width:auto;" +
+      "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 8px rgba(0,0,0,.5))}" +
+    ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
+      "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
+    ".qs-stage.place .qs-lavka,.qs-stage.place .qs-fountain{pointer-events:auto;cursor:move}" +
     ".qs-join{display:block;margin:6px auto 0;cursor:pointer;font:700 12px system-ui;color:#1b1006;" +
       "border:0;border-radius:9px;padding:7px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "box-shadow:0 3px 10px rgba(245,200,120,.4)}" +
@@ -1326,9 +1332,10 @@
     var stage = document.createElement("div");
     stage.className = "qs-stage " + (isNight() ? "night" : "day") + (_isAdmin ? " admin" : "") + (_placeMode ? " place" : "");
     stage.style.setProperty("--qs-char-scale", getSize("char", 1));
-    stage.style.setProperty("--qs-item-scale", getSize("item", 1));
     stage.style.setProperty("--qs-mount-scale", getSize("mount", 1));
     stage.style.setProperty("--qs-merch-scale", getSize("merch", 1));
+    stage.style.setProperty("--qs-lavka-scale", getSize("lavka", 1));
+    stage.style.setProperty("--qs-fountain-scale", getSize("fountain", 1));
     stage.style.inset = getSize("inset", 15) + "%";   // край рамки (сохраняется, макс ~15.5%)
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
@@ -1339,17 +1346,16 @@
       glow.className = "qs-glow";
       glow.style.cssText = "left:" + b.bx + "%;top:" + b.by + "%;--gc:" + b.accent;
       stage.appendChild(glow);
-      // ресурсы за будкой (кучкой)
-      (BOOTH_ITEMS[b.q] || []).forEach(function (it, k) {
-        var pos = placedPos("item:" + it, b.item.x + (k % 3) * 3.4, b.item.y + Math.floor(k / 3) * 4.6);
-        var img = document.createElement("img");
-        img.className = "qs-item"; img.alt = ""; img.decoding = "async"; img.loading = "lazy";
-        img.src = "assets/queue/scene/item/" + it + ".webp";
-        img.style.cssText = "left:" + pos.x.toFixed(2) + "%;top:" + pos.y.toFixed(2) +
-          "%;z-index:" + zOf("item:" + it, pos.y);
-        if (_placeMode) makeDraggable(img, "item:" + it);
-        stage.appendChild(img);
-      });
+      // лавка (торговый прилавок) этой очереди — перекрывает старые будки, день и ночь.
+      // Перетаскивается; размер через getSize("lavka"); слой front/back правым кликом.
+      var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
+      var lavka = document.createElement("img");
+      lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
+      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=1";
+      lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
+        "%;z-index:" + zOf("lavka:" + b.q, lkpos.y);
+      if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
+      stage.appendChild(lavka);
       // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей)
       var mkey = "scene/merchant-" + b.q + ".png";
       var mset = MODEL_SETTINGS[mkey] || {};
@@ -1457,6 +1463,18 @@
       "%;z-index:" + zOf("mount", mpos.y);
     if (_placeMode) makeDraggable(mount, "mount");
     stage.appendChild(mount);
+
+    // фонтан: днём — дневная картинка, ночью — ночная; обе одного размера и в одной
+    // точке (выравнены по основанию через translate(-50%,-100%)). Размер — getSize("fountain"),
+    // слой front/back — правым кликом. Перетаскивается в режиме расстановки.
+    var fpos = placedPos("fountain", 50, 62);
+    var fountain = document.createElement("img");
+    fountain.className = "qs-fountain"; fountain.alt = ""; fountain.decoding = "async"; fountain.loading = "lazy";
+    fountain.src = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
+    fountain.style.cssText = "left:" + fpos.x.toFixed(2) + "%;top:" + fpos.y.toFixed(2) +
+      "%;z-index:" + zOf("fountain", fpos.y);
+    if (_placeMode) makeDraggable(fountain, "fountain");
+    stage.appendChild(fountain);
 
     // объекты окружения (загружены админом): слой back(за всеми)/depth(по глубине)/front(перед),
     // зеркало/поворот/размер из настроек объекта; drag в режиме расстановки
@@ -2007,7 +2025,8 @@
           '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
             '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
             sizeSlider("frame", "Рамка/сцена", 0.5, 4) + sizeSlider("char", "Модели") +
-            sizeSlider("item", "Предметы") + sizeSlider("mount", "Питомец") + sizeSlider("merch", "Торговцы") +
+            sizeSlider("mount", "Питомец") + sizeSlider("merch", "Торговцы") +
+            sizeSlider("lavka", "Лавки", 0.4, 3) + sizeSlider("fountain", "Фонтан", 0.4, 3) +
           "</div>" +
           '<div class="q-admin-row" style="gap:12px;align-items:flex-end">' +
             '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
@@ -2250,7 +2269,7 @@
     var dfEl = box.querySelector("#qa-dayfrom"), nfEl = box.querySelector("#qa-nightfrom");
     if (dfEl) dfEl.addEventListener("change", function () { saveCfg("dayFrom", dfEl.value || "07:00"); render(_lastState); });
     if (nfEl) nfEl.addEventListener("change", function () { saveCfg("nightFrom", nfEl.value || "20:00"); render(_lastState); });
-    ["frame", "char", "item", "mount", "merch"].forEach(function (key) {
+    ["frame", "char", "mount", "merch", "lavka", "fountain"].forEach(function (key) {
       var el = box.querySelector("#qa-sz-" + key), vl = box.querySelector("#qa-sz-" + key + "-v"), t;
       el.addEventListener("input", function () {
         var v = +el.value; vl.textContent = v.toFixed(2) + "×";
