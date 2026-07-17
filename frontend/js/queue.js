@@ -5,11 +5,21 @@
   var $ = function (id) { return document.getElementById(id); };
   var API = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
 
+  // Токен офицерской сессии — фолбэк для браузеров, режущих cookie (Firefox ETP,
+  // встроенные браузеры TG/VK и т.п.). Тот же ключ, что у основного api.js.
+  var TOKEN_KEY = "officer_session_token";
+  function getToken() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } }
+  function setToken(t) { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (_) {} }
+
   function api(method, path, body) {
+    var headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    var tok = getToken();
+    if (tok) headers["Authorization"] = "Bearer " + tok;   // если cookie не доехала
     return fetch(API + path, {
       method: method,
       credentials: "include",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: headers,
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -162,11 +172,12 @@
       email: $("q-email").value.trim(),
       personal_password: $("q-newpass").value,
     }).then(function (d) {
-      if (d.role === "officer") { location.reload(); return; }   // ввёл офиц. пароль → входит офицером
+      if (d.role === "officer") { setToken(d.token); location.reload(); return; }   // ввёл офиц. пароль → входит офицером
       showSection(d.account);
     }).catch(function (e) {
       btn.disabled = false;
       if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); }
+      else if (e.detail === "personal_password_too_short") err("Придумай личный пароль — минимум 4 символа.");
       else if (e.status === 401) err("Неверный пароль. Подойдёт общий пароль гильдии (в игре, кнопка G) или офицерский пароль.");
       else if (e.status === 409) { err("На этот аккаунт пароль уже создан — входи по личному паролю."); goStep("login"); }
       else if (e.status === 503) err("Общий пароль ещё не задан админом. Напиши офицеру.");
@@ -191,7 +202,7 @@
   function doOfficerLogin() {
     var btn = $("btn-officer"); btn.disabled = true; err("");
     api("POST", "/queue/officer-login", { nick: selectedNick, password: $("q-off-pass").value })
-      .then(function () { location.reload(); })   // офицерская сессия → перезагрузка → офицерская панель
+      .then(function (d) { setToken(d && d.token); location.reload(); })   // офицерская сессия → офицерская панель
       .catch(function (e) {
         btn.disabled = false;
         err(e.status === 401 ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : ("Ошибка входа: " + (e.detail || e.message)));
@@ -199,7 +210,11 @@
   }
 
   function doLogout() {
-    api("POST", "/queue/logout").then(showAuth).catch(showAuth);
+    setToken("");   // чистим и офицерский токен, и офицерскую сессию, и устройство игрока
+    Promise.all([
+      api("POST", "/queue/logout").catch(function () {}),
+      api("POST", "/auth/logout").catch(function () {})
+    ]).then(showAuth, showAuth);
   }
 
   function init() {

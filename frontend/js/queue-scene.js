@@ -901,7 +901,7 @@
     var el = document.createElement("div"); el.id = "qs-scroll";
     el.innerHTML =
       '<div class="qsc-body"><div class="qsc-parch" id="qsc-parch">Загрузка…</div></div>' +
-      '<button class="qsc-handle" title="Что падает с этапов КХ"><span class="qsc-ic">📜</span>Дроп<br>по этапам</button>';
+      '<button class="qsc-handle" title="Что падает с этапов КХ"><span class="qsc-ic">📜</span>Дроп<br>по этапам<br>КХ</button>';
     document.body.appendChild(el);
     el.querySelector(".qsc-handle").addEventListener("click", function () {
       el.classList.toggle("open");

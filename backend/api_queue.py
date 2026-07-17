@@ -323,8 +323,14 @@ def _account_from_request(conn, request: Request):
     if not dev:
         return None
     conn.execute("UPDATE queue_devices SET last_seen_at=? WHERE token=?", (_now(), token))
-    return conn.execute(
+    acc = conn.execute(
         "SELECT * FROM queue_accounts WHERE id=?", (dev["account_id"],)).fetchone()
+    # Если ник стал ОФИЦЕРСКИМ (тег/чат добавили позже) — старый игровой аккаунт больше
+    # не пускает как игрока: офицер должен войти офицерским паролем. Возвращаем None →
+    # клиент уводит на офицерский вход.
+    if acc and acc["main_canon"] in _officer_canons(conn):
+        return None
+    return acc
 
 
 def _acc_public(acc) -> dict:
@@ -341,7 +347,9 @@ class RegisterIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     shared_password: str = Field(min_length=1, max_length=200)
     email: str = Field(default="", max_length=200)
-    personal_password: str = Field(min_length=4, max_length=200)
+    # НЕ min_length=4 на уровне модели: офицер вводит офиц. пароль и может оставить это
+    # поле пустым (аккаунт игрока ему не создаётся). Длину проверяем в ветке игрока.
+    personal_password: str = Field(default="", max_length=200)
 
 
 class LoginIn(BaseModel):
@@ -493,8 +501,8 @@ def _officer_canons(conn) -> frozenset:
     Кэш 5 мин (иначе фаззи-цикл гоняется на каждый keystroke автоподсказки)."""
     import time
     now = time.time()
-    if _OFFICER_CACHE["set"] and now - _OFFICER_CACHE["at"] < 300:
-        return _OFFICER_CACHE["set"]
+    if _OFFICER_CACHE["at"] > 0 and now - _OFFICER_CACHE["at"] < 300:
+        return _OFFICER_CACHE["set"]          # кэшируем и ПУСТОЙ набор (иначе гоняем на каждый keystroke)
     officers = set()
     try:
         for r in conn.execute("SELECT nick_canon FROM valor_tags WHERE tag='officer'"):
@@ -521,12 +529,21 @@ def _officer_canons(conn) -> frozenset:
             if cn in idx:                       # точное совпадение канона
                 officers.add(cn)
                 continue
-            best_c, best_r = None, 0.0          # иначе — ближайший по похожести
+            # Фаззи — ТОЛЬКО для достаточно длинных ников и с ЖЁСТКИМИ условиями,
+            # чтобы случайно не пометить офицером обычного игрока (это заблокировало бы
+            # ему вход). Офицеры и так покрыты тегом officer + точным совпадением.
+            if len(cn) < 6:
+                continue
+            best_c, best_r, second = None, 0.0, 0.0
             for c in roster:
+                if abs(len(c) - len(cn)) > 2:   # сильно разной длины — точно не он
+                    continue
                 sim = db._valor_similar(cn, c)
                 if sim > best_r:
-                    best_r, best_c = sim, c
-            if best_c and best_r >= 0.9:        # высокий порог — чтобы не путать обычных
+                    second = best_r; best_r, best_c = sim, c
+                elif sim > second:
+                    second = sim
+            if best_c and best_r >= 0.93 and (best_r - second) >= 0.06:  # очень похоже И явный отрыв
                 officers.add(best_c)
     res = frozenset(officers)
     _OFFICER_CACHE["at"] = now
@@ -576,9 +593,10 @@ def check_nick(payload: CheckIn) -> dict:
         if not p:
             return {"ok": False, "reason": "not_found"}
         acc = _account_by_main(conn, p["main_canon"])
+        offs = _officer_canons(conn)
         return {"ok": True, "nick": p["nick"], "main_nick": p["main_nick"],
                 "is_twin": p["is_twin"], "registered": bool(acc),
-                "officer": (cn in _officer_canons(conn) or p["main_canon"] in _officer_canons(conn))}
+                "officer": (cn in offs or p["main_canon"] in offs)}
 
 
 @router.post("/register")
@@ -592,11 +610,11 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         # Кто ввёл ОФИЦЕРСКИЙ пароль — входит КАК ОФИЦЕР (сессия + панель), даже если его
         # нет в чатах TG/VK. Аккаунт игрока не создаём — это отдельная роль.
         if off_ok:
-            name = p["main_nick"] if p else payload.nick.strip()
+            name = (p["main_nick"] if p else payload.nick.strip()) or "офицер"
             _log(conn, "officer_login", actor=name, nick=name, request=request,
                  detail="офицер через вход в очередь")
-            set_session(response, role="officer", name=name)
-            return {"ok": True, "role": "officer", "officer": True}
+            tok = set_session(response, role="officer", name=name)
+            return {"ok": True, "role": "officer", "officer": True, "token": tok}
         # Не офицерский пароль. Если выбран ОФИЦЕРСКИЙ ник — обычным паролем нельзя.
         if _is_officer_nick(conn, payload.nick):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
@@ -613,6 +631,8 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         if acc:
             # уже есть аккаунт на мэйна — регистрация не нужна, пусть входит паролем
             raise HTTPException(status.HTTP_409_CONFLICT, "already_registered")
+        if len(payload.personal_password) < 4:      # личный пароль обязателен для игрока
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
 
         cur = conn.execute(
             "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
@@ -653,11 +673,11 @@ def officer_login(payload: OfficerLoginIn, request: Request, response: Response)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_officer_password")
     with db.connection() as conn:
         p = _people(conn).get(db._valor_canon(payload.nick))
-        name = p["main_nick"] if p else payload.nick.strip()
+        name = (p["main_nick"] if p else payload.nick.strip()) or "офицер"
         _log(conn, "officer_login", actor=name, nick=name, request=request,
              detail="вход офицером через очередь")
-    set_session(response, role="officer", name=name)
-    return {"ok": True, "role": "officer", "nick": name}
+    tok = set_session(response, role="officer", name=name)
+    return {"ok": True, "role": "officer", "nick": name, "token": tok}
 
 
 @router.get("/nick-role")
@@ -890,23 +910,35 @@ def join(payload: JoinIn, request: Request) -> dict:
 
 @router.post("/leave")
 def leave(payload: JoinIn, request: Request) -> dict:
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
         acc = _account_from_request(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         # Выходим ТОЛЬКО из обычного места (privileged=0). Привилегированная запись
-        # (жетон ТОП-3) остаётся — она отдельная (убирается финализацией или своей кнопкой).
+        # (жетон ТОП-3) отдельная; при выходе из неё ВОЗВРАЩАЕМ потраченные жетоны,
+        # чтобы человек их не терял (жетон вернётся ему обратно).
         priv = 1 if getattr(payload, "privileged", False) else 0
+        if priv:
+            row = conn.execute(
+                "SELECT priv_stacks FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=1",
+                (payload.queue, acc["main_canon"])).fetchone()
+            if row and row["priv_stacks"] > 0:
+                conn.execute("UPDATE queue_privileges SET tokens=tokens+?, updated_at=? WHERE canon=?",
+                             (row["priv_stacks"], _now(), acc["main_canon"]))
         conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=?",
                      (payload.queue, acc["main_canon"], priv))
         _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
-             queue=payload.queue, request=request, detail=("жетон" if priv else "обычное место"))
+             queue=payload.queue, request=request, detail=("жетон (возвращён)" if priv else "обычное место"))
     return {"ok": True}
 
 
 @router.post("/set-entry")
 def set_entry(payload: SetEntryIn, request: Request) -> dict:
     """Игрок меняет ресурс и/или получателя своей записи, пока стоит в очереди."""
+    if payload.queue not in QUEUES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
         acc = _account_from_request(conn, request)
         if not acc:
@@ -991,6 +1023,10 @@ def admin_add(payload: AdminAddIn, request: Request, actor: dict = Depends(requi
         p = _people(conn).get(db._valor_canon(payload.nick))
         if not p:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        # не плодим дубли обычного места (privileged=0) — как в join/join-as
+        if conn.execute("SELECT 1 FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+                        (payload.queue, p["main_canon"])).fetchone():
+            raise HTTPException(status.HTTP_409_CONFLICT, "already_in_queue")
         conn.execute(
             "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, added_by, added_at)"
             " VALUES (?,?,?,?,?,?,?)",
