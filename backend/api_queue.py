@@ -359,6 +359,7 @@ class JoinIn(BaseModel):
     recipient: str = Field(default="", max_length=64)   # кому передать (твин/супруг), необязательно
     auto_repeat: bool = False                            # вставать за этим же ресурсом каждую неделю
     plan: list[str] = Field(default_factory=list)        # план ресурсов на будущие недели (по порядку)
+    privileged: bool = False                             # для leave: выйти из привилегированной (жетон) записи
 
 
 class SetEntryIn(BaseModel):
@@ -367,6 +368,7 @@ class SetEntryIn(BaseModel):
     recipient: str | None = Field(default=None, max_length=64)   # None = не менять; "" = очистить
     auto_repeat: bool | None = None                              # None = не менять
     plan: list[str] | None = None                                # None = не менять
+    privileged: bool = False                                     # менять привилегированную (жетон) запись, а не обычную
 
 
 class SpouseIn(BaseModel):
@@ -794,6 +796,7 @@ def _entry_public(r, idx, gmap, smap=None) -> dict:
             "auto_plan": plan,
             "not_collected": (bool(r["not_collected"]) if "not_collected" in keys else False),
             "privileged": (bool(r["privileged"]) if "privileged" in keys else False),
+            "priv_stacks": (r["priv_stacks"] if "priv_stacks" in keys else 0),
             "added_by": r["added_by"]}
 
 
@@ -853,7 +856,9 @@ def join(payload: JoinIn, request: Request) -> dict:
         acc = _account_from_request(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
-        if conn.execute("SELECT 1 FROM queue_entries WHERE queue=? AND main_canon=?",
+        # Обычное место в очереди (privileged=0). Привилегированную запись (жетон ТОП-3)
+        # НЕ учитываем — она отдельная и живёт параллельно, не мешает встать обычным местом.
+        if conn.execute("SELECT 1 FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
                         (q, acc["main_canon"])).fetchone():
             raise HTTPException(status.HTTP_409_CONFLICT, "already_in_queue")
         p = _people(conn).get(acc["main_canon"]) or {}
@@ -883,10 +888,13 @@ def leave(payload: JoinIn, request: Request) -> dict:
         acc = _account_from_request(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
-        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=?",
-                     (payload.queue, acc["main_canon"]))
+        # Выходим ТОЛЬКО из обычного места (privileged=0). Привилегированная запись
+        # (жетон ТОП-3) остаётся — она отдельная (убирается финализацией или своей кнопкой).
+        priv = 1 if getattr(payload, "privileged", False) else 0
+        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=?",
+                     (payload.queue, acc["main_canon"], priv))
         _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
-             queue=payload.queue, request=request)
+             queue=payload.queue, request=request, detail=("жетон" if priv else "обычное место"))
     return {"ok": True}
 
 
@@ -897,9 +905,11 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
         acc = _account_from_request(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        # Обычная или привилегированная (жетон) запись — они живут параллельно, меняем нужную.
+        want_priv = 1 if payload.privileged else 0
         row = conn.execute(
-            "SELECT id, privileged FROM queue_entries WHERE queue=? AND main_canon=?",
-            (payload.queue, acc["main_canon"])).fetchone()
+            "SELECT id, privileged FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=?",
+            (payload.queue, acc["main_canon"], want_priv)).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_in_queue")
         sets, vals = [], []
@@ -1353,16 +1363,17 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
 
 
 def _make_privileged(conn, main_canon, nick, cls, res, add_stacks, added_by):
-    """Ставит модель ПЕРВОЙ в очереди 0 со свечением «жетон применён». priv_stacks
-    КОПИТСЯ на записи — единый источник объёма захвата; при смене ресурса (set-entry)
-    объём пересчитывается сам (стаки × размер пачки)."""
+    """Ставит ОТДЕЛЬНУЮ светящуюся модель ПЕРВОЙ в очереди 0 (жетон применён). ВАЖНО:
+    НЕ трогает обычную запись человека (privileged=0) — если он уже стоял в очереди,
+    его обычная моделька остаётся на месте и движется дальше, а жетон добавляет ВТОРУЮ,
+    привилегированную, у самого торговца. Повторное применение копит priv_stacks на ней.
+    priv_stacks — единый источник объёма (стаки × размер пачки, пересчёт при смене ресурса)."""
     front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
-    ex = conn.execute("SELECT id, priv_stacks, privileged FROM queue_entries WHERE queue=0 AND main_canon=?",
+    ex = conn.execute("SELECT id, priv_stacks FROM queue_entries WHERE queue=0 AND main_canon=? AND privileged=1",
                       (main_canon,)).fetchone()
     if ex:
-        new_stacks = (ex["priv_stacks"] if ex["privileged"] else 0) + add_stacks
-        conn.execute("UPDATE queue_entries SET pos=?, privileged=1, resource=?, priv_stacks=? WHERE id=?",
-                     (front, res, new_stacks, ex["id"]))
+        conn.execute("UPDATE queue_entries SET pos=?, resource=?, priv_stacks=? WHERE id=?",
+                     (front, res, ex["priv_stacks"] + add_stacks, ex["id"]))
     else:
         conn.execute(
             "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, priv_stacks, added_by, added_at)"
@@ -1525,7 +1536,7 @@ def join_as(payload: JoinAsIn, request: Request, actor: dict = Depends(require_a
     res = (payload.resource or "").strip()[:64]
     with db.connection() as conn:
         cn, nick, cls = _canon_and_person(conn, payload.nick)
-        ex = conn.execute("SELECT id FROM queue_entries WHERE queue=? AND main_canon=?",
+        ex = conn.execute("SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
                           (payload.queue, cn)).fetchone()
         if ex:
             conn.execute("UPDATE queue_entries SET resource=?, recipient=? WHERE id=?",

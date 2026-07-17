@@ -203,16 +203,26 @@
   };
   function resName(k) { return RES_NAME[k] || k; }
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
-  // HTML для всплывающей подсказки над человеком (ник + за каким ресурсом стоит)
+  // HTML для всплывающей подсказки: ник + иконка ресурса + КОЛИЧЕСТВО (для жетона —
+  // суммарное за все применённые жетоны, а не размер одного стака)
   function tipHtml(e) {
-    var nick = esc(e.nick);
+    var nick = '<span class="qtip-nick">' + esc(e.nick) + "</span>";
+    if (!e.resource)
+      return nick + (e.privileged
+        ? '<span class="qtip-priv">⚡ вне очереди — жетон ТОП-3 (ресурс не выбран)</span>'
+        : '<span class="qtip-res none">ресурс ещё не выбран</span>');
+    var rm = REWARDS_META[e.resource] || {}, unit = rm.unit || 0, qty;
+    if (e.privileged) {
+      var st = e.priv_stacks || 1;
+      qty = (unit ? (st * unit) + " шт" : "") + (st > 1 ? " · " + st + " жетон(ов)" : "");
+    } else {
+      qty = rm.mode === "pack" ? "пачкой" : (unit ? unit + " шт" : "");
+    }
+    var res = '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(e.resource) + '" alt=""> ' +
+      esc(resName(e.resource)) + (qty ? ' — <b>' + qty + "</b>" : "") + "</span>";
     if (e.privileged)
-      return '<span class="qtip-nick">' + nick + "</span>" +
-        '<span class="qtip-priv">⚡ Берёт ресурс ВНЕ очереди — жетон ТОП-3 по доблести</span>' +
-        (e.resource ? '<span class="qtip-res">за: <b>' + esc(resName(e.resource)) + "</b></span>" : "");
-    return '<span class="qtip-nick">' + nick + "</span>" +
-      (e.resource ? '<span class="qtip-res">стоит за: <b>' + esc(resName(e.resource)) + "</b></span>"
-                  : '<span class="qtip-res none">ресурс ещё не выбран</span>');
+      return nick + '<span class="qtip-priv">⚡ берёт ВНЕ очереди — жетон ТОП-3 по доблести</span>' + res;
+    return nick + '<span class="qtip-sub">стоит за:</span>' + res;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
@@ -611,7 +621,7 @@
     ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 8px #ffd24a) drop-shadow(0 0 14px rgba(255,210,74,.6));animation:qsCellPriv 1.6s ease-in-out infinite}" +
     "@keyframes qsCellPriv{0%,100%{filter:drop-shadow(0 0 6px #ffd24a) drop-shadow(0 2px 3px rgba(0,0,0,.5))}50%{filter:drop-shadow(0 0 15px #ffd24a) drop-shadow(0 0 22px rgba(255,210,74,.7))}}" +
     // облачко-мысль над головой
-    ".qs-bubble{display:inline-flex;align-items:center;gap:3px;max-width:74px;padding:3px 8px;border-radius:12px;position:relative;" +
+    ".qs-bubble{display:inline-flex;align-items:center;gap:3px;max-width:74px;margin-bottom:9px;padding:3px 8px;border-radius:12px;position:relative;" +
       "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);" +
       "box-shadow:0 2px 7px rgba(0,0,0,.32);z-index:2}" +
     ".qs-bubble::after{content:'';position:absolute;bottom:-4px;left:50%;margin-left:-3px;width:7px;height:7px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
@@ -710,6 +720,9 @@
       "color:#ffe0b0;background:linear-gradient(180deg,rgba(150,70,20,.4),rgba(90,40,10,.35));" +
       "border:1px solid rgba(240,150,70,.55);box-shadow:inset 0 1px 0 rgba(255,200,120,.12)}" +
     ".qs-res-warn b{color:#ffd18a}" +
+    ".qs-p2-note{margin:2px 0 8px;padding:9px 12px;border-radius:10px;font:500 12px/1.5 system-ui;color:#f2e3c2;" +
+      "background:linear-gradient(180deg,rgba(70,52,18,.55),rgba(40,28,10,.5));border:1px solid rgba(255,210,110,.45)}" +
+    ".qs-p2-note b{color:#ffd98a}" +
     ".qs-p2-chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#f0dcb4;margin:9px 0 2px;cursor:pointer}" +
     ".qs-p2-planrow{display:flex;gap:6px;align-items:center}" +
     ".qs-p2-planrow select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:rgba(20,13,7,.82);color:#f3e8d2;border:1px solid rgba(224,162,74,.4)}" +
@@ -794,8 +807,9 @@
       "flex-direction:column;align-items:center;gap:2px;margin-bottom:3px;pointer-events:none;z-index:9}" +
     ".qs-char .q-char-head .q-char-name{position:static;transform:none;margin:0}" +
     ".qs-char .q-char-head .q-char-priv-lbl{position:static;transform:none;bottom:auto;left:auto}" +
-    // ресурс — просто иконка ровно над головой (без облачка)
-    ".qs-char-res{width:23px;height:23px;object-fit:contain;pointer-events:auto;cursor:default;filter:drop-shadow(0 0 3px rgba(0,0,0,.7)) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
+    // ресурс — просто иконка над ником; качается синхронно с моделькой (та же qsBob)
+    ".qs-char-res{width:23px;height:23px;object-fit:contain;pointer-events:auto;cursor:default;" +
+      "filter:drop-shadow(0 0 3px rgba(0,0,0,.7)) drop-shadow(0 2px 2px rgba(0,0,0,.5));animation:qsBob 2.6s ease-in-out infinite}" +
     ".qs-char .q-char-head .q-char-name{pointer-events:auto}" +
     ".q-char-priv .qs-char-res{filter:drop-shadow(0 0 5px #ffd24a) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
     // всплывающая подсказка (ник + ресурс) для полосы и сцены
@@ -806,7 +820,9 @@
       "background:#190f05;border-right:1px solid rgba(240,200,120,.6);border-bottom:1px solid rgba(240,200,120,.6)}" +
     ".qtip.below::after{bottom:auto;top:-6px;border:0;border-left:1px solid rgba(240,200,120,.6);border-top:1px solid rgba(240,200,120,.6)}" +
     ".qtip-nick{font:800 13.5px Georgia,serif;color:#ffe08a;text-shadow:0 0 8px rgba(245,200,120,.4)}" +
-    ".qtip-res{font:600 12px system-ui;color:#e7d6b7}.qtip-res b{color:#ffd98a}.qtip-res.none{color:#9a8a68;font-style:italic}" +
+    ".qtip-res{display:flex;align-items:center;gap:5px;font:600 12.5px system-ui;color:#e7d6b7}.qtip-res b{color:#ffd98a}.qtip-res.none{color:#9a8a68;font-style:italic}" +
+    ".qtip-ic{width:20px;height:20px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
+    ".qtip-sub{font:600 10.5px system-ui;color:#9a8a68;letter-spacing:.3px}" +
     ".qtip-priv{font:700 11.5px/1.35 system-ui;color:#ffd24a}" +
     ".qtip-hint{font:600 11px system-ui;color:#9fe0a0}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
@@ -872,8 +888,8 @@
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
       '<div class="q-char-head">' +
         (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
+        resIcon +                                        // ресурс — НАД ником
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
-        resIcon +
       "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
       (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
@@ -930,7 +946,10 @@
 
   // выбор ресурса при вставании (или правка, edit={resource,recipient,auto_repeat,plan})
   function openResourcePicker(b, edit, presel) {
-    var items = BOOTH_ITEMS[b.q] || [];
+    var isPriv = !!(edit && edit.privileged);                 // меняем ресурс жетона ТОП-3 (отдельная запись)
+    var items = (BOOTH_ITEMS[b.q] || []).filter(function (it) {
+      return !isPriv || (REWARDS_META[it] || {}).mode !== "pack";   // жетон — только обычные стаковые
+    });
     var sel = edit ? (edit.resource || "") : (presel || "");  // выбранный/пред-выбранный ресурс
     var planArr = (edit && edit.plan ? edit.plan.slice() : []);
     var body = document.createElement("div");
@@ -1006,7 +1025,7 @@
       var v = body.querySelector("#qs-plan-sel").value;
       if (v) { planArr.push(v); renderPlan(); }
     });
-    var m = sceneModal((edit ? "Изменить запись — очередь «" : "Встать в очередь — «") + b.title + "»", body);
+    var m = sceneModal((isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить запись — очередь «" : "Встать в очередь — «") + b.title + "»", body);
     paintCards();
     // commit
     body.querySelector("#qs-p2-go").addEventListener("click", function () {
@@ -1016,6 +1035,12 @@
       if (rcpt && recipientRel(rcpt) === "other" &&
           !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
       if (m) m.close();
+      // смена ресурса ЖЕТОННОЙ записи (отдельная, privileged=1)
+      if (isPriv) {
+        q("POST", "/queue/set-entry", { queue: b.q, resource: resource, privileged: true })
+          .then(refresh).catch(function (e2) { alert(e2.status === 400 ? "Жетоном — только обычные ресурсы." : ("Ошибка: " + (e2.detail || e2.message))); });
+        return;
+      }
       // Админ без игрового аккаунта встаёт/меняет ресурс ОТ ИМЕНИ Лирия! (тест)
       if (_isAdmin && !_meAcc) {
         q("POST", "/queue/admin/join-as", { nick: ADMIN_NICK, queue: b.q, resource: resource, recipient: rcpt })
@@ -1122,7 +1147,8 @@
       // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
       // Каждую можно перетащить (в режиме «Расставить предметы»); позиция сохраняется.
       var myEntry = null;
-      entries.some(function (e) { if (canon(e.main_nick) === meCanon) { myEntry = e; return true; } return false; });
+      // «в очереди» = ОБЫЧНОЕ место (не жетон): жетонная запись отдельная, не считается местом
+      entries.some(function (e) { if (canon(e.main_nick) === meCanon && !e.privileged) { myEntry = e; return true; } return false; });
       var iAmIn = !!myEntry;
       // кнопка «Список»
       var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
@@ -1265,7 +1291,8 @@
       '<div class="qs-ta-body">' +
         '<div class="qs-ta-title">Жетон ТОП-3 <span>— награда за доблесть</span></div>' +
         '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. С ним берёшь ресурсы ' +
-        'из обычной очереди <b>вне очереди</b>, сразу первым у торговца. Жетон копится по 1 за неделю в топ-3 и не сгорает.</div>' +
+        'из обычной очереди <b>вне очереди</b>, сразу первым у торговца. При этом <b>твоё место в очереди не теряется</b> — ' +
+        'ты продолжаешь стоять как обычно и <b>вдобавок</b> получаешь ресурсы по жетону. Копится по 1 за неделю в топ-3, не сгорает.</div>' +
       "</div>" +
       '<div class="qs-ta-badge">без очереди!</div>';
     return el;
@@ -1279,7 +1306,8 @@
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
       var myIdx = -1, iAmIn = false, myEntry = null;
-      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon) { myIdx = i; iAmIn = true; myEntry = e; } });
+      // «в очереди» = обычное место (privileged=0); жетонная запись — отдельная, не место
+      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon && !e.privileged) { myIdx = i; iAmIn = true; myEntry = e; } });
       // для админ-теста: считаем «в очереди» наличие Лирия!
       var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
       var lane = document.createElement("div");
@@ -1346,7 +1374,7 @@
           cell.classList.add("clk");
           cell.addEventListener("click", function () {
             openResourcePicker(b, { resource: e.resource || "", recipient: e.recipient || "",
-              auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+              auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
         }
         strip.appendChild(cell);
@@ -1423,9 +1451,9 @@
       '<span class="qs-super-ic">🌟</span>' +
       '<span class="qs-super-txt"><b>Суперспособность ТОП-3 — взять обычные ресурсы ВНЕ очереди</b><br>' +
       (adminMode
-        ? '<span style="color:#e6c48f">🧪 админ-тест: жмёшь — и <b>' + esc(ADMIN_NICK) +
-          '</b> берёт ресурс вне очереди, модель встаёт первой и светится. Жетоны добираются автоматически.</span>'
-        : 'у тебя <b style="color:#ffd24a">' + _myTokens + '</b> жетон(ов) — можно взять сразу несколько пачек') +
+        ? '<span style="color:#e6c48f">🧪 админ-тест как <b>' + esc(ADMIN_NICK) +
+          '</b>: у торговца встанет вторая светящаяся моделька, а обычное место в очереди (если стоял) не пропадёт. Жетоны добираются автоматически.</span>'
+        : 'у тебя <b style="color:#ffd24a">' + _myTokens + '</b> жетон(ов). Место в очереди <b>не теряется</b> — берёшь ресурсы вдобавок, вне очереди') +
       "</span>";
     var btn = document.createElement("button");
     btn.className = "qs-super-btn";
@@ -1443,6 +1471,9 @@
     var body = document.createElement("div"); body.className = "qs-pick2";
     var maxStacks = Math.max(1, admin ? 10 : _myTokens);
     body.innerHTML =
+      '<div class="qs-p2-note">✨ Жетон даёт ресурсы <b>ВНЕ очереди</b> и <b>не сбивает твоё место</b>: если ты уже стоишь ' +
+        'в обычной очереди — твоя моделька остаётся там и движется дальше, а рядом с торговцем встаёт <b>вторая</b>, ' +
+        'светящаяся. То есть ты получишь и по очереди, и <b>вдобавок</b> по жетону.</div>' +
       '<div class="qs-p2-lbl">1 · Выбери обычный ресурс (вне очереди):</div>' +
       '<div class="qs-respick" id="qpc-grid"></div>' +
       '<div class="qs-p2-lbl">2 · Сколько пачек взять (1 пачка = 1 жетон' + (admin ? "" : ", у тебя " + _myTokens) + "):</div>" +
@@ -1450,7 +1481,8 @@
         '<input type="range" id="qpc-stacks" min="1" max="' + maxStacks + '" step="1" value="1" style="flex:1;min-width:120px">' +
         '<b id="qpc-stacks-v" style="min-width:160px;color:#ffd24a"></b></div>' +
       (admin ? '<div style="font-size:11.5px;color:#e6c48f;margin-top:6px">🧪 Админ-тест как <b>' + esc(ADMIN_NICK) +
-        '</b>: модель встанет первой и засветится. Жетоны при нехватке добираются автоматически.</div>' : "") +
+        '</b>: у торговца встанет вторая, светящаяся моделька (обычное место, если стоял, не пропадёт). ' +
+        'Жетоны при нехватке добираются автоматически.</div>' : "") +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qpc-go"></button></div>';
     var grid = body.querySelector("#qpc-grid");
     function stacks() { return +body.querySelector("#qpc-stacks").value; }
