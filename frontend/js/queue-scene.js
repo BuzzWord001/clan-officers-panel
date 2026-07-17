@@ -1491,7 +1491,9 @@
         charTarget = qlayer;
       }
       entries.forEach(function (e, i) {
-        var t = shown <= 1 ? 0.92 : 1 - (i / (shown - 1)) * spread;
+        // передний (i=0, дошёл до лавок) стоит РОВНО на финишном круге (t=1, как qs-endspot),
+        // в т.ч. когда в очереди всего один человек; остальные — назад по пути.
+        var t = shown <= 1 ? 1 : 1 - (i / (shown - 1)) * spread;
         charTarget.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
       // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
