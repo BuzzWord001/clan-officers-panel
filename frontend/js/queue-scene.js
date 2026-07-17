@@ -620,23 +620,24 @@
     ".qs-cell.me .qs-cell-img{filter:drop-shadow(0 0 7px var(--gc)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
     ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 8px #ffd24a) drop-shadow(0 0 14px rgba(255,210,74,.6));animation:qsCellPriv 1.6s ease-in-out infinite}" +
     "@keyframes qsCellPriv{0%,100%{filter:drop-shadow(0 0 6px #ffd24a) drop-shadow(0 2px 3px rgba(0,0,0,.5))}50%{filter:drop-shadow(0 0 15px #ffd24a) drop-shadow(0 0 22px rgba(255,210,74,.7))}}" +
-    // облачко-мысль над головой
-    ".qs-bubble{display:inline-flex;align-items:center;gap:3px;max-width:74px;margin-bottom:9px;padding:3px 8px;border-radius:12px;position:relative;" +
+    // облачко над головой — только картинка ресурса (без названия)
+    ".qs-cell-toplbl{font:800 8.5px system-ui;color:#1b1006;white-space:nowrap;background:linear-gradient(180deg,#ffe486,#eab531);" +
+      "padding:1px 7px;border-radius:7px;box-shadow:0 1px 4px rgba(255,200,80,.6);margin-bottom:1px}" +
+    ".qs-bubble{display:inline-flex;align-items:center;justify-content:center;margin-bottom:9px;padding:4px;border-radius:12px;position:relative;" +
       "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);" +
       "box-shadow:0 2px 7px rgba(0,0,0,.32);z-index:2}" +
     ".qs-bubble::after{content:'';position:absolute;bottom:-4px;left:50%;margin-left:-3px;width:7px;height:7px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
     ".qs-bubble::before{content:'';position:absolute;bottom:-9px;left:50%;margin-left:-2px;width:4px;height:4px;border-radius:50%;background:#ffedc4;border:1px solid rgba(205,150,60,.55)}" +
-    ".qs-bubble-ic{width:15px;height:15px;object-fit:contain;flex:0 0 auto}" +
-    ".qs-bubble-nm{font:700 8px system-ui;color:#5a3d12;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-bubble-ic{width:24px;height:24px;object-fit:contain;flex:0 0 auto;display:block}" +
+    ".qs-bubble-ic.big{width:40px;height:40px}" +   // огненный цилинь — крупнее (мелкий рисунок)
+    ".qs-bubble-q{font:800 15px system-ui;color:#9a8760;width:24px;height:24px;display:flex;align-items:center;justify-content:center}" +
     ".qs-bubble.empty{background:linear-gradient(180deg,#efe6d4,#ddcfb2);border-color:rgba(150,130,95,.5)}" +
-    ".qs-bubble.empty .qs-bubble-nm{color:#7a6a4a;font-style:italic;font-weight:600}" +
     ".qs-bubble.priv{background:linear-gradient(180deg,#fff2c2,#ffdf7a);border-color:#eab531}" +
     ".qs-cell-mdl{position:relative;display:flex;align-items:flex-end;justify-content:center;min-height:40px}" +
     ".qs-cell-img{height:44px;width:auto;max-width:60px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
     ".qs-cell-img.ph{display:flex;align-items:center;justify-content:center;width:40px;height:40px;color:#8a795a;font-weight:700}" +
     ".qs-cell-badge{position:absolute;bottom:-2px;left:-2px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
       "min-width:15px;text-align:center;border-radius:8px;padding:1px 4px;box-shadow:0 1px 3px rgba(0,0,0,.5)}" +
-    ".qs-cell-badge.priv{background:linear-gradient(180deg,#ffe486,#eab531);left:50%;bottom:-3px;transform:translateX(-50%);font-size:8px}" +
     ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;text-shadow:0 1px 2px #000}" +
     ".qs-cell.clk{cursor:pointer}.qs-cell.clk:hover .qs-cell-img{filter:drop-shadow(0 0 9px var(--gc)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
     ".qs-cell-edit{margin-top:1px;font:800 7.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
@@ -810,6 +811,7 @@
     // ресурс — просто иконка над ником; качается синхронно с моделькой (та же qsBob)
     ".qs-char-res{width:23px;height:23px;object-fit:contain;pointer-events:auto;cursor:default;" +
       "filter:drop-shadow(0 0 3px rgba(0,0,0,.7)) drop-shadow(0 2px 2px rgba(0,0,0,.5));animation:qsBob 2.6s ease-in-out infinite}" +
+    ".qs-char-res.big{width:46px;height:46px}" +   // огненный цилинь — крупнее (мелкий рисунок)
     ".qs-char .q-char-head .q-char-name{pointer-events:auto}" +
     ".q-char-priv .qs-char-res{filter:drop-shadow(0 0 5px #ffd24a) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
     // всплывающая подсказка (ник + ресурс) для полосы и сцены
@@ -867,9 +869,12 @@
     var scale = 0.5 + (p.y / 100) * 0.62;         // ниже на экране = ближе = крупнее
     var mi = modelInfo(e);
     var mine = canon(e.main_nick) === meCanon;
+    // Очередь ОБЫЧНЫХ ресурсов (0) на картинке идёт справа налево → зеркалим модели,
+    // чтобы они «смотрели вперёд» по ходу очереди, а не спиной.
+    var mirror = boothQ === 0 ? "scaleX(-1) " : "";
     var body = mi
       ? '<img class="q-char-img" src="' + esc(mi.url) + '" data-mkey="' + esc(mi.key) +
-          '" style="transform:' + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy" decoding="async">'
+          '" style="transform:' + mirror + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy" decoding="async">'
       : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
@@ -881,14 +886,14 @@
       "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + (e.privileged ? 8800 : Math.round(p.y * 12)) + ";";
     // всплывающая подсказка (ник + ресурс, для привилегии — пояснение)
     el.setAttribute("data-tip", tipHtml(e));
-    // в сцене — просто иконка ресурса РОВНО над головой (без облачка)
+    // над головой (сверху вниз): рисунок ресурса → метка ТОП-3 → ник
     var resIcon = e.resource
-      ? '<img class="qs-char-res" src="' + resImg(e.resource) + '" alt="" title="">' : "";
+      ? '<img class="qs-char-res' + (e.resource === "mount-cilin" ? " big" : "") + '" src="' + resImg(e.resource) + '" alt="" title="">' : "";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
       '<div class="q-char-head">' +
-        (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +
-        resIcon +                                        // ресурс — НАД ником
+        resIcon +                                        // ресурс — САМЫЙ ВЕРХ
+        (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +   // ТОП-3 — над ником
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
       "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
@@ -1357,16 +1362,17 @@
         var cell = document.createElement("div");
         cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
         cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
-        // облачко-мысль над головой с ресурсом (обновляется при смене ресурса)
+        // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке
         var bubble = e.resource
-          ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' + resImg(e.resource) +
-            '" alt=""><span class="qs-bubble-nm">' + esc(resName(e.resource)) + "</span></div>"
-          : '<div class="qs-bubble empty"><span class="qs-bubble-nm">выбирает…</span></div>';
+          ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic' +
+            (e.resource === "mount-cilin" ? " big" : "") + '" src="' + resImg(e.resource) + '" alt=""></div>'
+          : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
         cell.innerHTML =
+          (e.privileged ? '<span class="qs-cell-toplbl">⚡ ТОП-3</span>' : "") +   // метка ТОП-3 НАД облачком
           bubble +
           '<div class="qs-cell-mdl">' +
             (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
-            (e.privileged ? '<span class="qs-cell-badge priv">⚡ ТОП-3</span>' : '<span class="qs-cell-badge">' + (i + 1) + "</span>") +
+            (e.privileged ? "" : '<span class="qs-cell-badge">' + (i + 1) + "</span>") +
           "</div>" +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
           (mine ? '<span class="qs-cell-edit">✏️ сменить</span>' : "");
