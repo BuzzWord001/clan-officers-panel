@@ -610,10 +610,10 @@
       "background:linear-gradient(180deg,rgba(28,18,9,.6),rgba(18,11,5,.75));padding:7px 9px}" +
     ".qs-lane-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 6px}" +
     ".qs-lane-title{font:800 12.5px Georgia,serif;color:var(--gc);text-shadow:0 1px 2px #000}" +
-    ".qs-lane-cnt{position:relative;display:inline-block;width:74px;flex:0 0 auto;line-height:0}" +
-    ".qs-lane-cnt-bg{width:74px;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
-    ".qs-lane-cnt-n{position:absolute;top:50%;left:64%;transform:translate(-50%,-50%);font:800 13px system-ui;" +
-      "color:#ffe6b0;text-shadow:0 1px 2px #000,0 0 4px rgba(0,0,0,.6)}" +
+    ".qs-lane-cnt{position:relative;display:inline-block;width:52px;flex:0 0 auto;line-height:0}" +
+    ".qs-lane-cnt-bg{width:52px;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
+    ".qs-lane-cnt-n{position:absolute;top:37%;left:50%;transform:translate(-50%,-50%);font:800 15px system-ui;" +
+      "color:#7a4a10;text-shadow:0 1px 1px rgba(255,240,200,.5)}" +
     ".qs-lane-you{font:800 11px system-ui;color:var(--gc);text-shadow:0 1px 2px #000;margin-left:2px}" +
     ".qs-lane-sw{display:flex;align-items:stretch;gap:5px}" +
     ".qs-lane-arrow{flex:0 0 auto;width:26px;border:1px solid rgba(224,162,74,.35);background:rgba(20,13,7,.7);" +
@@ -622,11 +622,14 @@
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
       "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
     /* кнопка «Встать/Выйти» в начале полосы */
-    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;width:60px;height:76px;" +
+    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;min-width:60px;height:104px;" +
       "display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;transition:filter .08s}" +
-    ".qs-lane-join-ic{width:50px;height:50px;flex:0 0 auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.45))}" +
+    ".qs-lane-join-tot{position:relative;display:flex;justify-content:center;height:78px;flex:0 0 auto}" +
+    ".qs-jt-dim,.qs-jt-lit{height:78px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-jt-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
+    ".qs-lane-join:hover .qs-jt-lit{opacity:1}" +
     ".qs-lane-join-tx{height:22px;display:flex;align-items:center;justify-content:center;overflow:hidden;" +
-      "font:800 9px/1.1 system-ui;color:#f6ead2;text-align:center;max-width:60px;text-shadow:0 1px 2px #000}" +
+      "font:800 9px/1.1 system-ui;color:#f6ead2;text-align:center;max-width:74px;text-shadow:0 1px 2px #000}" +
     ".qs-lane-join.leave .qs-lane-join-tx{color:#ffcdbf}" +
     ".qs-lane-join:hover{filter:brightness(1.08)}.qs-lane-join:active{transform:translateY(2px) scale(.95)}" +
     /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
@@ -734,18 +737,20 @@
     "@keyframes qTaBadge{0%,100%{transform:rotate(4deg) scale(1)}50%{transform:rotate(4deg) scale(1.07)}}" +
     "@media(max-width:640px){.qs-ta-badge{display:none}.qs-ta-title{font-size:13.5px}.qs-ta-tx{font-size:11px}}" +
     // «мой кошелёк жетонов ТОП-3»
-    ".qs-mytok{display:flex;align-items:center;gap:13px;margin:6px 0;padding:9px 15px;border-radius:14px;" +
-      "background:linear-gradient(180deg,rgba(44,30,10,.7),rgba(24,15,6,.7));border:1px solid rgba(224,162,74,.35)}" +
-    ".qs-mytok.has{border-color:rgba(255,210,110,.65);box-shadow:0 0 26px -6px rgba(245,200,120,.5),inset 0 1px 0 rgba(255,224,160,.14)}" +
-    ".qs-mt-coins{display:flex;align-items:center;flex:0 0 auto}" +
-    ".qs-mt-coin{width:40px;height:40px;object-fit:contain;margin-left:-14px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}" +
+    ".qs-mytok{display:flex;align-items:center;gap:13px;margin:6px 0;min-width:0}" +
+    ".qs-mt-wallet{position:relative;flex:0 0 auto;width:min(300px,52vw);line-height:0}" +
+    ".qs-mt-frame{width:100%;height:auto;display:block;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}" +
+    // прорезь под жетоны — бархатное окно рамки (центр-право)
+    ".qs-mt-slot{position:absolute;left:31%;right:8%;top:27%;bottom:27%;display:flex;align-items:center;justify-content:center;gap:2px}" +
+    ".qs-mt-coins{display:flex;align-items:center}" +
+    ".qs-mt-coin{height:82%;width:auto;max-height:34px;object-fit:contain;margin-left:-10px;filter:drop-shadow(0 0 5px rgba(255,210,120,.7))}" +
     ".qs-mt-coin:first-child{margin-left:0}" +
-    ".qs-mytok.has .qs-mt-coin{filter:drop-shadow(0 0 6px rgba(255,210,120,.7)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
-    ".qs-mt-coin.off{filter:grayscale(1) brightness(.55);opacity:.6}" +
-    ".qs-mt-plus{font:800 14px system-ui;color:#ffd98a;margin-left:2px;text-shadow:0 1px 2px #000}" +
+    ".qs-mt-x{font:900 17px system-ui;color:#ffe4a0;margin-left:4px;text-shadow:0 1px 2px #000,0 0 6px rgba(255,200,120,.6)}" +
+    ".qs-mt-empty{font:700 12px system-ui;color:#c0a878;font-style:italic}" +
     ".qs-mt-info{min-width:0}" +
     ".qs-mt-n{font:800 14.5px system-ui;color:#ffe08a}.qs-mt-n b{color:#fff}" +
     ".qs-mt-sub{font:500 12px system-ui;color:#d8c39f;margin-top:1px}" +
+    "@media(max-width:640px){.qs-mt-wallet{width:180px}.qs-mt-x{font-size:14px}}" +
     ".qs-cnt-line{margin:0 0 4px}" +
     ".qs-cnt{display:inline-block;padding:2px 9px;border-radius:8px;font:700 11px system-ui;color:#fff;" +
       "background:rgba(20,13,7,.82);border:1px solid var(--gc);text-shadow:0 1px 2px #000}" +
@@ -762,10 +767,11 @@
     ".qs-list{display:block;margin:0 auto;cursor:pointer;font:700 11px system-ui;color:#f6ead2;" +
       "border:1px solid var(--gc);border-radius:8px;padding:4px 10px;background:rgba(20,13,7,.82);" +
       "box-shadow:0 2px 6px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
-    ".qs-list-btn{cursor:pointer;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:0;transition:transform .08s,filter .08s}" +
-    ".qs-list-img{width:46px;height:46px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
-    ".qs-list-cap{font:800 9px system-ui;color:#f6ead2;text-shadow:0 1px 2px #000;margin-top:-4px}" +
-    ".qs-list-btn:hover{filter:brightness(1.12)}.qs-list-btn:active{filter:brightness(.85)}" +
+    ".qs-list-btn{cursor:pointer;border:0;background:none;padding:0;position:relative;display:inline-block;transition:transform .08s}" +
+    ".qs-lb-normal,.qs-lb-hover{height:60px;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-lb-hover{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
+    ".qs-list-btn:hover .qs-lb-hover{opacity:1}" +
+    ".qs-list-btn:active{filter:brightness(.9)}" +
     ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
@@ -1370,7 +1376,8 @@
       listBtn.className = "qs-list-btn qs-btn-abs";
       listBtn.style.cssText = "left:" + lp.x.toFixed(2) + "%;top:" + lp.y.toFixed(2) + "%;--gc:" + b.accent;
       listBtn.title = "Показать всю очередь";
-      listBtn.innerHTML = '<img class="qs-list-img" src="assets/queue/ui/btn-list.webp" alt=""><span class="qs-list-cap">Список</span>';
+      listBtn.innerHTML = '<img class="qs-lb-normal" src="assets/queue/ui/list-normal.webp" alt="">' +
+        '<img class="qs-lb-hover" src="assets/queue/ui/list-hover.webp" alt="">';
       if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
@@ -1524,12 +1531,14 @@
     var el = document.createElement("div");
     el.className = "qs-mytok" + (n > 0 ? " has" : "");
     var coins = "";
-    var show = Math.min(n, 6);
+    var show = Math.min(n, 5);
     for (var i = 0; i < show; i++) coins += '<img class="qs-mt-coin" src="assets/queue/ui/token.webp" alt="">';
-    if (n > 6) coins += '<span class="qs-mt-plus">+' + (n - 6) + "</span>";
-    if (n === 0) coins = '<img class="qs-mt-coin off" src="assets/queue/ui/token.webp" alt="">';
+    var slot = n > 0
+      ? '<div class="qs-mt-coins">' + coins + '</div><span class="qs-mt-x">×' + n + "</span>"
+      : '<span class="qs-mt-empty">пока пусто</span>';
     el.innerHTML =
-      '<div class="qs-mt-coins">' + coins + "</div>" +
+      '<div class="qs-mt-wallet"><img class="qs-mt-frame" src="assets/queue/ui/wallet.webp" alt="">' +
+        '<div class="qs-mt-slot">' + slot + "</div></div>" +
       '<div class="qs-mt-info">' +
         '<div class="qs-mt-n">' + (n > 0 ? "Твои жетоны ТОП-3: <b>" + n + "</b>" : "Жетонов ТОП-3: <b>0</b>") + "</div>" +
         '<div class="qs-mt-sub">' + (n > 0
@@ -1556,7 +1565,7 @@
       var head = document.createElement("div"); head.className = "qs-lane-head";
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
         '<span class="qs-lane-cnt" title="' + entries.length + ' чел в очереди">' +
-          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter.webp" alt="">' +
+          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter2.webp" alt="">' +
           '<b class="qs-lane-cnt-n">' + entries.length + "</b></span>" +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
@@ -1567,8 +1576,12 @@
       var joinTx = inNow
         ? (adminIn && !iAmIn ? "Убрать " + esc(ADMIN_NICK) : "Выйти")
         : (adminCanon ? "Встать как " + esc(ADMIN_NICK) : "Встать в очередь");
+      var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
-        '<img class="qs-lane-join-ic" src="assets/queue/ui/' + (inNow ? "join-red" : "join-green") + '.webp" alt="">' +
+        '<span class="qs-lane-join-tot">' +
+          '<img class="qs-jt-dim" src="assets/queue/ui/' + jcolor + '-dim.webp" alt="">' +
+          '<img class="qs-jt-lit" src="assets/queue/ui/' + jcolor + '-lit.webp" alt="">' +
+        "</span>" +
         '<span class="qs-lane-join-tx">' + joinTx + "</span>";
       joinCell.addEventListener("click", function () {
         // Админ без игрового аккаунта — тест от имени Лирия!
