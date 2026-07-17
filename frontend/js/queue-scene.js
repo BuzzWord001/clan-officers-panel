@@ -136,8 +136,10 @@
       var fn = set[g] || set.m || set.f;
       return { url: webpUrl("class/" + fn), key: "class/" + fn };
     }
-    // класса нет или для него ещё нет модели → универсальная заглушка «Вопрос»
-    return { url: "assets/queue/class/_placeholder.webp", key: "class/_placeholder.png" };
+    // ВРЕМЕННО: для класса, которому ещё не сделали ИИ-модель → жрец по полу
+    // (женский — жрица, мужской — жрец). Потом заменим на настоящие модели классов.
+    var pf = g === "f" ? "Жрец (ж).png" : "Жрец (м).png";
+    return { url: webpUrl("class/" + pf), key: "class/" + pf };
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
 
@@ -575,6 +577,7 @@
       "background:linear-gradient(180deg,rgba(70,52,18,.55),rgba(40,28,8,.7));box-shadow:0 0 26px -10px #ffd24a}" +
     ".qs-super.preview{border-color:rgba(224,162,74,.3);box-shadow:none;opacity:.92}" +
     ".qs-super-ic{font-size:26px;filter:drop-shadow(0 0 8px rgba(255,200,80,.6))}" +
+    ".qs-super-token{width:46px;height:46px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 0 8px rgba(255,210,120,.7))}" +
     ".qs-super-txt{flex:1 1 auto;min-width:180px;font-size:12.5px;color:#f6ead2;line-height:1.35}" +
     ".qs-super-btn{flex:0 0 auto;cursor:pointer;font:800 13px system-ui;color:#1b1006;border:0;border-radius:10px;" +
       "padding:10px 16px;background:linear-gradient(180deg,#ffe08a,#eab531);box-shadow:0 3px 12px rgba(255,200,80,.4);" +
@@ -586,7 +589,11 @@
       "background:linear-gradient(180deg,rgba(28,18,9,.6),rgba(18,11,5,.75));padding:7px 9px}" +
     ".qs-lane-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 6px}" +
     ".qs-lane-title{font:800 12.5px Georgia,serif;color:var(--gc);text-shadow:0 1px 2px #000}" +
-    ".qs-lane-cnt{font-size:11px;color:#a58c68}" +
+    ".qs-lane-cnt{position:relative;display:inline-block;width:74px;flex:0 0 auto;line-height:0}" +
+    ".qs-lane-cnt-bg{width:74px;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
+    ".qs-lane-cnt-n{position:absolute;top:50%;left:64%;transform:translate(-50%,-50%);font:800 13px system-ui;" +
+      "color:#ffe6b0;text-shadow:0 1px 2px #000,0 0 4px rgba(0,0,0,.6)}" +
+    ".qs-lane-you{font:800 11px system-ui;color:var(--gc);text-shadow:0 1px 2px #000;margin-left:2px}" +
     ".qs-lane-sw{display:flex;align-items:stretch;gap:5px}" +
     ".qs-lane-arrow{flex:0 0 auto;width:26px;border:1px solid rgba(224,162,74,.35);background:rgba(20,13,7,.7);" +
       "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
@@ -594,12 +601,12 @@
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
       "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
     /* кнопка «Встать/Выйти» в начале полосы */
-    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;font:800 10.5px system-ui;line-height:1.15;" +
-      "color:#1b1006;border:0;border-radius:9px;padding:8px 10px;text-align:center;" +
-      "background:linear-gradient(180deg,#f3d489,#d09b2e);box-shadow:0 3px 8px rgba(245,200,120,.35);" +
-      "transition:transform .08s,filter .08s}" +
-    ".qs-lane-join.leave{background:linear-gradient(180deg,#d7a89a,#a5776b);color:#241009}" +
-    ".qs-lane-join:hover{filter:brightness(1.07)}.qs-lane-join:active{transform:translateY(2px) scale(.95);filter:brightness(.85)}" +
+    ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;" +
+      "display:flex;flex-direction:column;align-items:center;gap:1px;transition:transform .08s,filter .08s}" +
+    ".qs-lane-join-ic{width:52px;height:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.45))}" +
+    ".qs-lane-join-tx{font:800 9.5px/1.15 system-ui;color:#f6ead2;text-align:center;max-width:62px;text-shadow:0 1px 2px #000}" +
+    ".qs-lane-join.leave .qs-lane-join-tx{color:#ffcdbf}" +
+    ".qs-lane-join:hover{filter:brightness(1.08)}.qs-lane-join:active{transform:translateY(2px) scale(.95)}" +
     /* ОТДЕЛЬНЫЙ КВАДРАТ торговца: НПЦ + сворачиваемый список ресурсов */
     ".qs-merch-box{flex:0 0 auto;align-self:center;width:300px;display:flex;flex-direction:column;gap:4px;" +
       "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
@@ -693,8 +700,8 @@
     ".qs-token-ad::before{content:'';position:absolute;top:0;left:-40%;width:35%;height:100%;pointer-events:none;" +
       "background:linear-gradient(100deg,transparent,rgba(255,240,190,.35),transparent);animation:qTaShine 4.5s ease-in-out infinite}" +
     "@keyframes qTaShine{0%{left:-40%}55%,100%{left:130%}}" +
-    ".qs-ta-star{font-size:30px;flex:0 0 auto;filter:drop-shadow(0 0 8px rgba(255,210,120,.8));animation:qTaStar 2.6s ease-in-out infinite}" +
-    "@keyframes qTaStar{0%,100%{transform:scale(1) rotate(-6deg)}50%{transform:scale(1.14) rotate(6deg)}}" +
+    ".qs-ta-token{width:56px;height:56px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 0 10px rgba(255,210,120,.85));animation:qTaStar 2.8s ease-in-out infinite}" +
+    "@keyframes qTaStar{0%,100%{transform:scale(1) rotate(-4deg)}50%{transform:scale(1.1) rotate(4deg)}}" +
     ".qs-ta-body{flex:1 1 auto;min-width:0}" +
     ".qs-ta-title{font:800 15px Georgia,serif;color:#ffe08a;text-shadow:0 0 10px rgba(245,200,120,.5)}" +
     ".qs-ta-title span{font:600 12px system-ui;color:#d8b877}" +
@@ -720,6 +727,10 @@
     ".qs-list{display:block;margin:0 auto;cursor:pointer;font:700 11px system-ui;color:#f6ead2;" +
       "border:1px solid var(--gc);border-radius:8px;padding:4px 10px;background:rgba(20,13,7,.82);" +
       "box-shadow:0 2px 6px rgba(0,0,0,.5);text-shadow:0 1px 2px #000}" +
+    ".qs-list-btn{cursor:pointer;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:0;transition:transform .08s,filter .08s}" +
+    ".qs-list-img{width:46px;height:46px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-list-cap{font:800 9px system-ui;color:#f6ead2;text-shadow:0 1px 2px #000;margin-top:-4px}" +
+    ".qs-list-btn:hover{filter:brightness(1.12)}.qs-list-btn:active{filter:brightness(.85)}" +
     ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
@@ -763,8 +774,13 @@
     /* липкий низ окна: кнопка «Встать» ВСЕГДА видна без прокрутки */
     ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
       "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
-    ".qs-pick2-foot .qs-join{margin:0;width:100%;max-width:none}" +
-    ".qs-pick2 .qs-join:disabled{opacity:.5;cursor:default}" +
+    ".qs-pick2-foot .qs-join{margin:0;width:100%;max-width:none;min-height:58px;border:0;box-shadow:none;" +
+      "background:url(assets/queue/ui/btn-join-lit.webp) center/100% 100% no-repeat;" +
+      "color:#ffe8bc;font:800 14px system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
+      "padding:14px 20px 14px 66px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4))}" +
+    ".qs-pick2-foot .qs-join:hover{filter:drop-shadow(0 4px 12px rgba(255,200,120,.4)) brightness(1.05)}" +
+    ".qs-pick2 .qs-join:disabled{opacity:1;color:#b6a684;cursor:default;" +
+      "background:url(assets/queue/ui/btn-join-dim.webp) center/100% 100% no-repeat;filter:grayscale(.2)}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
@@ -1296,9 +1312,10 @@
       // кнопка «Список»
       var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
       var listBtn = document.createElement("button");
-      listBtn.className = "qs-list qs-btn-abs";
+      listBtn.className = "qs-list-btn qs-btn-abs";
       listBtn.style.cssText = "left:" + lp.x.toFixed(2) + "%;top:" + lp.y.toFixed(2) + "%;--gc:" + b.accent;
-      listBtn.title = "Показать всю очередь"; listBtn.textContent = "📋 список";
+      listBtn.title = "Показать всю очередь";
+      listBtn.innerHTML = '<img class="qs-list-img" src="assets/queue/ui/btn-list.webp" alt=""><span class="qs-list-cap">Список</span>';
       if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
       else listBtn.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(listBtn);
@@ -1431,7 +1448,7 @@
     var el = document.createElement("div");
     el.className = "qs-token-ad";
     el.innerHTML =
-      '<div class="qs-ta-star">🌟</div>' +
+      '<img class="qs-ta-token" src="assets/queue/ui/token.webp" alt="Жетон ТОП-3">' +
       '<div class="qs-ta-body">' +
         '<div class="qs-ta-title">Жетон ТОП-3 <span>— награда за доблесть</span></div>' +
         '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. С ним берёшь ресурсы ' +
@@ -1458,16 +1475,21 @@
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
-        '<span class="qs-lane-cnt">' + entries.length + " чел" +
-        (myIdx >= 0 ? ' · <b style="color:var(--gc)">ты #' + (myIdx + 1) + "</b>" : "") + "</span>";
+        '<span class="qs-lane-cnt" title="' + entries.length + ' чел в очереди">' +
+          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter.webp" alt="">' +
+          '<b class="qs-lane-cnt-n">' + entries.length + "</b></span>" +
+        (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
       var inNow = iAmIn || adminIn;
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
-      joinCell.innerHTML = inNow
-        ? (adminIn && !iAmIn ? "Убрать<br>" + esc(ADMIN_NICK) : "Выйти")
-        : (adminCanon ? "➕ Встать<br>как " + esc(ADMIN_NICK) : "➕ Встать<br>в очередь");
+      var joinTx = inNow
+        ? (adminIn && !iAmIn ? "Убрать " + esc(ADMIN_NICK) : "Выйти")
+        : (adminCanon ? "Встать как " + esc(ADMIN_NICK) : "Встать в очередь");
+      joinCell.innerHTML =
+        '<img class="qs-lane-join-ic" src="assets/queue/ui/' + (inNow ? "join-red" : "join-green") + '.webp" alt="">' +
+        '<span class="qs-lane-join-tx">' + joinTx + "</span>";
       joinCell.addEventListener("click", function () {
         // Админ без игрового аккаунта — тест от имени Лирия!
         if (_isAdmin && !_meAcc) {
@@ -1601,7 +1623,7 @@
     var bar = document.createElement("div");
     bar.className = "qs-super" + (adminMode ? " preview" : "");
     bar.innerHTML =
-      '<span class="qs-super-ic">🌟</span>' +
+      '<img class="qs-super-token" src="assets/queue/ui/token.webp" alt="">' +
       '<span class="qs-super-txt"><b>Суперспособность ТОП-3 — взять обычные ресурсы ВНЕ очереди</b><br>' +
       (adminMode
         ? '<span style="color:#e6c48f">🧪 админ-тест как <b>' + esc(ADMIN_NICK) +
