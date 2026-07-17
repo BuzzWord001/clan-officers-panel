@@ -912,6 +912,8 @@
     ".qs-objp-bghint{font-size:9.5px;color:#9db4cc;align-self:center}" +
     ".qs-objp-repl{font-size:12px;border-color:rgba(130,200,255,.5)!important;color:#bfe0ff!important}" +
     ".qs-objp-repl:hover{background:rgba(30,60,100,.8)!important;color:#fff!important}" +
+    ".qs-objp-opt{font-size:12px;border-color:rgba(150,220,150,.5)!important;color:#a8e6a0!important}" +
+    ".qs-objp-opt:hover{background:rgba(30,80,30,.8)!important;color:#fff!important}" +
     ".qs-objp-del{color:#ff9a86;border-color:rgba(255,120,100,.5)!important}" +
     ".qs-objp-del:hover{background:rgba(120,30,20,.8)!important;color:#fff!important}" +
     ".qs-objp-row.hidden{opacity:.6;display:flex;align-items:center;justify-content:space-between;gap:6px}" +
@@ -2243,6 +2245,7 @@
       "</div>" +
       '<div class="qs-objp-ctl">' +
         '<button data-b="repl" class="qs-objp-repl">🖼 заменить фон (' + slotName + ")</button>" +
+        (uploadedUrl(overrideKey(bgSlot2)) ? '<button data-b="opt" class="qs-objp-opt" title="оптимизировать загруженный фон">🗜</button>' : "") +
         '<span class="qs-objp-sz"><button data-b="z-">−</button><b class="qs-objp-szv">' + bgZoom.toFixed(0) +
           '%</b><button data-b="z+">+</button></span>' +
       "</div>" +
@@ -2259,6 +2262,7 @@
       var bx = parseFloat(CONFIG["bgx:" + sl]); if (!isFinite(bx)) bx = 50;
       var by = parseFloat(CONFIG["bgy:" + sl]); if (!isFinite(by)) by = 50;
       if (b === "repl") { replaceModel(overrideKey(sl)); return; }
+      else if (b === "opt") { optimizeObj(overrideKey(sl), "фон (" + (sl === "bg-night" ? "ночь" : "день") + ")"); return; }
       else if (b === "z+") saveCfg("bgzoom:" + sl, Math.min(300, z + 5));
       else if (b === "z-") saveCfg("bgzoom:" + sl, Math.max(50, z - 5));
       else if (b === "up") saveCfg("bgy:" + sl, Math.max(0, by - 4));
@@ -2285,13 +2289,23 @@
       f.addEventListener("change", function () {
         var file = f.files[0]; if (!file) return;
         fileToDataURL(file, function (dataUrl) {
-          q("POST", "/queue/admin/model-upload", { key: uploadKey, data: dataUrl }).then(function () {
-            UPLOADED[uploadKey] = Date.now();   // меняющийся ?v — сбить кэш, показать новую картинку
-            render(_lastState);
-          }).catch(function (e) { alert("Не удалось заменить модель: " + (e.detail || e.message)); });
+          // авто-оптимизация при замене (ужать до оптимальных параметров)
+          optimizeDataUrl(dataUrl, function (opt) {
+            q("POST", "/queue/admin/model-upload", { key: uploadKey, data: opt || dataUrl }).then(function () {
+              UPLOADED[uploadKey] = Date.now();   // меняющийся ?v — сбить кэш, показать новую картинку
+              render(_lastState);
+            }).catch(function (e) { alert("Не удалось заменить модель: " + (e.detail || e.message)); });
+          });
         }, function (m) { alert(m); });
       });
       f.click();
+    }
+    // оптимизировать УЖЕ загруженную замену объекта (по ключу override), с уведомлением
+    function optimizeObj(uploadKey, label) {
+      if (!uploadedUrl(uploadKey)) { alert("У «" + label + "» нет загруженной картинки для оптимизации (встроенная уже оптимальна)."); return; }
+      optimizeExisting(uploadKey, function (okk) {
+        if (okk) render(_lastState); else alert("Не удалось оптимизировать «" + label + "».");
+      });
     }
 
     var MStep = 1.5, SStep = 0.1;
@@ -2377,6 +2391,7 @@
               '<b class="qs-objp-szv">' + ((+ev.w) || 18) + '%</b><button data-a="sz+" title="больше">+</button></span>' +
             '<button data-a="flip" class="qs-objp-flip' + (ev.flip ? " on" : "") + '" title="зеркалить">⇋</button>' +
             '<button data-a="repl" class="qs-objp-repl" title="заменить модель (новая встанет на то же место)">🖼</button>' +
+            '<button data-a="opt" class="qs-objp-opt" title="оптимизировать картинку">🗜</button>' +
             zBtns(evzn) +
             '<button data-a="del" class="qs-objp-del" title="убрать из сцены">✕</button>' +
           "</div>";
@@ -2384,6 +2399,7 @@
           var btn = e.target.closest("button"); if (!btn) return;
           var a = btn.dataset.a, ek = "env:" + ev.id, p = curPlace(ek, 50, 55);
           if (a === "repl") { replaceModel(ev.key); return; }   // замена картинки того же ключа — на месте
+          if (a === "opt") { optimizeObj(ev.key, o.name); return; }   // оптимизировать этот предмет
           if (a === "up") savePlacement(ek, p.x, p.y - MStep, p.z);
           else if (a === "down") savePlacement(ek, p.x, p.y + MStep, p.z);
           else if (a === "left") savePlacement(ek, p.x - MStep, p.y, p.z);
@@ -2431,12 +2447,14 @@
             '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
           (o.flip ? '<button data-a="flip" class="qs-objp-flip' + (isFlipped(o.key) ? " on" : "") + '" title="зеркалить">⇋</button>' : "") +
           (o.repl ? '<button data-a="repl" class="qs-objp-repl" title="заменить модель (новая встанет на то же место)">🖼</button>' : "") +
+          (o.repl && uploadedUrl(overrideKey(o.key)) ? '<button data-a="opt" class="qs-objp-opt" title="оптимизировать загруженную картинку">🗜</button>' : "") +
           zBtns(curZ) +
           '<button data-a="hide" class="qs-objp-del" title="убрать со сцены (можно вернуть)">✕</button>' +
         "</div>";
       row.addEventListener("click", function (e) {
         var btn = e.target.closest("button"); if (!btn) return;
         var a = btn.dataset.a, p = curPlace(o.key, o.dx, o.dy);
+        if (a === "opt") { optimizeObj(overrideKey(o.key), o.name); return; }
         if (a === "repl") { replaceModel(overrideKey(o.key)); return; }   // заменить встроенную модель на месте
         if (a === "up") savePlacement(o.key, p.x, p.y - MStep, p.z);
         else if (a === "down") savePlacement(o.key, p.x, p.y + MStep, p.z);
@@ -2478,13 +2496,15 @@
       if (!file) { aSt("Выбери картинку."); return; }
       aSt("Загрузка…", true);
       fileToDataURL(file, function (dataUrl) {
-        q("POST", "/queue/admin/model-upload", { key: "env-" + slug, data: dataUrl }).then(function () {
-          UPLOADED["env-" + slug] = 1;
-          ENV.push({ id: envNextId(), key: "env-" + slug, w: 18, flip: 0, rotate: 0, z: "depth" });
-          saveEnv();
-          _scnScroll = 999999;   // прокрутить к новому предмету (он внизу списка)
-          render(_lastState);
-        }).catch(function (e) { aSt("Ошибка: " + (e.detail || e.message)); });
+        optimizeDataUrl(dataUrl, function (opt) {   // авто-оптимизация нового предмета
+          q("POST", "/queue/admin/model-upload", { key: "env-" + slug, data: opt || dataUrl }).then(function () {
+            UPLOADED["env-" + slug] = Date.now();
+            ENV.push({ id: envNextId(), key: "env-" + slug, w: 18, flip: 0, rotate: 0, z: "depth" });
+            saveEnv();
+            _scnScroll = 999999;   // прокрутить к новому предмету (он внизу списка)
+            render(_lastState);
+          }).catch(function (e) { aSt("Ошибка: " + (e.detail || e.message)); });
+        });
       }, aSt);
     });
     bodyEl.appendChild(add);
