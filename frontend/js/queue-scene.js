@@ -293,6 +293,11 @@
   function isFlipped(pkey) { return CONFIG["flip:" + pkey] === "1"; }
   // скрыт ли объект со сцены (обратимо; встроенные объекты не удаляются насовсем, а прячутся)
   function isHidden(pkey) { return CONFIG["hide:" + pkey] === "1"; }
+  // ключ загруженной ЗАМЕНЫ модели встроенного объекта. Санитайзим как бэкенд (_safe_key: [^\w-]→_),
+  // иначе двоеточие в 'lavka:0' на сервере станет '_' и фронт не найдёт файл.
+  function overrideKey(pkey) { return "obj-" + String(pkey).replace(/[^A-Za-z0-9_-]/g, "_"); }
+  // src картинки объекта: если админ загрузил замену — она, иначе штатная (dflt)
+  function objImgSrc(pkey, dflt) { return uploadedUrl(overrideKey(pkey)) || dflt; }
   // суффикс transform с учётом зеркала (base — базовый translate объекта)
   function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
@@ -826,6 +831,8 @@
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
     ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
     ".qs-objp-flip{font-size:13px}" +
+    ".qs-objp-repl{font-size:12px;border-color:rgba(130,200,255,.5)!important;color:#bfe0ff!important}" +
+    ".qs-objp-repl:hover{background:rgba(30,60,100,.8)!important;color:#fff!important}" +
     ".qs-objp-del{color:#ff9a86;border-color:rgba(255,120,100,.5)!important}" +
     ".qs-objp-del:hover{background:rgba(120,30,20,.8)!important;color:#fff!important}" +
     ".qs-objp-row.hidden{opacity:.6;display:flex;align-items:center;justify-content:space-between;gap:6px}" +
@@ -1448,7 +1455,7 @@
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
-      lavka.src = "assets/queue/scene/lavka-" + b.q + ".webp?v=3";
+      lavka.src = objImgSrc("lavka:" + b.q, "assets/queue/scene/lavka-" + b.q + ".webp?v=3");
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
@@ -1556,7 +1563,7 @@
         "%;width:" + (64 * csz).toFixed(1) + "px;z-index:" + cnz +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "»";
-      cntEl.innerHTML = '<img class="qs-scnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
+      cntEl.innerHTML = '<img class="qs-scnt-bg" src="' + objImgSrc("cnt:" + b.q, "assets/queue/ui/counter2.webp?v=2") + '" alt="">' +
         '<b class="qs-scnt-n" style="font-size:' + (19 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       stage.appendChild(cntEl);
@@ -1589,7 +1596,7 @@
     var mpos = placedPos("mount", 85, 70);
     var mount = document.createElement("img");
     mount.className = "qs-mount"; mount.alt = ""; mount.decoding = "async"; mount.loading = "lazy";
-    mount.src = "assets/queue/scene/item/mount-cilin.webp";
+    mount.src = objImgSrc("mount", "assets/queue/scene/item/mount-cilin.webp");
     mount.style.cssText = "left:" + mpos.x.toFixed(2) + "%;top:" + mpos.y.toFixed(2) +
       "%;height:calc(22% * " + objSize("mount", getSize("mount", 1)).toFixed(3) +
       ");z-index:" + zOf("mount", mpos.y) +
@@ -1606,7 +1613,7 @@
     var fpos = placedPos("fountain", 50, 62);
     var fountain = document.createElement("img");
     fountain.className = "qs-fountain"; fountain.alt = ""; fountain.decoding = "async"; fountain.loading = "lazy";
-    fountain.src = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
+    fountain.src = objImgSrc("fountain", "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1");
     fountain.style.cssText = "left:" + fpos.x.toFixed(2) + "%;top:" + fpos.y.toFixed(2) +
       "%;height:calc(24% * " + objSize("fountain", getSize("fountain", 1)).toFixed(3) +
       ");z-index:" + zOf("fountain", fpos.y) +
@@ -1631,7 +1638,7 @@
         "%;width:calc(15% * " + objSize("wallet", 1).toFixed(3) + ");z-index:100000" +
         ";transform:" + flipTf("wallet", "translate(-50%,0)");
       frameWallet.title = "Твои жетоны ТОП-3: " + wn;
-      frameWallet.innerHTML = '<img class="qs-fw-bg" src="assets/queue/ui/wallet2.webp?v=1" alt="">' +
+      frameWallet.innerHTML = '<img class="qs-fw-bg" src="' + objImgSrc("wallet", "assets/queue/ui/wallet2.webp?v=1") + '" alt="">' +
         '<div class="qs-fw-slot">' + (wn > 0
           ? '<span class="qs-fw-coins">' + wcoins + '</span><span class="qs-fw-x">×' + wn + "</span>"
           : '<span class="qs-fw-0">0</span>') + "</div>" +
@@ -2016,12 +2023,12 @@
     var objs = [];
     // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
-    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }];
-    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
-    objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true });
-    objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true });
-    objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true });
+    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true, repl: true }); });
+    objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
+    objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true, repl: true });
+    objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true, repl: true });
     BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false, flip: true }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false, flip: true }); });
     // добавленные админом предметы окружения (загруженные картинки) — тоже управляемы отсюда
@@ -2049,20 +2056,44 @@
     pm.textContent = _placeMode ? "🎯 Расстановка ВКЛ (подписи видны)" : "🎯 Вкл. таскание+подписи";
     pm.addEventListener("click", function () { _placeMode = !_placeMode; if (_placeMode) _pathMode = false; render(_lastState); });
     bodyEl.appendChild(pm);
+    // кнопка редактора ФОРМЫ очередей (пути) — та функция, что добавляли ранее
+    var pe = document.createElement("button");
+    pe.className = "qs-objp-pm" + (_pathMode ? " on" : "");
+    pe.textContent = _pathMode ? "✏️ Форма очередей: ВКЛ (тащи точки)" : "✏️ Редактировать форму очередей";
+    pe.addEventListener("click", function () { _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState); });
+    bodyEl.appendChild(pe);
+
+    // Заменить модель: подгрузить новую картинку — старая меняется РОВНО на месте (позиция/размер
+    // сохраняются). uploadKey: для встроенных — overrideKey(ключ), для ENV — их собственный ключ.
+    function replaceModel(uploadKey) {
+      var f = document.createElement("input");
+      f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
+      f.addEventListener("change", function () {
+        var file = f.files[0]; if (!file) return;
+        fileToDataURL(file, function (dataUrl) {
+          q("POST", "/queue/admin/model-upload", { key: uploadKey, data: dataUrl }).then(function () {
+            UPLOADED[uploadKey] = Date.now();   // меняющийся ?v — сбить кэш, показать новую картинку
+            render(_lastState);
+          }).catch(function (e) { alert("Не удалось заменить модель: " + (e.detail || e.message)); });
+        }, function (m) { alert(m); });
+      });
+      f.click();
+    }
 
     var MStep = 1.5, SStep = 0.1;
-    // картинка-миниатюра объекта для строки панели (чтобы было понятно, что это)
+    // картинка-миниатюра объекта для строки панели (учитывает загруженную замену модели)
     function objThumb(o) {
       if (o.env) return uploadedUrl(o.env.key) || "";
-      var k = o.key || "";
-      if (k.indexOf("lavka:") === 0) return "assets/queue/scene/lavka-" + k.slice(6) + ".webp?v=3";
-      if (k.indexOf("cnt:") === 0) return "assets/queue/ui/counter2.webp?v=2";
-      if (k === "mount") return "assets/queue/scene/item/mount-cilin.webp";
-      if (k === "fountain") return "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
-      if (k === "wallet") return "assets/queue/ui/wallet2.webp?v=1";
-      if (k.indexOf("btn-join:") === 0) return "assets/queue/ui/join-green-dim.webp?v=2";
-      if (k.indexOf("btn-list:") === 0) return "assets/queue/ui/list-normal.webp?v=2";
-      return "";
+      var k = o.key || "", d = "";
+      if (k.indexOf("lavka:") === 0) d = "assets/queue/scene/lavka-" + k.slice(6) + ".webp?v=3";
+      else if (k.indexOf("cnt:") === 0) d = "assets/queue/ui/counter2.webp?v=2";
+      else if (k === "mount") d = "assets/queue/scene/item/mount-cilin.webp";
+      else if (k === "fountain") d = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
+      else if (k === "wallet") d = "assets/queue/ui/wallet2.webp?v=1";
+      else if (k.indexOf("btn-join:") === 0) d = "assets/queue/ui/join-green-dim.webp?v=2";
+      else if (k.indexOf("btn-list:") === 0) d = "assets/queue/ui/list-normal.webp?v=2";
+      else return "";
+      return objImgSrc(k, d);
     }
     // html имени строки с миниатюрой слева (эмодзи-заглушка, если картинки нет/битая — напр. очередь)
     function nameHtml(o, emoji) {
@@ -2131,12 +2162,14 @@
             '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
               '<b class="qs-objp-szv">' + ((+ev.w) || 18) + '%</b><button data-a="sz+" title="больше">+</button></span>' +
             '<button data-a="flip" class="qs-objp-flip' + (ev.flip ? " on" : "") + '" title="зеркалить">⇋</button>' +
+            '<button data-a="repl" class="qs-objp-repl" title="заменить модель (новая встанет на то же место)">🖼</button>' +
             zBtns(evzn) +
             '<button data-a="del" class="qs-objp-del" title="убрать из сцены">✕</button>' +
           "</div>";
         row.addEventListener("click", function (e) {
           var btn = e.target.closest("button"); if (!btn) return;
           var a = btn.dataset.a, ek = "env:" + ev.id, p = curPlace(ek, 50, 55);
+          if (a === "repl") { replaceModel(ev.key); return; }   // замена картинки того же ключа — на месте
           if (a === "up") savePlacement(ek, p.x, p.y - MStep, p.z);
           else if (a === "down") savePlacement(ek, p.x, p.y + MStep, p.z);
           else if (a === "left") savePlacement(ek, p.x - MStep, p.y, p.z);
@@ -2183,12 +2216,14 @@
           (o.sz ? '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
             '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
           (o.flip ? '<button data-a="flip" class="qs-objp-flip' + (isFlipped(o.key) ? " on" : "") + '" title="зеркалить">⇋</button>' : "") +
+          (o.repl ? '<button data-a="repl" class="qs-objp-repl" title="заменить модель (новая встанет на то же место)">🖼</button>' : "") +
           zBtns(curZ) +
           '<button data-a="hide" class="qs-objp-del" title="убрать со сцены (можно вернуть)">✕</button>' +
         "</div>";
       row.addEventListener("click", function (e) {
         var btn = e.target.closest("button"); if (!btn) return;
         var a = btn.dataset.a, p = curPlace(o.key, o.dx, o.dy);
+        if (a === "repl") { replaceModel(overrideKey(o.key)); return; }   // заменить встроенную модель на месте
         if (a === "up") savePlacement(o.key, p.x, p.y - MStep, p.z);
         else if (a === "down") savePlacement(o.key, p.x, p.y + MStep, p.z);
         else if (a === "left") savePlacement(o.key, p.x - MStep, p.y, p.z);
@@ -2276,8 +2311,9 @@
       wrap.appendChild(buildHistoryPanel(true));
     }
     // правая fixed-панель управления объектами сцены — только админу (внутри wrap, чтобы
-    // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя)
-    if (_isAdmin && !_pathMode) wrap.appendChild(sceneObjPanel());
+    // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя).
+    // Показываем и в режиме формы очередей — там её кнопка «Форма очередей» гасит режим.
+    if (_isAdmin) wrap.appendChild(sceneObjPanel());
     host.appendChild(wrap);
     // вернуть прокрутку правой админ-панели (кнопки вызывают render — иначе перематывает наверх)
     var _pb = wrap.querySelector(".qs-objp-body"); if (_pb) _pb.scrollTop = _scnScroll;

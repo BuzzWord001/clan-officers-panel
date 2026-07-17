@@ -112,7 +112,11 @@
     }
     input.addEventListener("input", () => { active = -1; render(); });
     input.addEventListener("focus", render);
-    input.addEventListener("blur", () => setTimeout(hide, 160));
+    input.addEventListener("blur", () => setTimeout(() => {
+      hide();
+      // инлайн-редактор пересоздаёт поле — убираем осиротевший выпадающий список из body
+      if (!document.body.contains(input)) dd.remove();
+    }, 160));
     input.addEventListener("keydown", (e) => {
       if (dd.style.display === "none") return;
       // список открыт — гасим клавиши, чтобы не сработал Enter=сохранить / Esc=отмена инлайн-редактора
