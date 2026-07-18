@@ -1628,9 +1628,8 @@
       joinBtn.className = "qs-js qs-btn-abs" + (showLeave ? " leave" : "");
       joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
       var jsc = showLeave ? "join-red" : "join-green";
-      var btnTx = adminCanon
-        ? (adminIn ? "Убрать " + esc(ADMIN_NICK) : "Встать как " + esc(ADMIN_NICK))
-        : (showLeave ? "Выйти из очереди" : "Встать в очередь");
+      // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
+      var btnTx = showLeave ? "Выйти из очереди" : "Встать в очередь";
       joinBtn.innerHTML =
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
         '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=3" alt=""></span>' +
@@ -1983,9 +1982,8 @@
       var joinCell = document.createElement("button");
       var inNow = iAmIn || myPriv || adminIn;
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
-      var joinTx = inNow
-        ? (adminIn && !iAmIn ? "Убрать " + esc(ADMIN_NICK) : "Выйти")
-        : (adminCanon ? "Встать как " + esc(ADMIN_NICK) : "Встать в очередь");
+      // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
+      var joinTx = inNow ? "Выйти из очереди" : "Встать в очередь";
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
