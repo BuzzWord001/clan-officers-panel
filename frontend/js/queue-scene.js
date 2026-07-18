@@ -1595,10 +1595,16 @@
       });
       // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
       // Каждую можно перетащить (в режиме «Расставить предметы»); позиция сохраняется.
-      var myEntry = null;
-      // «в очереди» = ОБЫЧНОЕ место (не жетон): жетонная запись отдельная, не считается местом
-      entries.some(function (e) { if (canon(e.main_nick) === meCanon && !e.privileged) { myEntry = e; return true; } return false; });
-      var iAmIn = !!myEntry;
+      var myEntry = null, myPriv = null;
+      // «в очереди» = ОБЫЧНОЕ место; жетонную (privileged) запись учитываем отдельно,
+      // НО кнопка тоже краснеет, если стоишь через жетон ТОП-3 (Лир, 2026-07-19).
+      entries.forEach(function (e) {
+        if (canon(e.main_nick) === meCanon) { if (e.privileged) myPriv = e; else myEntry = e; }
+      });
+      var iAmIn = !!myEntry, iAmPriv = !!myPriv;
+      var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
+      var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
+      var showLeave = iAmIn || iAmPriv || adminIn;   // красная «Выйти»
       // кнопка «Список»
       if (!isHidden("btn-list:" + b.q)) {
       var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
@@ -1619,19 +1625,29 @@
       var qStart = pathPoint(pth, 0);
       var jp = placedPos("btn-join:" + b.q, qStart.x - 6, qStart.y + 3);
       var joinBtn = document.createElement("button");
-      joinBtn.className = "qs-js qs-btn-abs" + (iAmIn ? " leave" : "");
+      joinBtn.className = "qs-js qs-btn-abs" + (showLeave ? " leave" : "");
       joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
-      var jsc = iAmIn ? "join-red" : "join-green";
+      var jsc = showLeave ? "join-red" : "join-green";
+      var btnTx = adminCanon
+        ? (adminIn ? "Убрать " + esc(ADMIN_NICK) : "Встать как " + esc(ADMIN_NICK))
+        : (showLeave ? "Выйти из очереди" : "Встать в очередь");
       joinBtn.innerHTML =
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
         '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=3" alt=""></span>' +
-        '<span class="qs-js-tx">' + (iAmIn ? "Выйти из очереди" : "Встать в очередь") + "</span>";
+        '<span class="qs-js-tx">' + btnTx + "</span>";
       if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
       else joinBtn.addEventListener("click", function () {
+        if (_isAdmin && !_meAcc) {                            // админ тестирует как Лирия!
+          if (!adminIn) { openResourcePicker(b); return; }
+          joinBtn.disabled = true;
+          q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
+            .catch(function (e2) { joinBtn.disabled = false; alert("Ошибка: " + (e2.detail || e2.message)); });
+          return;
+        }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (!iAmIn) { openResourcePicker(b); return; }       // встать → выбор ресурса
+        if (!iAmIn && !iAmPriv) { openResourcePicker(b); return; }   // не в очереди → встать
         joinBtn.disabled = true;
-        q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
+        q("POST", "/queue/leave", { queue: b.q, privileged: (iAmPriv && !iAmIn) }).then(refresh).catch(function (e2) {
           joinBtn.disabled = false;
           alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
@@ -1943,9 +1959,15 @@
     var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
-      var myIdx = -1, iAmIn = false, myEntry = null;
-      // «в очереди» = обычное место (privileged=0); жетонная запись — отдельная, не место
-      entries.forEach(function (e, i) { if (meCanon && canon(e.main_nick) === meCanon && !e.privileged) { myIdx = i; iAmIn = true; myEntry = e; } });
+      var myIdx = -1, iAmIn = false, myEntry = null, myPriv = false;
+      // «в очереди» = обычное место (privileged=0); жетонную (privileged) запись
+      // учитываем отдельно, но кнопка тоже краснеет при жетоне ТОП-3 (Лир 2026-07-19).
+      entries.forEach(function (e, i) {
+        if (meCanon && canon(e.main_nick) === meCanon) {
+          if (e.privileged) myPriv = true;
+          else { myIdx = i; iAmIn = true; myEntry = e; }
+        }
+      });
       // для админ-теста: считаем «в очереди» наличие Лирия!
       var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
       var lane = document.createElement("div");
@@ -1959,7 +1981,7 @@
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
-      var inNow = iAmIn || adminIn;
+      var inNow = iAmIn || myPriv || adminIn;
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
       var joinTx = inNow
         ? (adminIn && !iAmIn ? "Убрать " + esc(ADMIN_NICK) : "Выйти")
@@ -1981,9 +2003,9 @@
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (!iAmIn) { openResourcePicker(b); return; }
+        if (!iAmIn && !myPriv) { openResourcePicker(b); return; }
         joinCell.disabled = true;
-        q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
+        q("POST", "/queue/leave", { queue: b.q, privileged: (myPriv && !iAmIn) }).then(refresh).catch(function (e2) {
           joinCell.disabled = false;
           alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
