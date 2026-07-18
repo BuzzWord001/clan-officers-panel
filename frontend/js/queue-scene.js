@@ -1030,12 +1030,12 @@
     ".qs-pick2-foot{position:sticky;bottom:0;margin:10px -16px 0;padding:11px 16px 14px;" +
       "background:linear-gradient(180deg,rgba(22,13,6,0),rgba(22,13,6,.97) 34%)}" +
     ".qs-pick2-foot .qs-join{display:block;margin:0 auto;width:min(330px,82%);aspect-ratio:420/182;height:auto;min-height:0;" +
-      "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp?v=2) center/contain no-repeat;" +
+      "border:0;box-shadow:none;background:url(assets/queue/ui/btn-join-lit.webp?v=3) center/contain no-repeat;" +
       "color:#ffe8bc;font:800 15px/1.15 system-ui;text-shadow:0 1px 3px #000,0 0 5px rgba(0,0,0,.6);" +
       "padding:0 8% 0 25%;filter:drop-shadow(0 4px 9px rgba(0,0,0,.4))}" +
     ".qs-pick2-foot .qs-join:hover{filter:drop-shadow(0 4px 12px rgba(255,200,120,.4)) brightness(1.05)}" +
     ".qs-pick2 .qs-join:disabled{opacity:1;color:#c8b892;cursor:default;" +
-      "background:url(assets/queue/ui/btn-join-dim.webp?v=2) center/contain no-repeat;filter:grayscale(.15)}" +
+      "background:url(assets/queue/ui/btn-join-dim.webp?v=3) center/contain no-repeat;filter:grayscale(.15)}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
@@ -1623,8 +1623,8 @@
       joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
       var jsc = iAmIn ? "join-red" : "join-green";
       joinBtn.innerHTML =
-        '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=2" alt="">' +
-        '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=2" alt=""></span>' +
+        '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
+        '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=3" alt=""></span>' +
         '<span class="qs-js-tx">' + (iAmIn ? "Выйти из очереди" : "Встать в очередь") + "</span>";
       if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
       else joinBtn.addEventListener("click", function () {
@@ -1967,8 +1967,8 @@
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
-          '<img class="qs-jt-dim" src="assets/queue/ui/' + jcolor + '-dim.webp?v=2" alt="">' +
-          '<img class="qs-jt-lit" src="assets/queue/ui/' + jcolor + '-lit.webp?v=2" alt="">' +
+          '<img class="qs-jt-dim" src="assets/queue/ui/' + jcolor + '-dim.webp?v=3" alt="">' +
+          '<img class="qs-jt-lit" src="assets/queue/ui/' + jcolor + '-lit.webp?v=3" alt="">' +
         "</span>" +
         '<span class="qs-lane-join-tx">' + joinTx + "</span>";
       joinCell.addEventListener("click", function () {
@@ -2318,7 +2318,7 @@
       else if (k === "mount") d = "assets/queue/scene/item/mount-cilin.webp";
       else if (k === "fountain") d = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
       else if (k === "wallet") d = "assets/queue/ui/wallet2.webp?v=1";
-      else if (k.indexOf("btn-join:") === 0) d = "assets/queue/ui/join-green-dim.webp?v=2";
+      else if (k.indexOf("btn-join:") === 0) d = "assets/queue/ui/join-green-dim.webp?v=3";
       else if (k.indexOf("btn-list:") === 0) d = "assets/queue/ui/list-normal.webp?v=2";
       else return "";
       return objImgSrc(k, d);
