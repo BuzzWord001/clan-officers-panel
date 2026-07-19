@@ -1116,11 +1116,31 @@
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
     ".qs-fl-me{background:linear-gradient(90deg,rgba(126,196,106,.22),rgba(126,196,106,.05));box-shadow:inset 3px 0 0 #8fc36a}" +
-    /* анимация появления только что вставшего (сцена/полоса/список) — золотое «вспыхивание» */
-    "@keyframes qsAppear{0%{opacity:.1;transform:scale(.4);filter:brightness(2.6) drop-shadow(0 0 16px rgba(255,225,140,1))}" +
-      "50%{opacity:1;transform:scale(1.22);filter:brightness(1.7) drop-shadow(0 0 12px rgba(255,220,130,.85))}" +
-      "100%{opacity:1;transform:scale(1);filter:none}}" +
-    ".qs-appear{animation:qsAppear .85s cubic-bezier(.2,.9,.3,1.4);will-change:transform,filter,opacity;position:relative;z-index:3}" +
+    /* МАГИЧЕСКОЕ появление только что вставшего (сцена/полоса/список) —
+       материализация: вспышка-портал за строкой (::after), световой пробег (::before)
+       и появление самой строки с покачиванием и масштабом. Проигрывается ПОСЛЕ докрутки. */
+    "@keyframes qsAppear{" +
+      "0%{opacity:0;transform:scale(.24) rotate(-12deg);filter:brightness(3) saturate(1.9) drop-shadow(0 0 22px rgba(255,232,150,1))}" +
+      "30%{opacity:1;transform:scale(1.2) rotate(4deg);filter:brightness(2) saturate(1.4) drop-shadow(0 0 16px rgba(255,220,130,.95))}" +
+      "55%{transform:scale(.95) rotate(-2deg);filter:brightness(1.35)}" +
+      "78%{transform:scale(1.04) rotate(1deg);filter:none}" +
+      "100%{opacity:1;transform:scale(1) rotate(0);filter:none}}" +
+    "@keyframes qsBurst{0%{opacity:0;transform:translate(-50%,-50%) scale(.15)}" +
+      "16%{opacity:.95}55%{opacity:.5}100%{opacity:0;transform:translate(-50%,-50%) scale(2.9)}}" +
+    "@keyframes qsSweep{0%{background-position:135% 0;opacity:0}22%{opacity:.9}100%{background-position:-135% 0;opacity:0}}" +
+    ".qs-appear{animation:qsAppear .95s cubic-bezier(.2,.85,.25,1.5);" +
+      "will-change:transform,filter,opacity;position:relative;z-index:4}" +
+    ".qs-appear::after{content:'';position:absolute;left:50%;top:50%;width:135%;aspect-ratio:1;" +
+      "border-radius:50%;pointer-events:none;z-index:-1;transform:translate(-50%,-50%) scale(.15);" +
+      "animation:qsBurst .95s ease-out;" +
+      "background:radial-gradient(circle,rgba(255,242,185,.95) 0%,rgba(255,210,110,.55) 30%," +
+      "rgba(184,132,255,.4) 56%,rgba(120,170,255,.18) 70%,transparent 78%)}" +
+    ".qs-appear::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;" +
+      "border-radius:inherit;background:linear-gradient(105deg,transparent 38%," +
+      "rgba(255,255,255,.55) 50%,transparent 62%);background-size:270% 100%;" +
+      "background-position:135% 0;animation:qsSweep .95s ease-out}" +
+    "@media(prefers-reduced-motion:reduce){.qs-appear{animation-duration:.5s}" +
+      ".qs-appear::after,.qs-appear::before{display:none}}" +
     ".qs-fl-num{width:24px;text-align:center;font:700 13px system-ui;color:#caa66a;flex:0 0 auto}" +
     ".qs-fl-mdl{height:44px;width:36px;object-fit:contain;flex:0 0 auto;" +
       "background:linear-gradient(180deg,rgba(190,224,234,.18),rgba(143,195,106,.18));border-radius:6px}" +
