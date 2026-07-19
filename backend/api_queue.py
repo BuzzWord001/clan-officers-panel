@@ -427,6 +427,11 @@ class RestoreUncollectedIn(BaseModel):
     served_id: int               # id строки из снимка queue_served_last (получивший на прошлой финализации)
 
 
+class ReportRangeIn(BaseModel):
+    from_stages: int = Field(ge=0, le=7)   # с какого числа закрытых этапов КХ
+    to_stages: int = Field(ge=0, le=7)     # по какое (включительно) — по каждому свой отчёт
+
+
 class PrivClaimIn(BaseModel):
     resource: str = Field(min_length=1, max_length=64)   # обычный ресурс (очередь 0)
     stacks: int = Field(default=1, ge=1, le=200)          # сколько пачек взять (= столько жетонов)
@@ -1402,7 +1407,7 @@ def _priv_claims(conn) -> list[dict]:
     return out
 
 
-def _build_report(conn) -> dict:
+def _build_report(conn, stages_override: int | None = None) -> dict:
     import json
     idx = _people(conn)
     gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
@@ -1434,9 +1439,10 @@ def _build_report(conn) -> dict:
     except (ValueError, TypeError):
         shooters = []
     claims = _priv_claims(conn)
+    stages_use = _cfg_int(conn, "stages_closed", 0) if stages_override is None else int(stages_override)
     report = distribution.compute(
         {"queues": queues}, valor_map,
-        {"stages": _cfg_int(conn, "stages_closed", 0),
+        {"stages": stages_use,
          "pet_count": _cfg_int(conn, "pet_count", 0),
          "shooters": shooters, "claims": claims, "main_map": main_map})
     report["has_valor"] = bool(valor_map)
@@ -1459,12 +1465,12 @@ def _is_test_mode() -> bool:
         return _cfg_val(conn, "queue_test_send", "1") != "0"
 
 
-async def _send_report_to_chats(report: dict) -> dict:
-    """Шлёт текст отчёта. В ПРОБНОМ режиме — только в личку Лиру через @pw_spamer_bot;
-    иначе — в офицерский TG и VK чат. Возвращает статус по каналам."""
+async def _send_report_to_chats(report: dict, force_dm: bool = False) -> dict:
+    """Шлёт текст отчёта. В ПРОБНОМ режиме (или force_dm) — только в личку Лиру через
+    @pw_spamer_bot; иначе — в офицерский TG и VK чат. Возвращает статус по каналам."""
     text = distribution.format_report_text(report, _now_msk_str())
     channels: dict[str, str] = {}
-    if _is_test_mode():
+    if force_dm or _is_test_mode():
         try:
             if not (settings.test_bot_token and settings.test_chat_id):
                 raise RuntimeError("test_bot_not_configured")
@@ -1503,6 +1509,26 @@ async def distribute_send(request: Request, actor: dict = Depends(require_admin)
         _log(conn, "report_sent", actor=_actor_name(actor), request=request,
              detail="tg=%s · vk=%s" % (channels.get("tg"), channels.get("vk")))
     return {"ok": True, "channels": channels, "report": report}
+
+
+@router.post("/admin/distribute/send-range")
+async def distribute_send_range(payload: ReportRangeIn, request: Request,
+                                actor: dict = Depends(require_admin)) -> dict:
+    """Прислать отчёты для КАЖДОГО числа закрытых этапов из диапазона [from..to] — Лиру
+    в личку (@pw_spamer_bot). Нужно, когда до 00:00 могут закрыть ещё этап-другой: сразу
+    видишь распределение для каждого варианта. Конфиг stages_closed НЕ меняется."""
+    lo = min(payload.from_stages, payload.to_stages)
+    hi = max(payload.from_stages, payload.to_stages)
+    sent = []
+    for s in range(lo, hi + 1):
+        with db.connection() as conn:
+            report = _build_report(conn, stages_override=s)
+        ch = await _send_report_to_chats(report, force_dm=True)   # всегда в личку — это превью-варианты
+        sent.append({"stages": s, "channels": ch})
+    with db.connection() as conn:
+        _log(conn, "report_range", actor=_actor_name(actor), request=request,
+             detail="этапы %d–%d: прислано %d отчётов в личку" % (lo, hi, len(sent)))
+    return {"ok": True, "sent": sent}
 
 
 @router.get("/due")

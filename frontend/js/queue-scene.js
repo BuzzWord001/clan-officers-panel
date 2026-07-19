@@ -3839,6 +3839,14 @@
         '<button class="sec" id="qd-advance" title="Отчёт в чат + сдвиг очереди">✅ Распределение завершено — финализировать неделю</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
+      '<div class="q-admin-row" style="gap:6px;align-items:center;flex-wrap:wrap;background:rgba(224,162,74,.06);' +
+        'border:1px dashed rgba(224,162,74,.3);border-radius:8px;padding:7px 9px">' +
+        '<span style="font-size:11.5px;color:#caa66a">📨 Отчёты по диапазону этапов КХ ' +
+          '<span style="color:#8a795a">(до 00:00 могут закрыть ещё этап — пришлю отчёт по каждому варианту в личку):</span></span>' +
+        '<span style="font-size:12px;color:#f0dcb4">от <input type="number" id="qd-rng-from" min="0" max="7" value="' + stages + '" style="width:56px"> ' +
+          'до <input type="number" id="qd-rng-to" min="0" max="7" value="' + Math.min(7, stages + 2) + '" style="width:56px"></span>' +
+        '<button class="sec" id="qd-rng-send">📨 Прислать отчёты</button>' +
+      "</div>" +
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:4px">' +
         '<div style="font-size:12px;color:#caa66a">🌟 Суперспособность топ-3 (жетоны «вне очереди») ' +
           '<button class="sec" id="qd-priv-btn" style="padding:2px 8px">↻ показать</button></div>' +
@@ -3927,6 +3935,14 @@
       status("Считаю отчёт…");
       q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    });
+    wrap.querySelector("#qd-rng-send").addEventListener("click", function () {
+      var f = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-rng-from").value, 10) || 0));
+      var t = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-rng-to").value, 10) || 0));
+      status("Готовлю отчёты по этапам " + Math.min(f, t) + "–" + Math.max(f, t) + "…");
+      q("POST", "/queue/admin/distribute/send-range", { from_stages: f, to_stages: t }).then(function (d) {
+        status("✓ Прислал в личку (@pw_spamer_bot) отчётов: " + ((d.sent || []).length), true);
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-advance").addEventListener("click", function () {
       if (!confirm("Финализировать неделю?\n\n1) убрать вылетевших из клана\n2) отчёт уйдёт в офицерский чат (TG + VK)\n3) отмеченные «не забрал» останутся в очереди; получившие: с 🔁/планом — в конец, без повтора — выходят; остальные остаются в начале")) return;

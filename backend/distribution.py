@@ -191,12 +191,23 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             if r["mode"] == "pack":                # пачка целиком — первому в очереди
                 got[0][res] = have
                 pool[res] = 0
-            else:                                  # полными пачками/порциями сверху вниз
+            elif r["mode"] == "fixed":             # по `unit` шт КАЖДОМУ (грамоты/легендарки)
                 unit = r["unit"]
-                k = min(have // unit, N)           # скольким хватит ПОЛНОЙ пачки
+                k = min(have // unit, N)           # скольким хватит ровно по unit
                 for i in range(k):
                     got[i][res] = unit
-                pool[res] = have - k * unit         # остаток < пачки → в клан
+                pool[res] = have - k * unit         # остаток (не всем хватило) → в клан
+            else:                                  # stack: раздать ВСЕ стаки БЕЗ остатка (в идеале 0)
+                unit = r["unit"]
+                total_stacks = have // unit         # сколько полных стаков всего
+                # ПРИОРИТЕТ 1 — минимум остатка: делим все стаки поровну (round-robin),
+                # лишние (rem) достаются первым в очереди (топ-3 приоритетны). Остаток < unit.
+                base, rem = divmod(total_stacks, N)
+                for i in range(N):
+                    cnt = base + (1 if i < rem else 0)
+                    if cnt > 0:
+                        got[i][res] = cnt * unit
+                pool[res] = have - total_stacks * unit   # только неполный стак (< unit) → в клан
         rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
         rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
                  for i, e in enumerate(ordered)]
@@ -262,38 +273,36 @@ def _row(e, v, top3, shooter_lc, got, status) -> dict:
 
 
 def _build_groups(queues_out) -> list:
-    """Минимум групп: собираем получателей КАЖДОГО ресурса (пуловая раздача сверху вниз),
-    затем ресурсы с ОДИНАКОВЫМ списком получателей объединяем в одну группу.
-    Один человек может попадать в несколько групп (стоял в нескольких очередях / разные полосы)."""
-    alloc = {}   # res -> [{"receiver","via","ok"}] в порядке очереди
-    per = {}     # res -> сколько каждому (пачка: весь объём)
+    """ПРИОРИТЕТ 2 — минимум групп: объединяем ЛЮДЕЙ с ОДИНАКОВЫМ набором выданного
+    (ресурс→кол-во) в одну группу — им раздают за один заход все их ресурсы сразу.
+    Поддерживает РАЗНЫЕ количества у разных людей (round-robin раздача стаков без остатка):
+    кто получил ровно один и тот же набор {ресурс: сколько} — тот в одной группе."""
+    sig_map: dict = {}     # подпись набора -> {"people": [...], "got": {res: amt}}
+    order: list = []       # порядок появления подписей
     for Q in queues_out:
         for r in Q["rows"]:
-            if r["status"] != "ok":
+            if r["status"] != "ok" or not r["got"]:
                 continue
-            for res, amt in r["got"].items():
-                alloc.setdefault(res, []).append(
-                    {"receiver": r["receiver"], "via": r["via"], "ok": r.get("recipient_ok", True)})
-                per[res] = amt
+            sig = tuple(sorted(r["got"].items()))
+            if sig not in sig_map:
+                sig_map[sig] = {"people": [], "got": dict(r["got"])}
+                order.append(sig)
+            sig_map[sig]["people"].append(
+                {"receiver": r["receiver"], "via": r["via"], "ok": r.get("recipient_ok", True)})
     groups = []
-    by_key = {}
-    for res in RES_ORDER:
-        if res not in alloc:
-            continue
-        people = alloc[res]
-        key = tuple(sorted(p["receiver"].casefold() for p in people))   # объединяем по одинак. списку
-        mode = REWARDS[res]["mode"]
-        info = {"key": res, "name": res_name(res), "per": per[res], "count": len(people),
-                "total": (per[res] if mode == "pack" else per[res] * len(people)), "mode": mode}
-        if key in by_key:
-            by_key[key]["resources"].append(info)
-        else:
-            g = {"people": people, "resources": [info]}
-            by_key[key] = g
-            groups.append(g)
-    for g in groups:
+    for sig in order:
+        g = sig_map[sig]
         g["people"].sort(key=lambda p: p["receiver"].casefold())
-    groups.sort(key=lambda g: -len(g["people"]))   # крупные группы выше — раздавать эффективнее
+        resources = []
+        for res in RES_ORDER:                      # ресурсы группы — в каноничном порядке
+            if res not in g["got"]:
+                continue
+            amt = g["got"][res]
+            mode = REWARDS[res]["mode"]
+            resources.append({"key": res, "name": res_name(res), "per": amt, "count": len(g["people"]),
+                              "total": (amt if mode == "pack" else amt * len(g["people"])), "mode": mode})
+        groups.append({"people": g["people"], "resources": resources})
+    groups.sort(key=lambda gg: -len(gg["people"]))   # крупные группы выше — раздавать эффективнее
     return groups
 
 
