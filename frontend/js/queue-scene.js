@@ -1005,7 +1005,7 @@
     ".qs-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-family:system-ui;" +
       "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2;white-space:nowrap}" +
     /* мини-табличка в нижней полосе очереди (кликабельная, светится при наведении) */
-    ".qs-lane-board{position:relative;display:inline-block;width:76px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
+    ".qs-lane-board{position:relative;display:inline-block;width:92px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
     ".qs-lane-board-idle,.qs-lane-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
     ".qs-lane-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
@@ -1312,7 +1312,10 @@
 
   // ── одна моделька на сцене: позиция %, масштаб по глубине (ниже=крупнее), y-сортировка ──
   function renderChar(e, p, meCanon, boothQ, idx) {
-    var scale = 0.5 + (p.y / 100) * 0.62;         // ниже на экране = ближе = крупнее
+    // Перспектива (ниже на экране = ближе = крупнее) × глобальный размер моделей на
+    // сцене (админ-слайдер «Размер моделей»). Даже при уменьшении дефолта перспектива
+    // сохраняется — дальние всё равно мельче ближних. Полосу внизу это не затрагивает.
+    var scale = (0.5 + (p.y / 100) * 0.62) * getSize("models", 1);
     var mi = modelInfo(e);
     var mine = canon(e.main_nick) === meCanon;
     // Очередь ОБЫЧНЫХ ресурсов (0) на картинке идёт справа налево → зеркалим модели,
@@ -2750,6 +2753,10 @@
             '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
               'Растянутость очереди: <b id="qa-spread-v">' + getSize("spread", 1).toFixed(2) + '</b>' +
               '<input type="range" id="qa-spread" min="0.4" max="1" step="0.05" value="' + getSize("spread", 1) + '" style="width:240px"></label>' +
+            '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a" ' +
+              'title="Размер моделей игроков на СЦЕНЕ по умолчанию. Перспектива (дальше=меньше) сохраняется. Полосу внизу не меняет.">' +
+              'Размер моделей на сцене: <b id="qa-models-v">' + getSize("models", 1).toFixed(2) + '</b>' +
+              '<input type="range" id="qa-models" min="0.4" max="1.6" step="0.05" value="' + getSize("models", 1) + '" style="width:240px"></label>' +
           "</div>" +
         "</div></details>" +
 
@@ -3053,6 +3060,12 @@
     if (lEl) {
       lEl.addEventListener("input", function () { lV.textContent = lEl.value; });
       lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
+    }
+    // глобальный размер моделей на СЦЕНЕ (× перспектива). Полосу внизу не трогает.
+    var mEl = box.querySelector("#qa-models"), mV = box.querySelector("#qa-models-v");
+    if (mEl) {
+      mEl.addEventListener("input", function () { mV.textContent = (+mEl.value).toFixed(2); });
+      mEl.addEventListener("change", function () { saveCfg("size:models", +mEl.value); render(_lastState); });
     }
     // панели — каждая в свою секцию (best practice: по смыслу)
     var secDist = box.querySelector("#qsec-dist");
