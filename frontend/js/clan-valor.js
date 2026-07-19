@@ -301,7 +301,24 @@
     // ── Роли по СТЕПЕНИ единичного перевыполнения (пик ×N от нормы) ──
     absolute:   { label: "Абсолют доблести", icon: "☀", color: "#ffe07a",
                   cls: "tag-ach", glow: 1,
-                  tip: "Почти абсолютный максимум — пик ≥13× нормы (≈189)." },
+                  tip: "Абсолютный максимум — пик ≥13× нормы (≈260 доблести)." },
+    // ── ВЕРШИНЫ выше Абсолюта: пик 15×→22× (реальный максимум за неделю ≈441 при
+    //    ~5 забегах на адептов; 448 — теоретический потолок при 6). По возрастанию эпичности. ──
+    nova:       { label: "Сверхновая доблести", icon: "✷", color: "#ff79d4",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Сверхчеловеческое перевыполнение — пик ≥15× нормы (≈300)." },
+    demigod:    { label: "Полубог доблести", icon: "❂", color: "#ff79d4",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Полубожественный размах — пик ≥17× нормы (≈340)." },
+    deity:      { label: "Божество доблести", icon: "✹", color: "#9b7bff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Божественное величие — пик ≥19× нормы (≈380)." },
+    sovereign:  { label: "Владыка мироздания", icon: "✵", color: "#9b7bff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Владыка мироздания — пик ≥21× нормы (≈420)." },
+    zenith:     { label: "Зенит доблести", icon: "❊", color: "#66f0ff",
+                  cls: "tag-ach", glow: 1,
+                  tip: "Абсолютный предел доблести — пик ≥22× нормы (≈441, реальный максимум за неделю)." },
     overlord:   { label: "Властелин доблести", icon: "☄", color: "#ff86e0",
                   cls: "tag-ach", glow: 1,
                   tip: "Колоссальное перевыполнение — пик ≥9.5× нормы." },
@@ -420,7 +437,8 @@
   // Семейства ролей-достижений за доблесть.
   const FLAW_TAGS  = new Set(["immortal", "legend", "ace", "etalon"]); // legacy
   const COMBO_TAGS = new Set(["combo_legend", "combo_record", "combo_over"]); // legacy
-  const PEAK_TAGS  = new Set(["absolute", "overlord", "titan", "phenom",
+  const PEAK_TAGS  = new Set(["zenith", "sovereign", "deity", "demigod", "nova",
+                               "absolute", "overlord", "titan", "phenom",
                                "record", "triple", "double", "over", "met"]);
   // Новая ветка — серии перевыполнения (от 2 недель до 10 лет).
   const STREAK_TAGS = new Set(["streak2", "streak3", "month1", "month2",
@@ -441,14 +459,21 @@
     epic:      { name: "Эпическое",   color: "#c77dff", pts: 50 },
     legendary: { name: "Легендарное", color: "#ff8000", pts: 100 },
     mythic:    { name: "Мифическое",  color: "#ffd866", pts: 250 },
+    // Выше мифического — вершины доблести (роли за пик 15×→22×)
+    divine:       { name: "Божественное", color: "#ff79d4", pts: 500 },
+    transcendent: { name: "Запредельное", color: "#8ec7ff", pts: 1000 },
   };
-  const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary", "mythic"];
+  const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary",
+                        "mythic", "divine", "transcendent"];
   // Какая редкость у каждого тира достижения (магнитуда + серии).
   const TIER_RARITY = {
     // Магнитуда (лучшая неделя ×N)
     met: "common",
     over: "uncommon", double: "uncommon", triple: "rare", record: "rare",
     phenom: "epic", titan: "epic", overlord: "legendary", absolute: "mythic",
+    // вершины выше Абсолюта (по возрастанию эпичности)
+    nova: "divine", demigod: "divine", deity: "transcendent",
+    sovereign: "transcendent", zenith: "transcendent",
     // Серии перевыполнения (legacy, оставлены для совместимости)
     streak2: "common", streak3: "uncommon", month1: "uncommon",
     month2: "rare", month3: "rare", half1: "epic",
@@ -582,7 +607,12 @@
     phenom:   "Лучшая неделя ≥ 5.5× нормы.",
     titan:    "Лучшая неделя ≥ 7× нормы.",
     overlord: "Лучшая неделя ≥ 9.5× нормы.",
-    absolute: "Лучшая неделя ≥ 13× нормы (≈ 189 доблести) — почти технический потолок.",
+    absolute: "Лучшая неделя ≥ 13× нормы (≈ 260 доблести).",
+    nova:     "Лучшая неделя ≥ 15× нормы (≈ 300 доблести).",
+    demigod:  "Лучшая неделя ≥ 17× нормы (≈ 340 доблести).",
+    deity:    "Лучшая неделя ≥ 19× нормы (≈ 380 доблести).",
+    sovereign:"Лучшая неделя ≥ 21× нормы (≈ 420 доблести).",
+    zenith:   "Лучшая неделя ≥ 22× нормы (≈ 441 доблести) — реальный максимум за неделю.",
     streak2:  "Перевыполни норму 2 недели подряд.",
     streak3:  "Перевыполни норму 3 недели подряд.",
     month1:   "Месяц перевыполнения подряд — 4 недели.",
@@ -1905,6 +1935,10 @@
     { key: "triple", mult: 3 }, { key: "record", mult: 4 },
     { key: "phenom", mult: 5.5 }, { key: "titan", mult: 7 },
     { key: "overlord", mult: 9.5 }, { key: "absolute", mult: 13 },
+    // вершины выше Абсолюта — до реального максимума ≈441 доблести (22× нормы)
+    { key: "nova", mult: 15 }, { key: "demigod", mult: 17 },
+    { key: "deity", mult: 19 }, { key: "sovereign", mult: 21 },
+    { key: "zenith", mult: 22 },
   ];
   const STREAK_LADDER_F = [
     { key: "streak2", w: 2 }, { key: "streak3", w: 3 }, { key: "month1", w: 4 },

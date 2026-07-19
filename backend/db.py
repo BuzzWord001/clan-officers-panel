@@ -4295,9 +4295,19 @@ def _achievement(comp: dict | None) -> str | None:
         if cgeo >= 2.0:
             return "combo_record"   # Серийный рекордсмен
         return "combo_over"         # Серия перевыполнений
-    # 3) Пик единичного перевыполнения (до ×13.5 = абсолютный максимум 189)
+    # 3) Пик единичного перевыполнения (реальный максимум за неделю ≈441 = 22× нормы)
+    if peak >= 22.0:
+        return "zenith"     # Зенит доблести (≈441 — реальный максимум)
+    if peak >= 21.0:
+        return "sovereign"  # Владыка мироздания
+    if peak >= 19.0:
+        return "deity"      # Божество доблести
+    if peak >= 17.0:
+        return "demigod"    # Полубог доблести
+    if peak >= 15.0:
+        return "nova"       # Сверхновая доблести
     if peak >= 13.0:
-        return "absolute"   # Абсолют доблести (≈189)
+        return "absolute"   # Абсолют доблести (≈260)
     if peak >= 9.5:
         return "overlord"   # Властелин доблести
     if peak >= 7.0:
@@ -4318,11 +4328,16 @@ def _achievement(comp: dict | None) -> str | None:
 # ── Новая система достижений за доблесть (2026-06) ──────────────────────
 # Технический потолок доблести за неделю в PW — относительно него
 # оценивается «ценность» каждого перевыполнения (сколько headroom закрыто).
-VALOR_MAX_WEEKLY = 189
+VALOR_MAX_WEEKLY = 441   # реальный максимум за неделю (≈5 забегов на адептов; 448 теор.)
 
 # Магнитудная ветка: роль по ЛУЧШЕЙ единичной неделе (пик ×N от нормы).
 def _peak_tier(peak: float):
-    if peak >= 13.0: return "absolute"   # Абсолют доблести (≈189)
+    if peak >= 22.0: return "zenith"     # Зенит доблести (≈441 — реальный максимум)
+    if peak >= 21.0: return "sovereign"  # Владыка мироздания
+    if peak >= 19.0: return "deity"      # Божество доблести
+    if peak >= 17.0: return "demigod"    # Полубог доблести
+    if peak >= 15.0: return "nova"       # Сверхновая доблести
+    if peak >= 13.0: return "absolute"   # Абсолют доблести (≈260)
     if peak >= 9.5:  return "overlord"   # Властелин доблести
     if peak >= 7.0:  return "titan"      # Титан доблести
     if peak >= 5.5:  return "phenom"     # Феномен доблести
@@ -4511,7 +4526,10 @@ def _streak_rarity(avg_ofs: float) -> str:
 # База доблести по руне (потолок 35 = 35% ценности). Серии её множат до ×2.15
 # → бонус серий до ~40 (40%).
 _MAG_BASE = {"over": 7.0, "double": 11.0, "triple": 15.0, "record": 20.0,
-             "phenom": 25.0, "titan": 28.0, "overlord": 31.0, "absolute": 35.0}
+             "phenom": 25.0, "titan": 28.0, "overlord": 31.0, "absolute": 35.0,
+             # вершины выше Абсолюта — растущая ценность
+             "nova": 38.0, "demigod": 41.0, "deity": 44.0,
+             "sovereign": 47.0, "zenith": 50.0}
 MAG_BASE_MAX = 35.0
 
 
@@ -4590,10 +4608,13 @@ def set_valor_weights(vals: dict, actor: dict) -> dict:
 # Очки достижений по редкости тира (зеркало фронтовой RARITY) — из них
 # складывается «achievement score» игрока, который и даёт компонент ценности.
 _RARITY_PTS = {"common": 5, "uncommon": 10, "rare": 25, "epic": 50,
-               "legendary": 100, "mythic": 250}
+               "legendary": 100, "mythic": 250,
+               "divine": 500, "transcendent": 1000}   # вершины выше мифического
 _TIER_RARITY = {
     "over": "uncommon", "double": "uncommon", "triple": "rare", "record": "rare",
     "phenom": "epic", "titan": "epic", "overlord": "legendary", "absolute": "mythic",
+    "nova": "divine", "demigod": "divine", "deity": "transcendent",
+    "sovereign": "transcendent", "zenith": "transcendent",
     "streak2": "common", "streak3": "uncommon", "month1": "uncommon",
     "month2": "rare", "month3": "rare", "half1": "epic",
     "year1": "legendary", "year2": "legendary", "year3": "mythic",
@@ -4601,7 +4622,9 @@ _TIER_RARITY = {
 }
 # Пороги магнитуды (роль по лучшей единичной неделе, пик ×N).
 _MAG_THRESH = [(1.5, "over"), (2, "double"), (3, "triple"), (4, "record"),
-               (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute")]
+               (5.5, "phenom"), (7, "titan"), (9.5, "overlord"), (13, "absolute"),
+               (15, "nova"), (17, "demigod"), (19, "deity"),
+               (21, "sovereign"), (22, "zenith")]
 
 # ── Путь доблести: накопительный XP (НЕ сбрасывается, всегда можно докачать) ──
 # XP за неделю = набранная доблесть × бонус за серию перевыполнения, поэтому
