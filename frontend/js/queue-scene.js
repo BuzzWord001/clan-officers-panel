@@ -2383,7 +2383,7 @@
       if (o.env) return uploadedUrl(o.env.key) || "";
       var k = o.key || "", d = "";
       if (k.indexOf("lavka:") === 0) d = "assets/queue/scene/lavka-" + k.slice(6) + ".webp?v=3";
-      else if (k.indexOf("cnt:") === 0) d = "assets/queue/ui/counter2.webp?v=2";
+      else if (k.indexOf("cnt:") === 0) d = "assets/queue/ui/board-idle.webp?v=1";
       else if (k === "mount") d = "assets/queue/scene/item/mount-cilin.webp";
       else if (k === "fountain") d = "assets/queue/scene/fountain-" + (isNight() ? "night" : "day") + ".webp?v=1";
       else if (k === "wallet") d = "assets/queue/ui/wallet2.webp?v=1";
@@ -3601,8 +3601,14 @@
         'на финализации (вс 00:00) проходят дальше. Отметь тех, кто НЕ успел забрать до 00:00 — они останутся в очереди первыми.</div>' +
       '<div class="q-admin-row" style="margin:0 0 6px"><button class="sec" id="qdue-refresh">↻ Обновить список</button>' +
         '<span id="qdue-status" style="font-size:11.5px;color:#e0a86a"></span></div>' +
-      '<div id="qdue-list" style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto"></div>';
+      '<div id="qdue-list" style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto"></div>' +
+      '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(224,162,74,.25)">' +
+        '<div style="font-size:12px;color:#caa66a">↩ Получившие на прошлой финализации — вернуть, если не забрал</div>' +
+        '<div style="font-size:11.5px;color:#8a795a;margin:2px 0 8px">Если отметить «не забрал» не успели до вс 00:00 и человек уже вышел из очереди — верни его: встанет на СВОЁ прежнее место.</div>' +
+        '<div id="qsrv-list" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow:auto"></div>' +
+      "</div>";
     var listHost = wrap.querySelector("#qdue-list");
+    var srvHost = wrap.querySelector("#qsrv-list");
     var st = wrap.querySelector("#qdue-status");
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
     function reload() {
@@ -3647,8 +3653,39 @@
         status(e.status === 403 ? "Доступно офицеру/админу." : ("Ошибка: " + (e.detail || e.message)));
       });
     }
-    wrap.querySelector("#qdue-refresh").addEventListener("click", reload);
+    function reloadServed() {
+      q("GET", "/queue/served-last").then(function (d) {
+        var served = d.served || [];
+        srvHost.innerHTML = "";
+        if (!served.length) {
+          srvHost.innerHTML = '<span style="font-size:11.5px;color:#8a795a">Пусто — снимок появится после финализации недели (вс 00:00).</span>';
+          return;
+        }
+        served.forEach(function (s) {
+          var row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:9px;font-size:12.5px;color:#f6ead2;" +
+            "padding:5px 8px;border:1px solid rgba(143,195,106,.22);border-radius:8px";
+          var info = document.createElement("span"); info.style.cssText = "flex:1;min-width:0";
+          info.innerHTML = '<b>' + esc(s.nick) + '</b> <span style="color:#a58c68">· ' + esc(QN[s.queue] || "") +
+            "</span>" + (s.resource ? ' · ' + esc(s.resource) : "");
+          row.appendChild(info);
+          var btn = document.createElement("button");
+          btn.className = "sec"; btn.textContent = "↩ Не забрал — вернуть";
+          btn.addEventListener("click", function () {
+            btn.disabled = true;
+            q("POST", "/queue/restore-uncollected", { served_id: s.id }).then(function () {
+              status("✓ " + s.nick + " возвращён в очередь на своё место", true);
+              reloadServed(); refresh();
+            }).catch(function (e) { btn.disabled = false; status("Ошибка: " + (e.detail || e.message)); });
+          });
+          row.appendChild(btn);
+          srvHost.appendChild(row);
+        });
+      }).catch(function () {});
+    }
+    wrap.querySelector("#qdue-refresh").addEventListener("click", function () { reload(); reloadServed(); });
     reload();
+    reloadServed();
     return wrap;
   }
 

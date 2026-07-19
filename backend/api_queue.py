@@ -202,6 +202,24 @@ def ensure_queue_tables() -> None:
               created_at TEXT NOT NULL DEFAULT '',
               seen       INTEGER NOT NULL DEFAULT 0
             );
+
+            -- Снимок «получивших ресурс» на ПОСЛЕДНЕЙ финализации (вс 00:00). Нужен,
+            -- чтобы вернуть человека в очередь, если офицер отметил «не забрал» уже
+            -- ПОСЛЕ сдвига (когда запись из очереди уже удалена). Перезаписывается каждый advance.
+            CREATE TABLE IF NOT EXISTS queue_served_last (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              queue      INTEGER NOT NULL,
+              orig_pos   REAL    NOT NULL,            -- позиция ДО сдвига (куда вернуть)
+              main_canon TEXT    NOT NULL DEFAULT '',
+              nick       TEXT    NOT NULL,
+              cls        TEXT    NOT NULL DEFAULT '',
+              resource   TEXT    NOT NULL DEFAULT '',
+              recipient  TEXT    NOT NULL DEFAULT '',
+              auto_repeat INTEGER NOT NULL DEFAULT 0,
+              auto_plan  TEXT    NOT NULL DEFAULT '',
+              added_by   TEXT    NOT NULL DEFAULT '',
+              served_at  TEXT    NOT NULL DEFAULT ''
+            );
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_queue_notices_canon ON queue_notices(canon, seen)")
@@ -403,6 +421,10 @@ class SpouseIn(BaseModel):
 class MarkUncollectedIn(BaseModel):
     entry_id: int
     uncollected: bool = True     # True = не забрал → остаётся в очереди; False = забрал (пройдёт дальше)
+
+
+class RestoreUncollectedIn(BaseModel):
+    served_id: int               # id строки из снимка queue_served_last (получивший на прошлой финализации)
 
 
 class PrivClaimIn(BaseModel):
@@ -1518,6 +1540,49 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
     return {"ok": True}
 
 
+@router.get("/served-last")
+def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Кто «получил» ресурс на ПОСЛЕДНЕЙ финализации (вс 00:00) и уже вышел из очереди.
+    Если офицер не успел отметить «не забрал» до сдвига — отсюда его можно вернуть."""
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT id, queue, orig_pos, nick, resource FROM queue_served_last ORDER BY queue, orig_pos"
+        ).fetchall()
+    out = [{"id": r["id"], "queue": r["queue"], "nick": r["nick"],
+            "resource": distribution.res_name(r["resource"]) if r["resource"] else ""} for r in rows]
+    return {"served": out}
+
+
+@router.post("/restore-uncollected")
+def restore_uncollected(payload: RestoreUncollectedIn, request: Request,
+                        actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Вернуть в очередь того, кто НЕ забрал ресурс, но уже вылетел при сдвиге (отметили
+    после вс 00:00). Ставит его на ПРЕЖНЮЮ позицию (orig_pos), раздвигая остальных."""
+    with db.connection() as conn:
+        s = conn.execute("SELECT * FROM queue_served_last WHERE id=?", (payload.served_id,)).fetchone()
+        if not s:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        q, target = s["queue"], s["orig_pos"]
+        # раздвигаем очередь: всем с pos >= orig_pos сдвигаем на +1, освобождая место
+        conn.execute("UPDATE queue_entries SET pos = pos + 1 WHERE queue=? AND pos >= ?", (q, target))
+        existing = conn.execute(
+            "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+            (q, s["main_canon"])).fetchone()
+        if existing:                                  # уже в очереди (напр. авто-повтор в конце) → на место
+            conn.execute("UPDATE queue_entries SET pos=?, not_collected=0 WHERE id=?", (target, existing["id"]))
+        else:                                         # вылетел → вставляем заново на прежнее место
+            conn.execute(
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
+                " auto_repeat, auto_plan, added_by, added_at, not_collected)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
+                (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
+                 s["auto_repeat"], s["auto_plan"], "restore", _now()))
+        conn.execute("DELETE FROM queue_served_last WHERE id=?", (payload.served_id,))
+        _log(conn, "restore_uncollected", actor=_actor_name(actor), nick=s["nick"], queue=q,
+             request=request, detail="возвращён в очередь (не забрал ресурс — отмечен после сдвига)")
+    return {"ok": True}
+
+
 def _make_privileged(conn, main_canon, nick, cls, res, add_stacks, added_by):
     """Ставит ОТДЕЛЬНУЮ светящуюся модель ПЕРВОЙ в очереди 0 (жетон применён). ВАЖНО:
     НЕ трогает обычную запись человека (privileged=0) — если он уже стоял в очереди,
@@ -1849,10 +1914,11 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
                                    if r["status"] == "ok" and r["id"] is not None}
     requeued = left_after = stayed_uncollected = 0
     with db.connection() as conn:
+        conn.execute("DELETE FROM queue_served_last")   # снимок «получивших» перезаписываем
         for q in QUEUES:
             rows = conn.execute(
-                "SELECT id, auto_repeat, auto_plan, not_collected FROM queue_entries"
-                " WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
+                "SELECT id, pos, main_canon, nick, cls, resource, recipient, auto_repeat, auto_plan, not_collected"
+                " FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
             served = served_by_q.get(q, set())
             keep_ids = []          # остаются впереди (не получили ИЛИ не забрали)
             requeue_ids = []       # авто-повтор/план → в конец
@@ -1864,6 +1930,14 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
                     conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
                     stayed_uncollected += 1
                 else:                                  # забрал → очередь проходит дальше
+                    # снимок на случай, если офицер отметит «не забрал» уже ПОСЛЕ сдвига —
+                    # тогда вернём человека в очередь на его прежнюю позицию (orig_pos).
+                    conn.execute(
+                        "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
+                        " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
+                         r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "advance", _now()))
                     try:
                         plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
                     except (ValueError, TypeError):
