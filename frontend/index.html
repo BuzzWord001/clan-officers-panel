@@ -44,6 +44,7 @@
       border:1px solid currentColor; white-space:nowrap; letter-spacing:.2px; }
     .reg-role-elite { color:#ff8a94; background:rgba(255,90,106,.16); text-shadow:0 1px 2px rgba(0,0,0,.6); }
     .reg-role-vet   { color:#ffd24a; background:rgba(255,200,80,.15); text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    .reg-role-pending { color:#ffb15a; background:rgba(255,150,60,.18); text-shadow:0 1px 2px rgba(0,0,0,.6); }
   </style>
   <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
        устаревшую вкладку из кэша (старые иконки/разметку). -->
@@ -143,6 +144,10 @@
             <label class="vet-chk"><input type="checkbox" id="f-veteran"> ★ Сразу Ветеран</label>
             <label class="elite-chk" title="Топ по урону — сразу выдать роль Элита в Доблести"><input type="checkbox" id="f-elite"> ⚔ Сразу Элита</label>
           </div>
+          <div class="ff optional" id="f-rolep-row" hidden>
+            <label class="rolep-chk" title="Пока включено — КАЖДОМУ новому (и от тебя, и от офицеров) ставится флаг «роль пока не выдана в игре», пока не выключишь">
+              <input type="checkbox" id="f-role-pending"> ⏳ Роль пока не выдана в игре — для всех новых</label>
+          </div>
           <div class="ff">
             <button type="submit">Добавить</button>
           </div>
@@ -210,14 +215,14 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1816500000"></script>
+  <script src="js/api.js?v=1880600000"></script>
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/global-search.js?v=1817000000"></script>
   <script src="js/queue-tab.js?v=1811000000"></script>
   <script src="js/dateutil.js?v=1795930000"></script>
   <script src="js/help-tips.js?v=1802000000"></script>
   <script src="js/note-scroll.js?v=1801400000"></script>
-  <script src="js/app.js?v=1868000000"></script>
+  <script src="js/app.js?v=1880600000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1800100000"></script>
   <script src="js/chamber-door.js?v=1800300000"></script>

@@ -551,6 +551,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass
 
+    # 2026-07-19: флаг «роль пока не выдана в игре» на записи реестра. Глобальный
+    # тумблер (kv_meta.acc_role_pending) при добавлении ставит этот флаг всем новым
+    # (и от Лира, и от офицеров), пока Лир его не выключит; снимается по человеку.
+    try:
+        conn.execute("ALTER TABLE acceptances ADD COLUMN role_pending INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-08: архив скриншотов сбора доблести (по неделям) — ссылки на R2.
     # Сами кадры в R2 (заливает pw-valor-tracker), здесь — метаданные/ссылки.
     try:
@@ -888,6 +896,7 @@ def _row_to_acceptance(row: sqlite3.Row) -> dict[str, Any]:
         "archived_at": row["archived_at"] if "archived_at" in keys else "",
         "archived_by": row["archived_by"] if "archived_by" in keys else "",
         "archived_reason": row["archived_reason"] if "archived_reason" in keys else "",
+        "role_pending": bool(row["role_pending"]) if "role_pending" in keys else False,
     }
 
 
@@ -1391,6 +1400,25 @@ def get_acceptance(acc_id: int) -> dict[str, Any] | None:
         return _row_to_acceptance(row) if row else None
 
 
+_ROLE_PENDING_KEY = "acc_role_pending"
+
+
+def get_role_pending_default() -> bool:
+    """Глобальный тумблер «роль пока не выдана в игре» для новых записей реестра."""
+    with connection() as conn:
+        r = conn.execute("SELECT v FROM kv_meta WHERE k = ?", (_ROLE_PENDING_KEY,)).fetchone()
+        return bool(r and str(r["v"]) == "1")
+
+
+def set_role_pending_default(on: bool) -> bool:
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO kv_meta(k, v) VALUES(?, ?) "
+            "ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+            (_ROLE_PENDING_KEY, "1" if on else "0"))
+    return on
+
+
 def create_acceptance(
     *,
     game_nick: str,
@@ -1399,15 +1427,19 @@ def create_acceptance(
     note: str,
     veteran: bool = False,
     elite: bool = False,
+    role_pending: bool | None = None,
     actor: dict[str, str],
 ) -> dict[str, Any]:
     now = datetime.utcnow().isoformat(timespec="seconds")
+    # role_pending не задан явно → берём глобальный тумблер (активен для всех новых,
+    # кого добавляет Лир И офицеры, пока Лир его не выключит).
+    rp = get_role_pending_default() if role_pending is None else bool(role_pending)
     with connection() as conn:
         cur = conn.execute(
             """INSERT INTO acceptances
                (game_nick, title, accepted_date, note, created_at, updated_at,
-                created_by_platform, created_by_id, created_by_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_by_platform, created_by_id, created_by_name, role_pending)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 game_nick.strip(),
                 title.strip(),
@@ -1418,6 +1450,7 @@ def create_acceptance(
                 actor["platform"],
                 str(actor["id"]),
                 actor["name"],
+                1 if rp else 0,
             ),
         )
         acc_id = cur.lastrowid
@@ -1461,6 +1494,7 @@ def update_acceptance(
     note: str | None,
     veteran: bool | None = None,
     elite: bool | None = None,
+    role_pending: bool | None = None,
     actor: dict[str, str],
 ) -> dict[str, Any] | None:
     with connection() as conn:
@@ -1474,13 +1508,16 @@ def update_acceptance(
         new_title = (before["title"] if title is None else title).strip()
         new_date = accepted_date or before["accepted_date"]
         new_note = before["note"] if note is None else note.strip()
+        cur_rp = (before["role_pending"] if "role_pending" in before.keys() else 0)
+        new_rp = cur_rp if role_pending is None else (1 if role_pending else 0)
         now = datetime.utcnow().isoformat(timespec="seconds")
 
         conn.execute(
             """UPDATE acceptances
-               SET game_nick = ?, title = ?, accepted_date = ?, note = ?, updated_at = ?
+               SET game_nick = ?, title = ?, accepted_date = ?, note = ?, updated_at = ?,
+                   role_pending = ?
                WHERE id = ?""",
-            (new_nick, new_title, new_date, new_note, now, acc_id),
+            (new_nick, new_title, new_date, new_note, now, new_rp, acc_id),
         )
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)

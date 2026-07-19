@@ -11,6 +11,7 @@ class AcceptanceIn(BaseModel):
     note: str = Field(default="", max_length=200)
     veteran: bool = False   # сразу пометить ролью «Ветеран» (твин старичка)
     elite: bool = False     # сразу пометить ролью «Элита» (Топ по урону)
+    role_pending: bool | None = None   # None=взять глобальный тумблер; True/False=явно
 
 
 class AcceptanceUpdate(BaseModel):
@@ -20,6 +21,7 @@ class AcceptanceUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=200)
     veteran: bool | None = None   # None=не менять, True/False=поставить/снять роль
     elite: bool | None = None     # None=не менять, True/False=поставить/снять «Элита»
+    role_pending: bool | None = None   # None=не менять; True/False=роль (не)выдана в игре
 
 
 class AcceptanceOut(BaseModel):
@@ -38,6 +40,7 @@ class AcceptanceOut(BaseModel):
     archived: bool = False
     veteran: bool = False
     elite: bool = False
+    role_pending: bool = False   # роль пока НЕ выдана в игре (флаг реестра)
     archived_at: str = ""
     archived_by: str = ""
     archived_reason: str = ""

@@ -252,6 +252,27 @@
     }
   });
 
+  // ── Глобальный тумблер «роль пока не выдана в игре» (виден только админу=Лиру).
+  // Включён → КАЖДОМУ новому (и от Лира, и от офицеров) ставится флаг на сервере,
+  // пока Лир не выключит. Снимается по человеку — кликом по бейджу / в редакторе.
+  if (me.role === "admin" && $("f-role-pending")) {
+    const rp = $("f-role-pending"), row = $("f-rolep-row");
+    if (row) row.hidden = false;
+    API.rolePendingGet().then((d) => { rp.checked = !!(d && d.enabled); }).catch(() => {});
+    rp.addEventListener("change", async () => {
+      try {
+        const d = await API.rolePendingSet(rp.checked);
+        rp.checked = !!(d && d.enabled);
+        setStatus(rp.checked
+          ? "✓ Флаг «роль не выдана в игре» включён — ставится всем новым (и от офицеров)"
+          : "✓ Флаг «роль не выдана в игре» выключен");
+      } catch (e) {
+        rp.checked = !rp.checked;
+        setStatus("✗ Ошибка: " + (e.detail || e.message));
+      }
+    });
+  }
+
   function setStatus(text) {
     $("form-status").textContent = text;
     if (text.startsWith("✓") || text.startsWith("✗")) {
@@ -328,18 +349,26 @@
       nameEl.className = "reg-nick-name";
       nameEl.textContent = r.game_nick;
       nickCell.appendChild(nameEl);
-      if (r.elite || r.veteran) {
+      if (r.elite || r.veteran || r.role_pending) {
         const box = document.createElement("div");
         box.className = "reg-roles";
-        const addRole = (cls, txt, title) => {
+        const addRole = (cls, txt, title, onClick) => {
           const b = document.createElement("span");
           b.className = "reg-role " + cls;
           b.textContent = txt;
           b.title = title;
+          if (onClick) { b.style.cursor = "pointer"; b.addEventListener("click", onClick); }
           box.appendChild(b);
         };
         if (r.elite)   addRole("reg-role-elite", "⚔ Элита", "Роль Элита (Топ по урону)");
         if (r.veteran) addRole("reg-role-vet", "★ Ветеран", "Роль Ветеран");
+        if (r.role_pending) addRole("reg-role-pending", "⏳ роль не выдана в игре",
+          me.role === "admin" ? "Роль ещё не выдана в игре. Нажми, когда выдашь — снять флаг."
+                              : "Роль ещё не выдана в игре",
+          me.role === "admin" ? async () => {
+            try { await API.update(r.id, { role_pending: false }); await reload(); }
+            catch (e) { setStatus("✗ Ошибка: " + (e.detail || e.message)); }
+          } : null);
         nickCell.appendChild(box);
       }
       tr.querySelector(".title").textContent = r.title || "—";
@@ -496,6 +525,8 @@
       + `<input type="checkbox" class="ed-vet" ${r.veteran ? "checked" : ""}> ★Вет</label>`
       + `<label class="ed-elite-lbl" title="Роль Элита (Топ по урону) в Доблести">`
       + `<input type="checkbox" class="ed-elite" ${r.elite ? "checked" : ""}> ⚔Элита</label>`
+      + `<label class="ed-rolep-lbl" title="Роль пока НЕ выдана в игре (снять, когда выдашь)">`
+      + `<input type="checkbox" class="ed-rolep" ${r.role_pending ? "checked" : ""}> ⏳не выдана</label>`
       + `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
 
     DateRu.bindDateInput(dateCell.querySelector("input"));
@@ -531,6 +562,7 @@
       }
       const vetBox = actions.querySelector(".ed-vet");
       const eliteBox = actions.querySelector(".ed-elite");
+      const rolepBox = actions.querySelector(".ed-rolep");
       const payload = {
         game_nick:     nickCell.querySelector("input").value.trim(),
         title:         titleCell.querySelector("input").value.trim(),
@@ -538,6 +570,7 @@
         note:          noteCell.querySelector("input").value.trim(),
         veteran:       vetBox ? vetBox.checked : undefined,
         elite:         eliteBox ? eliteBox.checked : undefined,
+        role_pending:  rolepBox ? rolepBox.checked : undefined,
       };
       try {
         await API.update(r.id, payload);
