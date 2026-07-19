@@ -996,6 +996,21 @@
     ".qs-lb-hover{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-list-btn:hover .qs-lb-hover{opacity:1}" +
     ".qs-list-btn:active{filter:brightness(.9)}" +
+    /* ЕДИНАЯ ТАБЛИЧКА: сфера-счётчик (сверху) + «Посмотреть список» + свечение по наведению */
+    ".qs-board{cursor:pointer;border:0;background:none;padding:0;position:relative;display:block;line-height:0;pointer-events:auto}" +
+    ".qs-board-idle,.qs-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 5px 9px rgba(0,0,0,.55))}" +
+    ".qs-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .2s}" +
+    ".qs-board:hover .qs-board-glow{opacity:1}" +
+    ".qs-board:active{filter:brightness(.93)}" +
+    ".qs-board-n{position:absolute;top:13.5%;left:50%;transform:translate(-50%,-50%);font:900 17px system-ui;" +
+      "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2}" +
+    /* мини-табличка в нижней полосе очереди (кликабельная, светится при наведении) */
+    ".qs-lane-board{position:relative;display:inline-block;width:44px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
+    ".qs-lane-board-idle,.qs-lane-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
+    ".qs-lane-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
+    ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
+    ".qs-lane-board-n{position:absolute;top:13.5%;left:50%;transform:translate(-50%,-50%);font:900 12px system-ui;" +
+      "color:#3a2208;text-shadow:0 1px 1px rgba(255,238,200,.7);pointer-events:none}" +
     ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
@@ -1629,20 +1644,7 @@
       var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
       var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
       var showLeave = iAmIn || iAmPriv || adminIn;   // красная «Выйти»
-      // кнопка «Список»
-      if (!isHidden("btn-list:" + b.q)) {
-      var lp = placedPos("btn-list:" + b.q, b.ui.x, b.ui.y - 3);
-      var listBtn = document.createElement("button");
-      listBtn.className = "qs-list-btn qs-btn-abs";
-      listBtn.style.cssText = "left:" + lp.x.toFixed(2) + "%;top:" + lp.y.toFixed(2) + "%;--gc:" + b.accent;
-      listBtn.title = "Показать всю очередь";
-      listBtn.innerHTML = '<img class="qs-lb-normal" src="assets/queue/ui/list-normal.webp?v=2" alt="">' +
-        '<img class="qs-lb-hover" src="assets/queue/ui/list-hover.webp?v=2" alt="">';
-      if (_placeMode) makeDraggable(listBtn, "btn-list:" + b.q);
-      else listBtn.addEventListener("click", function () { openFullList(b, entries); });
-      stage.appendChild(listBtn);
-      if (_isAdmin && _placeMode) stage.appendChild(admTag(lp, "Список · " + b.title));
-      }
+      // Кнопка «Список» объединена с шаром-счётчиком в единую ТАБЛИЧКУ (ниже, ключ cnt:).
       // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
       // очереди (перетаскивается в режиме расстановки).
       if (!isHidden("btn-join:" + b.q)) {
@@ -1680,25 +1682,28 @@
       stage.appendChild(joinBtn);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(jp, "Встать/Выйти · " + b.title));
       }
-      // счётчик-сфера на СЦЕНЕ (сколько человек в этой очереди). По умолчанию — в ЦЕНТРЕ
-      // сцены, чуть по диагонали, чтобы все 3 были видны и их можно было растащить.
+      // ЕДИНАЯ ТАБЛИЧКА на СЦЕНЕ: сфера-счётчик (число очереди) СВЕРХУ + «Посмотреть список»
+      // (клик открывает список) + свечение сферы по наведению. Заменяет прежние отдельные шар
+      // и кнопку «Список». Ключ cnt: сохранён — наследует прежнюю (центральную) позицию.
       if (!isHidden("cnt:" + b.q)) {
       var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }][b.q] || { x: 50, y: 50 };
       var cp = placedPos("cnt:" + b.q, cnDef.x, cnDef.y);
       var csz = objSize("cnt:" + b.q, 1);
-      // слой: по умолчанию поверх (UI), но если задан front/back — уважаем выбор
       var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
-      var cntEl = document.createElement("div");
-      cntEl.className = "qs-scnt qs-btn-abs";
+      var cntEl = document.createElement(_placeMode ? "div" : "button");
+      cntEl.className = "qs-board qs-btn-abs";
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
-        "%;width:" + (64 * csz).toFixed(1) + "px;z-index:" + cnz +
+        "%;width:" + (128 * csz).toFixed(1) + "px;z-index:" + cnz +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
-      cntEl.title = entries.length + " чел в очереди «" + b.title + "»";
-      cntEl.innerHTML = '<img class="qs-scnt-bg" src="' + objImgSrc("cnt:" + b.q, "assets/queue/ui/counter2.webp?v=2") + '" alt="">' +
-        '<b class="qs-scnt-n" style="font-size:' + (19 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
+      cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
+      cntEl.innerHTML =
+        '<img class="qs-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
+        '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
+        '<b class="qs-board-n" style="font-size:' + (17 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
+      else cntEl.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(cntEl);
-      if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Счётчик · " + b.title));
+      if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Табличка · " + b.title));
       }
       // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
       if (iAmIn && !_placeMode && _meAcc) {
@@ -1999,10 +2004,16 @@
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
-        '<span class="qs-lane-cnt" title="' + entries.length + ' чел в очереди">' +
-          '<img class="qs-lane-cnt-bg" src="assets/queue/ui/counter2.webp?v=2" alt="">' +
-          '<b class="qs-lane-cnt-n">' + entries.length + "</b></span>" +
+        '<button class="qs-lane-board" title="' + entries.length + ' чел в очереди — открыть список">' +
+          '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
+          '<img class="qs-lane-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
+          '<b class="qs-lane-board-n">' + entries.length + "</b></button>" +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
+      // мини-табличка в полосе кликабельна — открывает полный список этой очереди
+      (function (bb, ent) {
+        var lb = head.querySelector(".qs-lane-board");
+        if (lb) lb.addEventListener("click", function () { openFullList(bb, ent); });
+      })(b, entries);
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
@@ -2237,12 +2248,12 @@
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }];
-    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Счётчик · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true, repl: true }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
     objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true, repl: true });
     objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true, repl: true });
     BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false, flip: true }); });
-    BOOTHS.forEach(function (b) { objs.push({ key: "btn-list:" + b.q, name: "Список · " + b.title, dx: b.ui.x, dy: b.ui.y - 3, sz: false, flip: true }); });
+    // (Отдельная кнопка «Список» убрана — объединена с табличкой-счётчиком выше.)
     // добавленные админом предметы окружения (загруженные картинки) — тоже управляемы отсюда
     ENV.forEach(function (o) { objs.push({ env: o, name: "Предмет · " + o.key.slice(4) }); });
     // защита от дублей: один ключ — одна строка
