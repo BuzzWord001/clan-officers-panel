@@ -964,7 +964,7 @@
     ".qs-js-dim,.qs-js-lit{height:106px;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
     ".qs-js-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
     ".qs-js:hover .qs-js-lit{opacity:1}.qs-js:active{filter:brightness(.9)}" +
-    ".qs-js-tx{margin-top:-4px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
+    ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
     // счётчик-сфера НА СЦЕНЕ
     ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
     ".qs-scnt-bg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
@@ -1651,9 +1651,9 @@
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       var btnTx = showLeave ? "Выйти из очереди" : "Встать в очередь";
       joinBtn.innerHTML =
+        '<span class="qs-js-tx">' + btnTx + "</span>" +   // надпись НАД табличкой
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
-        '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=3" alt=""></span>' +
-        '<span class="qs-js-tx">' + btnTx + "</span>";
+        '<img class="qs-js-lit" src="assets/queue/ui/' + jsc + '-lit.webp?v=3" alt=""></span>';
       if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
       else joinBtn.addEventListener("click", function () {
         if (_isAdmin && !_meAcc) {                            // админ тестирует как Лирия!
