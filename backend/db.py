@@ -7193,7 +7193,16 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
         # реальной смене ника.
         if nick_changed:
             # member_id строки не меняется (мигрируется только nick_canon).
-            _sync_nick_in_conn(conn, canon, nn, now, by)
+            # КЛАСС строки передаём в синхрон: тёзки-омонимы (гомоглиф в игре,
+            # ИИ приводит к одинаковому написанию) различаются ТОЛЬКО по классу.
+            # Без класса правка ника Оборотня «INTerpris»→«INTеrpris» схлопывала
+            # его class-split canon (interprisoboroten) обратно в базовый
+            # (interpris) → слияние со Жрецом и удаление строки. Берём НОВЫЙ класс,
+            # если его меняют в той же правке, иначе текущий.
+            eff_cls = fields.get("class")
+            if eff_cls is None:
+                eff_cls = row["class_"] or ""
+            _sync_nick_in_conn(conn, canon, nn, now, by, class_=str(eff_cls))
         out_row = conn.execute(
             "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
         out = dict(out_row) if out_row else {"ok": True}
@@ -7502,20 +7511,25 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
 
 
 def _dedup_member_rows(conn, canon: str) -> None:
-    """В каждом снимке оставляем одну строку для canon (с макс valor)."""
+    """В каждом снимке оставляем одну строку для canon (с макс valor). Ключ дедупа —
+    (снимок, КЛАСС): строки одного canon, но РАЗНОГО класса — это тёзки-омонимы
+    (гомоглиф в игре), НЕ дубли; их не трогаем. Иначе слияние тёзок удаляло бы
+    реального игрока (напр. Оборотня INTerpris при базовом canon interpris)."""
     rows = conn.execute(
-        "SELECT id, snapshot_id FROM valor_members WHERE nick_canon = ? "
+        "SELECT id, snapshot_id, class_ FROM valor_members WHERE nick_canon = ? "
         "ORDER BY snapshot_id, COALESCE(valor, -1) DESC", (canon,)
     ).fetchall()
     seen = set()
     for r in rows:
-        if r["snapshot_id"] in seen:
+        key = (r["snapshot_id"], (r["class_"] or "").strip().lower())
+        if key in seen:
             conn.execute("DELETE FROM valor_members WHERE id = ?", (r["id"],))
         else:
-            seen.add(r["snapshot_id"])
+            seen.add(key)
 
 
-def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str) -> str:
+def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str,
+                       class_: str | None = None) -> str:
     """Двусторонняя синхронизация ника человека между Доблестью и Реестром.
 
     Меняет отображаемый ник ВЕЗДЕ, где это один и тот же человек (по canon):
@@ -7524,13 +7538,28 @@ def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str) 
     Если новый ник даёт ДРУГОЙ canon — мигрируем canon (как при merge:
     переписываем valor-таблицы base→new + alias), чтобы примечание, иммунитет
     и история не порвались. Возвращает итоговый canon.
+
+    class_ — класс правимого игрока (если известен): целевой canon считаем с
+    учётом класса (_valor_canon_cls), чтобы тёзки-омонимы с РАЗНЫМ классом
+    (гомоглиф в игре) не схлопывались в один canon. Плюс жёсткая защита ниже:
+    если у целевого canon уже есть строки ДРУГОГО класса — это РАЗНЫЕ игроки,
+    миграцию (слияние) НЕ делаем.
     """
     new_nick = (new_nick or "").strip()
     if not new_nick or not base_canon:
         return base_canon
     amap = _alias_map(conn)
     src = _resolve_canon(base_canon, amap)
-    target = _resolve_canon(_valor_canon(new_nick), amap)
+    target = _resolve_canon(_valor_canon_cls(new_nick, class_), amap)
+    # Защита от слияния тёзок-омонимов: не сливаем src→target, если у target уже
+    # есть участники с классом, отличным от класса правимого игрока.
+    if target and src and target != src and class_ is not None:
+        my = (class_ or "").strip().lower()
+        other = {(r["class_"] or "").strip().lower() for r in conn.execute(
+            "SELECT DISTINCT class_ FROM valor_members WHERE nick_canon = ?", (target,))}
+        other.discard("")
+        if my and other and my not in other:
+            target = src   # разные игроки — оставляем при своём canon, без слияния
     if target and src and target != src:
         conn.execute("UPDATE valor_members SET nick_canon=? WHERE nick_canon=?", (target, src))
         conn.execute("UPDATE OR REPLACE valor_history SET nick_canon=? WHERE nick_canon=?", (target, src))
