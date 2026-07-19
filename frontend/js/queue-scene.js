@@ -3945,7 +3945,10 @@
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-advance").addEventListener("click", function () {
-      if (!confirm("Финализировать неделю?\n\n1) убрать вылетевших из клана\n2) отчёт уйдёт в офицерский чат (TG + VK)\n3) отмеченные «не забрал» останутся в очереди; получившие: с 🔁/планом — в конец, без повтора — выходят; остальные остаются в начале")) return;
+      var curStages = parseInt(wrap.querySelector("#qd-stages").value, 10) || 0;
+      var curPet = parseInt(wrap.querySelector("#qd-pet").value, 10) || 0;
+      var testOn = wrap.querySelector("#qd-testmode").checked;
+      if (!confirm("Финализировать неделю?\n\n⚠️ ПРОВЕРЬ ФИНАЛЬНЫЕ ЗНАЧЕНИЯ (можно менять хоть после 00:00 — пересчёт идёт от них):\n• Закрыто этапов КХ: " + curStages + "\n• Огненных цилиней: " + curPet + "\n\nЕсли позже закрыли ещё этап или уточнил цилиней — СНАЧАЛА поправь поля выше, потом финализируй.\n\nЧто произойдёт:\n1) убрать вылетевших из клана\n2) отчёт: " + (testOn ? "ТОЛЬКО тебе в личку @pw_spamer_bot (пробный режим)" : "в офицерский чат TG + VK") + "\n3) жетоны ТОП-3 — раздать\n4) сдвиг очереди: «не забрал» остаются; получившие с 🔁/планом — в конец, разово — выходят")) return;
       status("Финализирую неделю…");
       q("POST", "/queue/admin/advance").then(function (d) {
         var c = d.channels || {};

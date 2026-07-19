@@ -34,6 +34,7 @@ import bot_vk
 import auth_pwd
 from config import settings
 from session import require_admin, current_session, set_session
+from api_chat import require_bot_token   # bot-token auth (десктоп PW Анализ доблести)
 
 
 def require_officer_or_admin(request: Request) -> dict:
@@ -1528,6 +1529,21 @@ async def distribute_send_range(payload: ReportRangeIn, request: Request,
     with db.connection() as conn:
         _log(conn, "report_range", actor=_actor_name(actor), request=request,
              detail="этапы %d–%d: прислано %d отчётов в личку" % (lo, hi, len(sent)))
+    return {"ok": True, "sent": sent}
+
+
+@router.post("/report-range-bot")
+async def report_range_bot(payload: ReportRangeIn, _=Depends(require_bot_token)) -> dict:
+    """То же, что send-range, но для ДЕСКТОП-приложения «PW Анализ доблести»
+    (auth: bot-token). Диапазон этапов КХ → по отчёту на каждый вариант Лиру в личку."""
+    lo = min(payload.from_stages, payload.to_stages)
+    hi = max(payload.from_stages, payload.to_stages)
+    sent = []
+    for s in range(lo, hi + 1):
+        with db.connection() as conn:
+            report = _build_report(conn, stages_override=s)
+        ch = await _send_report_to_chats(report, force_dm=True)
+        sent.append({"stages": s, "channels": ch})
     return {"ok": True, "sent": sent}
 
 
