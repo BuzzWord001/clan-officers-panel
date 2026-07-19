@@ -616,10 +616,10 @@
     "@keyframes qsGlow{0%,100%{opacity:.35;transform:translate(-50%,-55%) scale(.95)}" +
       "50%{opacity:.65;transform:translate(-50%,-55%) scale(1.06)}}" +
     ".qs-booth{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:9000}" +
-    ".qs-btn-abs{position:absolute;transform:translate(-50%,-50%);z-index:9000;margin:0;" +
+    ".qs-btn-abs{position:absolute;transform:translate(-50%,-50%) scale(var(--jd,1));z-index:9000;margin:0;" +
       "transition:transform .08s ease,filter .08s ease,box-shadow .08s ease}" +
-    /* анимация нажатия — кнопка «проваливается» */
-    ".qs-btn-abs:active{transform:translate(-50%,-50%) translateY(2px) scale(.93)!important;" +
+    /* анимация нажатия — кнопка «проваливается» (с учётом масштаба по глубине --jd) */
+    ".qs-btn-abs:active{transform:translate(-50%,-50%) translateY(2px) scale(calc(var(--jd,1) * .93))!important;" +
       "filter:brightness(.82);box-shadow:0 0 0 rgba(0,0,0,0)!important}" +
     /* суперспособность топ-3 */
     ".qs-super{margin:10px auto 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;" +
@@ -1644,7 +1644,9 @@
       var jp = placedPos("btn-join:" + b.q, qStart.x - 6, qStart.y + 3);
       var joinBtn = document.createElement("button");
       joinBtn.className = "qs-js qs-btn-abs" + (showLeave ? " leave" : "");
-      joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) + "%";
+      // масштаб по глубине сцены (та же формула, что у моделек: ниже=ближе=крупнее)
+      joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) +
+        "%;--jd:" + (0.5 + (jp.y / 100) * 0.62).toFixed(3);
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       var btnTx = showLeave ? "Выйти из очереди" : "Встать в очередь";
