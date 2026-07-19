@@ -264,8 +264,8 @@
         const d = await API.rolePendingSet(rp.checked);
         rp.checked = !!(d && d.enabled);
         setStatus(rp.checked
-          ? "✓ Флаг «роль не выдана в игре» включён — ставится всем новым (и от офицеров)"
-          : "✓ Флаг «роль не выдана в игре» выключен");
+          ? "✓ Флаг «титул не выдан в игре» включён — ставится всем новым (и от офицеров)"
+          : "✓ Флаг «титул не выдан в игре» выключен");
       } catch (e) {
         rp.checked = !rp.checked;
         setStatus("✗ Ошибка: " + (e.detail || e.message));
@@ -386,9 +386,9 @@
         };
         if (r.elite)   addRole("reg-role-elite", "⚔ Элита", "Роль Элита (Топ по урону)");
         if (r.veteran) addRole("reg-role-vet", "★ Ветеран", "Роль Ветеран");
-        if (r.role_pending) addRole("reg-role-pending", "⏳ роль не выдана в игре",
-          me.role === "admin" ? "Роль ещё не выдана в игре. Нажми, когда выдашь — снять флаг."
-                              : "Роль ещё не выдана в игре",
+        if (r.role_pending) addRole("reg-role-pending", "⏳ титул не выдан в игре",
+          me.role === "admin" ? "Титул ещё не выдан в игре. Нажми, когда выдашь — снять флаг."
+                              : "Титул ещё не выдан в игре",
           me.role === "admin" ? async () => {
             try { await API.update(r.id, { role_pending: false }); await reload(); }
             catch (e) { setStatus("✗ Ошибка: " + (e.detail || e.message)); }
@@ -568,8 +568,8 @@
       + `<input type="checkbox" class="ed-vet" ${r.veteran ? "checked" : ""}> ★Вет</label>`
       + `<label class="ed-elite-lbl" title="Роль Элита (Топ по урону) в Доблести">`
       + `<input type="checkbox" class="ed-elite" ${r.elite ? "checked" : ""}> ⚔Элита</label>`
-      + `<label class="ed-rolep-lbl" title="Роль пока НЕ выдана в игре (снять, когда выдашь)">`
-      + `<input type="checkbox" class="ed-rolep" ${r.role_pending ? "checked" : ""}> ⏳не выдана</label>`
+      + `<label class="ed-rolep-lbl" title="Титул пока НЕ выдан в игре (снять, когда выдашь)">`
+      + `<input type="checkbox" class="ed-rolep" ${r.role_pending ? "checked" : ""}> ⏳не выдан</label>`
       + `<button class="save">Сохранить</button><button class="cancel">Отмена</button>`;
 
     DateRu.bindDateInput(dateCell.querySelector("input"));
