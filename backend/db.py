@@ -7726,6 +7726,51 @@ def valor_delete_member(member_id: int, actor: dict | None = None) -> dict:
     return {"ok": True}
 
 
+def valor_move_member(member_id: int, after_id: int | None,
+                      actor: dict | None = None) -> dict:
+    """Переместить строку в списке: поставить СРАЗУ ПОСЛЕ строки after_id (или в начало,
+    если after_id пустой). Меняем только sort_key (дробный индекс между соседями) —
+    КАДР участника НЕ трогаем, чтобы подсветка источника на скрине осталась верной.
+    Порядок в списке совпадёт с экраном, когда офицер переставит строки как на скрине."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT id, snapshot_id, nick, nick_canon FROM valor_members WHERE id = ?",
+            (member_id,)).fetchone()
+        if not row:
+            return {"ok": False, "reason": "not_found"}
+        if after_id == member_id:
+            return {"ok": True}                       # сам после себя — ничего не делаем
+        snap_id = row["snapshot_id"]
+        ordered = conn.execute(
+            "SELECT id, sort_key FROM valor_members WHERE snapshot_id = ? "
+            "ORDER BY COALESCE(sort_key, id), id", (snap_id,)).fetchall()
+        keyed = [(r["id"], (r["sort_key"] if r["sort_key"] is not None else float(r["id"])))
+                 for r in ordered]
+        if after_id:
+            pos = next((i for i, (rid, _k) in enumerate(keyed) if rid == after_id), None)
+            if pos is None:
+                return {"ok": False, "reason": "after_not_found"}
+            aft_key = keyed[pos][1]
+            nxt_key = None
+            for rid, k in keyed[pos + 1:]:            # следующий сосед, ПРОПУСКАЯ саму строку
+                if rid == member_id:
+                    continue
+                nxt_key = k
+                break
+            new_key = (aft_key + nxt_key) / 2.0 if nxt_key is not None else aft_key + 1.0
+        else:                                         # в начало списка
+            mn = min((k for _rid, k in keyed if _rid != member_id), default=1.0)
+            new_key = mn - 1.0
+        conn.execute("UPDATE valor_members SET sort_key = ? WHERE id = ?",
+                     (new_key, member_id))
+        week = _week_of_member(conn, member_id)
+        _log_valor_edit(conn, week=week, action="move", member_id=member_id,
+                        nick=row["nick"], canon=row["nick_canon"],
+                        before=None, after={"after_id": after_id, "sort_key": new_key},
+                        actor=actor or {})
+    return {"ok": True}
+
+
 def valor_list_sessions() -> list[dict[str, Any]]:
     """Все снапшоты + пропущенные недели по убыванию — для UI «Архив доблести».
     Реальные снимки: skipped=0. Пропущенные недели (из valor_skipped_weeks) —

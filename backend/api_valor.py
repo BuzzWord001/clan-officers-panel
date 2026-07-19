@@ -604,6 +604,21 @@ def valor_member_edit(member_id: int, payload: ValorMemberEdit,
     return out
 
 
+class ValorMemberMove(BaseModel):
+    after_id: int | None = None   # поставить строку ПОСЛЕ этой; пусто → в начало списка
+
+
+@router.post("/member/{member_id}/move")
+def valor_member_move(member_id: int, payload: ValorMemberMove,
+                      actor: dict = Depends(require_admin)) -> dict:
+    """Переместить строку в списке (после after_id или в начало). ТОЛЬКО админ. Меняет
+    только порядок (sort_key), кадр не трогает — подсветка источника на скрине остаётся верной."""
+    res = db.valor_move_member(member_id, payload.after_id, actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, res.get("reason", "move_failed"))
+    return res
+
+
 class SnapshotMetaIn(BaseModel):
     week:           str = Field(..., min_length=1)
     actual_members: int | None = None

@@ -202,6 +202,7 @@
     valorMemberEdit: (id, fields) => request("PATCH", "/valor/member/" + id, fields),
     valorMemberAdd:  (fields) => request("POST", "/valor/member", fields),
     valorMemberDelete: (id) => request("DELETE", "/valor/member/" + id),
+    valorMemberMove: (id, afterId) => request("POST", "/valor/member/" + id + "/move", { after_id: afterId }),
     valorMemberVerify: (id) => request("POST", "/valor/verify/" + id),
     valorAutoVerify: (week) => request("POST", "/valor/auto-verify", { week }),
     valorRequestPublish: () => request("POST", "/valor/request-publish", {}),

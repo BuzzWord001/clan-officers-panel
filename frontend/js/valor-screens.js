@@ -204,7 +204,7 @@
         ${cell(m.true_name)}${cell(m.rank)}${cell(m.title)}${cellW(m.level, !!sf.level, sf.level && sf.level.tip)}
         ${cellW(m.class, !!sf.class_, sf.class_ && sf.class_.tip)}<td class="cmp-c cmp-valor${valorWarn ? " cmp-cell-warn" : ""}" title="${valorWarn ? esc(sf.valor.tip) : "клик — копировать"}">${m.valor == null ? "—" : m.valor}</td>
         <td class="cmp-act">${IS_ADMIN
-          ? `<span class="cmp-act-ic"><button class="cmp-ed" data-id="${m.id}" title="править">✎</button><button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button><button class="cmp-ins" data-id="${m.id}" title="Добавить пропущенный ник НИЖЕ этой строки — встанет ровно между ней и следующей">➕</button></span>`
+          ? `<span class="cmp-act-ic"><button class="cmp-ed" data-id="${m.id}" title="править">✎</button><button class="cmp-mv" data-id="${m.id}" title="Переместить строку — поменять порядок (после кого поставить)">⇅</button><button class="cmp-del" data-id="${m.id}" data-nick="${esc(m.nick)}" title="удалить фантом OCR / дубль">🗑</button><button class="cmp-ins" data-id="${m.id}" title="Добавить пропущенный ник НИЖЕ этой строки — встанет ровно между ней и следующей">➕</button></span>`
           : ""}${IS_OFFICER
           ? (m.force_archived
              ? `<button class="cmp-unarch" data-id="${m.id}" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="Вернуть игрока в таблицу Доблести (снять ручной кик). Сейчас он есть в скринах, но скрыт из Таблицы.">↩ вернуть</button>`
@@ -278,6 +278,8 @@
     if (IS_ADMIN) {
       tbody.querySelectorAll(".cmp-ed").forEach(b =>
         b.addEventListener("click", () => openEdit(+b.dataset.id)));
+      tbody.querySelectorAll(".cmp-mv").forEach(b =>
+        b.addEventListener("click", (e) => { e.stopPropagation(); openMove(+b.dataset.id); }));
       tbody.querySelectorAll(".cmp-del").forEach(b =>
         b.addEventListener("click", () => delMember(+b.dataset.id, b.dataset.nick)));
       tbody.querySelectorAll(".cmp-ok").forEach(b =>
@@ -420,6 +422,57 @@
       toast("Удалено: " + nick);
       await reloadKeepScroll();   // строки больше нет — просто держим позицию
     } catch (e) { toast("Ошибка: " + (e.detail || e.message)); }
+  }
+
+  // ── Переместить строку (админ): поставить ПОСЛЕ выбранной / в начало ──
+  // Кадр НЕ меняется → подсветка источника на скрине остаётся верной; порядок в списке
+  // совпадёт с экраном, когда переставишь строки как на скрине.
+  function openMove(id) {
+    if (!openWeek) { toast("Сначала выбери неделю"); return; }
+    const m = (DATA.members || []).find(x => x.id === id);
+    if (!m) return;
+    const ov = $("cmp-edit");
+    const posOpts = [`<option value="">— в начало списка —</option>`]
+      .concat((DATA.members || []).filter(mm => mm.id !== id).map(mm =>
+        `<option value="${mm.id}">после «${esc(mm.nick)}»${mm.frame != null ? ` · кадр #${mm.frame + 1}` : ""}</option>`))
+      .join("");
+    ov.innerHTML =
+      `<div class="ce-box">
+        <div class="ce-h">Переместить «${esc(m.nick)}»${m.frame != null ? ` · кадр #${m.frame + 1}` : ""} · неделя <b>${esc(openWeek)}</b></div>
+        <label class="ce-f"><span>Поставить</span>
+          <select id="mv-after">${posOpts}</select></label>
+        <div class="ce-msg" id="mv-hint"></div>
+        <div class="ce-btns">
+          <button id="mv-save" class="ce-save">Переместить</button>
+          <button id="mv-cancel" class="ce-cancel">Отмена</button>
+        </div>
+        <div class="ce-msg" id="mv-msg"></div>
+      </div>`;
+    ov.hidden = false;
+    ov.querySelector("#mv-cancel").onclick = () => { ov.hidden = true; };
+    ov.onclick = (e) => { if (e.target === ov) ov.hidden = true; };
+    const sel = ov.querySelector("#mv-after");
+    const hint = ov.querySelector("#mv-hint");
+    const upd = () => {
+      const v = sel.value;
+      if (!v) { hint.textContent = "Встанет в НАЧАЛО списка."; return; }
+      const idx = (DATA.members || []).findIndex(mm => mm.id === +v);
+      const a = DATA.members[idx], b = DATA.members[idx + 1];
+      hint.textContent = (b && b.id !== id)
+        ? `Встанет между «${a.nick}» и «${b.nick}»`
+        : `Встанет сразу после «${a.nick}»`;
+    };
+    sel.addEventListener("change", upd); upd();
+    ov.querySelector("#mv-save").onclick = async () => {
+      const v = sel.value;
+      const msg = ov.querySelector("#mv-msg"); msg.textContent = "Перемещаю…";
+      try {
+        await API.valorMemberMove(id, v ? parseInt(v, 10) : null);
+        ov.hidden = true;
+        toast("Перемещено: " + m.nick);
+        await reloadKeepScroll();       // порядок обновится → ховер снова верный
+      } catch (e) { msg.textContent = "Ошибка: " + (e.detail || e.message); }
+    };
   }
 
   // ── Добавить пропущенную строку (админ) ──
