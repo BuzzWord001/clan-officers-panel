@@ -1522,8 +1522,9 @@
     body.className = "qs-fulllist";
     if (!entries.length) {
       body.innerHTML = '<div style="padding:22px;text-align:center;color:#c9b48f">Очередь пуста.</div>';
-    } else entries.forEach(function (e, i) {
-      var mi = modelInfo(e), waiting = false;
+    } else { var flLimit = Math.max(1, Math.round(getSize("limit", 6)));
+      entries.forEach(function (e, i) {
+      var mi = modelInfo(e), waiting = i >= flLimit;   // за лимитом показа = ждёт (не на сцене)
       var row = document.createElement("div");
       row.className = "qs-fl-row" + (waiting ? " waiting" : "");
       row.innerHTML =
@@ -1541,7 +1542,7 @@
         "</span>" +
         (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
       body.appendChild(row);
-    });
+    }); }
     autoCropAll(body, ".qs-fl-mdl");
     sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел.", body);
   }
@@ -1614,7 +1615,11 @@
       // РАВНОМЕРНО распределяем по пути: i=0 у будки (t=1), последний — в хвосте.
       // Больше людей → меньше расстояние (очередь сжимается).
       var spread = getSize("spread", 1);            // 0.4–1: какую долю пути занимает очередь
-      var shown = entries.length;                   // на сцене — все, кто в очереди
+      // ЛИМИТ показа: на сцене рисуем только первых N (у будки) по админ-настройке,
+      // даже если в очереди сотни. Остальные — в очереди (счётчик/список), но не на картинке.
+      var showLimit = Math.max(1, Math.round(getSize("limit", 6)));
+      var visible = entries.slice(0, showLimit);    // передняя часть очереди
+      var shown = visible.length;                   // на сцене — не больше лимита
       // слой всей очереди: front/back переносит ВСЕХ людей очереди (с предметами над головами)
       // на передний/задний план; auto — обычная глубина по y (люди вперемешку с объектами).
       var qz = CONFIG["qz:" + b.q] || "";
@@ -1626,7 +1631,7 @@
         stage.appendChild(qlayer);
         charTarget = qlayer;
       }
-      entries.forEach(function (e, i) {
+      visible.forEach(function (e, i) {
         // передний (i=0, дошёл до лавок) стоит РОВНО на финишном круге (t=1, как qs-endspot),
         // в т.ч. когда в очереди всего один человек; остальные — назад по пути.
         var t = shown <= 1 ? 1 : 1 - (i / (shown - 1)) * spread;
