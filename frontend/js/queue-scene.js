@@ -1412,7 +1412,7 @@
   }
 
   // выбор ресурса при вставании (или правка, edit={resource,recipient,auto_repeat,plan})
-  function openResourcePicker(b, edit, presel) {
+  function openResourcePicker(b, edit, presel, src) {   // src: 'scene' (список) | 'lane' (полоса)
     var isPriv = !!(edit && edit.privileged);                 // меняем ресурс жетона ТОП-3 (отдельная запись)
     var items = (BOOTH_ITEMS[b.q] || []).filter(function (it) {
       return !isPriv || (REWARDS_META[it] || {}).mode !== "pack";   // жетон — только обычные стаковые
@@ -1519,7 +1519,7 @@
       // Админ без игрового аккаунта встаёт/меняет ресурс ОТ ИМЕНИ Лирия! (тест)
       if (_isAdmin && !_meAcc) {
         q("POST", "/queue/admin/join-as", { nick: ADMIN_NICK, queue: b.q, resource: resource, recipient: rcpt })
-          .then(function () { _justJoined = { q: b.q, canon: canon(ADMIN_NICK) }; refresh(); })
+          .then(function () { _justJoined = { q: b.q, canon: canon(ADMIN_NICK), src: src || "scene" }; refresh(); })
           .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
       }
@@ -1527,7 +1527,7 @@
                       auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
       var path = edit ? "/queue/set-entry" : "/queue/join";
       q("POST", path, payload).then(function () {
-        if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick) };
+        if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick), src: src || "scene" };
         refresh();
       }).catch(function (e2) {
         alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
@@ -2072,14 +2072,14 @@
       joinCell.addEventListener("click", function () {
         // Админ без игрового аккаунта — тест от имени Лирия!
         if (_isAdmin && !_meAcc) {
-          if (!adminIn) { openResourcePicker(b); return; }
+          if (!adminIn) { openResourcePicker(b, null, null, "lane"); return; }
           joinCell.disabled = true;
           q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
             .catch(function (e2) { joinCell.disabled = false; alert("Ошибка: " + (e2.detail || e2.message)); });
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (!iAmIn && !myPriv) { openResourcePicker(b); return; }
+        if (!iAmIn && !myPriv) { openResourcePicker(b, null, null, "lane"); return; }
         joinCell.disabled = true;
         q("POST", "/queue/leave", { queue: b.q, privileged: (myPriv && !iAmIn) }).then(refresh).catch(function (e2) {
           joinCell.disabled = false;
@@ -2165,11 +2165,11 @@
       merchBox.addEventListener("click", function (ev) {
         var chip = ev.target.closest(".qs-mres"); if (!chip) return;
         var it = chip.getAttribute("data-res"); if (!it) return;
-        if (_isAdmin && !_meAcc) { openResourcePicker(b, null, it); return; }   // админ встаёт как Лирия!
+        if (_isAdmin && !_meAcc) { openResourcePicker(b, null, it, "lane"); return; }   // админ встаёт как Лирия!
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
         if (iAmIn) openResourcePicker(b, { resource: it, recipient: (myEntry && myEntry.recipient) || "",
           auto_repeat: myEntry && myEntry.auto_repeat, plan: (myEntry && myEntry.auto_plan) || [] });
-        else openResourcePicker(b, null, it);
+        else openResourcePicker(b, null, it, "lane");
       });
 
       lArr.addEventListener("click", function () { strip.scrollBy({ left: -260, behavior: "smooth" }); });
@@ -2655,6 +2655,13 @@
     // вернуть прокрутку правой админ-панели (кнопки вызывают render — иначе перематывает наверх)
     var _pb = wrap.querySelector(".qs-objp-body"); if (_pb) _pb.scrollTop = _scnScroll;
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
+    // Восстановить горизонтальную прокрутку полос СИНХРОННО (до отрисовки). Без этого при
+    // ЛЮБОЙ перерисовке (join/leave в любой очереди) ВСЕ полосы вспыхивали прокруткой с 0
+    // к сохранённой позиции — казалось, что «проматываются все разом».
+    document.querySelectorAll(".qs-lane-strip").forEach(function (s) {
+      var sq = s.dataset.q;
+      if (sq != null && _stripScroll[sq] != null) s.scrollLeft = _stripScroll[sq];
+    });
     // только что встал в очередь → прокрутить к себе + анимация появления (после отрисовки)
     if (_justJoined) { var _jj = _justJoined; _justJoined = null; setTimeout(function () { handleJustJoined(_jj); }, 150); }
   }
@@ -2670,26 +2677,30 @@
       if (!entries[i].privileged && canon(entries[i].main_nick) === jj.canon) { myIdx = i; break; }
     }
     if (myIdx < 0) return;
+
+    if (jj.src === "lane") {
+      // ВСТАЛ ВНИЗУ: НЕ открывать список. Промотать ТОЛЬКО эту полосу к САМОМУ ЛЕВОМУ краю
+      // (новенький рисуется слева) + анимация появления со свечением.
+      var strip = document.querySelector('.qs-lane-strip[data-q="' + jj.q + '"]');
+      if (strip) {
+        strip.scrollTo({ left: 0, behavior: "smooth" });
+        _stripScroll[jj.q] = 0;                     // запомнить, чтобы не откатывалось
+        var c = strip.querySelector(".qs-cell.me");
+        if (c) { c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear"); }
+      }
+      return;
+    }
+
+    // ВСТАЛ НА КАРТИНКЕ: если моделька в пределах лимита показа — подсветить её на сцене;
+    // если за лимитом (её не видно) — открыть список и промотать вниз к своей строке.
     var limit = Math.max(1, Math.round(getSize("limit", 6)));
-    // ── СЦЕНА ──
     var meChar = document.querySelector(".qs-char.q-char-me");
     if (myIdx < limit && meChar) {
       var inner = meChar.querySelector(".qs-char-inner") || meChar;
       inner.classList.remove("qs-appear"); void inner.offsetWidth; inner.classList.add("qs-appear");
       meChar.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (BOOTHS[jj.q]) {
-      openFullList(BOOTHS[jj.q], entries, myIdx);   // за лимитом → список + прокрутка к себе
-    }
-    // ── ПОЛОСА ── промотать к своей ячейке (переопределяем восстановление позиции)
-    var strip = document.querySelector('.qs-lane-strip[data-q="' + jj.q + '"]');
-    if (strip) {
-      var c = strip.querySelector(".qs-cell.me");
-      if (c) {
-        var target = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
-        strip.scrollTo({ left: target, behavior: "smooth" });
-        _stripScroll[jj.q] = target;   // запомнить новую позицию, чтобы не откатывалась
-        c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear");
-      }
+      openFullList(BOOTHS[jj.q], entries, myIdx);
     }
   }
 
