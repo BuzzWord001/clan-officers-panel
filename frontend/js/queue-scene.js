@@ -654,7 +654,7 @@
     ".qs-lane-arrow{flex:0 0 auto;width:26px;border:1px solid rgba(224,162,74,.35);background:rgba(20,13,7,.7);" +
       "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
     ".qs-lane-arrow:hover{filter:brightness(1.2)}.qs-lane-arrow:active{transform:scale(.9)}" +
-    ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;" +
+    ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;" +
       "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
     /* кнопка «Встать/Выйти» в начале полосы */
     ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;min-width:60px;height:104px;" +
@@ -1117,10 +1117,10 @@
     ".qs-fl-row.waiting{opacity:.62}" +
     ".qs-fl-me{background:linear-gradient(90deg,rgba(126,196,106,.22),rgba(126,196,106,.05));box-shadow:inset 3px 0 0 #8fc36a}" +
     /* анимация появления только что вставшего (сцена/полоса/список) — золотое «вспыхивание» */
-    "@keyframes qsAppear{0%{opacity:.15;transform:scale(.45);filter:drop-shadow(0 0 14px rgba(255,220,130,.95))}" +
-      "55%{opacity:1;transform:scale(1.18);filter:drop-shadow(0 0 10px rgba(255,220,130,.7))}" +
+    "@keyframes qsAppear{0%{opacity:.1;transform:scale(.4);filter:brightness(2.6) drop-shadow(0 0 16px rgba(255,225,140,1))}" +
+      "50%{opacity:1;transform:scale(1.22);filter:brightness(1.7) drop-shadow(0 0 12px rgba(255,220,130,.85))}" +
       "100%{opacity:1;transform:scale(1);filter:none}}" +
-    ".qs-appear{animation:qsAppear .7s cubic-bezier(.2,.9,.3,1.4);will-change:transform,opacity}" +
+    ".qs-appear{animation:qsAppear .85s cubic-bezier(.2,.9,.3,1.4);will-change:transform,filter,opacity;position:relative;z-index:3}" +
     ".qs-fl-num{width:24px;text-align:center;font:700 13px system-ui;color:#caa66a;flex:0 0 auto}" +
     ".qs-fl-mdl{height:44px;width:36px;object-fit:contain;flex:0 0 auto;" +
       "background:linear-gradient(180deg,rgba(190,224,234,.18),rgba(143,195,106,.18));border-radius:6px}" +
@@ -1571,11 +1571,13 @@
       setTimeout(function () {
         var me = body.querySelector(".qs-fl-me");
         if (me) {
+          var modal = body.closest(".qs-modal");
           me.scrollIntoView({ behavior: "smooth", block: "center" });
-          // СНАЧАЛА список проматывается вниз, ПОТОМ анимация появления строки
-          setTimeout(function () { me.classList.remove("qs-appear"); void me.offsetWidth; me.classList.add("qs-appear"); }, 340);
+          // СНАЧАЛА список докручивается вниз, ПОТОМ — анимация появления строки
+          if (modal) whenScrollSettles(modal, "scrollTop", function () { playAppear(me); }, 1200);
+          else setTimeout(function () { playAppear(me); }, 400);
         }
-      }, 180);
+      }, 160);
     }
   }
 
@@ -2188,9 +2190,10 @@
       autoCropAll(merchBox, ".qs-mres img");               // иконки ресурсов заполняют бокс (цилинь крупнее)
       setTimeout(function () {
         if (_stripScroll[b.q] != null) { strip.scrollLeft = _stripScroll[b.q]; return; }  // вернуть, где было
-        var c = strip.querySelector(".qs-cell.me");        // первый показ: к своей ячейке…
+        var c = strip.querySelector(".qs-cell.me");        // ПЕРВЫЙ показ: к своей ячейке…
         if (c) strip.scrollLeft = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
         else strip.scrollLeft = strip.scrollWidth;         // …иначе к голове очереди (у торговца)
+        _stripScroll[b.q] = strip.scrollLeft;              // ЗАПОМНИТЬ — чтобы дальше не дёргалось к голове каждый рендер
       }, 70);
     });
     return box;
@@ -2671,6 +2674,24 @@
   // Прокрутка к только что вставшему + анимация появления. На СЦЕНЕ: если моделька в
   // пределах лимита показа — подсветить её; если за лимитом (её не видно) — открыть
   // список и промотать к ней. В ПОЛОСЕ: промотать влево к своей ячейке + анимация.
+  // запустить cb, когда прокрутка el по свойству prop (scrollLeft/scrollTop) ОСТАНОВИТСЯ
+  // (стабилизируется) — чтобы анимация появления показывалась ПОСЛЕ докрутки, а не во время.
+  function whenScrollSettles(el, prop, cb, maxMs) {
+    var last = -999999, stable = 0, t0 = Date.now();
+    (function chk() {
+      var pos = el[prop];
+      if (pos === last) { if (++stable >= 3) { cb(); return; } }
+      else { stable = 0; last = pos; }
+      if (Date.now() - t0 > (maxMs || 1000)) { cb(); return; }
+      requestAnimationFrame(chk);
+    })();
+  }
+
+  function playAppear(el) {
+    if (!el) return;
+    el.classList.remove("qs-appear"); void el.offsetWidth; el.classList.add("qs-appear");
+  }
+
   function handleJustJoined(jj) {
     if (!jj || !jj.canon) return;
     var entries = (_lastState.queues && _lastState.queues[jj.q]) || [];
@@ -2685,11 +2706,13 @@
       // (новенький рисуется слева) + анимация появления со свечением.
       var strip = document.querySelector('.qs-lane-strip[data-q="' + jj.q + '"]');
       if (strip) {
-        strip.scrollTo({ left: 0, behavior: "smooth" });
-        _stripScroll[jj.q] = 0;                     // запомнить, чтобы не откатывалось
         var c = strip.querySelector(".qs-cell.me");
-        // СНАЧАЛА промотка влево, ПОТОМ анимация появления (чтобы её было видно)
-        if (c) setTimeout(function () { c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear"); }, 340);
+        // цель прокрутки — левый край моей ячейки (новенький слева). Надёжнее, чем «0».
+        var target = c ? Math.max(0, c.offsetLeft - 6) : 0;
+        _stripScroll[jj.q] = target;                // запомнить цель, чтобы не откатывалось
+        strip.scrollTo({ left: target, behavior: "smooth" });
+        // анимация появления — ПОСЛЕ того как полоса реально доехала
+        if (c) whenScrollSettles(strip, "scrollLeft", function () { playAppear(c); }, 1100);
       }
       return;
     }
@@ -2700,8 +2723,7 @@
     var limit = Math.max(1, Math.round(getSize("limit", 6)));
     var meChar = document.querySelector('.qs-char.q-char-me[data-q="' + jj.q + '"]');
     if (myIdx < limit && meChar) {
-      var inner = meChar.querySelector(".qs-char-inner") || meChar;
-      inner.classList.remove("qs-appear"); void inner.offsetWidth; inner.classList.add("qs-appear");
+      playAppear(meChar.querySelector(".qs-char-inner") || meChar);   // видна на картинке → просто анимация
     } else if (BOOTHS[jj.q]) {
       openFullList(BOOTHS[jj.q], entries, myIdx);
     }
