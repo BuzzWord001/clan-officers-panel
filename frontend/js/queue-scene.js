@@ -1024,10 +1024,10 @@
       "display:flex;align-items:center;justify-content:center;padding:20px}" +
     ".qs-modal{max-width:580px;width:100%;max-height:92vh;overflow:auto;background:linear-gradient(180deg,#241608,#160d06);" +
       "border:1px solid rgba(224,162,74,.45);border-radius:16px;box-shadow:0 0 50px rgba(0,0,0,.7);position:relative}" +
-    ".qs-modal-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;" +
+    ".qs-modal-head{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;" +
       "padding:14px 18px;background:linear-gradient(180deg,#2c1c0b,#1c1207);border-bottom:1px solid rgba(224,162,74,.3);" +
       "font:700 16px Georgia,serif;color:#f0c878}" +
-    ".qs-modal-x{background:none;border:0;color:#caa66a;font-size:18px;cursor:pointer;line-height:1}" +
+    ".qs-modal-x{background:none;border:0;color:#caa66a;font-size:20px;cursor:pointer;line-height:1;position:relative;z-index:11;padding:2px 6px}" +
     ".qs-modal-x:hover{color:#fff}" +
     ".qs-respick{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:12px}" +
     ".qs-rescard{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;" +
@@ -1341,6 +1341,7 @@
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
     el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "");
+    el.dataset.q = boothQ;   // очередь этой модельки — чтобы анимировать ИМЕННО ту, куда встал
     el.dataset.id = e.id || "";
     if (mi) el.dataset.mkey = mi.key;   // для точечной регулировки размера этой модели
     var mscale = (mi && MODEL_SETTINGS[mi.key] && +MODEL_SETTINGS[mi.key].scale) || 1;
@@ -1571,7 +1572,8 @@
         var me = body.querySelector(".qs-fl-me");
         if (me) {
           me.scrollIntoView({ behavior: "smooth", block: "center" });
-          me.classList.remove("qs-appear"); void me.offsetWidth; me.classList.add("qs-appear");
+          // СНАЧАЛА список проматывается вниз, ПОТОМ анимация появления строки
+          setTimeout(function () { me.classList.remove("qs-appear"); void me.offsetWidth; me.classList.add("qs-appear"); }, 340);
         }
       }, 180);
     }
@@ -2686,19 +2688,20 @@
         strip.scrollTo({ left: 0, behavior: "smooth" });
         _stripScroll[jj.q] = 0;                     // запомнить, чтобы не откатывалось
         var c = strip.querySelector(".qs-cell.me");
-        if (c) { c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear"); }
+        // СНАЧАЛА промотка влево, ПОТОМ анимация появления (чтобы её было видно)
+        if (c) setTimeout(function () { c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear"); }, 340);
       }
       return;
     }
 
-    // ВСТАЛ НА КАРТИНКЕ: если моделька в пределах лимита показа — подсветить её на сцене;
-    // если за лимитом (её не видно) — открыть список и промотать вниз к своей строке.
+    // ВСТАЛ НА КАРТИНКЕ (касается ТОЛЬКО этой очереди): если моделька в пределах лимита
+    // показа — просто нарисовать её с анимацией появления; если за лимитом (её не видно) —
+    // открыть список ИМЕННО этой очереди и промотать вниз к своей строке с анимацией.
     var limit = Math.max(1, Math.round(getSize("limit", 6)));
-    var meChar = document.querySelector(".qs-char.q-char-me");
+    var meChar = document.querySelector('.qs-char.q-char-me[data-q="' + jj.q + '"]');
     if (myIdx < limit && meChar) {
       var inner = meChar.querySelector(".qs-char-inner") || meChar;
       inner.classList.remove("qs-appear"); void inner.offsetWidth; inner.classList.add("qs-appear");
-      meChar.scrollIntoView({ behavior: "smooth", block: "center" });
     } else if (BOOTHS[jj.q]) {
       openFullList(BOOTHS[jj.q], entries, myIdx);
     }
