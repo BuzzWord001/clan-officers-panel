@@ -1115,6 +1115,12 @@
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
+    ".qs-fl-me{background:linear-gradient(90deg,rgba(126,196,106,.22),rgba(126,196,106,.05));box-shadow:inset 3px 0 0 #8fc36a}" +
+    /* анимация появления только что вставшего (сцена/полоса/список) — золотое «вспыхивание» */
+    "@keyframes qsAppear{0%{opacity:.15;transform:scale(.45);filter:drop-shadow(0 0 14px rgba(255,220,130,.95))}" +
+      "55%{opacity:1;transform:scale(1.18);filter:drop-shadow(0 0 10px rgba(255,220,130,.7))}" +
+      "100%{opacity:1;transform:scale(1);filter:none}}" +
+    ".qs-appear{animation:qsAppear .7s cubic-bezier(.2,.9,.3,1.4);will-change:transform,opacity}" +
     ".qs-fl-num{width:24px;text-align:center;font:700 13px system-ui;color:#caa66a;flex:0 0 auto}" +
     ".qs-fl-mdl{height:44px;width:36px;object-fit:contain;flex:0 0 auto;" +
       "background:linear-gradient(180deg,rgba(190,224,234,.18),rgba(143,195,106,.18));border-radius:6px}" +
@@ -1513,13 +1519,17 @@
       // Админ без игрового аккаунта встаёт/меняет ресурс ОТ ИМЕНИ Лирия! (тест)
       if (_isAdmin && !_meAcc) {
         q("POST", "/queue/admin/join-as", { nick: ADMIN_NICK, queue: b.q, resource: resource, recipient: rcpt })
-          .then(refresh).catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
+          .then(function () { _justJoined = { q: b.q, canon: canon(ADMIN_NICK) }; refresh(); })
+          .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
       }
       var payload = { queue: b.q, resource: resource, recipient: rcpt,
                       auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
       var path = edit ? "/queue/set-entry" : "/queue/join";
-      q("POST", path, payload).then(refresh).catch(function (e2) {
+      q("POST", path, payload).then(function () {
+        if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick) };
+        refresh();
+      }).catch(function (e2) {
         alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
               e2.status === 401 ? "Сессия истекла, войди заново." :
               e2.status === 404 ? "Тебя нет в этой очереди." : ("Ошибка: " + (e2.detail || e2.message)));
@@ -1527,7 +1537,7 @@
     });
   }
   // полный список очереди (все — они же на сцене и в полосе) с модельками
-  function openFullList(b, entries) {
+  function openFullList(b, entries, focusIdx) {
     var body = document.createElement("div");
     body.className = "qs-fulllist";
     if (!entries.length) {
@@ -1536,7 +1546,7 @@
       entries.forEach(function (e, i) {
       var mi = modelInfo(e), waiting = i >= flLimit;   // за лимитом показа = ждёт (не на сцене)
       var row = document.createElement("div");
-      row.className = "qs-fl-row" + (waiting ? " waiting" : "");
+      row.className = "qs-fl-row" + (waiting ? " waiting" : "") + (i === focusIdx ? " qs-fl-me" : "");
       row.innerHTML =
         '<span class="qs-fl-num">' + (i + 1) + "</span>" +
         (mi ? '<img class="qs-fl-mdl" src="' + esc(mi.url) + '" alt="">' : '<span class="qs-fl-mdl ph">?</span>') +
@@ -1555,6 +1565,16 @@
     }); }
     autoCropAll(body, ".qs-fl-mdl");
     sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел.", body);
+    // только что встал и за лимитом показа → промотать список к своей строке + анимация появления
+    if (focusIdx != null && focusIdx >= 0) {
+      setTimeout(function () {
+        var me = body.querySelector(".qs-fl-me");
+        if (me) {
+          me.scrollIntoView({ behavior: "smooth", block: "center" });
+          me.classList.remove("qs-appear"); void me.offsetWidth; me.classList.add("qs-appear");
+        }
+      }, 180);
+    }
   }
 
   // ── сцена: рамка + фон день/ночь + будки (свечение, предметы, счётчик, кнопка) + модельки ──
@@ -2067,7 +2087,7 @@
         });
       });
       var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
-      var strip = document.createElement("div"); strip.className = "qs-lane-strip";
+      var strip = document.createElement("div"); strip.className = "qs-lane-strip"; strip.dataset.q = b.q;
       var rArr = document.createElement("button"); rArr.className = "qs-lane-arrow"; rArr.textContent = "▶"; rArr.title = "вперёд";
 
       // ПОЛОСА — только люди. Торговец СПРАВА → №1 (кого обслужат первым) рисуем
@@ -2256,6 +2276,7 @@
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
   var _stripScroll = {};   // позиция горизонтальной прокрутки каждой полосы (чтобы не прыгала при перерисовке)
+  var _justJoined = null;  // {q, canon} — только что встал в очередь: прокрутить к себе + анимация появления
   var _secOpen = {};       // раскрытость админ-секций (по индексу) — чтобы не схлопывались при перерисовке
   var _scnPanelOpen = true; // раскрыта ли правая панель управления объектами сцены
   var _scnScroll = 0;       // позиция прокрутки правой панели (чтобы не прыгала наверх при перерисовке)
@@ -2634,6 +2655,42 @@
     // вернуть прокрутку правой админ-панели (кнопки вызывают render — иначе перематывает наверх)
     var _pb = wrap.querySelector(".qs-objp-body"); if (_pb) _pb.scrollTop = _scnScroll;
     updatePageBg();   // ещё раз — теперь рамка в DOM, выравниваем фон-мир по её центру
+    // только что встал в очередь → прокрутить к себе + анимация появления (после отрисовки)
+    if (_justJoined) { var _jj = _justJoined; _justJoined = null; setTimeout(function () { handleJustJoined(_jj); }, 150); }
+  }
+
+  // Прокрутка к только что вставшему + анимация появления. На СЦЕНЕ: если моделька в
+  // пределах лимита показа — подсветить её; если за лимитом (её не видно) — открыть
+  // список и промотать к ней. В ПОЛОСЕ: промотать влево к своей ячейке + анимация.
+  function handleJustJoined(jj) {
+    if (!jj || !jj.canon) return;
+    var entries = (_lastState.queues && _lastState.queues[jj.q]) || [];
+    var myIdx = -1;
+    for (var i = 0; i < entries.length; i++) {
+      if (!entries[i].privileged && canon(entries[i].main_nick) === jj.canon) { myIdx = i; break; }
+    }
+    if (myIdx < 0) return;
+    var limit = Math.max(1, Math.round(getSize("limit", 6)));
+    // ── СЦЕНА ──
+    var meChar = document.querySelector(".qs-char.q-char-me");
+    if (myIdx < limit && meChar) {
+      var inner = meChar.querySelector(".qs-char-inner") || meChar;
+      inner.classList.remove("qs-appear"); void inner.offsetWidth; inner.classList.add("qs-appear");
+      meChar.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (BOOTHS[jj.q]) {
+      openFullList(BOOTHS[jj.q], entries, myIdx);   // за лимитом → список + прокрутка к себе
+    }
+    // ── ПОЛОСА ── промотать к своей ячейке (переопределяем восстановление позиции)
+    var strip = document.querySelector('.qs-lane-strip[data-q="' + jj.q + '"]');
+    if (strip) {
+      var c = strip.querySelector(".qs-cell.me");
+      if (c) {
+        var target = c.offsetLeft - strip.clientWidth / 2 + c.clientWidth / 2;
+        strip.scrollTo({ left: target, behavior: "smooth" });
+        _stripScroll[jj.q] = target;   // запомнить новую позицию, чтобы не откатывалась
+        c.classList.remove("qs-appear"); void c.offsetWidth; c.classList.add("qs-appear");
+      }
+    }
   }
 
   // размытый фон страницы (из сцены день/ночь) — заполняет коричневые края
