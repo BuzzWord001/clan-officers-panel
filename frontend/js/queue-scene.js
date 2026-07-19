@@ -572,8 +572,8 @@
     /* inset ~15% ≈ окно рамки (16%/22%) → дерево закрывает лишь тонкую кромку, видна почти вся картина */
     ".qs-stage{position:absolute;inset:15%;overflow:hidden;border-radius:4px;" +
       "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 18px rgba(0,0,0,.18)}" +
-    ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.webp')}" +
-    ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.webp')}" +
+    ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.webp?v=4')}" +
+    ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.webp?v=4')}" +
     /* рамка ПОВЕРХ сцены (передний план, центр прозрачный) — на весь прямоугольник */
     ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:99999;" +
       "background:url('assets/queue/scene/scene-frame.webp?v=3') center/100% 100% no-repeat;" +
@@ -1545,7 +1545,7 @@
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
-      lavka.src = objImgSrc("lavka:" + b.q, "assets/queue/scene/lavka-" + b.q + ".webp?v=3");
+      lavka.src = objImgSrc("lavka:" + b.q, "assets/queue/scene/lavka-" + b.q + ".webp?v=4");
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
@@ -2588,7 +2588,7 @@
       pbg.id = "qs-page-bg";
       document.body.insertBefore(pbg, document.body.firstChild);
     }
-    pbg.style.backgroundImage = "url('assets/queue/scene/world-" + (isNight() ? "night" : "day") + ".webp')";
+    pbg.style.backgroundImage = "url('assets/queue/scene/world-" + (isNight() ? "night" : "day") + ".webp?v=4')";
     pbg.style.backgroundRepeat = "no-repeat";
     if (!updatePageBg._bound) {          // пересчёт позиции при скролле/ресайзе — фон едет вместе с рамкой
       updatePageBg._bound = true;

@@ -120,7 +120,7 @@
     (function () {
       var h = (new Date().getUTCHours() + 3) % 24, night = (h >= 20 || h < 7);
       var b = document.getElementById("qs-page-bg");
-      if (b) b.style.backgroundImage = "url('assets/queue/scene/world-" + (night ? "night" : "day") + ".webp')";
+      if (b) b.style.backgroundImage = "url('assets/queue/scene/world-" + (night ? "night" : "day") + ".webp?v=4')";
     })();
   </script>
   <div class="q-app">
@@ -239,6 +239,6 @@
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/queue-open.js?v=1859500000"></script>
   <script src="js/queue.js?v=1817300000"></script>
-  <script src="js/queue-scene.js?v=1879300000"></script>
+  <script src="js/queue-scene.js?v=1879400000"></script>
 </body>
 </html>
