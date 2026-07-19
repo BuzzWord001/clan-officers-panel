@@ -834,7 +834,14 @@
       "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5))}" +
     // лавки и фонтан — выравнены по основанию (translate -50%/-100%), размер через CSS-переменную
     ".qs-lavka{position:absolute;height:calc(30% * var(--qs-lavka-scale,1));width:auto;" +
-      "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 8px rgba(0,0,0,.5))}" +
+      "transform:translate(-50%,-100%);pointer-events:none;" +
+      /* базовая тень + цветное свечение цветом очереди (--gc); мягкое «дыхание» */
+      "filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc,transparent)) drop-shadow(0 0 20px var(--gc,transparent));" +
+      "animation:qLavkaGlow 3.6s ease-in-out infinite}" +
+    "@keyframes qLavkaGlow{" +
+      "0%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 6px var(--gc,transparent)) drop-shadow(0 0 15px var(--gc,transparent))}" +
+      "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px var(--gc,transparent)) drop-shadow(0 0 28px var(--gc,transparent))}}" +
+    "@media(prefers-reduced-motion:reduce){.qs-lavka{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
     ".qs-stage.place .qs-lavka,.qs-stage.place .qs-fountain{pointer-events:auto;cursor:move}" +
@@ -1549,7 +1556,8 @@
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
-        ";transform:" + flipTf("lavka:" + b.q, "translate(-50%,-100%)");
+        ";transform:" + flipTf("lavka:" + b.q, "translate(-50%,-100%)") +
+        ";--gc:" + b.accent;   // цвет свечения = акцент очереди
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
