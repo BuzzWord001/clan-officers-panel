@@ -2678,7 +2678,7 @@
             'модель встанет первой и засветится.</div>' +
           '<div class="q-admin-row" style="align-items:center">' +
             '<span style="font-size:12.5px;color:#caa66a">Людей в каждую очередь:</span>' +
-            '<input type="number" id="qa-test-n" value="6" min="1" max="30" style="width:70px">' +
+            '<input type="number" id="qa-test-n" value="6" min="1" max="500" style="width:70px">' +
             '<button id="qa-test-fill">🧪 Заполнить тестовыми (случайно)</button>' +
             '<button class="sec" id="qa-test-clear">🧹 Убрать тестовых</button>' +
             '<span id="qa-test-msg" style="font-size:11.5px;color:#8fc36a"></span>' +
@@ -2950,7 +2950,7 @@
     // ── тестирование: заполнить/убрать ──
     var tMsg = box.querySelector("#qa-test-msg");
     box.querySelector("#qa-test-fill").addEventListener("click", function () {
-      var n = Math.max(1, Math.min(30, +box.querySelector("#qa-test-n").value || 6));
+      var n = Math.max(1, Math.min(500, +box.querySelector("#qa-test-n").value || 6));
       tMsg.textContent = "…"; tMsg.style.color = "#8a795a";
       q("POST", "/queue/admin/test-fill", { n: n }).then(function (d) {
         tMsg.style.color = "#8fc36a"; tMsg.textContent = "добавлено: " + (d.added || 0); refresh();

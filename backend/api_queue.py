@@ -423,7 +423,7 @@ class AdminAddIn(BaseModel):
 
 # ── админ-тест: заполнить очереди людьми и действовать «как ник» (напр. Лирия!) ──
 class TestFillIn(BaseModel):
-    n: int = Field(default=6, ge=1, le=30)   # сколько человек добавить в каждую очередь
+    n: int = Field(default=6, ge=1, le=500)   # сколько человек добавить в каждую очередь
 
 
 class TestAddItem(BaseModel):
@@ -1606,19 +1606,33 @@ def test_fill(payload: TestFillIn, request: Request, actor: dict = Depends(requi
             if p["main_canon"] in seen:
                 continue
             seen.add(p["main_canon"]); uniq.append(p)
+        # классы для синтетических людей — берём из реального ростера (гарантированно валидны)
+        classes = sorted({p["cls"] for p in uniq if p.get("cls")}) or ["воин", "маг", "лучник", "друид"]
         for qn in QUEUES:
             byq = [k for k, v in distribution.REWARDS.items() if v["q"] == qn]
             existing = {r["main_canon"] for r in
                         conn.execute("SELECT main_canon FROM queue_entries WHERE queue=?", (qn,))}
             cand = [p for p in uniq if p["main_canon"] not in existing]
             random.shuffle(cand)
-            for p in cand[:payload.n]:
-                pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (qn,)).fetchone()["m"] or 0) + 1
+            pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (qn,)).fetchone()["m"] or 0)
+            real = cand[:payload.n]
+            for p in real:
+                pos += 1
                 res = random.choice(byq) if byq else ""
                 conn.execute(
                     "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, added_by, added_at)"
                     " VALUES (?,?,?,?,?,?,?,?)",
                     (qn, pos, p["main_canon"], p["nick"], p["cls"], res, "test", _now()))
+                added += 1
+            # реальных уникальных в ростере меньше n → добиваем синтетическими «Тест N»
+            for _i in range(payload.n - len(real)):
+                pos += 1
+                res = random.choice(byq) if byq else ""
+                mc = "тест-%d-%d" % (qn, pos)          # уникальный main_canon (не пересечётся с реальными)
+                conn.execute(
+                    "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, added_by, added_at)"
+                    " VALUES (?,?,?,?,?,?,?,?)",
+                    (qn, pos, mc, "Тест %d" % pos, random.choice(classes), res, "test", _now()))
                 added += 1
         _log(conn, "test_fill", actor=_actor_name(actor), request=request,
              detail="добавлено тестовых: %d (по %d/очередь)" % (added, payload.n))
