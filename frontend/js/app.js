@@ -273,6 +273,30 @@
     });
   }
 
+  // Кнопка «Копировать и очистить» списка «роль не выдана»: скопировать ники+титулы,
+  // и ТОЛЬКО при успешном копировании — снять флаги со всех (список наберётся заново).
+  if (me.role === "admin" && $("rolep-copy")) {
+    $("rolep-copy").addEventListener("click", async () => {
+      const ta = $("rolep-text");
+      const text = ta ? ta.value.trim() : "";
+      if (!text) return;
+      let copied = false;
+      try { await navigator.clipboard.writeText(text); copied = true; }
+      catch (_) {
+        try { ta.focus(); ta.select(); copied = document.execCommand("copy"); } catch (_) {}
+      }
+      if (!copied) { setStatus("✗ Не удалось скопировать — выдели текст и Ctrl+C"); return; }
+      const n = text.split("\n").length;
+      try {
+        const d = await API.rolePendingClear();
+        setStatus(`✓ Скопировано ${n} — флаги сняты (${d.cleared || 0}), список набирается заново`);
+        await reload();
+      } catch (e) {
+        setStatus("✓ Скопировано, но не удалось снять флаги: " + (e.detail || e.message));
+      }
+    });
+  }
+
   function setStatus(text) {
     $("form-status").textContent = text;
     if (text.startsWith("✓") || text.startsWith("✗")) {
@@ -487,9 +511,28 @@
     try {
       allRows = await API.list();
       applyFilter();
+      renderRolePendingPanel();
     } catch (e) {
       setStatus(`✗ Не удалось загрузить: ${e.message}`);
     }
+  }
+
+  // Панель «Роль пока не выдана в игре» (только админ=Лир): ники+титулы в столбик
+  // для копирования в чат. Список строится из записей реестра с флагом role_pending.
+  function renderRolePendingPanel() {
+    const panel = $("rolep-panel");
+    if (!panel) return;
+    if (me.role !== "admin") { panel.hidden = true; return; }
+    const list = (allRows || []).filter((r) => r.role_pending && !r.archived);
+    const ta = $("rolep-text"), cnt = $("rolep-count");
+    if (!list.length) { panel.hidden = true; if (ta) ta.value = ""; return; }
+    panel.hidden = false;
+    const lines = list.map((r) => {
+      const t = (r.title || "").trim();
+      return t ? `${r.game_nick} — ${t}` : r.game_nick;
+    });
+    if (ta) ta.value = lines.join("\n");
+    if (cnt) cnt.textContent = `${list.length} чел.`;
   }
 
   async function onDelete(r) {

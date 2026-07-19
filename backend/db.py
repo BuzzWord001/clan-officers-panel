@@ -1419,6 +1419,14 @@ def set_role_pending_default(on: bool) -> bool:
     return on
 
 
+def clear_role_pending_all() -> int:
+    """Снять флаг role_pending со ВСЕХ записей (после копирования списка Лиром).
+    Список набирается заново по мере добавления новых. Не трогает Доблесть."""
+    with connection() as conn:
+        cur = conn.execute("UPDATE acceptances SET role_pending = 0 WHERE role_pending = 1")
+        return cur.rowcount
+
+
 def create_acceptance(
     *,
     game_nick: str,

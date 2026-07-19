@@ -136,6 +136,7 @@
     accUnarchive:  (id) => request("POST", `/acceptances/${id}/unarchive`),
     rolePendingGet: () => request("GET", "/acceptances/role-pending-default"),
     rolePendingSet: (enabled) => request("POST", "/acceptances/role-pending-default", { enabled: !!enabled }),
+    rolePendingClear: () => request("POST", "/acceptances/role-pending-clear"),
 
     audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
     auditDelete:   (id) => request("DELETE", `/audit/${id}`),

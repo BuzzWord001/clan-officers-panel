@@ -36,6 +36,13 @@ def role_pending_default_set(payload: dict, s: dict = Depends(current_session)) 
     return {"enabled": on}
 
 
+@router.post("/role-pending-clear")
+def role_pending_clear(s: dict = Depends(current_session)) -> dict:
+    """Снять флаг «роль не выдана» со ВСЕХ (после копирования списка). Только админ."""
+    _admin_only(s)
+    return {"cleared": db.clear_role_pending_all()}
+
+
 @router.get("", response_model=list[AcceptanceOut])
 def list_all(s: dict = Depends(current_session)) -> list[dict]:
     # Реестр — только для офицеров/админа. Гостю (просмотр Доблести) нельзя.
