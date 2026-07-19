@@ -1011,6 +1011,13 @@
     ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
     ".qs-lane-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;" +
       "font-family:system-ui;color:#3a2208;text-shadow:0 1px 1px rgba(255,238,200,.7);pointer-events:none;white-space:nowrap}" +
+    /* красивая надпись «Посмотреть список» НАД табличкой при наведении (текст на плакате мелкий) */
+    ".qs-board-tip,.qs-lane-board-tip{position:absolute;left:50%;bottom:100%;transform:translate(-50%,4px);" +
+      "white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .16s,transform .16s;" +
+      "background:linear-gradient(180deg,rgba(44,28,10,.97),rgba(24,15,6,.97));color:#ffe1a0;" +
+      "font:800 14px system-ui;padding:4px 12px;border-radius:8px;border:1px solid rgba(228,182,92,.6);" +
+      "box-shadow:0 4px 12px rgba(0,0,0,.55);text-shadow:0 1px 2px rgba(0,0,0,.7);z-index:20}" +
+    ".qs-board:hover .qs-board-tip,.qs-lane-board:hover .qs-lane-board-tip{opacity:1;transform:translate(-50%,-3px)}" +
     ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
@@ -1709,7 +1716,8 @@
       cntEl.innerHTML =
         '<img class="qs-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
         '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-        '<b class="qs-board-n" style="font-size:' + cntFs + 'px">' + entries.length + "</b>";
+        '<b class="qs-board-n" style="font-size:' + cntFs + 'px">' + entries.length + "</b>" +
+        '<span class="qs-board-tip">Посмотреть список</span>';
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       else cntEl.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(cntEl);
@@ -2019,7 +2027,8 @@
         '<button class="qs-lane-board" title="' + entries.length + ' чел в очереди — открыть список">' +
           '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
           '<img class="qs-lane-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-          '<b class="qs-lane-board-n" style="font-size:' + laneFs + 'px">' + entries.length + "</b></button>" +
+          '<b class="qs-lane-board-n" style="font-size:' + laneFs + 'px">' + entries.length + "</b>" +
+          '<span class="qs-lane-board-tip">Посмотреть список</span></button>' +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
       // мини-табличка в полосе кликабельна — открывает полный список этой очереди
       (function (bb, ent) {
