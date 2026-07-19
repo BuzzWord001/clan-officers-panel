@@ -841,14 +841,15 @@
     "@keyframes qLavkaGlow{" +
       "0%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 6px var(--gc,transparent)) drop-shadow(0 0 15px var(--gc,transparent))}" +
       "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px var(--gc,transparent)) drop-shadow(0 0 28px var(--gc,transparent))}}" +
-    /* легендарная лавка — фиолетовое сияние + раскаты молний (двойная вспышка + одиночный удар) */
-    ".qs-lavka.lav-lightning{animation:qLavkaBolt 5s linear infinite}" +
+    /* легендарная лавка — по её свечению НЕПРЕРЫВНО переливается «электричество»:
+       аура плавно перетекает между фиолетовым и электрик-бело-голубым (цвета молний),
+       два слоя двигаются в противофазе → энергия струится вокруг, без резких вспышек */
+    ".qs-lavka.lav-lightning{animation:qLavkaBolt 3s ease-in-out infinite}" +
     "@keyframes qLavkaBolt{" +
-      "0%,9%,14.5%,58%,63%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc)) drop-shadow(0 0 18px var(--gc))}" +
-      "10%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 4px #fff) drop-shadow(0 0 36px #e6bcff) brightness(1.65)}" +
-      "11.5%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc)) drop-shadow(0 0 18px var(--gc))}" +
-      "12.5%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 5px #fff) drop-shadow(0 0 30px #dbaaff) brightness(1.5)}" +
-      "60%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 5px #fff) drop-shadow(0 0 34px #e6bcff) brightness(1.6)}}" +
+      "0%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 6px #c07be0) drop-shadow(0 0 17px #a878ff)}" +
+      "25%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 9px #cbb0ff) drop-shadow(0 0 24px #7db8ff)}" +
+      "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 8px #b6e2ff) drop-shadow(0 0 21px #c07be0)}" +
+      "75%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px #ece0ff) drop-shadow(0 0 26px #9a6cff)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavka{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
