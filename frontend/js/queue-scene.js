@@ -1002,15 +1002,15 @@
     ".qs-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .2s}" +
     ".qs-board:hover .qs-board-glow{opacity:1}" +
     ".qs-board:active{filter:brightness(.93)}" +
-    ".qs-board-n{position:absolute;top:13.5%;left:50%;transform:translate(-50%,-50%);font:900 17px system-ui;" +
-      "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2}" +
+    ".qs-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-family:system-ui;" +
+      "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2;white-space:nowrap}" +
     /* мини-табличка в нижней полосе очереди (кликабельная, светится при наведении) */
-    ".qs-lane-board{position:relative;display:inline-block;width:44px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
+    ".qs-lane-board{position:relative;display:inline-block;width:76px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
     ".qs-lane-board-idle,.qs-lane-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
     ".qs-lane-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
-    ".qs-lane-board-n{position:absolute;top:13.5%;left:50%;transform:translate(-50%,-50%);font:900 12px system-ui;" +
-      "color:#3a2208;text-shadow:0 1px 1px rgba(255,238,200,.7);pointer-events:none}" +
+    ".qs-lane-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;" +
+      "font-family:system-ui;color:#3a2208;text-shadow:0 1px 1px rgba(255,238,200,.7);pointer-events:none;white-space:nowrap}" +
     ".qs-list:hover{background:rgba(40,26,12,.92);filter:brightness(1.1)}" +
     /* модалки сцены (выбор ресурса / полный список) */
     ".qs-modal-ov{position:fixed;inset:0;z-index:100000;background:rgba(8,5,2,.72);backdrop-filter:blur(3px);" +
@@ -1696,10 +1696,12 @@
         "%;width:" + (128 * csz).toFixed(1) + "px;z-index:" + cnz +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
+      // шрифт числа зависит от кол-ва знаков, чтобы 3-значное влезало в сферу
+      var cntFs = ((String(entries.length).length >= 3 ? 13 : 18) * csz).toFixed(1);
       cntEl.innerHTML =
         '<img class="qs-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
         '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-        '<b class="qs-board-n" style="font-size:' + (17 * csz).toFixed(1) + 'px">' + entries.length + "</b>";
+        '<b class="qs-board-n" style="font-size:' + cntFs + 'px">' + entries.length + "</b>";
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       else cntEl.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(cntEl);
@@ -2003,11 +2005,13 @@
       var lane = document.createElement("div");
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
+      // шрифт числа в полосе — мельче для 3-значных, чтобы влезло в сферу
+      var laneFs = String(entries.length).length >= 3 ? 12 : 15;
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
         '<button class="qs-lane-board" title="' + entries.length + ' чел в очереди — открыть список">' +
           '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
           '<img class="qs-lane-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-          '<b class="qs-lane-board-n">' + entries.length + "</b></button>" +
+          '<b class="qs-lane-board-n" style="font-size:' + laneFs + 'px">' + entries.length + "</b></button>" +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
       // мини-табличка в полосе кликабельна — открывает полный список этой очереди
       (function (bb, ent) {
