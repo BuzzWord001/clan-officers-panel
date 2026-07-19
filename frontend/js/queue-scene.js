@@ -183,10 +183,10 @@
     { q: 0, title: "Обычные", accent: "#7ec46a", bx: 50, by: 26, ui: { x: 49, y: 40 }, item: { x: 60, y: 27 },
       merchant: { x: 43, y: 35 },
       path: [{ x: 45, y: 60 }, { x: 47, y: 51 }, { x: 48, y: 43 }, { x: 49, y: 35 }] },
-    { q: 1, title: "Редкие (R)", accent: "#ff8a2b", bx: 65, by: 62, ui: { x: 61, y: 74 }, item: { x: 73, y: 64 },
+    { q: 1, title: "Редкие (R)", accent: "#ff8a2b", glow: "#ffd24a", bx: 65, by: 62, ui: { x: 61, y: 74 }, item: { x: 73, y: 64 },
       merchant: { x: 70, y: 59 },
       path: [{ x: 37, y: 80 }, { x: 45, y: 76 }, { x: 53, y: 72 }, { x: 60, y: 69 }] },
-    { q: 2, title: "Легендарные (S)", accent: "#c07be0", bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
+    { q: 2, title: "Легендарные (S)", accent: "#c07be0", glow: "#c07be0", lightning: true, bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
       merchant: { x: 88, y: 77 },
       path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] }
   ];
@@ -841,6 +841,14 @@
     "@keyframes qLavkaGlow{" +
       "0%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 6px var(--gc,transparent)) drop-shadow(0 0 15px var(--gc,transparent))}" +
       "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px var(--gc,transparent)) drop-shadow(0 0 28px var(--gc,transparent))}}" +
+    /* легендарная лавка — фиолетовое сияние + раскаты молний (двойная вспышка + одиночный удар) */
+    ".qs-lavka.lav-lightning{animation:qLavkaBolt 5s linear infinite}" +
+    "@keyframes qLavkaBolt{" +
+      "0%,9%,14.5%,58%,63%,100%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc)) drop-shadow(0 0 18px var(--gc))}" +
+      "10%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 4px #fff) drop-shadow(0 0 36px #e6bcff) brightness(1.65)}" +
+      "11.5%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc)) drop-shadow(0 0 18px var(--gc))}" +
+      "12.5%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 5px #fff) drop-shadow(0 0 30px #dbaaff) brightness(1.5)}" +
+      "60%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 5px #fff) drop-shadow(0 0 34px #e6bcff) brightness(1.6)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavka{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
@@ -1551,13 +1559,14 @@
       if (!isHidden("lavka:" + b.q)) {
       var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
-      lavka.className = "qs-lavka"; lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
+      lavka.className = "qs-lavka" + (b.lightning ? " lav-lightning" : "");
+      lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
       lavka.src = objImgSrc("lavka:" + b.q, "assets/queue/scene/lavka-" + b.q + ".webp?v=4");
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
         ";transform:" + flipTf("lavka:" + b.q, "translate(-50%,-100%)") +
-        ";--gc:" + b.accent;   // цвет свечения = акцент очереди
+        ";--gc:" + (b.glow || b.accent);   // цвет свечения лавки (редкие=золото)
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
