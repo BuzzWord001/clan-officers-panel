@@ -1620,10 +1620,11 @@
       });
       var go = body.querySelector("#qs-p2-go");
       var n = multi ? Object.keys(selSet).length : (sel ? 1 : 0);
-      go.textContent = edit ? "💾 Сохранить" : (n
-        ? (multi ? ("Встать за " + n + " ресурс" + (n === 1 ? "ом" : "ами")) : "Встать в очередь")
-        : "Сначала выбери ресурс");
-      go.disabled = !n && !edit;
+      // мульти: нужен минимум 1 ресурс (пустой список = «все», поэтому 0 не даём сохранить).
+      go.textContent = (multi && n === 0) ? "Выбери хотя бы 1 ресурс"
+        : edit ? (multi ? "💾 Сохранить (" + n + ")" : "💾 Сохранить")
+        : (n ? (multi ? ("Встать за " + n + " ресурс" + (n === 1 ? "ом" : "ами")) : "Встать в очередь") : "Сначала выбери ресурс");
+      go.disabled = multi ? (n === 0) : (!sel && !edit);
       var warn = body.querySelector("#qs-res-warn");        // предупреждения по «капризным» ресурсам
       if (warn) {
         var wr = (multi ? Object.keys(selSet) : (sel ? [sel] : [])).filter(function (r) { return RES_WARN[r]; });

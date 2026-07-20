@@ -1237,10 +1237,10 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
         if payload.resources is not None and not row["privileged"]:   # мульти-выбор (обычная/редкая)
             valid = _QUEUE_ITEMS[payload.queue] if 0 <= payload.queue < len(_QUEUE_ITEMS) else []
             picked = [x for x in payload.resources if x in valid]
-            import json as _jsonr
-            sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
-            if picked:                                                # resource = первый (совместимость)
-                sets.append("resource=?"); vals.append(picked[0])
+            if picked:                    # пустой НЕ сохраняем (иначе трактуется как «все ресурсы»)
+                import json as _jsonr
+                sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
+                sets.append("resource=?"); vals.append(picked[0])   # resource = первый (совместимость)
         if payload.recipient is not None:
             sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
         if payload.auto_repeat is not None:
