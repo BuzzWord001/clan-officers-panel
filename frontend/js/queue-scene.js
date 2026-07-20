@@ -248,26 +248,32 @@
   // суммарное за все применённые жетоны, а не размер одного стака)
   function tipHtml(e) {
     var nick = '<span class="qtip-nick">' + esc(e.nick) + "</span>";
-    if (!e.resource)
+    var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    if (!rl.length)
       return nick + (e.privileged
         ? '<span class="qtip-priv">⚡ вне очереди — жетон ТОП-3 (ресурс не выбран)</span>'
         : '<span class="qtip-res none">ресурс ещё не выбран</span>');
-    var rm = REWARDS_META[e.resource] || {}, unit = rm.unit || 0, qty;
-    if (e.privileged) {
-      var st = e.priv_stacks || 1;
-      qty = (unit ? (st * unit) + " шт" : "") + (st > 1 ? " · " + st + " жетон(ов)" : "");
-    } else {
-      qty = rm.mode === "pack" ? "всё за неделю — первому" : (unit ? unit + " шт" : "");
-    }
-    var res = '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(e.resource) + '" alt=""> ' +
-      esc(resName(e.resource)) + (qty ? ' — <b>' + qty + "</b>" : "") + "</span>";
-    if (e.privileged)
+    if (e.privileged) {                                       // жетон — всегда один ресурс
+      var rm = REWARDS_META[e.resource] || {}, unit = rm.unit || 0, st = e.priv_stacks || 1;
+      var qty = (unit ? (st * unit) + " шт" : "") + (st > 1 ? " · " + st + " жетон(ов)" : "");
+      var res = '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(e.resource) + '" alt=""> ' +
+        esc(resName(e.resource)) + (qty ? ' — <b>' + qty + "</b>" : "") + "</span>";
       return nick + '<span class="qtip-priv">⚡ берёт ВНЕ очереди — жетон ТОП-3 по доблести</span>' + res;
-    return nick + '<span class="qtip-sub">стоит за:</span>' + res;
+    }
+    var list = rl.map(function (k) {
+      var rm = REWARDS_META[k] || {}, unit = rm.unit || 0;
+      var qty = rm.mode === "pack" ? "всё за неделю — первому" : (unit ? unit + " шт" : "стак");
+      return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' +
+        esc(resName(k)) + ' — <b>' + qty + "</b></span>";
+    }).join("");
+    return nick + '<span class="qtip-sub">стоит за' + (rl.length > 1 ? " (" + rl.length + ", каждый по стаку)" : "") + ":</span>" + list;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
   var RES_WARN = {
+    "gramota": "Может быть выдана ВНЕ очереди — проводникам на КХ или тем, у кого не осталось " +
+      "пропусков на КХ, даже если подойдёт твоя очередь. Ты не теряешь место: как только грамота " +
+      "освободится — получишь её по очереди.",
     "vysshiy-kamen": "Падает только начиная с 6 этапа КХ — в конце недели его может не быть в наличии. " +
       "Ничего страшного: ты займёшь очередь и станешь ПЕРВЫМ претендентом. Как только предмет выпадет на " +
       "следующих неделях — получишь его первым и останешься в очереди, пока не заберёшь.",
@@ -762,6 +768,26 @@
     "}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
+    /* окно правил (вверху, разворачивается) */
+    ".qs-rules{max-width:1100px;margin:10px auto 0;border:1px solid rgba(224,162,74,.4);border-radius:13px;" +
+      "background:linear-gradient(180deg,rgba(40,26,12,.88),rgba(22,14,7,.92));box-shadow:0 5px 18px rgba(0,0,0,.42);overflow:hidden}" +
+    ".qs-rules-sum{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;padding:12px 16px;" +
+      "font:800 14.5px Georgia,serif;color:#f0c878;text-shadow:0 1px 2px #000}" +
+    ".qs-rules-sum::-webkit-details-marker{display:none}" +
+    ".qs-rules-ic0{font-size:19px}" +
+    ".qs-rules-arr{margin-left:auto;color:#caa66a;transition:transform .18s}" +
+    ".qs-rules[open] .qs-rules-arr{transform:rotate(90deg)}" +
+    ".qs-rules-sum:hover{background:rgba(224,162,74,.07)}" +
+    ".qs-rules[open] .qs-rules-sum{border-bottom:1px solid rgba(224,162,74,.22)}" +
+    ".qs-rules-body{padding:4px 16px 14px}" +
+    ".qs-rule{font:500 13px/1.5 system-ui;color:#eaddc4;margin:9px 0;padding-bottom:9px;border-bottom:1px solid rgba(224,162,74,.12)}" +
+    ".qs-rule:last-child{border-bottom:0;padding-bottom:0}" +
+    ".qs-rule b{color:#f6e4bc}.qs-rule-b{font-weight:800}" +
+    ".qs-rule-tok{background:linear-gradient(180deg,rgba(70,52,18,.4),rgba(40,28,10,.35));" +
+      "border:1px solid rgba(255,210,110,.4);border-radius:10px;padding:10px 12px;margin-top:10px}" +
+    ".qs-rules-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}" +
+    ".qs-rules-ic{height:34px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
+    "@media(max-width:640px){.qs-rules-sum{font-size:12.5px;padding:10px 12px}.qs-rule{font-size:12px}.qs-rules-ic{height:28px}}" +
     /* переключатель пола своей модельки (низ страницы, всем вошедшим) */
     ".qs-gender{max-width:430px;margin:16px auto 6px;padding:13px 16px 15px;border:1px solid rgba(224,162,74,.34);" +
       "border-radius:14px;background:linear-gradient(180deg,rgba(40,26,12,.74),rgba(22,14,7,.74));" +
@@ -1237,6 +1263,13 @@
     ".qs-stage .q-char-priv-lbl{font-size:clamp(8px,1.3cqw,12px)}" +
     ".qs-stage .qs-char-res{width:min(23px,2.5cqw);height:min(23px,2.5cqw)}" +
     ".qs-stage .qs-char-res.big{width:min(46px,5cqw);height:min(46px,5cqw)}" +
+    ".qs-char-resw{position:relative;display:inline-block;line-height:0}" +
+    ".qs-char-resn{position:absolute;right:-5px;bottom:-3px;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+      "color:#ffe6a8;font:800 max(7px,0.95cqw) system-ui;padding:0 4px;border-radius:7px;" +
+      "border:1px solid rgba(232,202,120,.6);line-height:1.6;text-shadow:0 1px 1px #000}" +
+    ".qs-bubble{position:relative}" +
+    ".qs-bubble-n{position:absolute;right:-4px;bottom:-3px;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+      "color:#ffe6a8;font:800 10px system-ui;padding:0 4px;border-radius:7px;border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 1px #000}" +
     // ПРОВОДНИК: круто-тёмный бейдж «Проводник» над ником + красивое чёрное свечение вокруг
     // модельки (для любого, кто в списке проводников — и будущих тоже).
     ".q-char-guide-lbl{white-space:nowrap;font:800 9.5px system-ui;color:#ffe6a8;" +
@@ -1366,7 +1399,7 @@
     (_lastState.queues[q] || []).forEach(function (e) {
       if (canon(e.main_nick) === mc && !e.privileged) mine = e;             // моё обычное место
     });
-    if (mine) openResourcePicker(b, { resource: res, recipient: mine.recipient || "",
+    if (mine) openResourcePicker(b, { resource: res, resources: mine.resources, recipient: mine.recipient || "",
       auto_repeat: mine.auto_repeat, plan: mine.auto_plan || [] });
     else openResourcePicker(b, null, res);
   }
@@ -1463,9 +1496,15 @@
       "transform:translate(-50%,-100%) scale(" + scale.toFixed(3) + ");z-index:" + (e.privileged ? 8800 : Math.round(p.y * 12)) + ";";
     // всплывающая подсказка (ник + ресурс, для привилегии — пояснение)
     el.setAttribute("data-tip", tipHtml(e));
-    // над головой (сверху вниз): рисунок ресурса → метка ТОП-3 → ник
-    var resIcon = e.resource
-      ? '<img class="qs-char-res' + (e.resource === "mount-cilin" ? " big" : "") + '" src="' + resImg(e.resource) + '" alt="" title="">' : "";
+    // над головой (сверху вниз): ресурс(ы) → метка ТОП-3 → ник. Обычная/редкая — мультивыбор:
+    // показываем первый ресурс + «+N», полный список — в подсказке (tipHtml).
+    var resList = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    var resIcon = resList.length
+      ? '<span class="qs-char-resw">' +
+          '<img class="qs-char-res' + (resList[0] === "mount-cilin" ? " big" : "") + '" src="' + resImg(resList[0]) + '" alt="" title="">' +
+          (resList.length > 1 ? '<span class="qs-char-resn">+' + (resList.length - 1) + "</span>" : "") +
+        "</span>"
+      : "";
     el.innerHTML =
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
       '<div class="q-char-head">' +
@@ -1533,7 +1572,16 @@
     var items = (BOOTH_ITEMS[b.q] || []).filter(function (it) {
       return !isPriv || (REWARDS_META[it] || {}).mode !== "pack";   // жетон — только обычные стаковые
     });
-    var sel = edit ? (edit.resource || "") : (presel || "");  // выбранный/пред-выбранный ресурс
+    // Обычная (0) и редкая (1) очередь — МУЛЬТИвыбор (каждый ресурс по стаку). Легендарная (2)
+    // и жетон ТОП-3 — один ресурс (как раньше).
+    var multi = (b.q === 0 || b.q === 1) && !isPriv;
+    var sel = edit ? (edit.resource || "") : (presel || "");  // одиночный (q2/жетон)
+    var selSet = {};                                          // мульти-выбор (q0/q1)
+    if (multi) {
+      var pre = (edit && edit.resources && edit.resources.length) ? edit.resources
+              : (edit && edit.resource ? [edit.resource] : items.slice());   // новый вход → все выбраны
+      pre.forEach(function (x) { if (items.indexOf(x) >= 0) selSet[x] = true; });
+    }
     var planArr = (edit && edit.plan ? edit.plan.slice() : []);
     var body = document.createElement("div");
     body.className = "qs-pick2";
@@ -1543,7 +1591,7 @@
     // необязательные настройки открыты сразу только если они уже заданы (правка)
     var openMore = !!(edit && (edit.recipient || edit.auto_repeat || (edit.plan && edit.plan.length)));
     body.innerHTML =
-      '<div class="qs-p2-lbl">1 · Выбери ресурс:</div>' +
+      '<div class="qs-p2-lbl">' + (multi ? "1 · Выбери ресурсы <span style=\"color:#8a795a;font-weight:400\">(каждый по 1 стаку — можно все или часть)</span>:" : "1 · Выбери ресурс:") + "</div>" +
       '<div class="qs-respick" id="qs-p2-grid"></div>' +
       '<div id="qs-res-warn" class="qs-res-warn"></div>' +
       // всё необязательное — в сворачиваемый блок, чтобы не путать с обязательным выбором ресурса
@@ -1566,14 +1614,23 @@
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
     function paintCards() {
-      [].forEach.call(grid.children, function (c) { c.classList.toggle("sel", c.dataset.res === sel); });
+      [].forEach.call(grid.children, function (c) {
+        var r = c.dataset.res;
+        c.classList.toggle("sel", multi ? !!selSet[r] : (r === sel));
+      });
       var go = body.querySelector("#qs-p2-go");
-      go.textContent = edit ? "💾 Сохранить" : (sel ? "Встать в очередь" : "Сначала выбери ресурс");
-      go.disabled = !sel && !edit;
-      var warn = body.querySelector("#qs-res-warn");        // предупреждение по «капризному» ресурсу
+      var n = multi ? Object.keys(selSet).length : (sel ? 1 : 0);
+      go.textContent = edit ? "💾 Сохранить" : (n
+        ? (multi ? ("Встать за " + n + " ресурс" + (n === 1 ? "ом" : "ами")) : "Встать в очередь")
+        : "Сначала выбери ресурс");
+      go.disabled = !n && !edit;
+      var warn = body.querySelector("#qs-res-warn");        // предупреждения по «капризным» ресурсам
       if (warn) {
-        if (RES_WARN[sel]) { warn.innerHTML = "⚠️ <b>" + esc(resName(sel)) + ".</b> " + esc(RES_WARN[sel]); warn.style.display = "block"; }
-        else warn.style.display = "none";
+        var wr = (multi ? Object.keys(selSet) : (sel ? [sel] : [])).filter(function (r) { return RES_WARN[r]; });
+        if (wr.length) {
+          warn.innerHTML = wr.map(function (r) { return "⚠️ <b>" + esc(resName(r)) + ".</b> " + esc(RES_WARN[r]); }).join("<br>");
+          warn.style.display = "block";
+        } else warn.style.display = "none";
       }
     }
     items.forEach(function (it) {
@@ -1583,7 +1640,11 @@
       var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
       var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">накоплено: ' + rm.total + "</span>" : "";
       card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total;
-      card.addEventListener("click", function () { sel = it; paintCards(); });
+      card.addEventListener("click", function () {
+        if (multi) { if (selSet[it]) delete selSet[it]; else selSet[it] = true; }
+        else { sel = it; }
+        paintCards();
+      });
       grid.appendChild(card);
     });
     // получатель — живая проверка твин/супруг
@@ -1620,13 +1681,14 @@
     paintCards();
     // commit
     body.querySelector("#qs-p2-go").addEventListener("click", function () {
-      var resource = sel;
-      if (!edit && !resource) { return; }
+      var resources = multi ? Object.keys(selSet) : null;
+      var resource = multi ? (resources[0] || "") : sel;
+      if (!edit && (multi ? !resources.length : !resource)) { return; }
       var rcpt = (rcptEl.value || "").trim();
       if (rcpt && recipientRel(rcpt) === "other" &&
           !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
       if (m) m.close();
-      // смена ресурса ЖЕТОННОЙ записи (отдельная, privileged=1)
+      // смена ресурса ЖЕТОННОЙ записи (отдельная, privileged=1) — всегда один ресурс
       if (isPriv) {
         q("POST", "/queue/set-entry", { queue: b.q, resource: resource, privileged: true })
           .then(refresh).catch(function (e2) { alert(e2.status === 400 ? "Жетоном — только обычные ресурсы." : ("Ошибка: " + (e2.detail || e2.message))); });
@@ -1639,8 +1701,9 @@
           .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
       }
-      var payload = { queue: b.q, resource: resource, recipient: rcpt,
+      var payload = { queue: b.q, recipient: rcpt,
                       auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
+      if (multi) payload.resources = resources; else payload.resource = resource;
       var path = edit ? "/queue/set-entry" : "/queue/join";
       q("POST", path, payload).then(function () {
         if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick), src: src || "scene" };
@@ -1874,7 +1937,7 @@
         editBtn.style.cssText = "left:" + ep.x.toFixed(2) + "%;top:" + ep.y.toFixed(2) + "%;--gc:" + b.accent;
         editBtn.title = "Изменить ресурс и кому передать"; editBtn.textContent = "✎ ресурс/кому";
         editBtn.addEventListener("click", function () {
-          openResourcePicker(b, { resource: myEntry.resource || "", recipient: myEntry.recipient || "",
+          openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources, recipient: myEntry.recipient || "",
             auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
         });
         stage.appendChild(editBtn);
@@ -2030,6 +2093,27 @@
     return el;
   }
 
+  // Разворачивающееся окно ПРАВИЛ — вверху, для всех. Коротко и понятно + картинки ресурсов.
+  function buildRulesPanel() {
+    var el = document.createElement("details");
+    el.className = "qs-rules";
+    function ic(k) { return '<img class="qs-rules-ic" src="' + resImg(k) + '" alt="' + esc(resName(k)) + '" title="' + esc(resName(k)) + '">'; }
+    el.innerHTML =
+      '<summary class="qs-rules-sum"><span class="qs-rules-ic0">📖</span>' +
+        '<b>Как работает очередь и жетоны ТОП-3 — правила</b><span class="qs-rules-arr">▸</span></summary>' +
+      '<div class="qs-rules-body">' +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#7ec46a">🟢 Обычные:</span> выбирай <b>любые</b> ресурсы — каждый по <b>1 стаку</b> (стак = всё накопленное за неделю). Все выдадутся за раз, как подойдёт очередь.<div class="qs-rules-row">' + ic("kamen-doblesti") + ic("meteorit") + ic("zhemchuzhina") + ic("znak-edinstva") + ic("koloda-kart") + ic("kamen-bessmertnyh") + ic("pilyulya") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#ffd24a">🟠 Редкие (R):</span> так же — можешь выбрать <b>оба</b> ресурса по стаку, выдадутся вместе.<div class="qs-rules-row">' + ic("gramota") + ic("prikaz-feniksa") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#c07be0">🟣 Легендарные (S):</span> выбираешь <b>1 ресурс</b> и стоишь за ним. Получил — сразу в конец очереди, если стоит галочка «вставать автоматически»; без неё — встань снова.<div class="qs-rules-row">' + ic("drakonya-cheshuya") + ic("sushchnost-karty") + ic("vysshiy-kamen") + ic("mount-cilin") + "</div></div>" +
+        '<div class="qs-rule"><b>Не всё досталось?</b> Если каких-то ресурсов не хватило — <b>остаёшься в очереди</b> за ними и получишь, как только появятся. Можно и выйти, встать заново и выбрать всё сразу новой пачкой.</div>' +
+        '<div class="qs-rule"><b>🔥 Огненный цилинь и Высший камень</b> падают с шансом/с 6 этапа — на этой неделе их может не быть. Не страшно: ты <b>первый претендент</b> и стоишь в очереди, пока не получишь.</div>' +
+        '<div class="qs-rule"><b>✏️ Менять выбор</b> можно в любой момент — нажми на свою модельку в очереди или на нужный ресурс у торговца.</div>' +
+        '<div class="qs-rule"><span class="qs-rule-b">📜 Запечатанная грамота Лиги</span> может быть выдана <b>вне очереди</b> проводникам на КХ или тем, у кого не осталось пропусков на КХ — даже если подойдёт твоя очередь. Место при этом не теряешь.</div>' +
+        '<div class="qs-rule qs-rule-tok"><b>⚡ Жетон ТОП-3 (вне очереди):</b> работает только на <b>обычные</b> ресурсы — берёшь <b>1 стак одного</b> ресурса. Появляется твой <b>светящийся клон</b>, который берёт ресурс вне очереди, а твоя <b>основная моделька остаётся в очереди</b> и не теряет место. Жетон даётся за попадание в <b>ТОП-3 недели по доблести</b>, копится по 1 и не сгорает.</div>' +
+      "</div>";
+    return el;
+  }
+
   // «Реклама» жетона ТОП-3 — над всей картинкой, для всех. Коротко: что это и как работает.
   // Личное уведомление «очередь подошла, но не хватило доблести» (свиток-предупреждение).
   function buildNoticeBanner() {
@@ -2111,9 +2195,9 @@
       '<img class="qs-ta-token" src="assets/queue/ui/token.webp?v=2" alt="Жетон ТОП-3">' +
       '<div class="qs-ta-body">' +
         '<div class="qs-ta-title">Жетон ТОП-3 <span>— награда за доблесть</span></div>' +
-        '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. С ним берёшь ресурсы ' +
-        'из обычной очереди <b>вне очереди</b>, сразу первым у торговца. При этом <b>твоё место в очереди не теряется</b> — ' +
-        'ты продолжаешь стоять как обычно и <b>вдобавок</b> получаешь ресурсы по жетону. Копится по 1 за неделю в топ-3, не сгорает.</div>' +
+        '<div class="qs-ta-tx">Попади в <b>ТОП-3 недели по доблести</b> — получишь <b>жетон</b>. Им берёшь <b>1 стак одного ' +
+        'обычного ресурса вне очереди</b> — появляется твой <b>светящийся клон</b> у торговца. При этом твоя <b>основная ' +
+        'моделька остаётся в очереди и не теряет место</b> — получаешь ресурс по жетону <b>вдобавок</b>. Копится по 1 за неделю, не сгорает.</div>' +
       "</div>" +
       '<div class="qs-ta-badge">без очереди!</div>';
     return el;
@@ -2311,9 +2395,10 @@
         cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
         // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке.
         // Иконки автокропятся ниже → цилинь заполняет облачко без пустого пространства.
-        var bubble = e.resource
+        var bl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+        var bubble = bl.length
           ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' +
-            resImg(e.resource) + '" alt=""></div>'
+            resImg(bl[0]) + '" alt="">' + (bl.length > 1 ? '<span class="qs-bubble-n">+' + (bl.length - 1) + "</span>" : "") + "</div>"
           : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
         // применяем настройку зеркала модели (как в сцене) — иначе флипнутые (заглушка,
         // Лирия!, Стрелок…) в полосе смотрят назад
@@ -2330,7 +2415,7 @@
         if (mine) {
           cell.classList.add("clk");
           cell.addEventListener("click", function () {
-            openResourcePicker(b, { resource: e.resource || "", recipient: e.recipient || "",
+            openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "",
               auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
         }
@@ -2374,7 +2459,7 @@
         var it = chip.getAttribute("data-res"); if (!it) return;
         if (_isAdmin && !_meAcc) { openResourcePicker(b, null, it, "lane"); return; }   // админ встаёт как Лирия!
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (iAmIn) openResourcePicker(b, { resource: it, recipient: (myEntry && myEntry.recipient) || "",
+        if (iAmIn) openResourcePicker(b, { resource: it, resources: (myEntry && myEntry.resources), recipient: (myEntry && myEntry.recipient) || "",
           auto_repeat: myEntry && myEntry.auto_repeat, plan: (myEntry && myEntry.auto_plan) || [] });
         else openResourcePicker(b, null, it, "lane");
       });
@@ -2842,6 +2927,8 @@
         : "🏰 <b>Очередь за ресурсами с КХ.</b> Встань в любую из 3 очередей — можно во все сразу. " +
           "В одну очередь дважды нельзя: снова встанешь, когда дойдёт очередь и заберёшь свой ресурс.";
     wrap.appendChild(banner);
+    // окно ПРАВИЛ — вверху, разворачивается, для всех
+    if (!_pathMode && !_placeMode) wrap.appendChild(buildRulesPanel());
     // личное уведомление «не хватило доблести» — самым верхом, чтобы игрок сразу увидел
     if (!_pathMode && !_placeMode) { var _nb = buildNoticeBanner(); if (_nb) wrap.appendChild(_nb); }
     // свиток «Держатели жетонов ТОП-3» — сверху справа, виден всем, разворачивается кликом

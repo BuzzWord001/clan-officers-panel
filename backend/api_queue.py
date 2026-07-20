@@ -266,6 +266,12 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN auto_plan TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: МУЛЬТИ-выбор ресурсов (JSON-список) для обычной/редкой очереди — каждый по стаку.
+        # Пусто → вычисляется на лету (q0/q1 = все ресурсы очереди, q2 = один выбранный).
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN resources TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: отметка «не забрал ресурс на этой неделе» (офицер/админ) → остаётся в очереди
         try:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN not_collected INTEGER NOT NULL DEFAULT 0")
@@ -495,6 +501,7 @@ class SharedPwIn(BaseModel):
 class JoinIn(BaseModel):
     queue: int
     resource: str = Field(default="", max_length=64)
+    resources: list[str] = Field(default_factory=list)   # МУЛЬТИ-выбор (обычная/редкая) — каждый по стаку
     recipient: str = Field(default="", max_length=64)   # кому передать (твин/супруг), необязательно
     auto_repeat: bool = False                            # вставать за этим же ресурсом каждую неделю
     plan: list[str] = Field(default_factory=list)        # план ресурсов на будущие недели (по порядку)
@@ -504,6 +511,7 @@ class JoinIn(BaseModel):
 class SetEntryIn(BaseModel):
     queue: int
     resource: str | None = Field(default=None, max_length=64)    # None = не менять
+    resources: list[str] | None = None                           # None = не менять; список = мульти-выбор
     recipient: str | None = Field(default=None, max_length=64)   # None = не менять; "" = очистить
     auto_repeat: bool | None = None                              # None = не менять
     plan: list[str] | None = None                                # None = не менять
@@ -920,6 +928,38 @@ def set_shared_pw(payload: SharedPwIn, _: dict = Depends(require_admin)) -> dict
 
 # ─────────────────── состояние очередей + лог (Фаза 2) ───────────────────
 QUEUES = (0, 1, 2)  # 0 обычные · 1 редкие(R) · 2 легендарные(S)
+# Ресурсы каждой очереди (порядок = как на витрине). Для обычной/редкой мультивыбор:
+# пустой resources у записи → показываем/раздаём ВСЕ ресурсы очереди (по стаку).
+_QUEUE_ITEMS = [
+    ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
+    ["gramota", "prikaz-feniksa"],
+    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"],
+]
+
+
+def _entry_resources(r):
+    """Список выбранных ресурсов записи. Пусто в БД → q0/q1 = все ресурсы очереди (мультивыбор
+    по умолчанию), q2 = один выбранный. Всегда только валидные ресурсы своей очереди."""
+    import json as _json
+    q = r["queue"]
+    valid = _QUEUE_ITEMS[q] if 0 <= q < len(_QUEUE_ITEMS) else []
+    raw = ""
+    try:
+        raw = r["resources"] if "resources" in r.keys() else ""
+    except Exception:
+        raw = ""
+    lst = []
+    if raw:
+        try:
+            lst = [x for x in _json.loads(raw) if x in valid]
+        except (ValueError, TypeError):
+            lst = []
+    if lst:
+        return lst
+    if q in (0, 1):
+        return list(valid)                      # существующие/без выбора → все ресурсы очереди
+    res = (r["resource"] or "").strip() if ("resource" in r.keys()) else ""
+    return [res] if res in valid else ([res] if res else [])
 
 # ── параметры движка распределения (подтверждено Лиром 2026-07-16) ──
 # Пороги доблести: обычная очередь ≥60, редкие/легендарные ≥100.
@@ -1027,6 +1067,7 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
             "is_shooter": bool(shooters_canon and (mc in shooters_canon
                                or db._valor_canon(disp_nick) in shooters_canon)),
             "resource": (r["resource"] if "resource" in keys else ""),
+            "resources": _entry_resources(r),
             "recipient": rcpt,
             "recipient_ok": _recipient_ok(rcpt, mc, idx, smap),
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
@@ -1117,10 +1158,17 @@ def join(payload: JoinIn, request: Request) -> dict:
             rcpt = (sp["recipient"] if sp else "")[:64]
         import json as _json
         plan = _clean_plan(payload.plan, q)
+        # мульти-выбор: только валидные ресурсы своей очереди; resource = первый (совместимость)
+        valid = _QUEUE_ITEMS[q] if 0 <= q < len(_QUEUE_ITEMS) else []
+        picked = [x for x in (payload.resources or []) if x in valid]
+        if not picked and res in valid:
+            picked = [res]
+        if picked:
+            res = picked[0]
         conn.execute(
-            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
-            " auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, rcpt,
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources, recipient,"
+            " auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, _json.dumps(picked), rcpt,
              1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
              detail=("res=" + res + (" →" + rcpt if rcpt else "") +
@@ -1186,6 +1234,13 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
                 if not rr or rr["q"] != 0 or rr["mode"] == "pack":
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "only_regular_stack")
             sets.append("resource=?"); vals.append(new_res)
+        if payload.resources is not None and not row["privileged"]:   # мульти-выбор (обычная/редкая)
+            valid = _QUEUE_ITEMS[payload.queue] if 0 <= payload.queue < len(_QUEUE_ITEMS) else []
+            picked = [x for x in payload.resources if x in valid]
+            import json as _jsonr
+            sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
+            if picked:                                                # resource = первый (совместимость)
+                sets.append("resource=?"); vals.append(picked[0])
         if payload.recipient is not None:
             sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
         if payload.auto_repeat is not None:
