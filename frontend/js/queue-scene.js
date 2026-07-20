@@ -1154,6 +1154,20 @@
       "font:700 12px system-ui;text-align:center}" +
     ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
     ".qs-rescard.sel{border-color:#7ec46a;background:rgba(126,196,106,.16);box-shadow:0 0 0 1px #7ec46a}" +
+    // мультивыбор: галочка в углу + приглушение НЕвыбранных, чтобы было очевидно что снято
+    ".qs-rescard{position:relative}" +
+    ".qs-rc-check{position:absolute;top:5px;right:5px;width:19px;height:19px;border-radius:6px;" +
+      "border:2px solid rgba(224,162,74,.55);background:rgba(0,0,0,.35);display:flex;align-items:center;" +
+      "justify-content:center;font:900 13px system-ui;color:transparent;transition:all .12s}" +
+    ".qs-rescard.sel .qs-rc-check{background:#7ec46a;border-color:#7ec46a;color:#123}" +
+    ".qs-rescard.sel .qs-rc-check::after{content:'✓'}" +
+    ".qs-respick.multi .qs-rescard:not(.sel){opacity:.5;filter:grayscale(.45)}" +
+    ".qs-respick.multi .qs-rescard:not(.sel):hover{opacity:.85;filter:none}" +
+    ".qs-p2-allbar{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}" +
+    ".qs-p2-mini{cursor:pointer;font:700 12px system-ui;color:#f0dcb4;padding:6px 11px;border-radius:8px;" +
+      "border:1px solid rgba(224,162,74,.4);background:rgba(20,13,7,.7)}" +
+    ".qs-p2-mini:hover{background:rgba(224,162,74,.14);color:#fff}.qs-p2-mini:active{transform:scale(.96)}" +
+    ".qs-p2-cnt{margin-left:auto;font:700 12px system-ui;color:#8fc36a}" +
     ".qs-rescard img{height:48px;width:auto;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
     ".qs-rc-name{font:700 11.5px/1.15 system-ui}" +
     ".qs-rc-stack{font:600 10px system-ui;color:#8fc36a}" +
@@ -1591,8 +1605,10 @@
     // необязательные настройки открыты сразу только если они уже заданы (правка)
     var openMore = !!(edit && (edit.recipient || edit.auto_repeat || (edit.plan && edit.plan.length)));
     body.innerHTML =
-      '<div class="qs-p2-lbl">' + (multi ? "1 · Выбери ресурсы <span style=\"color:#8a795a;font-weight:400\">(каждый по 1 стаку — можно все или часть)</span>:" : "1 · Выбери ресурс:") + "</div>" +
-      '<div class="qs-respick" id="qs-p2-grid"></div>' +
+      '<div class="qs-p2-lbl">' + (multi ? "1 · Отметь нужные ресурсы <span style=\"color:#8a795a;font-weight:400\">(нажми на карточку, чтобы убрать или вернуть — каждый по 1 стаку)</span>:" : "1 · Выбери ресурс:") + "</div>" +
+      (multi ? '<div class="qs-p2-allbar"><button type="button" id="qs-p2-all" class="qs-p2-mini">✓ Выбрать все</button>' +
+        '<button type="button" id="qs-p2-none" class="qs-p2-mini">✕ Снять все</button><span class="qs-p2-cnt" id="qs-p2-cnt"></span></div>' : "") +
+      '<div class="qs-respick' + (multi ? " multi" : "") + '" id="qs-p2-grid"></div>' +
       '<div id="qs-res-warn" class="qs-res-warn"></div>' +
       // всё необязательное — в сворачиваемый блок, чтобы не путать с обязательным выбором ресурса
       '<details class="qs-p2-more"' + (openMore ? " open" : "") + '>' +
@@ -1620,6 +1636,8 @@
       });
       var go = body.querySelector("#qs-p2-go");
       var n = multi ? Object.keys(selSet).length : (sel ? 1 : 0);
+      var cnt = body.querySelector("#qs-p2-cnt");
+      if (cnt) cnt.textContent = "Отмечено: " + n + " из " + items.length;
       // мульти: нужен минимум 1 ресурс (пустой список = «все», поэтому 0 не даём сохранить).
       go.textContent = (multi && n === 0) ? "Выбери хотя бы 1 ресурс"
         : edit ? (multi ? "💾 Сохранить (" + n + ")" : "💾 Сохранить")
@@ -1640,7 +1658,8 @@
       var rm = REWARDS_META[it] || {};
       var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
       var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">накоплено: ' + rm.total + "</span>" : "";
-      card.innerHTML = '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total;
+      card.innerHTML = (multi ? '<span class="qs-rc-check" aria-hidden="true"></span>' : "") +
+        '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total;
       card.addEventListener("click", function () {
         if (multi) { if (selSet[it]) delete selSet[it]; else selSet[it] = true; }
         else { sel = it; }
@@ -1648,6 +1667,12 @@
       });
       grid.appendChild(card);
     });
+    // мульти: быстрые кнопки «Выбрать все / Снять все» (снял все → отметь нужные, минимум 1)
+    if (multi) {
+      var allBtn = body.querySelector("#qs-p2-all"), noneBtn = body.querySelector("#qs-p2-none");
+      if (allBtn) allBtn.addEventListener("click", function () { items.forEach(function (x) { selSet[x] = true; }); paintCards(); });
+      if (noneBtn) noneBtn.addEventListener("click", function () { selSet = {}; paintCards(); });
+    }
     // получатель — живая проверка твин/супруг
     var rcptEl = body.querySelector("#qs-rcpt"), warnEl = body.querySelector("#qs-rcpt-warn");
     function checkRcpt() {
