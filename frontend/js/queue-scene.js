@@ -317,7 +317,7 @@
   function tipDiv(label) {
     return '<div class="qtip-divider"><span>' + label + "</span></div>";
   }
-  function tipHtml(e) {
+  function tipBody(e) {
     var head = tipPortrait(e) + '<span class="qtip-nick">' + esc(e.nick) + "</span>";
     var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
     if (!rl.length)
@@ -339,6 +339,14 @@
         esc(resName(k)) + ' — <b>' + qty + "</b></span>";
     }).join("");
     return head + tipDiv("стоит за" + (rl.length > 1 ? " · " + rl.length + " (каждый по стаку)" : "")) + list;
+  }
+  // Обёртка: к телу подсказки добавляем кнопку «Сменить облик» — если это МОЯ моделька (игрок
+  // или админ-тест как Лирия!) и обликов несколько. Кнопка кликабельна (окно становится интерактивным).
+  function tipHtml(e) {
+    var out = tipBody(e);
+    if (isMyModel(e) && modelVariants(e).length > 1)
+      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">🔄 Сменить облик модельки</button>';
+    return out;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
@@ -1372,6 +1380,8 @@
     ".qs-fl-adm button.del:hover{background:rgba(180,70,55,.4);color:#fff}" +
     ".qs-fl-adm button.mine{color:#8fc36a;border-color:rgba(126,196,106,.5)}" +
     ".qs-fl-adm button.mine:hover{background:rgba(126,196,106,.18);color:#fff}" +
+    ".qs-fl-adm button.skin{color:#3a2600;font-weight:800;background:linear-gradient(180deg,#ffe0a0,#e0a84a);border-color:rgba(224,162,74,.6)}" +
+    ".qs-fl-adm button.skin:hover{filter:brightness(1.08);color:#3a2600}" +
     ".qs-fl-row.qs-fl-mine{background:rgba(224,162,74,.08)}" +
     ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1) * var(--qs-mscale,1));transform-origin:bottom center;text-align:center}" +
     // ник над головой масштабируется с шириной сцены (cqw), с минимумом 7px для читаемости
@@ -1467,6 +1477,13 @@
       "text-transform:uppercase;color:#b39a6c;white-space:nowrap}" +
     ".qtip-divider::before,.qtip-divider::after{content:'';flex:1;height:1px;" +
       "background:linear-gradient(90deg,rgba(240,200,120,0),rgba(240,200,120,.45),rgba(240,200,120,0))}" +
+    // интерактивное окно (когда есть кнопка смены облика) — ловит курсор и клики
+    ".qtip.interactive{pointer-events:auto}" +
+    // кнопка «Сменить облик» прямо в окне подсказки — крупная, заметная, во всю ширину
+    ".qtip-skin{margin:9px -2px 1px;cursor:pointer;font:800 12px system-ui;color:#3a2600;border:0;border-radius:9px;padding:9px 10px;" +
+      "background:linear-gradient(180deg,#ffe6a8,#e0a84a);box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;" +
+      "justify-content:center;gap:5px;letter-spacing:.2px}" +
+    ".qtip-skin:hover{filter:brightness(1.07)}.qtip-skin:active{transform:scale(.97)}" +
     // ── переключатель облика (модалка) ──
     ".qs-msw{padding:6px 14px 12px;max-width:440px}" +
     ".qs-msw.saving{opacity:.6;pointer-events:none}" +
@@ -1620,12 +1637,15 @@
   }
 
   // ── единая всплывающая подсказка (ник + ресурс) для полосы и сцены ──
-  var _tipEl = null;
+  var _tipEl = null, _tipHideT = null;
   function setupTip() {
     if (_tipEl) return;
     _tipEl = document.createElement("div");
     _tipEl.className = "qtip"; _tipEl.style.display = "none";
     document.body.appendChild(_tipEl);
+    function hideNow() { _tipEl.style.display = "none"; _tipEl.classList.remove("interactive"); }
+    function scheduleHide() { clearTimeout(_tipHideT); _tipHideT = setTimeout(hideNow, 280); }
+    function cancelHide() { clearTimeout(_tipHideT); }
     function place(t) {
       var r = t.getBoundingClientRect();
       _tipEl.style.display = "flex"; _tipEl.classList.remove("below");
@@ -1640,13 +1660,29 @@
     document.addEventListener("mouseover", function (e) {
       var t = e.target.closest && e.target.closest("[data-tip]");
       if (!t) return;
-      _tipEl.innerHTML = t.getAttribute("data-tip"); place(t);
+      cancelHide();
+      _tipEl.innerHTML = t.getAttribute("data-tip");
+      // окно становится КЛИКАБЕЛЬНЫМ, только если внутри есть кнопка (смена облика) — иначе не мешает
+      _tipEl.classList.toggle("interactive", !!_tipEl.querySelector(".qtip-skin"));
+      place(t);
     });
     document.addEventListener("mouseout", function (e) {
       var t = e.target.closest && e.target.closest("[data-tip]");
-      if (t && !(e.relatedTarget && t.contains(e.relatedTarget))) _tipEl.style.display = "none";
+      if (!t) return;
+      if (e.relatedTarget && t.contains(e.relatedTarget)) return;                 // ушли внутрь той же модельки
+      if (e.relatedTarget && _tipEl.contains(e.relatedTarget)) { cancelHide(); return; }  // ушли В подсказку
+      scheduleHide();   // задержка — успеть довести курсор до кнопки в окне
     });
-    window.addEventListener("scroll", function () { if (_tipEl) _tipEl.style.display = "none"; }, true);
+    _tipEl.addEventListener("mouseenter", cancelHide);
+    _tipEl.addEventListener("mouseleave", scheduleHide);
+    // клик по кнопке смены облика в окне → открыть переключатель для этой записи
+    _tipEl.addEventListener("click", function (e) {
+      var btn = e.target.closest(".qtip-skin"); if (!btn) return;
+      var eid = +btn.getAttribute("data-eid"), ent = null;
+      (_lastState.queues || []).forEach(function (arr) { (arr || []).forEach(function (x) { if (x.id === eid) ent = x; }); });
+      hideNow(); if (ent) openModelSwitcher(ent);
+    });
+    window.addEventListener("scroll", function () { if (_tipEl) hideNow(); }, true);
   }
 
   // ── одна моделька на сцене: позиция %, масштаб по глубине (ниже=крупнее), y-сортировка ──
@@ -1708,15 +1744,6 @@
             .then(refresh).catch(admErr);
         });
       });
-    }
-    // кнопка смены облика прямо на модельке (наведение → клик) — владельцу И админу-тесту (как Лирия!)
-    if (isMyModel(e) && modelVariants(e).length > 1) {
-      if (!mine) el.classList.add("q-char-mine-adm");   // чтобы кнопка проявлялась и в админ-тесте
-      var sbc = document.createElement("button");
-      sbc.className = "qs-skin-btn qs-skin-char"; sbc.style.cssText = "top:0;right:-4px";
-      sbc.title = "Сменить облик"; sbc.textContent = "🔄";
-      sbc.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
-      var inner = el.querySelector(".qs-char-inner"); (inner || el).appendChild(sbc);
     }
     return el;
   }
@@ -2016,15 +2043,22 @@
         ? '<img class="qs-fl-res" src="' + resImg(rl[0]) + '" title="' + esc(rl.map(resName).join(", ")) + '" alt="">' +
           '<span class="qs-fl-rname">' + esc(resName(rl[0])) + (rl.length > 1 ? ' <b>+' + (rl.length - 1) + "</b>" : "") + "</span>"
         : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>';
+      // кнопка смены облика — только для СВОЕЙ модельки (игрок / админ-тест как Лирия!), если обликов несколько
+      var skinBtn = (isMyModel(e) && modelVariants(e).length > 1)
+        ? '<button data-act="skin" class="skin" title="сменить облик модельки">🔄 облик</button>' : "";
       var ctrls = "";
       if (_isAdmin) {                                   // админ-управление записью
         ctrls = '<span class="qs-fl-adm">' +
           '<button data-act="up"' + (i === 0 ? " disabled" : "") + ' title="выше">▲</button>' +
           '<button data-act="down"' + (i === entries.length - 1 ? " disabled" : "") + ' title="ниже">▼</button>' +
           (!e.privileged ? '<button data-act="res" title="сменить ресурсы">✏️</button>' : "") +
+          skinBtn +
           '<button data-act="del" class="del" title="убрать">✕</button></span>';
-      } else if (isMine) {                              // игрок — изменить свои ресурсы
-        ctrls = '<span class="qs-fl-adm"><button data-act="mine" class="mine" title="изменить мои ресурсы">✏️ изменить</button></span>';
+      } else if (isMine) {                              // игрок — изменить свои ресурсы / облик
+        ctrls = '<span class="qs-fl-adm"><button data-act="mine" class="mine" title="изменить мои ресурсы">✏️ изменить</button>' +
+          skinBtn + "</span>";
+      } else if (skinBtn) {                             // своя моделька без прочих кнопок (напр. чужая очередь)
+        ctrls = '<span class="qs-fl-adm">' + skinBtn + "</span>";
       }
       var row = document.createElement("div");
       row.className = "qs-fl-row" + (waiting ? " waiting" : "") + (i === focusIdx ? " qs-fl-me" : "") + (isMine ? " qs-fl-mine" : "");
@@ -2067,6 +2101,9 @@
         if (m) m.close();
         openResourcePicker(b, { resource: e.resource || "", resources: e.resources,
           recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+      } else if (act === "skin") {  // сменить облик своей модельки
+        if (m) m.close();
+        openModelSwitcher(e);
       }
     });
     // только что встал и за лимитом показа → промотать список к своей строке + анимация появления
@@ -2830,15 +2867,6 @@
             openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "",
               auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
-        }
-        // кнопка смены облика — для владельца И для админа-теста (как Лирия!), если обликов несколько
-        if (isMyModel(e) && modelVariants(e).length > 1) {
-          var vN = modelVariants(e).length;
-          var sb = document.createElement("button");
-          sb.className = "qs-skin-btn"; sb.style.cssText = "top:1px;right:1px";
-          sb.title = "Сменить облик (" + vN + " на выбор)"; sb.textContent = "🔄";
-          sb.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
-          cell.appendChild(sb);
         }
         strip.appendChild(cell);
       });
