@@ -4168,20 +4168,53 @@
       var h2 = document.createElement("div"); h2.className = "qs-mm-h"; h2.textContent = "👤 Персональные модели (игроку и его твинам)";
       body.appendChild(h2);
       var add = document.createElement("div"); add.className = "qs-mm-addp";
-      add.innerHTML = '<input class="qs-mm-nick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off">' +
+      // список ВСЕХ ников из реестра/доблести (мэйны и твины) — можно выбрать заранее, даже если
+      // человек ещё не в очереди. Модель привязывается к МЭЙН-аккаунту (и достаётся всем его твинам).
+      var rosterOpts = (_roster || []).slice().sort(function (a, b) {
+        return (a.nick || "").localeCompare(b.nick || "", "ru");
+      }).map(function (p) {
+        var lbl = p.is_twin ? ("твин · мэйн " + (p.main_nick || "")) : (p.cls || "мэйн");
+        return '<option value="' + esc(p.nick) + '">' + esc(lbl) + "</option>";
+      }).join("");
+      add.innerHTML = '<input class="qs-mm-nick" list="qs-mm-roster-dl" placeholder="ник из реестра/доблести…" autocomplete="off">' +
+        '<datalist id="qs-mm-roster-dl">' + rosterOpts + "</datalist>" +
         '<button class="qs-mm-addbtn">➕ добавить персональную</button>' +
-        '<span class="qs-mm-addhint">можно добавить НЕСКОЛЬКО — игрок сам выберет облик кнопкой на модельке</span>';
+        '<span class="qs-mm-addhint">выбери ник из списка (мэйны и твины) — можно ЗАРАНЕЕ, даже если он ещё не в очереди. ' +
+          'Модель привяжется к мэйн-аккаунту и достанется всем его твинам. Можно добавить несколько — игрок сам выберет облик.</span>' +
+        '<span class="qs-mm-addres" style="flex:1 1 100%;font:600 11px system-ui;color:#8fc36a;min-height:14px"></span>';
+      var addRes = add.querySelector(".qs-mm-addres");
+      var addInp = add.querySelector(".qs-mm-nick");
+      // подсказка: к какому мэйну привяжется (обновляется при вводе)
+      function resolveMain(nk) {
+        var p = (_roster || []).filter(function (r) {
+          return canon(r.nick) === canon(nk) || canon(r.main_nick || "") === canon(nk);
+        })[0];
+        return p ? { nick: (p.main_nick || p.nick), found: true, twin: p.is_twin && canon(p.nick) === canon(nk) } : { nick: nk, found: false };
+      }
+      addInp.addEventListener("input", function () {
+        var nk = addInp.value.trim();
+        if (!nk) { addRes.textContent = ""; return; }
+        var r = resolveMain(nk);
+        addRes.style.color = r.found ? "#8fc36a" : "#e0a86a";
+        addRes.textContent = r.found
+          ? ("✓ привяжется к мэйну: " + r.nick + (r.twin ? " (ты выбрал твина — модель будет у мэйна и всех твинов)" : ""))
+          : "⚠ ника нет в реестре/доблести — проверь написание (можно выбрать из списка)";
+      });
       add.querySelector(".qs-mm-addbtn").addEventListener("click", function () {
-        var nk = add.querySelector(".qs-mm-nick").value.trim(); if (!nk) return;
-        var cn = canon(nk), base = "person-" + cn;
+        var nk = addInp.value.trim(); if (!nk) return;
+        var r = resolveMain(nk);
+        if (!r.found && !confirm("Ник «" + nk + "» не найден в реестре/доблести. Всё равно добавить модель по этому нику?")) return;
+        var cn = canon(r.nick), base = "person-" + cn;   // ключ по МЭЙН-канону
         // следующий свободный слот: базовая, затем --2, --3… (не затираем ни встроенную, ни прежние)
         var key;
         if (!UPLOADED[base] && !PERSONAL[cn]) key = base;
         else { var n = 2; while (UPLOADED[base + "--" + n]) n++; key = base + "--" + n; }
         pickFile(function (data) {
+          addRes.style.color = "#8fc36a"; addRes.textContent = "Загрузка…";
           q("POST", "/queue/admin/model-upload", { key: key, data: data }).then(function () {
-            UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild);
-          });
+            UPLOADED[key] = Date.now(); addInp.value = ""; addRes.textContent = "✓ добавлено мэйну: " + r.nick;
+            refresh(); loadInfo(rebuild);
+          }).catch(function (er) { addRes.style.color = "#e0a86a"; addRes.textContent = "Ошибка: " + (er.detail || er.message); });
         });
       });
       body.appendChild(add);
