@@ -1042,8 +1042,8 @@
     ".qs-lb-normal,.qs-lb-hover{height:100px;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 4px 7px rgba(0,0,0,.55))}" +
     // кнопка Встать/Выйти НА СЦЕНЕ — тумба (крупнее, чем в полосе)
     ".qs-js{cursor:pointer;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:0;transition:filter .08s}" +
-    ".qs-js-tot{position:relative;display:flex;justify-content:center;height:11.5cqw}" +
-    ".qs-js-dim,.qs-js-lit{height:11.5cqw;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
+    ".qs-js-tot{position:relative;display:flex;justify-content:center;height:min(106px,11.5cqw)}" +
+    ".qs-js-dim,.qs-js-lit{height:min(106px,11.5cqw);width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
     ".qs-js-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
     ".qs-js:hover .qs-js-lit{opacity:1}.qs-js:active{filter:brightness(.9)}" +
     // цветной ореол таблички «Встать/Выйти» — под цвет своей очереди (редкие=золото),
@@ -1053,7 +1053,7 @@
     "@keyframes qsGlow{0%,100%{filter:drop-shadow(0 0 6px var(--gc,#7ec46a)) drop-shadow(0 0 13px var(--gc,#7ec46a))}" +
       "50%{filter:drop-shadow(0 0 10px var(--gc,#7ec46a)) drop-shadow(0 0 21px var(--gc,#7ec46a))}}" +
     "@media(prefers-reduced-motion:reduce){.qs-js-tot{animation:none;filter:drop-shadow(0 0 8px var(--gc,#7ec46a)) drop-shadow(0 0 17px var(--gc,#7ec46a))}}" +
-    ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;font-size:max(8px,1.2cqw);color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
+    ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;font-size:clamp(8px,1.2cqw,11px);color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
     // счётчик-сфера НА СЦЕНЕ
     ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
     ".qs-scnt-bg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
@@ -1228,10 +1228,10 @@
     ".qs-fl-tag.wait{background:rgba(224,162,74,.16);color:#e6c48f;border:1px solid rgba(224,162,74,.35)}" +
     ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1) * var(--qs-mscale,1));transform-origin:bottom center;text-align:center}" +
     // ник над головой масштабируется с шириной сцены (cqw), с минимумом 7px для читаемости
-    ".qs-stage .q-char-name{font-size:max(7px,1.14cqw)}" +
-    ".qs-stage .q-char-priv-lbl{font-size:max(8px,1.3cqw)}" +
-    ".qs-stage .qs-char-res{width:2.5cqw;height:2.5cqw}" +
-    ".qs-stage .qs-char-res.big{width:5cqw;height:5cqw}" +
+    ".qs-stage .q-char-name{font-size:clamp(7px,1.14cqw,10.5px)}" +
+    ".qs-stage .q-char-priv-lbl{font-size:clamp(8px,1.3cqw,12px)}" +
+    ".qs-stage .qs-char-res{width:min(23px,2.5cqw);height:min(23px,2.5cqw)}" +
+    ".qs-stage .qs-char-res.big{width:min(46px,5cqw);height:min(46px,5cqw)}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
     ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
@@ -1829,14 +1829,16 @@
       var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
       var cntEl = document.createElement(_placeMode ? "div" : "button");
       cntEl.className = "qs-board qs-btn-abs";
-      // ширина таблички — в cqw (% ширины сцены), чтобы масштабировалась с картинкой (как персонажи)
+      // ширина таблички: на ПК — исходные px (как было), на узкой сцене (телефон) — ужимается cqw.
+      // min(px,cqw): пока сцена ≥ базовой ширины → px (ПК не меняется), уже → cqw.
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
-        "%;width:" + (13.9 * csz).toFixed(2) + "cqw;z-index:" + cnz +
+        "%;width:min(" + (128 * csz).toFixed(1) + "px," + (13.9 * csz).toFixed(2) + "cqw);z-index:" + cnz +
         ";--gc:" + (b.glow || b.accent) +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
-      // шрифт числа — тоже в cqw (мельче для 3-значных), с полом 8px для читаемости
-      var cntFs = "max(8px," + ((String(entries.length).length >= 3 ? 1.41 : 1.95) * csz).toFixed(2) + "cqw)";
+      // шрифт числа: clamp(пол, cqw, исходный_px) — ПК как было, телефон мельче (мельче для 3-значных)
+      var _big3 = String(entries.length).length >= 3;
+      var cntFs = "clamp(8px," + ((_big3 ? 1.41 : 1.95) * csz).toFixed(2) + "cqw," + ((_big3 ? 13 : 18) * csz).toFixed(1) + "px)";
       cntEl.innerHTML =
         '<img class="qs-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
         '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
