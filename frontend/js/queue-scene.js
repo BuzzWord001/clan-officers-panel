@@ -246,19 +246,36 @@
   function resImg(k) { return "assets/queue/scene/item/" + k + ".webp"; }
   // HTML для всплывающей подсказки: ник + иконка ресурса + КОЛИЧЕСТВО (для жетона —
   // суммарное за все применённые жетоны, а не размер одного стака)
+  // Крупный портрет модели на «пьедестале» (свечение: золото — ТОП-3, чёрное — проводник),
+  // затем разделитель и ресурсы — чтобы «кто» визуально отделялось от «за чем стоит».
+  function tipPortrait(e) {
+    var mi = modelInfo(e);
+    if (!mi) return '<div class="qtip-portrait"><div class="qtip-ph">' + esc((e.cls || "класс?").slice(0, 14)) + "</div></div>";
+    var kind = e.privileged ? " priv" : (e.is_shooter ? " guide" : "");
+    var flip = (MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].flip) ? "scaleX(-1)" : "";
+    return '<div class="qtip-portrait' + kind + '">' +
+      '<span class="qtip-shadow"></span>' +
+      '<img class="qtip-mdl" src="' + esc(mi.url) + '"' + (flip ? ' style="transform:' + flip + '"' : "") + ' alt="">' +
+      (e.privileged ? '<span class="qtip-badge gold">⚡ ТОП-3</span>' : e.is_shooter ? '<span class="qtip-badge dark">✦ Проводник</span>' : "") +
+      "</div>";
+  }
+  function tipDiv(label) {
+    return '<div class="qtip-divider"><span>' + label + "</span></div>";
+  }
   function tipHtml(e) {
-    var nick = '<span class="qtip-nick">' + esc(e.nick) + "</span>";
+    var head = tipPortrait(e) + '<span class="qtip-nick">' + esc(e.nick) + "</span>";
     var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
     if (!rl.length)
-      return nick + (e.privileged
+      return head + (e.privileged
         ? '<span class="qtip-priv">⚡ вне очереди — жетон ТОП-3 (ресурс не выбран)</span>'
-        : '<span class="qtip-res none">ресурс ещё не выбран</span>');
+        : tipDiv("стоит за") + '<span class="qtip-res none">ресурс ещё не выбран</span>');
     if (e.privileged) {                                       // жетон — всегда один ресурс
       var rm = REWARDS_META[e.resource] || {}, unit = rm.unit || 0, st = e.priv_stacks || 1;
       var qty = (unit ? (st * unit) + " шт" : "") + (st > 1 ? " · " + st + " жетон(ов)" : "");
       var res = '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(e.resource) + '" alt=""> ' +
         esc(resName(e.resource)) + (qty ? ' — <b>' + qty + "</b>" : "") + "</span>";
-      return nick + '<span class="qtip-priv">⚡ берёт ВНЕ очереди — жетон ТОП-3 по доблести</span>' + res;
+      return head + '<span class="qtip-priv">⚡ берёт ВНЕ очереди — жетон ТОП-3 по доблести</span>' +
+        tipDiv("ресурс") + res;
     }
     var list = rl.map(function (k) {
       var rm = REWARDS_META[k] || {}, unit = rm.unit || 0;
@@ -266,7 +283,7 @@
       return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' +
         esc(resName(k)) + ' — <b>' + qty + "</b></span>";
     }).join("");
-    return nick + '<span class="qtip-sub">стоит за' + (rl.length > 1 ? " (" + rl.length + ", каждый по стаку)" : "") + ":</span>" + list;
+    return head + tipDiv("стоит за" + (rl.length > 1 ? " · " + rl.length + " (каждый по стаку)" : "")) + list;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
@@ -1354,7 +1371,7 @@
     ".qs-char .q-char-head .q-char-name{pointer-events:auto}" +
     ".q-char-priv .qs-char-res{filter:drop-shadow(0 0 5px #ffd24a) drop-shadow(0 2px 2px rgba(0,0,0,.5))}" +
     // всплывающая подсказка (ник + ресурс) для полосы и сцены
-    ".qtip{position:fixed;z-index:2147483600;pointer-events:none;max-width:250px;padding:9px 12px;border-radius:11px;" +
+    ".qtip{position:fixed;z-index:2147483600;pointer-events:none;min-width:180px;max-width:230px;padding:9px 12px;border-radius:11px;" +
       "background:linear-gradient(180deg,#33210d,#190f05);border:1px solid rgba(240,200,120,.6);" +
       "box-shadow:0 12px 32px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,224,160,.16);display:flex;flex-direction:column;gap:3px}" +
     ".qtip::after{content:'';position:absolute;bottom:-6px;left:50%;transform:translateX(-50%) rotate(45deg);width:11px;height:11px;" +
@@ -1366,6 +1383,29 @@
     ".qtip-sub{font:600 10.5px system-ui;color:#9a8a68;letter-spacing:.3px}" +
     ".qtip-priv{font:700 11.5px/1.35 system-ui;color:#ffd24a}" +
     ".qtip-hint{font:600 11px system-ui;color:#9fe0a0}" +
+    // крупный портрет модели в подсказке (шапка-«пьедестал») + разделитель «стоит за»
+    ".qtip-portrait{position:relative;margin:-9px -12px 4px;padding:12px 10px 8px;border-radius:11px 11px 0 0;" +
+      "min-height:120px;display:flex;justify-content:center;align-items:flex-end;overflow:hidden;" +
+      "background:radial-gradient(125% 88% at 50% 12%,rgba(255,210,130,.16),rgba(38,25,9,0) 60%)," +
+      "linear-gradient(180deg,#3a2610,rgba(25,15,6,0));border-bottom:1px solid rgba(240,200,120,.22)}" +
+    ".qtip-mdl{position:relative;z-index:1;max-height:150px;max-width:190px;width:auto;object-fit:contain;" +
+      "filter:drop-shadow(0 7px 11px rgba(0,0,0,.55));image-rendering:auto}" +
+    ".qtip-shadow{position:absolute;z-index:0;bottom:9px;left:50%;transform:translateX(-50%);width:80px;height:14px;" +
+      "border-radius:50%;background:radial-gradient(50% 50% at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,0) 72%)}" +
+    ".qtip-ph{color:#b8a575;font:700 12px system-ui;padding:24px 6px;text-align:center;opacity:.8}" +
+    ".qtip-badge{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2;white-space:nowrap;" +
+      "font:800 9.5px system-ui;letter-spacing:.4px;padding:2px 8px;border-radius:9px;text-shadow:0 1px 2px #000}" +
+    ".qtip-badge.gold{color:#3a2600;background:linear-gradient(180deg,#ffdf8a,#e6a83a);box-shadow:0 0 10px rgba(255,200,90,.55)}" +
+    ".qtip-badge.dark{color:#e7d9ff;background:linear-gradient(180deg,#2a2338,#100c1a);border:1px solid rgba(150,130,200,.5);box-shadow:0 0 10px rgba(20,16,30,.8)}" +
+    // свечения пьедестала под тип модели: золото — ТОП-3, тёмно-фиолет — проводник
+    ".qtip-portrait.priv{background:radial-gradient(125% 88% at 50% 12%,rgba(255,220,120,.3),rgba(38,25,9,0) 62%),linear-gradient(180deg,#4c3611,rgba(25,15,6,0))}" +
+    ".qtip-portrait.priv .qtip-mdl{filter:drop-shadow(0 0 13px rgba(255,208,90,.5)) drop-shadow(0 7px 11px rgba(0,0,0,.5))}" +
+    ".qtip-portrait.guide{background:radial-gradient(125% 88% at 50% 12%,rgba(120,95,180,.3),rgba(18,14,28,0) 62%),linear-gradient(180deg,#241a33,rgba(18,14,28,0))}" +
+    ".qtip-portrait.guide .qtip-mdl{filter:drop-shadow(0 0 14px rgba(10,8,18,.9)) drop-shadow(0 0 6px rgba(60,45,110,.7)) drop-shadow(0 7px 11px rgba(0,0,0,.5))}" +
+    ".qtip-divider{display:flex;align-items:center;gap:8px;margin:5px 0 2px;font:800 9px system-ui;letter-spacing:1.3px;" +
+      "text-transform:uppercase;color:#b39a6c;white-space:nowrap}" +
+    ".qtip-divider::before,.qtip-divider::after{content:'';flex:1;height:1px;" +
+      "background:linear-gradient(90deg,rgba(240,200,120,0),rgba(240,200,120,.45),rgba(240,200,120,0))}" +
     // ── свиток «дроп по этапам КХ» слева ──
     "#qs-scroll{position:fixed;left:0;top:120px;z-index:2147482000;display:flex;align-items:flex-start;max-width:96vw}" +
     "#qs-scroll .qsc-handle{flex:0 0 auto;cursor:pointer;border:0;width:52px;padding:14px 4px;border-radius:0 12px 12px 0;" +
@@ -1497,6 +1537,8 @@
       var x = Math.max(6, Math.min(r.left + r.width / 2 - tw / 2, window.innerWidth - tw - 6));
       var y = r.top - th - 10;
       if (y < 6) { y = r.bottom + 10; _tipEl.classList.add("below"); }   // не влезло сверху → снизу
+      // высокий портрет не должен уезжать за низ экрана — прижимаем в видимую область
+      y = Math.max(6, Math.min(y, window.innerHeight - th - 6));
       _tipEl.style.left = x + "px"; _tipEl.style.top = y + "px";
     }
     document.addEventListener("mouseover", function (e) {
