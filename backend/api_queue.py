@@ -293,6 +293,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: аура модели (напр. 'death' — зловещая чёрная дымка вокруг конкретной модельки)
+        try:
+            conn.execute("ALTER TABLE queue_models ADD COLUMN aura TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: слой объекта на сцене — '' (авто по y) | 'front' | 'back'
         try:
             conn.execute("ALTER TABLE queue_placements ADD COLUMN z TEXT NOT NULL DEFAULT ''")
@@ -619,6 +624,7 @@ class ModelIn(BaseModel):
     flip: int = Field(default=0)
     rotate: int = Field(default=0)
     scale: float = Field(default=1.0)
+    aura: str = Field(default="", max_length=24)   # '' | 'death' — зловещая чёрная дымка вокруг модели
 
 
 class ModelUploadIn(BaseModel):
@@ -1413,9 +1419,10 @@ def admin_clear(payload: ClearIn, request: Request, actor: dict = Depends(requir
 @router.get("/models")
 def models() -> dict:
     with db.connection() as conn:
-        rows = conn.execute("SELECT model_key, flip, rotate, scale FROM queue_models").fetchall()
+        rows = conn.execute("SELECT model_key, flip, rotate, scale, aura FROM queue_models").fetchall()
     return {"settings": {r["model_key"]: {"flip": r["flip"], "rotate": r["rotate"],
-                                          "scale": r["scale"]} for r in rows}}
+                                          "scale": r["scale"],
+                                          "aura": (r["aura"] if "aura" in r.keys() else "") or ""} for r in rows}}
 
 
 @router.post("/admin/model")
@@ -1423,12 +1430,13 @@ def set_model(payload: ModelIn, _: dict = Depends(require_admin)) -> dict:
     flip = 1 if payload.flip else 0
     rot = max(-180, min(180, int(payload.rotate)))
     scl = max(0.2, min(3.0, float(payload.scale)))
+    aura = payload.aura if payload.aura in ("death",) else ""
     with db.connection() as conn:
         conn.execute(
-            "INSERT INTO queue_models (model_key, flip, rotate, scale, updated_at) VALUES (?,?,?,?,?)"
+            "INSERT INTO queue_models (model_key, flip, rotate, scale, aura, updated_at) VALUES (?,?,?,?,?,?)"
             " ON CONFLICT(model_key) DO UPDATE SET flip=excluded.flip,"
-            " rotate=excluded.rotate, scale=excluded.scale, updated_at=excluded.updated_at",
-            (payload.key, flip, rot, scl, _now()))
+            " rotate=excluded.rotate, scale=excluded.scale, aura=excluded.aura, updated_at=excluded.updated_at",
+            (payload.key, flip, rot, scl, aura, _now()))
     return {"ok": True}
 
 

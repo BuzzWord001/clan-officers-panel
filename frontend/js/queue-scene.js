@@ -223,6 +223,11 @@
     if (_isAdmin) return canon(e.main_nick) === canon(ADMIN_NICK);
     return false;
   }
+  // аура текущей модели записи ('' | 'death') — для зловещей дымки вокруг конкретной модельки
+  function modelAura(e) {
+    var mi = modelInfo(e);
+    return (mi && MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].aura) || "";
+  }
 
   // все модели (для админ-настройки поворота/зеркала)
   var ALL_MODELS = [
@@ -306,12 +311,14 @@
   function tipPortrait(e) {
     var mi = modelInfo(e);
     if (!mi) return '<div class="qtip-portrait"><div class="qtip-ph">' + esc((e.cls || "класс?").slice(0, 14)) + "</div></div>";
-    var kind = e.privileged ? " priv" : (e.is_shooter ? " guide" : "");
+    var aura = (MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].aura) || "";
+    var kind = (aura === "death" ? " death" : "") + (e.privileged ? " priv" : (e.is_shooter ? " guide" : ""));
     var flip = (MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].flip) ? "scaleX(-1)" : "";
     return '<div class="qtip-portrait' + kind + '">' +
       '<span class="qtip-shadow"></span>' +
       '<img class="qtip-mdl" src="' + esc(mi.url) + '"' + (flip ? ' style="transform:' + flip + '"' : "") + ' alt="">' +
-      (e.privileged ? '<span class="qtip-badge gold">⚡ ТОП-3</span>' : e.is_shooter ? '<span class="qtip-badge dark">✦ Проводник</span>' : "") +
+      (e.privileged ? '<span class="qtip-badge gold">⚡ ТОП-3</span>' : e.is_shooter ? '<span class="qtip-badge dark">✦ Проводник</span>' :
+        aura === "death" ? '<span class="qtip-badge death-b">☠ Смерть</span>' : "") +
       "</div>";
   }
   function tipDiv(label) {
@@ -1413,6 +1420,26 @@
     // кнопка смены облика на сцене — видна при наведении на свою модельку
     ".qs-skin-char{opacity:0;transition:opacity .12s;top:0;transform:scale(1.15)}" +
     ".qs-char-me:hover .qs-skin-char,.qs-char-mine-adm:hover .qs-skin-char{opacity:1}" +
+    // ☠ АУРА СМЕРТИ — зловещая чёрная дымка вокруг конкретной модели (сцена/полоса/портрет)
+    "@keyframes qsDeathAura{0%,100%{opacity:.6;transform:translateX(-50%) scale(1)}50%{opacity:.9;transform:translateX(-50%) scale(1.13)}}" +
+    ".q-char-death .qs-char-inner{overflow:visible}" +
+    ".q-char-death .qs-char-inner::before{content:'';position:absolute;left:50%;bottom:-4%;transform:translateX(-50%);" +
+      "width:175%;height:150%;z-index:0;pointer-events:none;filter:blur(7px);animation:qsDeathAura 3.4s ease-in-out infinite;" +
+      "background:radial-gradient(50% 52% at 50% 58%,rgba(34,0,44,.92),rgba(6,0,12,.6) 42%,rgba(0,0,0,0) 72%)}" +
+    ".q-char-death .qs-char-inner img{position:relative;z-index:1;" +
+      "filter:drop-shadow(0 0 9px rgba(30,0,45,.95)) drop-shadow(0 0 20px rgba(10,0,18,.8)) drop-shadow(0 5px 5px rgba(0,0,0,.55))}" +
+    // в полосе (ячейка)
+    ".qs-cell.death .qs-cell-mdl{overflow:visible;position:relative}" +
+    ".qs-cell.death .qs-cell-mdl::before{content:'';position:absolute;left:50%;bottom:-2px;transform:translateX(-50%);" +
+      "width:150%;height:135%;z-index:0;pointer-events:none;filter:blur(5px);animation:qsDeathAura 3.4s ease-in-out infinite;" +
+      "background:radial-gradient(50% 52% at 50% 58%,rgba(34,0,44,.9),rgba(6,0,12,.55) 42%,rgba(0,0,0,0) 72%)}" +
+    ".qs-cell.death .qs-cell-img{position:relative;z-index:1;filter:drop-shadow(0 0 7px rgba(30,0,45,.9))}" +
+    // в портрете подсказки и в окне выбора облика
+    ".qtip-portrait.death{background:radial-gradient(125% 88% at 50% 12%,rgba(80,0,110,.32),rgba(10,0,16,0) 60%),linear-gradient(180deg,#1c0722,#0a0410)}" +
+    ".qtip-portrait.death .qtip-mdl{filter:drop-shadow(0 0 12px rgba(40,0,60,.95)) drop-shadow(0 0 22px rgba(8,0,14,.85)) drop-shadow(0 7px 11px rgba(0,0,0,.5))}" +
+    ".qs-msw-pic.death{background:radial-gradient(120% 80% at 50% 10%,rgba(80,0,110,.3),rgba(10,0,16,0) 60%),linear-gradient(180deg,#1c0722,#0a0410)}" +
+    ".qs-msw-pic.death .qs-msw-img{filter:drop-shadow(0 0 13px rgba(40,0,60,.95)) drop-shadow(0 0 24px rgba(8,0,14,.85)) drop-shadow(0 8px 13px rgba(0,0,0,.5))}" +
+    ".qs-mm-aura.on{color:#e7d9ff !important;background:linear-gradient(180deg,#3a1050,#12061c) !important;border-color:rgba(150,60,200,.6) !important}" +
     ".qs-char-inner img{height:100%;width:auto;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
     ".qs-char-inner .q-char-ph{height:100%}" +
     "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
@@ -1468,6 +1495,7 @@
       "font:800 9.5px system-ui;letter-spacing:.4px;padding:2px 8px;border-radius:9px;text-shadow:0 1px 2px #000}" +
     ".qtip-badge.gold{color:#3a2600;background:linear-gradient(180deg,#ffdf8a,#e6a83a);box-shadow:0 0 10px rgba(255,200,90,.55)}" +
     ".qtip-badge.dark{color:#e7d9ff;background:linear-gradient(180deg,#2a2338,#100c1a);border:1px solid rgba(150,130,200,.5);box-shadow:0 0 10px rgba(20,16,30,.8)}" +
+    ".qtip-badge.death-b{color:#e9d6ff;background:linear-gradient(180deg,#3a0f52,#0e0416);border:1px solid rgba(150,50,200,.55);box-shadow:0 0 12px rgba(60,0,90,.85)}" +
     // свечения пьедестала под тип модели: золото — ТОП-3, тёмно-фиолет — проводник
     ".qtip-portrait.priv{background:radial-gradient(125% 88% at 50% 12%,rgba(255,220,120,.3),rgba(38,25,9,0) 62%),linear-gradient(180deg,#4c3611,rgba(25,15,6,0))}" +
     ".qtip-portrait.priv .qtip-mdl{filter:drop-shadow(0 0 13px rgba(255,208,90,.5)) drop-shadow(0 7px 11px rgba(0,0,0,.5))}" +
@@ -1702,7 +1730,7 @@
       : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
-    el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "") + (e.is_shooter ? " qs-char-guide" : "");
+    el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "") + (e.is_shooter ? " qs-char-guide" : "") + (modelAura(e) === "death" ? " q-char-death" : "");
     el.dataset.q = boothQ;   // очередь этой модельки — чтобы анимировать ИМЕННО ту, куда встал
     el.dataset.id = e.id || "";
     if (mi) el.dataset.mkey = mi.key;   // для точечной регулировки размера этой модели
@@ -2692,7 +2720,7 @@
       '<div class="qs-msw-thumbs"></div>' +
       '<div class="qs-msw-hint">Выбери облик — применится в очереди сразу. Сменить можно в любой момент.</div>';
     var img = body.querySelector(".qs-msw-img"), label = body.querySelector(".qs-msw-label"),
-        thumbsEl = body.querySelector(".qs-msw-thumbs");
+        thumbsEl = body.querySelector(".qs-msw-thumbs"), picEl = body.querySelector(".qs-msw-pic");
     vs.forEach(function (v, i) {
       var t = document.createElement("button");
       t.className = "qs-msw-thumb" + (v.kind === "person" ? " person" : " cls");
@@ -2702,9 +2730,10 @@
       thumbsEl.appendChild(t);
     });
     function paint() {
-      var v = vs[idx];
-      img.style.transform = (MODEL_SETTINGS[v.mkey] && MODEL_SETTINGS[v.mkey].flip) ? "scaleX(-1)" : "";
+      var v = vs[idx], ms = MODEL_SETTINGS[v.mkey] || {};
+      img.style.transform = ms.flip ? "scaleX(-1)" : "";
       img.src = v.url;
+      if (picEl) picEl.classList.toggle("death", ms.aura === "death");   // зловещая дымка в превью
       label.innerHTML = '<b>' + esc(v.label) + "</b><span class='qs-msw-count'>" + (idx + 1) + " / " + vs.length + "</span>";
       [].forEach.call(thumbsEl.children, function (c, i) { c.classList.toggle("on", i === idx); });
     }
@@ -2840,7 +2869,7 @@
         var e = o.e, i = o.i;
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
         var cell = document.createElement("div");
-        cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "");
+        cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "") + (modelAura(e) === "death" ? " death" : "");
         cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
         // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке.
         // Иконки автокропятся ниже → цилинь заполняет облачко без пустого пространства.
@@ -4059,6 +4088,8 @@
           '<button data-a="repl">📤 ' + (up ? "заменить" : "загрузить свою") + "</button>" +
           (thumb ? '<button data-a="flip" class="' + (ms.flip ? "on" : "") + '" title="зеркалить ' +
                    (o.kind === "class" ? "(всех этого класса)" : "(этого персонажа)") + '">⇋</button>' : "") +
+          (thumb ? '<button data-a="aura" class="qs-mm-aura' + (ms.aura === "death" ? " on" : "") +
+                   '" title="зловещая чёрная дымка вокруг этой модели (аура смерти) — видна, когда игрок на неё сменится">☠ дымка</button>' : "") +
           (up ? '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
                 '<button data-a="del" class="danger" title="удалить свою (вернётся встроенная)">✕</button>' : "") +
           (o.kind === "person" ? '<button data-a="addv" class="qs-mm-addv" title="добавить ещё один облик этому игроку — он сам выберет">➕ ещё облик</button>' : "") +
@@ -4076,8 +4107,13 @@
           }, stEl);
         } else if (a === "flip") {
           var cur = MODEL_SETTINGS[sKey] || {}, nf = cur.flip ? 0 : 1;
-          MODEL_SETTINGS[sKey] = { flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 };
-          q("POST", "/queue/admin/model", { key: sKey, flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1 })
+          MODEL_SETTINGS[sKey] = { flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1, aura: cur.aura || "" };
+          q("POST", "/queue/admin/model", { key: sKey, flip: nf, rotate: cur.rotate || 0, scale: cur.scale || 1, aura: cur.aura || "" })
+            .then(function () { refresh(); rebuild(); });
+        } else if (a === "aura") {   // включить/выключить зловещую чёрную дымку у этой модели
+          var cua = MODEL_SETTINGS[sKey] || {}, na = cua.aura === "death" ? "" : "death";
+          MODEL_SETTINGS[sKey] = { flip: cua.flip || 0, rotate: cua.rotate || 0, scale: cua.scale || 1, aura: na };
+          q("POST", "/queue/admin/model", { key: sKey, flip: cua.flip || 0, rotate: cua.rotate || 0, scale: cua.scale || 1, aura: na })
             .then(function () { refresh(); rebuild(); });
         } else if (a === "opt") {
           stEl.textContent = "Оптимизирую…";
@@ -4950,7 +4986,8 @@
       var t;
       function persist() {
         clearTimeout(t); t = setTimeout(function () {
-          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale }).catch(function () {});
+          q("POST", "/queue/admin/model", { key: m.key, flip: s.flip, rotate: s.rotate, scale: s.scale,
+            aura: (MODEL_SETTINGS[m.key] || {}).aura || "" }).catch(function () {});
         }, 300);
       }
       function live() { val.textContent = s.scale.toFixed(2) + "× · " + (s.rotate || 0) + "°"; applyPreview(); applyModelLive(m.key, s); }
