@@ -915,7 +915,7 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
-def _entry_public(r, idx, gmap, smap=None, pmap=None) -> dict:
+def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None) -> dict:
     p = idx.get(r["main_canon"]) or {}
     cls = r["cls"] or p.get("cls", "")
     tn = p.get("true_name", "")
@@ -931,6 +931,8 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None) -> dict:
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
             "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
             "prefer_class": bool((pmap or {}).get(r["main_canon"], 0)),
+            "is_shooter": bool(shooters_canon and (r["main_canon"] in shooters_canon
+                               or db._valor_canon(r["nick"]) in shooters_canon)),
             "resource": (r["resource"] if "resource" in keys else ""),
             "recipient": rcpt,
             "recipient_ok": _recipient_ok(rcpt, r["main_canon"], idx, smap),
@@ -984,10 +986,16 @@ def state() -> dict:
                 for r in conn.execute("SELECT canon, gender FROM queue_gender")}
         pmap = {r["canon"]: r["prefer_class"]
                 for r in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
+        import json as _json
+        try:
+            _sh = [s for s in _json.loads(_cfg_val(conn, "shooters", "[]")) if s]
+        except (ValueError, TypeError):
+            _sh = []
+        shooters_canon = {db._valor_canon(s) for s in _sh if db._valor_canon(s)}
         smap = _spouse_map(conn)
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap, shooters_canon))
     return {"queues": qs}
 
 

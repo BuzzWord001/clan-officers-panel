@@ -58,7 +58,8 @@
   };
   // ключи строим через canon(имя) — чтобы совпадали при латинице/кириллице в никах
   var PERSONAL_SRC = { "Naomi": "_Naomi.png", "Карася": "Карася.png", "Кэя": "Кэя.png",
-    "Лирия": "Лирия!.png", "Химеко": "Химеко.png", "Шлюпка": "Шлюпка.png" };
+    "Лирия": "Лирия!.png", "Химеко": "Химеко.png", "Шлюпка": "Шлюпка.png",
+    "АдаНет": "АдаНет.png", "Томат": "Томат.png", "Мortаlitу": "Мortаlitу.png" };
   var PERSONAL = {};
   Object.keys(PERSONAL_SRC).forEach(function (k) { PERSONAL[canon(k)] = PERSONAL_SRC[k]; });
   var FEMALE_ONLY = ["друид", "стрелок"], MALE_ONLY = ["оборотень", "странник"];
@@ -187,6 +188,8 @@
     { key: "personal/_Naomi.png", label: "Naomi (личн.)" }, { key: "personal/Карася.png", label: "Карася (личн.)" },
     { key: "personal/Кэя.png", label: "Кэя (личн.)" }, { key: "personal/Лирия!.png", label: "Лирия! (личн.)" },
     { key: "personal/Химеко.png", label: "Химеко (личн.)" }, { key: "personal/Шлюпка.png", label: "Шлюпка (личн.)" },
+    { key: "personal/АдаНет.png", label: "АдаНет (личн.)" }, { key: "personal/Томат.png", label: "Томат (личн., проводник)" },
+    { key: "personal/Мortаlitу.png", label: "Мortаlitу (личн., проводник)" },
     { key: "scene/merchant-0.png", label: "Торговец: обычные" },
     { key: "scene/merchant-1.png", label: "Торговец: редкие" },
     { key: "scene/merchant-2.png", label: "Торговец: легендарные" },
@@ -1232,6 +1235,17 @@
     ".qs-stage .q-char-priv-lbl{font-size:clamp(8px,1.3cqw,12px)}" +
     ".qs-stage .qs-char-res{width:min(23px,2.5cqw);height:min(23px,2.5cqw)}" +
     ".qs-stage .qs-char-res.big{width:min(46px,5cqw);height:min(46px,5cqw)}" +
+    // ПРОВОДНИК: круто-тёмный бейдж «Проводник» над ником + красивое чёрное свечение вокруг
+    // модельки (для любого, кто в списке проводников — и будущих тоже).
+    ".q-char-guide-lbl{white-space:nowrap;font:800 9.5px system-ui;color:#ffe6a8;" +
+      "background:linear-gradient(180deg,#34343c,#0b0b0e);padding:2px 9px;border-radius:8px;" +
+      "border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 2px #000;letter-spacing:.3px;" +
+      "box-shadow:0 2px 8px rgba(0,0,0,.7),0 0 9px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,230,160,.18)}" +
+    ".qs-stage .q-char-guide-lbl{font-size:clamp(7px,1.05cqw,9.5px)}" +
+    ".qs-char-guide .qs-char-inner img{animation:qsGuideGlow 2.4s ease-in-out infinite}" +
+    "@keyframes qsGuideGlow{0%,100%{filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 5px rgba(0,0,0,.95)) drop-shadow(0 0 12px rgba(0,0,0,.8))}" +
+      "50%{filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 9px #000) drop-shadow(0 0 20px rgba(0,0,0,.92))}}" +
+    "@media(prefers-reduced-motion:reduce){.qs-char-guide .qs-char-inner img{animation:none;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 7px #000) drop-shadow(0 0 16px rgba(0,0,0,.85))}}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
     ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
@@ -1438,7 +1452,7 @@
       : '<div class="q-char-ph">' + PH_FIGURE + '<span class="q-ph-cls">' +
           esc((e.cls || "класс?").slice(0, 12)) + "</span></div>";
     var el = document.createElement("div");
-    el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "");
+    el.className = "qs-char" + (mine ? " q-char-me" : "") + (e.privileged ? " q-char-priv" : "") + (e.is_shooter ? " qs-char-guide" : "");
     el.dataset.q = boothQ;   // очередь этой модельки — чтобы анимировать ИМЕННО ту, куда встал
     el.dataset.id = e.id || "";
     if (mi) el.dataset.mkey = mi.key;   // для точечной регулировки размера этой модели
@@ -1454,7 +1468,8 @@
       (_isAdmin ? '<button class="q-char-x" title="Убрать">✕</button>' : "") +
       '<div class="q-char-head">' +
         resIcon +                                        // ресурс — САМЫЙ ВЕРХ
-        (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +   // ТОП-3 — над ником
+        (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +   // жетон вне очереди — только если применён, выше «Проводника»
+        (e.is_shooter ? '<div class="q-char-guide-lbl">✦ Проводник</div>' : "") +    // «Проводник» — прямо над ником
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
       "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
