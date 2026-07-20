@@ -298,6 +298,19 @@ def _main_of(nick: str, title: str) -> tuple[str, bool]:
     return nick, False
 
 
+def _resolve_partial(idx, cn):
+    """Если canon `cn` не совпал ни с кем точно, но ОДНОЗНАЧНО является префиксом ника
+    реального (не-твин) игрока — вернуть (real_canon, person). Нужно для НЕПОЛНЫХ/усечённых
+    ников: обрезанный в игре титул твина (лимит длины строки титула, напр. ~Vandellia~) или
+    когда человек ввёл часть ника (напр. «Ада» → «~АдаНет~»). Иначе None."""
+    if not cn or len(cn) < 3 or cn in idx:
+        return None
+    cands = [c for c in idx if c != cn and c.startswith(cn) and not idx[c].get("is_twin")]
+    if len(cands) == 1:
+        return cands[0], idx[cands[0]]
+    return None
+
+
 def _people(conn) -> dict[str, dict]:
     """canon(ника) -> {nick, title, cls, main_nick, main_canon, is_twin, sources}.
     Источники: текущий снимок Доблести + активный реестр приёма."""
@@ -341,6 +354,14 @@ def _people(conn) -> dict[str, dict]:
     for r in conn.execute(
             "SELECT game_nick AS nick, title FROM acceptances WHERE COALESCE(archived,0)=0"):
         add(r["nick"], r["title"], "", "", "registry")
+    # Усечённые в игре титулы твинов: строка титула ограничена по длине, поэтому ~ПолныйМэйн~
+    # мог обрезаться (напр. ~Vandellia~). Если мэйна из титула нет как реального игрока —
+    # привяжем твина к настоящему мэйну по ОДНОЗНАЧНОМУ префиксу.
+    for p in idx.values():
+        if p["is_twin"] and p["main_canon"] and p["main_canon"] not in idx:
+            res = _resolve_partial(idx, p["main_canon"])
+            if res:
+                p["main_canon"], p["main_nick"] = res[0], res[1]["nick"]
     return idx
 
 
@@ -942,7 +963,17 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
 
 
 def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None) -> dict:
-    p = idx.get(r["main_canon"]) or {}
+    # Запись не совпала с реестром точно (ввели неполный/усечённый ник, напр. «Ада») —
+    # попробуем ОДНОЗНАЧНЫЙ префикс → покажем канонический ник/класс/модель как в базе.
+    mc = r["main_canon"]
+    p = idx.get(mc)
+    if p is None:
+        res = _resolve_partial(idx, mc)
+        if res:
+            mc, p = res[0], res[1]
+    p = p or {}
+    # ник для показа — как в таблице доблести/реестре (p["nick"]), иначе сохранённый при вставании
+    disp_nick = p.get("nick") or r["nick"]
     cls = r["cls"] or p.get("cls", "")
     tn = p.get("true_name", "")
     keys = r.keys()
@@ -952,16 +983,16 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None) -> di
         plan = _json.loads(r["auto_plan"]) if ("auto_plan" in keys and r["auto_plan"]) else []
     except (ValueError, TypeError):
         plan = []
-    return {"id": r["id"], "nick": r["nick"], "cls": cls,
+    return {"id": r["id"], "nick": disp_nick, "cls": cls,
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
-            "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
-            "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
-            "prefer_class": bool((pmap or {}).get(r["main_canon"], 0)),
-            "is_shooter": bool(shooters_canon and (r["main_canon"] in shooters_canon
-                               or db._valor_canon(r["nick"]) in shooters_canon)),
+            "gender": _gender_of(cls, tn, gmap.get(mc, "")),
+            "gender_by": ("manual" if gmap.get(mc) in ("m", "f") else "auto"),
+            "prefer_class": bool((pmap or {}).get(mc, 0)),
+            "is_shooter": bool(shooters_canon and (mc in shooters_canon
+                               or db._valor_canon(disp_nick) in shooters_canon)),
             "resource": (r["resource"] if "resource" in keys else ""),
             "recipient": rcpt,
-            "recipient_ok": _recipient_ok(rcpt, r["main_canon"], idx, smap),
+            "recipient_ok": _recipient_ok(rcpt, mc, idx, smap),
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
             "auto_plan": plan,
             "not_collected": (bool(r["not_collected"]) if "not_collected" in keys else False),
