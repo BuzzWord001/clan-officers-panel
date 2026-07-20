@@ -1276,6 +1276,17 @@
     ".qs-fl-tag{font:700 10px system-ui;padding:2px 7px;border-radius:6px;flex:0 0 auto}" +
     ".qs-fl-tag.shown{background:rgba(126,196,106,.2);color:#a9e08f;border:1px solid rgba(126,196,106,.4)}" +
     ".qs-fl-tag.wait{background:rgba(224,162,74,.16);color:#e6c48f;border:1px solid rgba(224,162,74,.35)}" +
+    // кнопки управления записью в списке (админ: ▲▼ ✏️ ✕; игрок: изменить свои)
+    ".qs-fl-adm{display:inline-flex;gap:3px;flex:0 0 auto;margin-left:4px}" +
+    ".qs-fl-adm button{cursor:pointer;border:1px solid rgba(224,162,74,.4);background:rgba(20,13,7,.7);" +
+      "color:#e6c48f;border-radius:6px;font:700 11px system-ui;padding:3px 6px;line-height:1}" +
+    ".qs-fl-adm button:hover{background:rgba(224,162,74,.16);color:#fff}" +
+    ".qs-fl-adm button:disabled{opacity:.35;cursor:default}" +
+    ".qs-fl-adm button.del{color:#ff9a8a;border-color:rgba(220,110,90,.45)}" +
+    ".qs-fl-adm button.del:hover{background:rgba(180,70,55,.4);color:#fff}" +
+    ".qs-fl-adm button.mine{color:#8fc36a;border-color:rgba(126,196,106,.5)}" +
+    ".qs-fl-adm button.mine:hover{background:rgba(126,196,106,.18);color:#fff}" +
+    ".qs-fl-row.qs-fl-mine{background:rgba(224,162,74,.08)}" +
     ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1) * var(--qs-mscale,1));transform-origin:bottom center;text-align:center}" +
     // ник над головой масштабируется с шириной сцены (cqw), с минимумом 7px для читаемости
     ".qs-stage .q-char-name{font-size:clamp(7px,1.14cqw,10.5px)}" +
@@ -1632,7 +1643,7 @@
         '</div>' +
       '</details>' +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button>' +
-        (edit && !isPriv ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">🚪 Выйти из очереди</button>' : "") +
+        (edit && !isPriv && !(edit && edit.adminEid) ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">🚪 Выйти из очереди</button>' : "") +
       "</div>";
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
@@ -1710,7 +1721,7 @@
       var v = body.querySelector("#qs-plan-sel").value;
       if (v) { planArr.push(v); renderPlan(); }
     });
-    var m = sceneModal((isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
+    var m = sceneModal(((edit && edit.adminEid) ? "Сменить ресурсы игрока — очередь «" : isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
     paintCards();
     // «Выйти из очереди» — отдельная кнопка с подтверждением (не путать с изменением ресурсов)
     var leaveBtn = body.querySelector("#qs-p2-leave");
@@ -1736,6 +1747,13 @@
       if (rcpt && recipientRel(rcpt) === "other" &&
           !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
       if (m) m.close();
+      // АДМИН меняет ресурсы чужой записи (по id) — через админ-эндпоинт
+      if (edit && edit.adminEid) {
+        var ap = { entry_id: edit.adminEid };
+        if (multi) ap.resources = resources; else ap.resource = resource;
+        q("POST", "/queue/admin/set-entry", ap).then(refresh).catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
+        return;
+      }
       // смена ресурса ЖЕТОННОЙ записи (отдельная, privileged=1) — всегда один ресурс
       if (isPriv) {
         q("POST", "/queue/set-entry", { queue: b.q, resource: resource, privileged: true })
@@ -1765,6 +1783,7 @@
   }
   // полный список очереди (все — они же на сцене и в полосе) с модельками
   function openFullList(b, entries, focusIdx) {
+    var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
     var body = document.createElement("div");
     body.className = "qs-fulllist";
     if (!entries.length) {
@@ -1772,14 +1791,30 @@
     } else { var flLimit = Math.max(1, Math.round(getSize("limit", 6)));
       entries.forEach(function (e, i) {
       var mi = modelInfo(e), waiting = i >= flLimit;   // за лимитом показа = ждёт (не на сцене)
+      var isMine = !!(meCanon && canon(e.main_nick) === meCanon && !e.privileged);
+      var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+      var resHtml = rl.length
+        ? '<img class="qs-fl-res" src="' + resImg(rl[0]) + '" title="' + esc(rl.map(resName).join(", ")) + '" alt="">' +
+          '<span class="qs-fl-rname">' + esc(resName(rl[0])) + (rl.length > 1 ? ' <b>+' + (rl.length - 1) + "</b>" : "") + "</span>"
+        : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>';
+      var ctrls = "";
+      if (_isAdmin) {                                   // админ-управление записью
+        ctrls = '<span class="qs-fl-adm">' +
+          '<button data-act="up"' + (i === 0 ? " disabled" : "") + ' title="выше">▲</button>' +
+          '<button data-act="down"' + (i === entries.length - 1 ? " disabled" : "") + ' title="ниже">▼</button>' +
+          (!e.privileged ? '<button data-act="res" title="сменить ресурсы">✏️</button>' : "") +
+          '<button data-act="del" class="del" title="убрать">✕</button></span>';
+      } else if (isMine) {                              // игрок — изменить свои ресурсы
+        ctrls = '<span class="qs-fl-adm"><button data-act="mine" class="mine" title="изменить мои ресурсы">✏️ изменить</button></span>';
+      }
       var row = document.createElement("div");
-      row.className = "qs-fl-row" + (waiting ? " waiting" : "") + (i === focusIdx ? " qs-fl-me" : "");
+      row.className = "qs-fl-row" + (waiting ? " waiting" : "") + (i === focusIdx ? " qs-fl-me" : "") + (isMine ? " qs-fl-mine" : "");
+      row.dataset.idx = i;
       row.innerHTML =
         '<span class="qs-fl-num">' + (i + 1) + "</span>" +
         (mi ? '<img class="qs-fl-mdl" src="' + esc(mi.url) + '" alt="">' : '<span class="qs-fl-mdl ph">?</span>') +
         '<span class="qs-fl-nick">' + esc(e.nick) + "</span>" +
-        (e.resource ? '<img class="qs-fl-res" src="' + resImg(e.resource) + '" title="' + esc(resName(e.resource)) + '" alt="">' +
-          '<span class="qs-fl-rname">' + esc(resName(e.resource)) + "</span>" : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>') +
+        resHtml +
         (e.recipient ? '<span class="qs-fl-rcpt" title="кому передать"' +
             (e.recipient_ok === false ? ' style="color:#e0a86a;border-color:rgba(224,168,106,.5);background:rgba(224,168,106,.12)"' : "") +
             '>→ ' + esc(e.recipient) + (e.recipient_ok === false ? " ⚠" : "") + "</span>" : "") +
@@ -1787,11 +1822,34 @@
           (e.auto_repeat ? '<span class="qs-fl-flag" style="background:rgba(126,196,106,.16);color:#8fc36a" title="повторяет каждую неделю">🔁</span>' : "") +
           (e.auto_plan && e.auto_plan.length ? '<span class="qs-fl-flag" style="background:rgba(224,162,74,.16);color:#e6c48f" title="план на ' + e.auto_plan.length + ' нед.">📅' + e.auto_plan.length + "</span>" : "") +
         "</span>" +
-        (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>');
+        (waiting ? '<span class="qs-fl-tag wait">ждёт</span>' : '<span class="qs-fl-tag shown">на сцене</span>') +
+        ctrls;
       body.appendChild(row);
     }); }
     autoCropAll(body, ".qs-fl-mdl");
-    sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел.", body);
+    var m = sceneModal("Очередь «" + b.title + "» — всего " + entries.length + " чел." + (_isAdmin ? " · управление" : ""), body);
+    // клики по кнопкам управления (админ: двигать/сменить ресурсы/убрать; игрок: изменить свои)
+    body.addEventListener("click", function (ev) {
+      var btn = ev.target.closest("[data-act]"); if (!btn) return;
+      var act = btn.dataset.act, rowEl = btn.closest(".qs-fl-row");
+      var idx = rowEl ? +rowEl.dataset.idx : -1, e = entries[idx];
+      if (!e) return;
+      if (act === "up" || act === "down") {
+        q("POST", "/queue/admin/move", { entry_id: e.id, queue: b.q, position: Math.max(0, idx + (act === "up" ? -1 : 1)) })
+          .then(function () { if (m) m.close(); refresh(); }).catch(admErr);
+      } else if (act === "del") {
+        if (!confirm("Убрать «" + e.nick + "» из очереди?")) return;
+        q("POST", "/queue/admin/remove", { entry_id: e.id }).then(function () { if (m) m.close(); refresh(); }).catch(admErr);
+      } else if (act === "res") {   // админ меняет ресурсы записи
+        if (m) m.close();
+        openResourcePicker(b, { adminEid: e.id, resource: e.resource || "", resources: e.resources,
+          recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+      } else if (act === "mine") {  // игрок меняет свои ресурсы
+        if (m) m.close();
+        openResourcePicker(b, { resource: e.resource || "", resources: e.resources,
+          recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+      }
+    });
     // только что встал и за лимитом показа → промотать список к своей строке + анимация появления
     if (focusIdx != null && focusIdx >= 0) {
       setTimeout(function () {

@@ -597,6 +597,12 @@ class MoveIn(BaseModel):
     position: int = Field(default=9999)
 
 
+class AdminSetEntryIn(BaseModel):
+    entry_id: int
+    resource: str | None = Field(default=None, max_length=64)
+    resources: list[str] | None = None
+
+
 class ClearIn(BaseModel):
     queue: int | None = None                 # None = очистить все очереди
 
@@ -1342,6 +1348,32 @@ def admin_move(payload: MoveIn, request: Request, actor: dict = Depends(require_
                      (payload.queue, pos, payload.entry_id))
         _log(conn, "admin_move", actor=_actor_name(actor), nick=r["nick"], queue=payload.queue,
              request=request, detail="pos=%s" % payload.position)
+    return {"ok": True}
+
+
+@router.post("/admin/set-entry")
+def admin_set_entry(payload: AdminSetEntryIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Админ меняет ресурс(ы) любой записи в очереди по её id."""
+    with db.connection() as conn:
+        row = conn.execute("SELECT id, queue, nick, privileged FROM queue_entries WHERE id=?",
+                           (payload.entry_id,)).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "entry_not_found")
+        sets, vals = [], []
+        if payload.resources is not None and not row["privileged"]:
+            valid = _QUEUE_ITEMS[row["queue"]] if 0 <= row["queue"] < len(_QUEUE_ITEMS) else []
+            picked = [x for x in payload.resources if x in valid]
+            if picked:
+                import json as _json
+                sets.append("resources=?"); vals.append(_json.dumps(picked))
+                sets.append("resource=?"); vals.append(picked[0])
+        elif payload.resource is not None:
+            sets.append("resource=?"); vals.append(payload.resource.strip()[:64])
+        if sets:
+            vals.append(payload.entry_id)
+            conn.execute("UPDATE queue_entries SET " + ",".join(sets) + " WHERE id=?", vals)
+            _log(conn, "admin_set_entry", actor=_actor_name(actor), nick=row["nick"],
+                 queue=row["queue"], request=request, detail="ресурсы")
     return {"ok": True}
 
 
