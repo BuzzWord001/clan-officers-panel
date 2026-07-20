@@ -1218,6 +1218,17 @@
       "border-radius:10px;padding:9px 18px}" +
     ".qs-p2-leave:hover{background:linear-gradient(180deg,rgba(180,70,55,.7),rgba(110,40,32,.7));color:#fff}" +
     ".qs-p2-leave:disabled{opacity:.6;cursor:default}" +
+    // блок «активный жетон ТОП-3» в окне перевыбора обычного места — отдельная сущность, золотое свечение
+    ".qs-p2-token{margin:10px 0 4px;padding:11px 13px;border-radius:12px;" +
+      "background:linear-gradient(180deg,rgba(64,48,14,.72),rgba(40,28,8,.82));" +
+      "border:1px solid rgba(240,205,120,.55);box-shadow:0 0 14px rgba(240,200,110,.18) inset,0 2px 10px rgba(0,0,0,.35)}" +
+    ".qs-p2-token-h{font:800 13px system-ui;color:#ffe08a;text-shadow:0 0 8px rgba(255,210,110,.4);margin:0 0 3px}" +
+    ".qs-p2-token-tx{font:600 12px/1.4 system-ui;color:#e8d3a0;margin:0 0 9px}" +
+    ".qs-p2-token-tx b{color:#ffe6a8}" +
+    ".qs-p2-token-sep{display:block;margin-top:2px;font-weight:400;color:#b39a6c;font-size:11px}" +
+    ".qs-p2-token-btns{display:flex;gap:8px;flex-wrap:wrap}" +
+    ".qs-p2-mini.danger{color:#ffcdbf;border-color:rgba(220,110,90,.6)}" +
+    ".qs-p2-mini.danger:hover{background:rgba(180,70,55,.55);color:#fff}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
@@ -1613,6 +1624,28 @@
       pre.forEach(function (x) { if (items.indexOf(x) >= 0) selSet[x] = true; });
     }
     var planArr = (edit && edit.plan ? edit.plan.slice() : []);
+    // Если человек ОДНОВРЕМЕННО взял жетоном ТОП-3 (отдельная запись вне очереди) — покажем это
+    // прямо в окне перевыбора обычного места, чтобы было ясно: место в очереди и жетон — РАЗНЫЕ вещи.
+    // Показываем только когда правим СВОЁ обычное место (не в жетонном окне, не в админ-правке чужого).
+    var myPrivE = null;
+    if (!isPriv && !(edit && edit.adminEid) && _meAcc) {
+      var _mcp = canon(_meAcc.main_nick);
+      ((_lastState && _lastState.queues && _lastState.queues[b.q]) || []).forEach(function (e) {
+        if (e.privileged && canon(e.main_nick) === _mcp) myPrivE = e;
+      });
+    }
+    var _tokAmt = myPrivE ? ((myPrivE.priv_stacks || 1) * ((REWARDS_META[myPrivE.resource] || {}).unit || 0)) : 0;
+    var tokenBlock = myPrivE
+      ? '<div class="qs-p2-token">' +
+          '<div class="qs-p2-token-h">⚡ У тебя активен жетон ТОП-3</div>' +
+          '<div class="qs-p2-token-tx">Берёшь <b>ВНЕ очереди</b>: ' + esc(resName(myPrivE.resource)) +
+            (_tokAmt ? ' <b>×' + _tokAmt + '</b>' : "") +
+            '<span class="qs-p2-token-sep">Это отдельно от твоего места в очереди — оно остаётся ниже. Жетон можно сменить или вернуть в кошелёк.</span></div>' +
+          '<div class="qs-p2-token-btns">' +
+            '<button type="button" id="qs-tok-res" class="qs-p2-mini">✎ Сменить ресурс жетона</button>' +
+            '<button type="button" id="qs-tok-back" class="qs-p2-mini danger">↩️ Вернуть жетон</button>' +
+          "</div></div>"
+      : "";
     var body = document.createElement("div");
     body.className = "qs-pick2";
     var defRcpt = edit ? (edit.recipient || "")
@@ -1621,7 +1654,8 @@
     // необязательные настройки открыты сразу только если они уже заданы (правка)
     var openMore = !!(edit && (edit.recipient || edit.auto_repeat || (edit.plan && edit.plan.length)));
     body.innerHTML =
-      '<div class="qs-p2-lbl">' + (multi ? "1 · Отметь нужные ресурсы <span style=\"color:#8a795a;font-weight:400\">(нажми на карточку, чтобы убрать или вернуть — каждый по 1 стаку)</span>:" : "1 · Выбери ресурс:") + "</div>" +
+      tokenBlock +
+      '<div class="qs-p2-lbl">' + (myPrivE ? "Твоё место в очереди — " : "") + (multi ? (myPrivE ? "о" : "1 · О") + "тметь нужные ресурсы <span style=\"color:#8a795a;font-weight:400\">(нажми на карточку, чтобы убрать или вернуть — каждый по 1 стаку)</span>:" : (myPrivE ? "в" : "1 · В") + "ыбери ресурс:") + "</div>" +
       (multi ? '<div class="qs-p2-allbar"><button type="button" id="qs-p2-all" class="qs-p2-mini">✓ Выбрать все</button>' +
         '<button type="button" id="qs-p2-none" class="qs-p2-mini">✕ Снять все</button><span class="qs-p2-cnt" id="qs-p2-cnt"></span></div>' : "") +
       '<div class="qs-respick' + (multi ? " multi" : "") + '" id="qs-p2-grid"></div>' +
@@ -1643,7 +1677,9 @@
         '</div>' +
       '</details>' +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button>' +
-        (edit && !isPriv && !(edit && edit.adminEid) ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">🚪 Выйти из очереди</button>' : "") +
+        ((edit && edit.adminEid) ? ""
+          : isPriv ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">↩️ Вернуть жетон в кошелёк</button>'
+          : edit ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">🚪 Выйти из очереди</button>' : "") +
       "</div>";
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
@@ -1721,11 +1757,34 @@
       var v = body.querySelector("#qs-plan-sel").value;
       if (v) { planArr.push(v); renderPlan(); }
     });
-    var m = sceneModal(((edit && edit.adminEid) ? "Сменить ресурсы игрока — очередь «" : isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
+    var m = sceneModal(((edit && edit.adminEid) ? "Сменить ресурсы игрока — очередь «" : isPriv ? "⚡ Жетон ТОП-3 — сменить ресурс или вернуть — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
     paintCards();
-    // «Выйти из очереди» — отдельная кнопка с подтверждением (не путать с изменением ресурсов)
+    // Блок «активный жетон ТОП-3»: сменить ресурс жетона / вернуть жетон (отдельно от места в очереди)
+    var tokResBtn = body.querySelector("#qs-tok-res");
+    if (tokResBtn) tokResBtn.addEventListener("click", function () {
+      if (m) m.close();
+      openResourcePicker(b, { privileged: true, resource: (myPrivE && myPrivE.resource) || "",
+        recipient: (myPrivE && myPrivE.recipient) || "" }, null, src);
+    });
+    var tokBackBtn = body.querySelector("#qs-tok-back");
+    if (tokBackBtn) tokBackBtn.addEventListener("click", function () {
+      if (!confirm("Вернуть жетон ТОП-3 в кошелёк? Твоя запись ВНЕ очереди пропадёт, жетон вернётся. Место в обычной очереди останется.")) return;
+      if (m) m.close();
+      q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh)
+        .catch(function (e2) { alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message))); });
+    });
+    // Нижняя кнопка: «Выйти из очереди» (обычное место) ИЛИ «Вернуть жетон» (жетонное окно) — с подтверждением
     var leaveBtn = body.querySelector("#qs-p2-leave");
     if (leaveBtn) leaveBtn.addEventListener("click", function () {
+      if (isPriv) {   // жетонное окно → вернуть жетон в кошелёк (возврат жетона на бэке)
+        if (!confirm("Вернуть жетон ТОП-3 в кошелёк? Запись ВНЕ очереди пропадёт, жетон вернётся.")) return;
+        leaveBtn.disabled = true; if (m) m.close();
+        q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
+          leaveBtn.disabled = false;
+          alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+        });
+        return;
+      }
       if (!confirm("Выйти из очереди «" + b.title + "»? Ты потеряешь своё место в ней.")) return;
       leaveBtn.disabled = true;
       if (m) m.close();
@@ -1968,7 +2027,9 @@
       var iAmIn = !!myEntry, iAmPriv = !!myPriv;
       var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
       var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
-      var showLeave = iAmIn || iAmPriv || adminIn;   // красная «Выйти»
+      // Красная «Выйти» — только для ОБЫЧНОГО места (и админ-теста). Жетон ТОП-3 — отдельная
+      // сущность (светящийся клон + панель «Взять вне очереди»), обычную кнопку не перекрашивает.
+      var showLeave = iAmIn || adminIn;
       // Кнопка «Список» объединена с шаром-счётчиком в единую ТАБЛИЧКУ (ниже, ключ cnt:).
       // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
       // очереди (перетаскивается в режиме расстановки).
@@ -1983,7 +2044,7 @@
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди с обычным местом — «Изменить / выйти» (клик открывает меню, не выходит сразу).
-      var btnTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : "Встать в очередь");
+      var btnTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : (iAmPriv ? "Встать в очередь ⚡" : "Встать в очередь"));
       joinBtn.innerHTML =
         '<span class="qs-js-tx">' + btnTx + "</span>" +   // надпись НАД табличкой
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
@@ -2004,15 +2065,7 @@
             recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
           return;
         }
-        if (iAmPriv) {   // только жетонная запись (без обычной) → выйти из неё, вернуть жетон
-          joinBtn.disabled = true;
-          q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
-            joinBtn.disabled = false;
-            alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
-          });
-          return;
-        }
-        openResourcePicker(b);   // не в очереди → встать
+        openResourcePicker(b);   // не в обычной очереди → встать; активный жетон покажется блоком в окне
       });
       stage.appendChild(joinBtn);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(jp, "Встать/Выйти · " + b.title));
@@ -2467,11 +2520,11 @@
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
       var joinCell = document.createElement("button");
-      var inNow = iAmIn || myPriv || adminIn;
+      var inNow = iAmIn || adminIn;   // красная «Выйти» — только обычное место; жетон отдельно (клон + панель)
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди — «Изменить / выйти» (клик открывает меню, а не выходит сразу).
-      var joinTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : "Встать в очередь");
+      var joinTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : (myPriv ? "Встать в очередь ⚡" : "Встать в очередь"));
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
@@ -2494,15 +2547,7 @@
             recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] }, null, "lane");
           return;
         }
-        if (myPriv) {   // только жетонная запись → выйти из неё, вернуть жетон
-          joinCell.disabled = true;
-          q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
-            joinCell.disabled = false;
-            alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
-          });
-          return;
-        }
-        openResourcePicker(b, null, null, "lane");   // не в очереди → встать
+        openResourcePicker(b, null, null, "lane");   // не в обычной очереди → встать; жетон покажется блоком в окне
       });
       var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
       var strip = document.createElement("div"); strip.className = "qs-lane-strip"; strip.dataset.q = b.q;
