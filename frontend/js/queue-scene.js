@@ -1213,6 +1213,11 @@
     ".qs-pick2-foot .qs-join:hover{filter:drop-shadow(0 4px 12px rgba(255,200,120,.4)) brightness(1.05)}" +
     ".qs-pick2 .qs-join:disabled{opacity:1;color:#c8b892;cursor:default;" +
       "background:url(assets/queue/ui/btn-join-dim.webp?v=3) center/contain no-repeat;filter:grayscale(.15)}" +
+    ".qs-p2-leave{display:block;margin:9px auto 0;cursor:pointer;font:700 13px system-ui;color:#ffcdbf;" +
+      "background:linear-gradient(180deg,rgba(150,60,50,.5),rgba(90,35,30,.55));border:1px solid rgba(220,110,90,.6);" +
+      "border-radius:10px;padding:9px 18px}" +
+    ".qs-p2-leave:hover{background:linear-gradient(180deg,rgba(180,70,55,.7),rgba(110,40,32,.7));color:#fff}" +
+    ".qs-p2-leave:disabled{opacity:.6;cursor:default}" +
     ".qs-fl-flags{display:inline-flex;gap:3px;flex:0 0 auto}" +
     ".qs-fl-flag{font:700 10px system-ui;padding:1px 5px;border-radius:5px}" +
     /* отчёт распределения */
@@ -1626,7 +1631,9 @@
           '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
         '</div>' +
       '</details>' +
-      '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button></div>';
+      '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button>' +
+        (edit && !isPriv ? '<button type="button" class="qs-p2-leave" id="qs-p2-leave">🚪 Выйти из очереди</button>' : "") +
+      "</div>";
     // карточки-выбор
     var grid = body.querySelector("#qs-p2-grid");
     function paintCards() {
@@ -1703,8 +1710,23 @@
       var v = body.querySelector("#qs-plan-sel").value;
       if (v) { planArr.push(v); renderPlan(); }
     });
-    var m = sceneModal((isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить запись — очередь «" : "Встать в очередь — «") + b.title + "»", body);
+    var m = sceneModal((isPriv ? "Сменить ресурс жетона ТОП-3 — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
     paintCards();
+    // «Выйти из очереди» — отдельная кнопка с подтверждением (не путать с изменением ресурсов)
+    var leaveBtn = body.querySelector("#qs-p2-leave");
+    if (leaveBtn) leaveBtn.addEventListener("click", function () {
+      if (!confirm("Выйти из очереди «" + b.title + "»? Ты потеряешь своё место в ней.")) return;
+      leaveBtn.disabled = true;
+      if (m) m.close();
+      if (_isAdmin && !_meAcc) {
+        q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
+          .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
+        return;
+      }
+      q("POST", "/queue/leave", { queue: b.q }).then(refresh).catch(function (e2) {
+        alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+      });
+    });
     // commit
     body.querySelector("#qs-p2-go").addEventListener("click", function () {
       var resources = multi ? Object.keys(selSet) : null;
@@ -1900,7 +1922,8 @@
         "%;--jd:" + (0.5 + (jp.y / 100) * 0.62).toFixed(3) + ";--gc:" + (b.glow || b.accent);
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
-      var btnTx = showLeave ? "Выйти из очереди" : "Встать в очередь";
+      // В очереди с обычным местом — «Изменить / выйти» (клик открывает меню, не выходит сразу).
+      var btnTx = iAmIn ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : "Встать в очередь");
       joinBtn.innerHTML =
         '<span class="qs-js-tx">' + btnTx + "</span>" +   // надпись НАД табличкой
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
@@ -1915,12 +1938,20 @@
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (!iAmIn && !iAmPriv) { openResourcePicker(b); return; }   // не в очереди → встать
-        joinBtn.disabled = true;
-        q("POST", "/queue/leave", { queue: b.q, privileged: (iAmPriv && !iAmIn) }).then(refresh).catch(function (e2) {
-          joinBtn.disabled = false;
-          alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
-        });
+        if (iAmIn) {   // в очереди → меню «изменить ресурсы или выйти» (не выходим сразу!)
+          openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources,
+            recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
+          return;
+        }
+        if (iAmPriv) {   // только жетонная запись (без обычной) → выйти из неё, вернуть жетон
+          joinBtn.disabled = true;
+          q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
+            joinBtn.disabled = false;
+            alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+          });
+          return;
+        }
+        openResourcePicker(b);   // не в очереди → встать
       });
       stage.appendChild(joinBtn);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(jp, "Встать/Выйти · " + b.title));
@@ -2378,7 +2409,8 @@
       var inNow = iAmIn || myPriv || adminIn;
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
-      var joinTx = inNow ? "Выйти из очереди" : "Встать в очередь";
+      // В очереди — «Изменить / выйти» (клик открывает меню, а не выходит сразу).
+      var joinTx = iAmIn ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : "Встать в очередь");
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
@@ -2396,12 +2428,20 @@
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (!iAmIn && !myPriv) { openResourcePicker(b, null, null, "lane"); return; }
-        joinCell.disabled = true;
-        q("POST", "/queue/leave", { queue: b.q, privileged: (myPriv && !iAmIn) }).then(refresh).catch(function (e2) {
-          joinCell.disabled = false;
-          alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
-        });
+        if (iAmIn) {   // в очереди → меню «изменить ресурсы или выйти» (не выходим сразу!)
+          openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources,
+            recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] }, null, "lane");
+          return;
+        }
+        if (myPriv) {   // только жетонная запись → выйти из неё, вернуть жетон
+          joinCell.disabled = true;
+          q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
+            joinCell.disabled = false;
+            alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
+          });
+          return;
+        }
+        openResourcePicker(b, null, null, "lane");   // не в очереди → встать
       });
       var lArr = document.createElement("button"); lArr.className = "qs-lane-arrow"; lArr.textContent = "◀"; lArr.title = "назад";
       var strip = document.createElement("div"); strip.className = "qs-lane-strip"; strip.dataset.q = b.q;
