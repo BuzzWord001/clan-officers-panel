@@ -151,8 +151,10 @@
     if (cu) return { url: cu, key: "class-" + cls + "-" + g, uploaded: true };
     var set = CLASS_MODEL[(cls || "").toLowerCase()];
     if (set) { var fn = set[g] || set.m || set.f; return { url: webpUrl("class/" + fn), key: "class/" + fn }; }
-    // класс без своей модели (напр. «Дух крови» или запись без класса) → нейтральный placeholder
-    return { url: webpUrl("class/_placeholder.png"), key: "class/_placeholder.png" };
+    // Записи БЕЗ класса (нет в таблице доблести, напр. SnegoVik) — раньше показывали
+    // заглушку «?». Теперь по умолчанию нормальная моделька Воина по полу (не «?»).
+    var df = g === "f" ? "Воин(ж).png" : "Воин(м).png";
+    return { url: webpUrl("class/" + df), key: "class/" + df };
   }
   // класс поддерживает ВЫБОР пола, только если модель для 'm' и 'f' реально РАЗНАЯ
   function classHasBothGenders(cls) { return classInfo(cls, "m").url !== classInfo(cls, "f").url; }
