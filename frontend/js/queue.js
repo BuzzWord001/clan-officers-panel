@@ -8,14 +8,21 @@
   // Токен офицерской сессии — фолбэк для браузеров, режущих cookie (Firefox ETP,
   // встроенные браузеры TG/VK и т.п.). Тот же ключ, что у основного api.js.
   var TOKEN_KEY = "officer_session_token";
+  // Токен устройства игрока — фолбэк, когда браузер режет cookie (встроенные браузеры
+  // TG/VK, Firefox ETP). Без него игрок попадал в петлю «войди заново».
+  var DEVICE_KEY = "queue_device_token";
   function getToken() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (_) { return ""; } }
   function setToken(t) { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (_) {} }
+  function getDev() { try { return localStorage.getItem(DEVICE_KEY) || ""; } catch (_) { return ""; } }
+  function setDev(t) { try { if (t) localStorage.setItem(DEVICE_KEY, t); else localStorage.removeItem(DEVICE_KEY); } catch (_) {} }
 
   function api(method, path, body) {
     var headers = {};
     if (body) headers["Content-Type"] = "application/json";
     var tok = getToken();
     if (tok) headers["Authorization"] = "Bearer " + tok;   // если cookie не доехала
+    var dev = getDev();
+    if (dev) headers["X-Queue-Device"] = dev;              // фолбэк device-аутентификации игрока
     return fetch(API + path, {
       method: method,
       credentials: "include",
@@ -173,6 +180,7 @@
       personal_password: $("q-newpass").value,
     }).then(function (d) {
       if (d.role === "officer") { setToken(d.token); location.reload(); return; }   // ввёл офиц. пароль → входит офицером
+      if (d.device_token) setDev(d.device_token);          // сохранить токен устройства (фолбэк к cookie)
       showSection(d.account);
     }).catch(function (e) {
       btn.disabled = false;
@@ -190,7 +198,7 @@
   function doLogin() {
     var btn = $("btn-login"); btn.disabled = true; err("");
     api("POST", "/queue/login", { nick: selectedNick, personal_password: $("q-pass").value })
-      .then(function (d) { showSection(d.account); })
+      .then(function (d) { if (d.device_token) setDev(d.device_token); showSection(d.account); })
       .catch(function (e) {
         btn.disabled = false;
         if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); return; }
@@ -210,7 +218,7 @@
   }
 
   function doLogout() {
-    setToken("");   // чистим и офицерский токен, и офицерскую сессию, и устройство игрока
+    setToken(""); setDev("");   // чистим и офицерский токен, и device-токен игрока, и сессию
     Promise.all([
       api("POST", "/queue/logout").catch(function () {}),
       api("POST", "/auth/logout").catch(function () {})

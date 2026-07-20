@@ -7,8 +7,14 @@
   var API = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
   var ADMIN_NICK = "Лирия!";   // от чьего имени админ тестирует очередь (это аккаунт Лира)
   function q(m, p, b) {
-    return fetch(API + p, { method: m, credentials: "include",
-      headers: b ? { "Content-Type": "application/json" } : undefined,
+    var h = b ? { "Content-Type": "application/json" } : {};
+    // фолбэк-аутентификация, когда браузер режет cookie (встроенные браузеры TG/VK):
+    // device-токен игрока и офицерская сессия — из localStorage.
+    try {
+      var dv = localStorage.getItem("queue_device_token"); if (dv) h["X-Queue-Device"] = dv;
+      var ot = localStorage.getItem("officer_session_token"); if (ot) h["Authorization"] = "Bearer " + ot;
+    } catch (_) {}
+    return fetch(API + p, { method: m, credentials: "include", headers: h,
       body: b ? JSON.stringify(b) : undefined
     }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
       if (!r.ok) { var e = new Error(j.detail || r.statusText); e.status = r.status; e.detail = j.detail; throw e; } return j; }); });

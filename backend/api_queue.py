@@ -362,7 +362,9 @@ def _set_device(conn, response: Response, account_id: int, request: Request) -> 
 
 
 def _account_from_request(conn, request: Request):
-    token = request.cookies.get(COOKIE)
+    # Кука ИЛИ заголовок X-Queue-Device (фолбэк для встроенных браузеров TG/VK и
+    # Firefox ETP, которые режут cookie — иначе игрок попадал в петлю «войди заново»).
+    token = request.cookies.get(COOKIE) or request.headers.get("x-queue-device", "")
     if not token:
         return None
     dev = conn.execute(
@@ -704,11 +706,11 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
             (p["main_canon"], p["main_nick"], p["nick"], payload.email.strip(),
              _hash(payload.personal_password), _now(), _now()))
         acc_id = cur.lastrowid
-        _set_device(conn, response, acc_id, request)
+        dev_token = _set_device(conn, response, acc_id, request)
         _log(conn, "register", actor=p["nick"], nick=p["nick"], request=request,
              detail="email" if payload.email.strip() else "no-email")
         acc = conn.execute("SELECT * FROM queue_accounts WHERE id=?", (acc_id,)).fetchone()
-        return {"ok": True, "account": _acc_public(acc)}
+        return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
 
 
 @router.post("/login")
@@ -724,9 +726,9 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         if not acc or not _check(payload.personal_password, acc["password_hash"]):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
         conn.execute("UPDATE queue_accounts SET last_login_at=? WHERE id=?", (_now(), acc["id"]))
-        _set_device(conn, response, acc["id"], request)
+        dev_token = _set_device(conn, response, acc["id"], request)
         _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request)
-        return {"ok": True, "account": _acc_public(acc)}
+        return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
 
 
 @router.post("/officer-login")
