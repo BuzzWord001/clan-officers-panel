@@ -4155,14 +4155,33 @@ _CANON_CLASS_SPLIT = {
     ("interpris", "оборотень"): "interprisoboroten",  # твин INTerpris-Жреца
 }
 
+# Базовые каноны, за которыми РЕАЛЬНО стоит несколько разных игроков с одинаковым
+# (после сворачивания гомоглифов) ником, различимых по классу. Для таких канонов
+# КАЖДЫЙ класс автоматически получает свой канон (base_класс), КРОМЕ «первичного»
+# класса — он сохраняет голый base, чтобы НЕ переверстывать уже накопленную
+# историю/иммунитет первого игрока. Так работает и 3-й, и 4-й тёзка без ручных
+# записей. ДЕРЖАТЬ В СИНХРОНЕ с pw-valor-tracker/gemini_vision.py.
+_CANON_MULTI_PRIMARY = {
+    "interpris": "жрец",   # Жрец = голый interpris; Оборотень и прочие классы — свой канон
+}
+
 
 def _valor_canon_cls(nick: str, class_: str | None) -> str:
     """Канон с учётом класса — для тёзок-омонимов, неотличимых по написанию.
-    Если пара (канон, класс) есть в _CANON_CLASS_SPLIT — отдельный канон,
-    иначе обычный _valor_canon."""
+    Порядок: 1) ручная пара (канон, класс) из _CANON_CLASS_SPLIT (обратная
+    совместимость, напр. interprisoboroten); 2) авто-развод для канонов из
+    _CANON_MULTI_PRIMARY (все классы, кроме первичного, → base_класс);
+    3) иначе обычный _valor_canon."""
+    import re
     base = _valor_canon(nick)
     cl = (class_ or "").strip().lower()
-    return _CANON_CLASS_SPLIT.get((base, cl), base)
+    if (base, cl) in _CANON_CLASS_SPLIT:
+        return _CANON_CLASS_SPLIT[(base, cl)]
+    if base in _CANON_MULTI_PRIMARY and cl and cl != _CANON_MULTI_PRIMARY[base]:
+        suff = re.sub(r"[\s\W_]+", "", cl, flags=re.UNICODE)
+        if suff:
+            return base + "_" + suff
+    return base
 
 
 def _acceptance_nicks(raw: str) -> list[tuple[str, str]]:
@@ -7366,7 +7385,11 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
         valor_norm = int(snap["valor_norm"] or 0)
 
         alias_map = _alias_map(conn)
-        raw_canon = _valor_canon(nick)
+        # Канон с учётом КЛАССА: тёзки-омонимы (гомоглиф в игре) различаются только
+        # по классу. Без этого «INТerpris» иного класса упирался в существующего
+        # INTerpris-Жреца (тот же базовый канон) и добавление блокировалось.
+        add_cls = (fields.get("class_") or fields.get("class") or "").strip()
+        raw_canon = _valor_canon_cls(nick, add_cls)
         resolved = _resolve_canon(raw_canon, alias_map)
         if not resolved:
             return {"ok": False, "reason": "bad_nick"}
