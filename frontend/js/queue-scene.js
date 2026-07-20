@@ -2481,7 +2481,7 @@
     });
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _lastState = { queues: [[], [], []] };
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -4444,12 +4444,19 @@
         q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
         q("GET", "/queue/spouses").then(function (d) { applySpouses(d); }).catch(function () { applySpouses(null); }),
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
-        q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
-          .catch(function () { _role = ""; _isAdmin = false; }),
+        q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; _officerName = (m && m.name) || ""; })
+          .catch(function () { _role = ""; _isAdmin = false; _officerName = ""; }),
         q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
-      ]).then(function () { loadEnv(); refresh(); });
+      ]).then(function () {
+        // ОФИЦЕР может вставать в очередь как игрок (по своему нику из офиц. сессии) —
+        // раньше ему писало «войди как игрок». Даём синтетический аккаунт, офиц.панель остаётся.
+        if (!_meAcc && _role === "officer" && _officerName) {
+          _meAcc = { main_nick: _officerName, main_canon: canon(_officerName), reg_nick: _officerName };
+        }
+        loadEnv(); refresh();
+      });
     }
   };
 })();

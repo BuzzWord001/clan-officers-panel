@@ -387,6 +387,31 @@ def _acc_public(acc) -> dict:
             "reg_nick": acc["reg_nick"], "email": acc["email"]}
 
 
+def _player_ctx(conn, request: Request):
+    """Кто действует в очереди: настоящий игрок (device-кука) ЛИБО ОФИЦЕР (по офиц. сессии,
+    его ник). Раньше офицеры не могли встать в очередь («войди как игрок») — теперь могут,
+    оставаясь офицерами. Возвращает dict с main_canon/main_nick/reg_nick или None."""
+    acc = _account_from_request(conn, request)
+    if acc:
+        return dict(acc)
+    try:
+        s = current_session(request)
+    except HTTPException:
+        s = None
+    if s and s.get("role") == "officer":
+        name = (s.get("name") or "").strip()
+        if not name:
+            return None
+        p = _people(conn).get(db._valor_canon(name))
+        if p:
+            return {"main_canon": p["main_canon"], "main_nick": p["main_nick"],
+                    "reg_nick": p["nick"], "email": "", "id": None}
+        cn = db._valor_canon(name)
+        if cn:
+            return {"main_canon": cn, "main_nick": name, "reg_nick": name, "email": "", "id": None}
+    return None
+
+
 # ─────────────────────────── схемы ───────────────────────────
 class CheckIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
@@ -756,7 +781,8 @@ def nick_role(nick: str = Query(..., min_length=1, max_length=64)) -> dict:
 @router.get("/me")
 def me(request: Request) -> dict:
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)              # игрок ИЛИ офицер (для жетонов/пола)
+        dev = _account_from_request(conn, request)    # ТОЛЬКО настоящий игрок — для поля account
         tokens = 0
         gender = ""
         prefer_class = False
@@ -770,7 +796,7 @@ def me(request: Request) -> dict:
             prow = conn.execute("SELECT prefer_class FROM queue_model_pref WHERE canon=?",
                                 (acc["main_canon"],)).fetchone()
             prefer_class = bool(prow["prefer_class"]) if prow else False
-        return {"account": _acc_public(acc) if acc else None, "tokens": tokens,
+        return {"account": _acc_public(dev) if dev else None, "tokens": tokens,
                 "gender": gender, "prefer_class": prefer_class}
 
 
@@ -780,7 +806,7 @@ def get_notices(request: Request) -> dict:
     import json as _json
     out = []
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if acc:
             for r in conn.execute(
                     "SELECT id, kind, payload, created_at FROM queue_notices"
@@ -807,7 +833,7 @@ def token_board() -> dict:
 def mark_notices_seen(request: Request) -> dict:
     """Пометить все уведомления игрока прочитанными (он их увидел)."""
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if acc:
             conn.execute("UPDATE queue_notices SET seen=1 WHERE canon=? AND seen=0",
                          (acc["main_canon"],))
@@ -1005,7 +1031,7 @@ def join(payload: JoinIn, request: Request) -> dict:
     if q not in QUEUES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         # Обычное место в очереди (privileged=0). Привилегированную запись (жетон ТОП-3)
@@ -1039,7 +1065,7 @@ def leave(payload: JoinIn, request: Request) -> dict:
     if payload.queue not in QUEUES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         # Выходим ТОЛЬКО из обычного места (privileged=0). Привилегированная запись
@@ -1072,7 +1098,7 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
     if payload.queue not in QUEUES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         # Обычная или привилегированная (жетон) запись — они живут параллельно, меняем нужную.
@@ -1345,7 +1371,7 @@ def set_my_gender(payload: MyGenderIn, request: Request) -> dict:
     """Игрок сам выбирает пол своей модельки (по device-куке). '' = авто по имени/классу."""
     g = payload.gender if payload.gender in ("m", "f") else ""
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         cn = acc["main_canon"]
@@ -1369,7 +1395,7 @@ def set_model_pref(payload: ModelPrefIn, request: Request) -> dict:
     вместо персональной (по device-куке). prefer_class=False → снова персональная."""
     pref = 1 if payload.prefer_class else 0
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         cn = acc["main_canon"]
@@ -1804,7 +1830,7 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
     if not r or r["q"] != 0 or r["mode"] == "pack":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "only_regular_stack")
     with db.connection() as conn:
-        acc = _account_from_request(conn, request)
+        acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
         row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
