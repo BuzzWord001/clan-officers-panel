@@ -422,6 +422,18 @@ CREATE TABLE IF NOT EXISTS valor_edit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_valor_edit_log_week ON valor_edit_log(week);
 
+-- Реестр тёзок-омонимов: базовые каноны, за которыми несколько РАЗНЫХ игроков,
+-- различимых по классу. primary_class держит голый base (история первого игрока
+-- не переверстывается), прочие классы → canon base_класс. Пополняется автоматом
+-- при добавлении тёзки другого класса (valor_add_member) и учитывается в
+-- ingestion/edit через _valor_canon_cls. Дополняет статический _CANON_MULTI_PRIMARY.
+CREATE TABLE IF NOT EXISTS valor_multi_canon (
+    base_canon    TEXT    PRIMARY KEY,
+    primary_class TEXT    NOT NULL DEFAULT '',
+    created_at    TEXT    NOT NULL DEFAULT '',
+    created_by    TEXT    NOT NULL DEFAULT ''
+);
+
 -- Архив ушедших из клана. При save_snapshot, если ник был в prev,
 -- но в current его нет — INSERT/UPDATE сюда (последние известные
 -- данные). Если ник снова появился в новом снапшоте — DELETE.
@@ -4165,19 +4177,51 @@ _CANON_MULTI_PRIMARY = {
     "interpris": "жрец",   # Жрец = голый interpris; Оборотень и прочие классы — свой канон
 }
 
+# Динамический реестр тёзок из таблицы valor_multi_canon (base→primary_class).
+# None = ещё не загружен из БД. Пополняется автоматом при добавлении тёзки другого
+# класса. Загружать через _ensure_multi_loaded(conn) в путях, что СЧИТАЮТ канон
+# (ingestion / add / edit); в путях ЧТЕНИЯ канон берётся из колонки nick_canon.
+_MULTI_PRIMARY_DYN: dict | None = None
+
+
+def _ensure_multi_loaded(conn) -> None:
+    """Освежить динамический реестр тёзок из valor_multi_canon. Вызывается только в
+    путях, что СЧИТАЮТ канон (add/ingestion/edit) — редко, поэтому читаем каждый раз
+    (реестр крохотный), чтобы регистрация тёзки на одной машине/процессе была видна
+    остальным сразу."""
+    global _MULTI_PRIMARY_DYN
+    try:
+        _MULTI_PRIMARY_DYN = {
+            r["base_canon"]: (r["primary_class"] or "").strip().lower()
+            for r in conn.execute(
+                "SELECT base_canon, primary_class FROM valor_multi_canon")}
+    except Exception:
+        if _MULTI_PRIMARY_DYN is None:
+            _MULTI_PRIMARY_DYN = {}
+
+
+def _multi_primary_class(base: str) -> str | None:
+    """Первичный класс для базового канона (статический + динамический реестр)."""
+    if base in _CANON_MULTI_PRIMARY:
+        return _CANON_MULTI_PRIMARY[base]
+    if _MULTI_PRIMARY_DYN:
+        return _MULTI_PRIMARY_DYN.get(base)
+    return None
+
 
 def _valor_canon_cls(nick: str, class_: str | None) -> str:
     """Канон с учётом класса — для тёзок-омонимов, неотличимых по написанию.
     Порядок: 1) ручная пара (канон, класс) из _CANON_CLASS_SPLIT (обратная
-    совместимость, напр. interprisoboroten); 2) авто-развод для канонов из
-    _CANON_MULTI_PRIMARY (все классы, кроме первичного, → base_класс);
-    3) иначе обычный _valor_canon."""
+    совместимость, напр. interprisoboroten); 2) авто-развод для «мульти»-канонов
+    (статический _CANON_MULTI_PRIMARY + динамический реестр valor_multi_canon):
+    все классы, кроме первичного, → base_класс; 3) иначе обычный _valor_canon."""
     import re
     base = _valor_canon(nick)
     cl = (class_ or "").strip().lower()
     if (base, cl) in _CANON_CLASS_SPLIT:
         return _CANON_CLASS_SPLIT[(base, cl)]
-    if base in _CANON_MULTI_PRIMARY and cl and cl != _CANON_MULTI_PRIMARY[base]:
+    prim = _multi_primary_class(base)
+    if prim is not None and cl and cl != prim:
         suff = re.sub(r"[\s\W_]+", "", cl, flags=re.UNICODE)
         if suff:
             return base + "_" + suff
@@ -5308,6 +5352,7 @@ def valor_save_snapshot(
         # Карта алиасов (слияния ников админом) — кривые OCR-чтения матчим
         # на правильного человека ещё на этапе сохранения.
         alias_map = _alias_map(conn)
+        _ensure_multi_loaded(conn)   # реестр тёзок → class-aware канон при ingestion
         prev_canons: set[str] = set()
         prev_snapshot_data: dict[str, dict] = {}  # canon → row dict
         if prev_snap:
@@ -7385,6 +7430,7 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
         valor_norm = int(snap["valor_norm"] or 0)
 
         alias_map = _alias_map(conn)
+        _ensure_multi_loaded(conn)   # динамический реестр тёзок → _valor_canon_cls
         # Канон с учётом КЛАССА: тёзки-омонимы (гомоглиф в игре) различаются только
         # по классу. Без этого «INТerpris» иного класса упирался в существующего
         # INTerpris-Жреца (тот же базовый канон) и добавление блокировалось.
@@ -7404,19 +7450,46 @@ def valor_add_member(week: str | None, fields: dict, actor: dict) -> dict:
         else:
             canon = resolved
         dup = conn.execute(
-            "SELECT id, nick, frame, valor, level FROM valor_members "
+            "SELECT id, nick, frame, valor, level, class_ FROM valor_members "
             "WHERE snapshot_id = ? AND nick_canon = ?",
             (snap_id, canon)).fetchone()
         if dup:
-            # via_alias — конфликт возник ТОЛЬКО из-за авто-связи ников (алиаса),
-            # а не прямого совпадения → фронт предложит «разорвать связь и добавить».
-            # Иначе (прямой дубль canon) — предложит исправить существующую строку.
-            via_alias = (raw_canon != resolved) and (raw_canon in alias_map)
-            return {"ok": False, "reason": "exists", "id": dup["id"],
-                    "conflict": {"id": dup["id"], "nick": dup["nick"],
-                                 "frame": dup["frame"], "valor": dup["valor"],
-                                 "level": dup["level"], "via_alias": via_alias,
-                                 "typed": nick}}
+            # АВТО-РАЗВОД ТЁЗОК-ОМОНИМОВ: если у существующей строки ДРУГОЙ класс,
+            # чем у добавляемого (оба непустые) — это РАЗНЫЙ игрок (гомоглиф/символы
+            # в нике свернулись в один канон). Регистрируем базовый канон как
+            # «мульти» (первичный класс = у существующей строки, она держит голый
+            # base), добавляемому даём канон base_класс и продолжаем вставку. На
+            # будущие недели это запоминается (ingestion/edit разведут сами).
+            dup_cls = (dup["class_"] or "").strip().lower()
+            new_cls = add_cls.strip().lower()
+            base_c = _valor_canon(nick)
+            if (new_cls and dup_cls and new_cls != dup_cls
+                    and not break_alias and canon == base_c):
+                conn.execute(
+                    "INSERT INTO valor_multi_canon (base_canon, primary_class, created_at, created_by) "
+                    "VALUES (?,?,?,?) ON CONFLICT(base_canon) DO NOTHING",
+                    (base_c, dup_cls, now, actor.get("name") or actor.get("role") or ""))
+                if _MULTI_PRIMARY_DYN is not None:
+                    _MULTI_PRIMARY_DYN.setdefault(base_c, dup_cls)
+                split_canon = _valor_canon_cls(nick, add_cls)
+                # проверяем, что новый канон реально отличается и свободен в снимке
+                if split_canon != canon:
+                    dup2 = conn.execute(
+                        "SELECT id FROM valor_members WHERE snapshot_id = ? AND nick_canon = ?",
+                        (snap_id, split_canon)).fetchone()
+                    if not dup2:
+                        canon = split_canon
+                        dup = None
+            if dup:
+                # via_alias — конфликт возник ТОЛЬКО из-за авто-связи ников (алиаса),
+                # а не прямого совпадения → фронт предложит «разорвать связь и добавить».
+                # Иначе (прямой дубль canon) — предложит исправить существующую строку.
+                via_alias = (raw_canon != resolved) and (raw_canon in alias_map)
+                return {"ok": False, "reason": "exists", "id": dup["id"],
+                        "conflict": {"id": dup["id"], "nick": dup["nick"],
+                                     "frame": dup["frame"], "valor": dup["valor"],
+                                     "level": dup["level"], "via_alias": via_alias,
+                                     "typed": nick}}
 
         # ── Позиция вставки (удобно для проверки скринов) ──
         # after_id задан → вставляем МЕЖДУ строкой after_id и следующей за ней:
@@ -7572,6 +7645,7 @@ def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str,
     if not new_nick or not base_canon:
         return base_canon
     amap = _alias_map(conn)
+    _ensure_multi_loaded(conn)   # реестр тёзок → class-aware целевой канон
     src = _resolve_canon(base_canon, amap)
     target = _resolve_canon(_valor_canon_cls(new_nick, class_), amap)
     # Защита от слияния тёзок-омонимов: не сливаем src→target, если у target уже
