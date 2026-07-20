@@ -34,15 +34,24 @@
   var CLASS_MODEL = {
     "воин": { m: "Воин(м).png", f: "Воин(ж).png" },
     "жрец": { m: "Жрец (м).png", f: "Жрец (ж).png" },
-    "маг": { f: "Маг (ж).png", m: "Маг (ж).png" },
+    "маг": { m: "Маг (м).png", f: "Маг (ж).png" },
     "друид": { f: "Друид.png" },
     "стрелок": { f: "Стрелок.png" },
     "оборотень": { m: "Оборотень.png" },
-    "странник": { m: "Странник.png" }
+    "странник": { m: "Странник.png" },
+    "страж": { m: "Страж (м).png", f: "Страж (ж).png" },
+    "мистик": { m: "Мистик (м).png", f: "Мистик (ж).png" },
+    "убийца": { m: "Убийца (м).png", f: "Убийца (ж).png" },
+    "лучник": { m: "Лучник (м).png", f: "Лучник (ж).png" },
+    "жнец": { m: "Жнец (м).png", f: "Жнец (ж).png" },
+    "бард": { m: "Бард (м).png", f: "Бард (ж).png" },
+    "шаман": { m: "Шаман (м).png", f: "Шаман (ж).png" },
+    "паладин": { m: "Паладин (м).png", f: "Паладин (ж).png" },
+    "призрак": { m: "Призрак (м).png", f: "Призрак (ж).png" }
   };
   // ключи строим через canon(имя) — чтобы совпадали при латинице/кириллице в никах
   var PERSONAL_SRC = { "Naomi": "_Naomi.png", "Карася": "Карася.png", "Кэя": "Кэя.png",
-    "Лирия": "Лирия!.png", "Химеко": "Химеко.png" };
+    "Лирия": "Лирия!.png", "Химеко": "Химеко.png", "Шлюпка": "Шлюпка.png" };
   var PERSONAL = {};
   Object.keys(PERSONAL_SRC).forEach(function (k) { PERSONAL[canon(k)] = PERSONAL_SRC[k]; });
   var FEMALE_ONLY = ["друид", "стрелок"], MALE_ONLY = ["оборотень", "странник"];
@@ -134,8 +143,8 @@
     if (cu) return { url: cu, key: "class-" + cls + "-" + g, uploaded: true };
     var set = CLASS_MODEL[(cls || "").toLowerCase()];
     if (set) { var fn = set[g] || set.m || set.f; return { url: webpUrl("class/" + fn), key: "class/" + fn }; }
-    var pf = g === "f" ? "Жрец (ж).png" : "Жрец (м).png";
-    return { url: webpUrl("class/" + pf), key: "class/" + pf };
+    // класс без своей модели (напр. «Дух крови» или запись без класса) → нейтральный placeholder
+    return { url: webpUrl("class/_placeholder.png"), key: "class/_placeholder.png" };
   }
   // класс поддерживает ВЫБОР пола, только если модель для 'm' и 'f' реально РАЗНАЯ
   function classHasBothGenders(cls) { return classInfo(cls, "m").url !== classInfo(cls, "f").url; }
@@ -154,12 +163,22 @@
   var ALL_MODELS = [
     { key: "class/Воин(м).png", label: "Воин (м)" }, { key: "class/Воин(ж).png", label: "Воин (ж)" },
     { key: "class/Жрец (м).png", label: "Жрец (м)" }, { key: "class/Жрец (ж).png", label: "Жрец (ж)" },
-    { key: "class/Маг (ж).png", label: "Маг (ж)" }, { key: "class/Друид.png", label: "Друид" },
+    { key: "class/Маг (м).png", label: "Маг (м)" }, { key: "class/Маг (ж).png", label: "Маг (ж)" },
+    { key: "class/Друид.png", label: "Друид" },
     { key: "class/Стрелок.png", label: "Стрелок" }, { key: "class/Оборотень.png", label: "Оборотень" },
     { key: "class/Странник.png", label: "Странник" },
+    { key: "class/Страж (м).png", label: "Страж (м)" }, { key: "class/Страж (ж).png", label: "Страж (ж)" },
+    { key: "class/Мистик (м).png", label: "Мистик (м)" }, { key: "class/Мистик (ж).png", label: "Мистик (ж)" },
+    { key: "class/Убийца (м).png", label: "Убийца (м)" }, { key: "class/Убийца (ж).png", label: "Убийца (ж)" },
+    { key: "class/Лучник (м).png", label: "Лучник (м)" }, { key: "class/Лучник (ж).png", label: "Лучник (ж)" },
+    { key: "class/Жнец (м).png", label: "Жнец (м)" }, { key: "class/Жнец (ж).png", label: "Жнец (ж)" },
+    { key: "class/Бард (м).png", label: "Бард (м)" }, { key: "class/Бард (ж).png", label: "Бард (ж)" },
+    { key: "class/Шаман (м).png", label: "Шаман (м)" }, { key: "class/Шаман (ж).png", label: "Шаман (ж)" },
+    { key: "class/Паладин (м).png", label: "Паладин (м)" }, { key: "class/Паладин (ж).png", label: "Паладин (ж)" },
+    { key: "class/Призрак (м).png", label: "Призрак (м)" }, { key: "class/Призрак (ж).png", label: "Призрак (ж)" },
     { key: "personal/_Naomi.png", label: "Naomi (личн.)" }, { key: "personal/Карася.png", label: "Карася (личн.)" },
     { key: "personal/Кэя.png", label: "Кэя (личн.)" }, { key: "personal/Лирия!.png", label: "Лирия! (личн.)" },
-    { key: "personal/Химеко.png", label: "Химеко (личн.)" },
+    { key: "personal/Химеко.png", label: "Химеко (личн.)" }, { key: "personal/Шлюпка.png", label: "Шлюпка (личн.)" },
     { key: "scene/merchant-0.png", label: "Торговец: обычные" },
     { key: "scene/merchant-1.png", label: "Торговец: редкие" },
     { key: "scene/merchant-2.png", label: "Торговец: легендарные" },
