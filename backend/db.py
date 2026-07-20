@@ -5375,17 +5375,22 @@ def valor_save_snapshot(
         # бОльшим valor (более полное чтение).
         def _vint(x):
             return x if isinstance(x, int) else -1
-        _dedup: dict[str, dict] = {}
+        _dedup: dict[tuple, dict] = {}
         for _m in members:
             _nick = (_m.get("nick") or "").strip()
             if not _nick:
                 continue
-            # Класс-aware канон: тёзки-омонимы (одинаковый ник, разный класс) —
-            # разные игроки, НЕ схлопываем.
+            # Ключ дедупа — канон + КЛАСС + УРОВЕНЬ. Тёзки-омонимы (одинаковый после
+            # сворачивания ник, но разный класс ИЛИ уровень) — РАЗНЫЕ игроки, НЕ
+            # схлопываем: иначе один терялся из снимка. Сливаем только уверенно одного
+            # человека (тот же канон, класс И уровень), оставляя бОльший valor.
             _cn = _valor_canon_cls(_nick, _m.get("class_") or _m.get("class"))
-            _ex = _dedup.get(_cn)
+            _cls = (_m.get("class_") or _m.get("class") or "").strip().lower()
+            _lvl = _m.get("level")
+            _key = (_cn, _cls, _lvl if isinstance(_lvl, int) else None)
+            _ex = _dedup.get(_key)
             if _ex is None or _vint(_m.get("valor")) > _vint(_ex.get("valor")):
-                _dedup[_cn] = _m
+                _dedup[_key] = _m
         members = list(_dedup.values())
 
         # ── 2. REPLACE snapshot на эту неделю (если уже был) ──
