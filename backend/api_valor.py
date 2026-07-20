@@ -121,8 +121,16 @@ def valor_current(s: dict = Depends(require_viewer)) -> dict:
             db.valor_expire_afk()
         except Exception as e:
             log.warning("afk expire failed: %s", e)
-    return db.valor_get_current(with_reg_notes=is_officer,
-                                with_socials=is_officer)
+    res = db.valor_get_current(with_reg_notes=is_officer,
+                               with_socials=is_officer)
+    # Ники ТОП-3, получившие жетоны за эту неделю — для подписи поста ТОП-20.
+    try:
+        wk = (res.get("snapshot") or {}).get("week")
+        if wk:
+            res["top3_tokens"] = db.valor_top3_token_names(wk)
+    except Exception:
+        pass
+    return res
 
 
 @router.get("/known-nicks")

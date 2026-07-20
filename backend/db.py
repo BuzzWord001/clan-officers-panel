@@ -1013,6 +1013,24 @@ def valor_mark_published(week: str) -> dict:
     return {"ok": True, "published_at": now}
 
 
+def valor_top3_token_names(week: str) -> list[str]:
+    """Ники ТОП-3, которым за эту неделю начислены жетоны суперспособности
+    (из valor_top3_grant, заполняет api_queue.grant_top3_valor_tokens). Для
+    подписи поста ТОП-20. Пусто, если ещё не начисляли."""
+    wk = (week or "").strip()
+    if not wk:
+        return []
+    with connection() as conn:
+        try:
+            r = conn.execute(
+                "SELECT nicks FROM valor_top3_grant WHERE week = ?", (wk,)).fetchone()
+        except Exception:
+            return []
+    if not r or not r["nicks"]:
+        return []
+    return [n.strip() for n in r["nicks"].split(",") if n.strip()]
+
+
 def valor_latest_week() -> str | None:
     with connection() as conn:
         r = conn.execute(
