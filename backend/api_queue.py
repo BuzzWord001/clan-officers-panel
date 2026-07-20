@@ -173,6 +173,17 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- Ручные ТВИНЫ: офицер/админ вручную связывает ник-твин с его настоящим мэйном
+            -- (когда авто-определение по титулу ~Мэйн~ не сработало / титул неверный).
+            CREATE TABLE IF NOT EXISTS queue_twins (
+              canon      TEXT PRIMARY KEY,           -- канон ника-твина
+              main_canon TEXT NOT NULL DEFAULT '',   -- канон МЭЙНА, к которому он привязан
+              main_nick  TEXT NOT NULL DEFAULT '',   -- отображаемый ник мэйна (для показа)
+              twin_nick  TEXT NOT NULL DEFAULT '',   -- отображаемый ник твина (для показа)
+              updated_by TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS queue_reports (
               id         INTEGER PRIMARY KEY AUTOINCREMENT,
               created_at TEXT NOT NULL,              -- когда финализировали неделю (ISO)
@@ -409,6 +420,23 @@ def _people(conn) -> dict[str, dict]:
             res = _resolve_partial(idx, p["main_canon"])
             if res:
                 p["main_canon"], p["main_nick"] = res[0], res[1]["nick"]
+    # Ручные твины (офицер/админ): переопределяют мэйна для указанных ников — приоритетнее авто.
+    try:
+        for r in conn.execute("SELECT canon, main_canon, main_nick, twin_nick FROM queue_twins"):
+            tc, mmc = r["canon"], r["main_canon"]
+            if not tc or not mmc or tc == mmc:
+                continue
+            target = idx.get(mmc)
+            real_mc = (target["main_canon"] if target else mmc) or mmc
+            real_mn = (target["main_nick"] if target else "") or r["main_nick"] or mmc
+            p = idx.get(tc)
+            if p is not None:
+                p["main_canon"], p["main_nick"], p["is_twin"] = real_mc, real_mn, True
+            else:
+                idx[tc] = {"nick": r["twin_nick"] or tc, "title": "", "cls": "", "true_name": "",
+                           "main_nick": real_mn, "main_canon": real_mc, "is_twin": True, "sources": {"manual"}}
+    except Exception:
+        pass
     return idx
 
 
@@ -531,6 +559,11 @@ class SetEntryIn(BaseModel):
 class SpouseIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)               # кому задаём получателя
     recipient: str = Field(default="", max_length=64)            # ник получателя; пусто = удалить связь
+
+
+class TwinIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)               # ник-твин, который привязываем
+    main_nick: str = Field(default="", max_length=64)            # ник мэйна; пусто = снять ручную привязку
 
 
 class MarkUncollectedIn(BaseModel):
@@ -1327,6 +1360,57 @@ def set_spouse(payload: SpouseIn, request: Request,
         _log(conn, "spouse", actor=_actor_name(actor), nick=payload.nick,
              request=request, detail="→" + (rcpt or "(удалено)"))
     return {"ok": True, "recipient": rcpt}
+
+
+@router.get("/twins")
+def twins(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Твин-связи для панели: manual — заданные вручную офицером/админом; auto — определённые
+    автоматически по титулу ~Мэйн~ (для просмотра). Доступно офицеру и админу."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        man = conn.execute(
+            "SELECT canon, main_nick, twin_nick FROM queue_twins ORDER BY main_nick, twin_nick").fetchall()
+        man_c = {r["canon"] for r in man}
+    canon2nick = {c: p["nick"] for c, p in idx.items()}
+    manual = [{"twin_nick": (canon2nick.get(r["canon"]) or r["twin_nick"] or r["canon"]),
+               "main_nick": r["main_nick"], "canon": r["canon"]} for r in man]
+    auto = [{"twin_nick": p["nick"], "main_nick": p["main_nick"]}
+            for c, p in idx.items()
+            if p.get("is_twin") and "manual" not in p.get("sources", set()) and c not in man_c]
+    auto.sort(key=lambda e: ((e["main_nick"] or "").lower(), (e["twin_nick"] or "").lower()))
+    return {"manual": manual, "auto": auto}
+
+
+@router.post("/twin")
+def set_twin(payload: TwinIn, request: Request,
+             actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Ручная привязка ника-твина к мэйну (или снятие, если main_nick пустой). Офицер/админ."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        tc = db._valor_canon(payload.nick)
+        if not tc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        mn_in = (payload.main_nick or "").strip()
+        if not mn_in:                                   # снять ручную привязку
+            conn.execute("DELETE FROM queue_twins WHERE canon=?", (tc,))
+            _log(conn, "twin", actor=_actor_name(actor), nick=payload.nick, request=request, detail="(снята)")
+            return {"ok": True, "main_nick": ""}
+        mp = idx.get(db._valor_canon(mn_in))
+        mmc = (mp["main_canon"] if mp else db._valor_canon(mn_in))
+        mmn = (mp["main_nick"] if mp else mn_in)
+        if not mmc or mmc == tc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_main")
+        tp = idx.get(tc)
+        twin_nick = tp["nick"] if tp else payload.nick.strip()
+        conn.execute(
+            "INSERT INTO queue_twins (canon, main_canon, main_nick, twin_nick, updated_by, updated_at)"
+            " VALUES (?,?,?,?,?,?)"
+            " ON CONFLICT(canon) DO UPDATE SET main_canon=excluded.main_canon, main_nick=excluded.main_nick,"
+            " twin_nick=excluded.twin_nick, updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+            (tc, mmc, mmn, twin_nick, _actor_name(actor), _now()))
+        _log(conn, "twin", actor=_actor_name(actor), nick=payload.nick, request=request,
+             detail="твин → мэйн " + mmn)
+    return {"ok": True, "main_nick": mmn}
 
 
 @router.post("/admin/add")

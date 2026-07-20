@@ -1514,6 +1514,36 @@
       "background:linear-gradient(180deg,#ffe6a8,#e0a84a);box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;" +
       "justify-content:center;gap:5px;letter-spacing:.2px}" +
     ".qtip-skin:hover{filter:brightness(1.07)}.qtip-skin:active{transform:scale(.97)}" +
+    // инлайн-классификация получателя (офицер/админ) + кнопка управления связями
+    ".qs-rcpt-actions{display:none;flex-wrap:wrap;align-items:center;gap:6px;margin:5px 0 2px}" +
+    ".qs-rcpt-q{flex:1 1 100%;font:600 11.5px system-ui;color:#e6c48f}" +
+    ".qs-rcpt-cls{cursor:pointer;font:800 12px system-ui;padding:6px 11px;border-radius:9px;border:1px solid rgba(224,162,74,.5);color:#f0dcb4;background:rgba(224,162,74,.12)}" +
+    ".qs-rcpt-cls.sp{color:#ffcdea;border-color:rgba(224,120,190,.55);background:rgba(224,120,190,.14)}" +
+    ".qs-rcpt-cls.tw{color:#bfe0ff;border-color:rgba(120,180,224,.55);background:rgba(120,180,224,.14)}" +
+    ".qs-rcpt-cls:hover{filter:brightness(1.12)}.qs-rcpt-cls:active{transform:scale(.96)}.qs-rcpt-cls:disabled{opacity:.5}" +
+    ".qs-rcpt-manage{display:block;width:100%;margin:7px 0 2px;cursor:pointer;font:800 12px system-ui;color:#1b1006;" +
+      "padding:8px 12px;border:0;border-radius:9px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
+    ".qs-rcpt-manage:hover{filter:brightness(1.06)}" +
+    // модалка связей
+    ".qs-links{padding:8px 16px 14px;max-width:560px}" +
+    ".qs-links-hint{font:600 11.5px/1.5 system-ui;color:#8a795a;margin-bottom:10px}" +
+    ".qs-links-sec{margin-bottom:14px;padding:10px;border:1px solid rgba(224,162,74,.2);border-radius:11px;background:rgba(0,0,0,.16)}" +
+    ".qs-links-h{font:800 13px Georgia,serif;color:#ffd98a;margin-bottom:7px}.qs-links-h span{font:400 11px system-ui;color:#8a795a}" +
+    ".qs-links-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}" +
+    ".qs-links-row input{flex:1 1 130px;min-width:110px;padding:7px 10px;font-size:13px;color:#f5ecda;background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:8px}" +
+    ".qs-links-arr{font:700 11.5px system-ui;color:#caa66a;flex:0 0 auto}" +
+    ".qs-links-row button{cursor:pointer;border:0;border-radius:8px;padding:8px 13px;font:800 12px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
+    ".qs-links-list{display:flex;flex-direction:column;gap:5px;max-height:190px;overflow:auto;margin-top:7px}" +
+    ".qs-links-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#f6ead2;padding:5px 8px;border-radius:8px;border:1px solid rgba(224,162,74,.16)}" +
+    ".qs-links-item.tw{border-color:rgba(120,180,224,.28)}.qs-links-item.sp{border-color:rgba(224,120,190,.28)}" +
+    ".qs-links-item b{min-width:120px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-links-to{color:#caa66a;flex:0 0 auto;font-size:11px}.qs-links-r{flex:1;color:#a9e08f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-links-del{padding:2px 9px!important;flex:0 0 auto}" +
+    ".qs-links-empty{font-size:11px;color:#8a795a}" +
+    ".qs-links-auto-sum{cursor:pointer;font-size:11.5px;color:#8a795a}" +
+    ".qs-links-auto{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow:auto;margin-top:4px}" +
+    ".qs-links-autoi{font-size:11.5px;color:#c9b48f;padding:2px 6px}.qs-links-autoi span{color:#8a795a}" +
+    ".qs-links-status{min-height:16px;font-size:11.5px;color:#e0a86a;margin-top:4px}" +
     // ── переключатель облика (модалка) ──
     ".qs-msw{padding:6px 14px 12px;max-width:440px}" +
     ".qs-msw.saving{opacity:.6;pointer-events:none}" +
@@ -1873,6 +1903,10 @@
           '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
           '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
           '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
+          ((_isAdmin || _role === "officer")
+            ? '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
+              '<button type="button" id="qs-rcpt-manage" class="qs-rcpt-manage">⚙ Настроить связи твинов и супругов</button>'
+            : "") +
           '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
             '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
           '<div class="qs-p2-lbl">📅 План на будущие недели <span style="color:#8a795a;font-weight:400">(до 8 — как дойдёт очередь, ресурс сменится по порядку)</span>:</div>' +
@@ -1934,6 +1968,10 @@
     }
     // получатель — живая проверка твин/супруг
     var rcptEl = body.querySelector("#qs-rcpt"), warnEl = body.querySelector("#qs-rcpt-warn");
+    var actEl = body.querySelector("#qs-rcpt-actions");     // офицер/админ: классифицировать связь
+    var canLinks = _isAdmin || _role === "officer";
+    // «отправитель» — тот, кто стоит: игрок/офицер по своему нику, либо админ-тест как Лирия!
+    var senderNick = _meAcc ? _meAcc.main_nick : ((_isAdmin && !_meAcc) ? ADMIN_NICK : "");
     function checkRcpt() {
       var rel = recipientRel(rcptEl.value);
       if (rel === "other") { warnEl.textContent = "⚠ этот игрок не твин и не супруг — ресурс уйдёт постороннему"; warnEl.style.display = "block"; }
@@ -1941,7 +1979,40 @@
       else if (rel === "twin") { warnEl.textContent = "✓ твой аккаунт/твин"; warnEl.style.color = "#8fc36a"; warnEl.style.display = "block"; }
       else { warnEl.style.display = "none"; }
       if (rel === "other") warnEl.style.color = "#e0a86a";
+      // офицер/админ: если «посторонний» и есть отправитель — предложить запомнить связь
+      if (actEl) {
+        var rc = (rcptEl.value || "").trim();
+        if (canLinks && rel === "other" && rc && senderNick) {
+          actEl.style.display = "flex";
+          actEl.innerHTML = '<span class="qs-rcpt-q">Кем «' + esc(rc) + '» приходится игроку «' + esc(senderNick) + '»? Запомнить связь:</span>' +
+            '<button type="button" class="qs-rcpt-cls sp" data-rel="spouse">💞 Супруг(а)</button>' +
+            '<button type="button" class="qs-rcpt-cls tw" data-rel="twin">👥 Твин (тот же игрок)</button>';
+        } else { actEl.style.display = "none"; actEl.innerHTML = ""; }
+      }
     }
+    if (actEl) actEl.addEventListener("click", function (ev) {
+      var b2 = ev.target.closest(".qs-rcpt-cls"); if (!b2) return;
+      var rc = (rcptEl.value || "").trim(); if (!rc || !senderNick) return;
+      b2.disabled = true;
+      if (b2.dataset.rel === "spouse") {           // супруг(а): senderNick → rc
+        q("POST", "/queue/spouse", { nick: senderNick, recipient: rc })
+          .then(function () { return q("GET", "/queue/spouses").then(applySpouses); })
+          .then(function () { checkRcpt(); })
+          .catch(function (e2) { alert("Не удалось: " + (e2.detail || e2.message)); b2.disabled = false; });
+      } else {                                     // твин: rc привязываем к мэйну senderNick
+        q("POST", "/queue/twin", { nick: rc, main_nick: senderNick })
+          .then(function () { return q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; }); })
+          .then(function () { checkRcpt(); })
+          .catch(function (e2) { alert("Не удалось: " + (e2.detail || e2.message)); b2.disabled = false; });
+      }
+    });
+    var mng = body.querySelector("#qs-rcpt-manage");
+    if (mng) mng.addEventListener("click", function () {
+      openLinksManager(function () {
+        q("GET", "/queue/spouses").then(applySpouses).catch(function () {});
+        q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; checkRcpt(); }).catch(function () { checkRcpt(); });
+      });
+    });
     rcptEl.addEventListener("input", checkRcpt); checkRcpt();
     // план — чипы
     var planList = body.querySelector("#qs-plan-list");
@@ -4558,6 +4629,93 @@
     });
     reload();
     return wrap;
+  }
+
+  // ── ПОЛНАЯ панель связей (модалка): супруги + твины — для офицера/админа ──
+  function openLinksManager(onChange) {
+    var body = document.createElement("div");
+    body.className = "qs-links";
+    var dl = _roster.slice(0, 800).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
+    body.innerHTML =
+      '<datalist id="qlk-dl">' + dl + "</datalist>" +
+      '<div class="qs-links-hint">Настрой, кому игрок передаёт ресурс (супруг) и какие ники — один и тот же человек (твины). ' +
+        'Пиши мэйн-ник — по нему всё и объединяется. Можно исправлять и удалять существующие связи.</div>' +
+      // СУПРУГИ
+      '<div class="qs-links-sec"><div class="qs-links-h">💞 Супруги / получатели <span>— кому игрок передаёт полученный ресурс</span></div>' +
+        '<div class="qs-links-row"><input id="qlk-sp-nick" list="qlk-dl" placeholder="игрок…" autocomplete="off">' +
+          '<span class="qs-links-arr">→ кому:</span><input id="qlk-sp-rcpt" list="qlk-dl" placeholder="получатель…" autocomplete="off">' +
+          '<button id="qlk-sp-save">Сохранить</button></div>' +
+        '<div id="qlk-sp-list" class="qs-links-list"></div></div>' +
+      // ТВИНЫ
+      '<div class="qs-links-sec"><div class="qs-links-h">👥 Твины <span>— какие ники это ОДИН и тот же игрок (если авто по титулу не сработало)</span></div>' +
+        '<div class="qs-links-row"><input id="qlk-tw-nick" list="qlk-dl" placeholder="ник-твин…" autocomplete="off">' +
+          '<span class="qs-links-arr">→ это мэйн:</span><input id="qlk-tw-main" list="qlk-dl" placeholder="ник мэйна…" autocomplete="off">' +
+          '<button id="qlk-tw-save">Связать</button></div>' +
+        '<div id="qlk-tw-list" class="qs-links-list"></div>' +
+        '<details style="margin-top:6px"><summary class="qs-links-auto-sum">Показать авто-твины (из титулов доблести) — для справки</summary>' +
+          '<div id="qlk-tw-auto" class="qs-links-auto"></div></details></div>' +
+      '<div id="qlk-status" class="qs-links-status"></div>';
+    var stEl = body.querySelector("#qlk-status");
+    function status(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function afterChange() {
+      if (onChange) onChange();
+      q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; }).catch(function () {});
+    }
+    function delBtn(fn) { var b = document.createElement("button"); b.className = "sec qs-links-del"; b.textContent = "✕"; b.title = "удалить"; b.addEventListener("click", fn); return b; }
+    // супруги
+    var spList = body.querySelector("#qlk-sp-list");
+    function reloadSp() {
+      q("GET", "/queue/spouses").then(function (d) {
+        applySpouses(d);
+        var items = d.items || [];
+        spList.innerHTML = items.length ? "" : '<span class="qs-links-empty">Связей супругов пока нет.</span>';
+        items.forEach(function (it) {
+          var row = document.createElement("div"); row.className = "qs-links-item sp";
+          row.innerHTML = "<b>" + esc(it.nick) + '</b><span class="qs-links-to">→</span><span class="qs-links-r">' + esc(it.recipient) + "</span>";
+          row.appendChild(delBtn(function () { saveSp(it.nick, ""); }));
+          spList.appendChild(row);
+        });
+      }).catch(function (e) { status("Супруги не загрузились: " + (e.detail || e.message)); });
+    }
+    function saveSp(nick, rcpt) {
+      q("POST", "/queue/spouse", { nick: nick, recipient: rcpt }).then(function () {
+        status(rcpt ? ("✓ " + nick + " → " + rcpt) : ("Связь удалена: " + nick), true); reloadSp(); afterChange();
+      }).catch(function (e) { status(e.status === 404 ? "Ник не найден." : e.status === 403 ? "Нужны права офицера/админа." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    body.querySelector("#qlk-sp-save").addEventListener("click", function () {
+      var n = body.querySelector("#qlk-sp-nick").value.trim(), r = body.querySelector("#qlk-sp-rcpt").value.trim();
+      if (!n || !r) { status("Укажи игрока и получателя."); return; }
+      saveSp(n, r); body.querySelector("#qlk-sp-nick").value = ""; body.querySelector("#qlk-sp-rcpt").value = "";
+    });
+    // твины
+    var twList = body.querySelector("#qlk-tw-list"), twAuto = body.querySelector("#qlk-tw-auto");
+    function reloadTw() {
+      q("GET", "/queue/twins").then(function (d) {
+        var man = d.manual || [], auto = d.auto || [];
+        twList.innerHTML = man.length ? "" : '<span class="qs-links-empty">Ручных твин-связей нет.</span>';
+        man.forEach(function (it) {
+          var row = document.createElement("div"); row.className = "qs-links-item tw";
+          row.innerHTML = "<b>" + esc(it.twin_nick) + '</b><span class="qs-links-to">= твин мэйна →</span><span class="qs-links-r">' + esc(it.main_nick) + "</span>";
+          row.appendChild(delBtn(function () { saveTw(it.twin_nick, ""); }));
+          twList.appendChild(row);
+        });
+        twAuto.innerHTML = auto.length
+          ? auto.map(function (it) { return '<div class="qs-links-autoi">' + esc(it.twin_nick) + ' <span>— твин мэйна</span> ' + esc(it.main_nick) + "</div>"; }).join("")
+          : '<span class="qs-links-empty">Авто-твинов нет.</span>';
+      }).catch(function (e) { status("Твины не загрузились: " + (e.detail || e.message)); });
+    }
+    function saveTw(nick, main) {
+      q("POST", "/queue/twin", { nick: nick, main_nick: main }).then(function () {
+        status(main ? ("✓ " + nick + " → мэйн " + main) : ("Связь снята: " + nick), true); reloadTw(); afterChange();
+      }).catch(function (e) { status(e.status === 400 ? "Нельзя привязать к самому себе / нет мэйна." : e.status === 404 ? "Ник не найден." : e.status === 403 ? "Нужны права офицера/админа." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    body.querySelector("#qlk-tw-save").addEventListener("click", function () {
+      var n = body.querySelector("#qlk-tw-nick").value.trim(), m = body.querySelector("#qlk-tw-main").value.trim();
+      if (!n || !m) { status("Укажи ник-твин и ник мэйна."); return; }
+      saveTw(n, m); body.querySelector("#qlk-tw-nick").value = ""; body.querySelector("#qlk-tw-main").value = "";
+    });
+    reloadSp(); reloadTw();
+    sceneModal("💞 Связи: твины и супруги", body);
   }
 
   // ── офицер/админ: кто «дошёл» на этой неделе — отметить, кто НЕ забрал ресурс ──
