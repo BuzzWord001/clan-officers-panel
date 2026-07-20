@@ -1017,14 +1017,20 @@ def leave(payload: JoinIn, request: Request) -> dict:
         # чтобы человек их не терял (жетон вернётся ему обратно).
         priv = 1 if getattr(payload, "privileged", False) else 0
         if priv:
+            # Возврат жетонов ТОЛЬКО если запись реально удалена этим запросом
+            # (rowcount>0) — защита от двойного возврата при гонке/двойном клике.
             row = conn.execute(
                 "SELECT priv_stacks FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=1",
                 (payload.queue, acc["main_canon"])).fetchone()
-            if row and row["priv_stacks"] > 0:
+            stacks = row["priv_stacks"] if row else 0
+            cur = conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=1",
+                               (payload.queue, acc["main_canon"]))
+            if cur.rowcount > 0 and stacks > 0:
                 conn.execute("UPDATE queue_privileges SET tokens=tokens+?, updated_at=? WHERE canon=?",
-                             (row["priv_stacks"], _now(), acc["main_canon"]))
-        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=?",
-                     (payload.queue, acc["main_canon"], priv))
+                             (stacks, _now(), acc["main_canon"]))
+        else:
+            conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+                         (payload.queue, acc["main_canon"]))
         _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
              queue=payload.queue, request=request, detail=("жетон (возвращён)" if priv else "обычное место"))
     return {"ok": True}
@@ -1754,8 +1760,13 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
             raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_tokens")
         amount = payload.stacks * r["unit"]
         nick = acc["main_nick"] or acc["reg_nick"]
-        conn.execute("UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=?",
-                     (payload.stacks, _now(), acc["main_canon"]))
+        # АТОМАРНО списываем жетоны: WHERE tokens>=? защищает от гонки/двойного клика
+        # (иначе баланс мог уйти в минус, а ресурсы — бесплатно). rowcount==0 → откат.
+        cur = conn.execute(
+            "UPDATE queue_privileges SET tokens=tokens-?, updated_at=? WHERE canon=? AND tokens>=?",
+            (payload.stacks, _now(), acc["main_canon"], payload.stacks))
+        if cur.rowcount == 0:
+            raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_tokens")
         p = _people(conn).get(acc["main_canon"]) or {}
         _make_privileged(conn, acc["main_canon"], nick, p.get("cls", ""), res, payload.stacks, "priv")
         _log(conn, "priv_claim", actor=nick, nick=nick, queue=0, request=request,

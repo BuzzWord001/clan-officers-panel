@@ -709,6 +709,19 @@
       "padding:1px 6px;border-radius:6px}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     "@media(max-width:640px){.qs-merch-box{width:220px}.qs-lane-board{width:60px}}" +
+    // ТЕЛЕФОН (портрет ≤480px): ряд очереди переносим, чтобы ничего не вылезало за экран.
+    // Кнопка+счётчик — первой строкой, лента людей — второй, ящик торговца — третьей.
+    "@media(max-width:480px){" +
+      ".qs-lane-sw{flex-wrap:wrap}" +
+      ".qs-lane-arrow{display:none}" +                       // ленту на телефоне листают пальцем
+      ".qs-lane-join{order:1;align-self:auto}" +
+      ".qs-lane-board{order:1;width:66px}" +
+      ".qs-lane-strip{order:2;flex:1 1 100%;min-width:0}" +
+      ".qs-merch-box{order:3;width:100%;flex:1 1 100%;align-self:auto}" +
+      // сцена узкая — ужимаем фикс-px UI, чтобы тумбы/счётчики не были гигантскими
+      ".qs-js-tot{height:76px}.qs-js-dim,.qs-js-lit{height:76px}.qs-js-tx{font-size:10px}" +
+      ".qs-lb-normal,.qs-lb-hover{height:70px}.qs-scnt{width:48px}.qs-scnt-n{font-size:14px}" +
+    "}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
     /* переключатель пола своей модельки (низ страницы, всем вошедшим) */
@@ -995,6 +1008,13 @@
     ".qs-js-dim,.qs-js-lit{height:106px;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
     ".qs-js-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
     ".qs-js:hover .qs-js-lit{opacity:1}.qs-js:active{filter:brightness(.9)}" +
+    // цветной ореол таблички «Встать/Выйти» — под цвет своей очереди (редкие=золото),
+    // мягко пульсирует; на наведении разгорается ярче
+    ".qs-js-tot{animation:qsGlow 2.8s ease-in-out infinite}" +
+    ".qs-js:hover .qs-js-tot{animation:none;filter:drop-shadow(0 0 11px var(--gc,#7ec46a)) drop-shadow(0 0 24px var(--gc,#7ec46a))}" +
+    "@keyframes qsGlow{0%,100%{filter:drop-shadow(0 0 6px var(--gc,#7ec46a)) drop-shadow(0 0 13px var(--gc,#7ec46a))}" +
+      "50%{filter:drop-shadow(0 0 10px var(--gc,#7ec46a)) drop-shadow(0 0 21px var(--gc,#7ec46a))}}" +
+    "@media(prefers-reduced-motion:reduce){.qs-js-tot{animation:none;filter:drop-shadow(0 0 8px var(--gc,#7ec46a)) drop-shadow(0 0 17px var(--gc,#7ec46a))}}" +
     ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
     // счётчик-сфера НА СЦЕНЕ
     ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
@@ -1027,11 +1047,16 @@
     ".qs-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .2s}" +
     ".qs-board:hover .qs-board-glow{opacity:1}" +
     ".qs-board:active{filter:brightness(.93)}" +
+    // цветное свечение таблички «Посмотреть список» — фоном под цвет своей очереди (редкие=золото)
+    ".qs-board-idle{filter:drop-shadow(0 5px 9px rgba(0,0,0,.55)) drop-shadow(0 0 7px var(--gc,#7ec46a)) drop-shadow(0 0 16px var(--gc,#7ec46a))}" +
+    ".qs-board:hover .qs-board-idle{filter:drop-shadow(0 5px 9px rgba(0,0,0,.55)) drop-shadow(0 0 11px var(--gc,#7ec46a)) drop-shadow(0 0 25px var(--gc,#7ec46a))}" +
     ".qs-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-family:system-ui;" +
       "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2;white-space:nowrap}" +
     /* мини-табличка в нижней полосе очереди (кликабельная, светится при наведении) */
     ".qs-lane-board{position:relative;display:inline-block;width:78px;flex:0 0 auto;align-self:center;margin:0 1px;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
     ".qs-lane-board-idle,.qs-lane-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
+    ".qs-lane-board-idle{filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) drop-shadow(0 0 5px var(--gc,#7ec46a)) drop-shadow(0 0 11px var(--gc,#7ec46a))}" +
+    ".qs-lane-board:hover .qs-lane-board-idle{filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)) drop-shadow(0 0 8px var(--gc,#7ec46a)) drop-shadow(0 0 17px var(--gc,#7ec46a))}" +
     ".qs-lane-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
     ".qs-lane-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;" +
@@ -1723,7 +1748,7 @@
       joinBtn.className = "qs-js qs-btn-abs" + (showLeave ? " leave" : "");
       // масштаб по глубине сцены (та же формула, что у моделек: ниже=ближе=крупнее)
       joinBtn.style.cssText = "left:" + jp.x.toFixed(2) + "%;top:" + jp.y.toFixed(2) +
-        "%;--jd:" + (0.5 + (jp.y / 100) * 0.62).toFixed(3);
+        "%;--jd:" + (0.5 + (jp.y / 100) * 0.62).toFixed(3) + ";--gc:" + (b.glow || b.accent);
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       var btnTx = showLeave ? "Выйти из очереди" : "Встать в очередь";
@@ -1763,6 +1788,7 @@
       cntEl.className = "qs-board qs-btn-abs";
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
         "%;width:" + (128 * csz).toFixed(1) + "px;z-index:" + cnz +
+        ";--gc:" + (b.glow || b.accent) +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
       // шрифт числа зависит от кол-ва знаков, чтобы 3-значное влезало в сферу
@@ -2119,6 +2145,7 @@
       // к окну торговца (append в sw ниже). Кликабельна — открывает полный список.
       var boardEl = document.createElement("button");
       boardEl.className = "qs-lane-board";
+      boardEl.style.setProperty("--gc", b.glow || b.accent);   // свечение под цвет очереди (редкие=золото)
       boardEl.title = entries.length + " чел в очереди — открыть список";
       boardEl.innerHTML =
         '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
@@ -2334,11 +2361,15 @@
     upd();
     body.querySelector("#qpc-go").addEventListener("click", function () {
       if (!sel) return;
+      var goBtn = body.querySelector("#qpc-go");
+      if (goBtn.disabled) return;                 // защита от двойного клика (жетоны не спишутся дважды)
+      goBtn.disabled = true;
       var path = admin ? "/queue/admin/priv-claim-as" : "/queue/priv-claim";
       var payload = admin ? { nick: ADMIN_NICK, resource: sel, stacks: stacks() } : { resource: sel, stacks: stacks() };
       q("POST", path, payload).then(function (d) {
         if (!admin) _myTokens = d.tokens; if (m) m.close(); refresh();
       }).catch(function (e) {
+        goBtn.disabled = false;
         alert(e.status === 409 ? "Не хватает жетонов." : e.status === 400 ? "Только обычные ресурсы (не пачечные)." :
               e.status === 401 ? "Войди как игрок." : ("Ошибка: " + (e.detail || e.message)));
       });
@@ -4282,7 +4313,14 @@
   }
 
   function refresh() {
-    return q("GET", "/queue/state").then(render).catch(function (e) {
+    // заодно освежаем жетоны и свиток держателей (параллельно со /state, один render) —
+    // чтобы возврат жетона (выход из записи ТОП-3) и любые изменения были видны сразу.
+    var jobs = [q("GET", "/queue/state")];
+    if (_meAcc) jobs.push(q("GET", "/queue/me")
+      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; }).catch(function () {}));
+    jobs.push(q("GET", "/queue/token-board")
+      .then(function (d) { if (d && d.holders) _tokenBoard = d.holders; }).catch(function () {}));
+    return Promise.all(jobs).then(function (r) { render(r[0]); }).catch(function (e) {
       var host = document.getElementById("scene");
       if (host) host.innerHTML = '<div class="q-banner">Не удалось загрузить очередь: ' + esc(e.detail || e.message) + "</div>";
     });

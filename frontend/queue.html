@@ -14,6 +14,7 @@
     html{background:#140d07}          /* канва — база (НЕ на body, иначе перекроет фон-мир) */
     html,body{margin:0;color:#f3e8d2;
       font-family:system-ui,Segoe UI,Arial,sans-serif;min-height:100%}
+    html,body{overflow-x:hidden}      /* страховка: ничего не даёт горизонтальному скроллу телефона */
     body{background:transparent}      /* прозрачный body — чтобы #qs-page-bg (z-3) был виден */
     /* лёгкая виньетка ТОЛЬКО по самым краям (чтобы мир-фон было видно) */
     body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
@@ -239,6 +240,6 @@
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/queue-open.js?v=1859500000"></script>
   <script src="js/queue.js?v=1817300000"></script>
-  <script src="js/queue-scene.js?v=1882300000"></script>
+  <script src="js/queue-scene.js?v=1882400000"></script>
 </body>
 </html>
