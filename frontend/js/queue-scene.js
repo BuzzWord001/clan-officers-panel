@@ -1627,11 +1627,12 @@
     // Если человек ОДНОВРЕМЕННО взял жетоном ТОП-3 (отдельная запись вне очереди) — покажем это
     // прямо в окне перевыбора обычного места, чтобы было ясно: место в очереди и жетон — РАЗНЫЕ вещи.
     // Показываем только когда правим СВОЁ обычное место (не в жетонном окне, не в админ-правке чужого).
+    var _isAdminAs = _isAdmin && !_meAcc;                                  // админ тестирует как Лирия!
+    var _selfCanon = _meAcc ? canon(_meAcc.main_nick) : (_isAdminAs ? canon(ADMIN_NICK) : "");
     var myPrivE = null;
-    if (!isPriv && !(edit && edit.adminEid) && _meAcc) {
-      var _mcp = canon(_meAcc.main_nick);
+    if (!isPriv && !(edit && edit.adminEid) && _selfCanon) {
       ((_lastState && _lastState.queues && _lastState.queues[b.q]) || []).forEach(function (e) {
-        if (e.privileged && canon(e.main_nick) === _mcp) myPrivE = e;
+        if (e.privileged && canon(e.main_nick) === _selfCanon) myPrivE = e;
       });
     }
     var _tokAmt = myPrivE ? ((myPrivE.priv_stacks || 1) * ((REWARDS_META[myPrivE.resource] || {}).unit || 0)) : 0;
@@ -1764,13 +1765,16 @@
     if (tokResBtn) tokResBtn.addEventListener("click", function () {
       if (m) m.close();
       openResourcePicker(b, { privileged: true, resource: (myPrivE && myPrivE.resource) || "",
-        recipient: (myPrivE && myPrivE.recipient) || "" }, null, src);
+        recipient: (myPrivE && myPrivE.recipient) || "",
+        adminPriv: (_isAdminAs && myPrivE) ? myPrivE.id : null }, null, src);   // админ — правка по id
     });
     var tokBackBtn = body.querySelector("#qs-tok-back");
     if (tokBackBtn) tokBackBtn.addEventListener("click", function () {
       if (!confirm("Вернуть жетон ТОП-3 в кошелёк? Твоя запись ВНЕ очереди пропадёт, жетон вернётся. Место в обычной очереди останется.")) return;
       if (m) m.close();
-      q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh)
+      var pth = _isAdminAs ? "/queue/admin/leave-as" : "/queue/leave";
+      var pl = _isAdminAs ? { nick: ADMIN_NICK, queue: b.q, privileged: true } : { queue: b.q, privileged: true };
+      q("POST", pth, pl).then(refresh)
         .catch(function (e2) { alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message))); });
     });
     // Нижняя кнопка: «Выйти из очереди» (обычное место) ИЛИ «Вернуть жетон» (жетонное окно) — с подтверждением
@@ -1779,7 +1783,9 @@
       if (isPriv) {   // жетонное окно → вернуть жетон в кошелёк (возврат жетона на бэке)
         if (!confirm("Вернуть жетон ТОП-3 в кошелёк? Запись ВНЕ очереди пропадёт, жетон вернётся.")) return;
         leaveBtn.disabled = true; if (m) m.close();
-        q("POST", "/queue/leave", { queue: b.q, privileged: true }).then(refresh).catch(function (e2) {
+        var lpth = _isAdminAs ? "/queue/admin/leave-as" : "/queue/leave";
+        var lpl = _isAdminAs ? { nick: ADMIN_NICK, queue: b.q, privileged: true } : { queue: b.q, privileged: true };
+        q("POST", lpth, lpl).then(refresh).catch(function (e2) {
           leaveBtn.disabled = false;
           alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Ошибка: " + (e2.detail || e2.message)));
         });
@@ -1788,8 +1794,8 @@
       if (!confirm("Выйти из очереди «" + b.title + "»? Ты потеряешь своё место в ней.")) return;
       leaveBtn.disabled = true;
       if (m) m.close();
-      if (_isAdmin && !_meAcc) {
-        q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
+      if (_isAdminAs) {   // админ-тест: убрать ТОЛЬКО обычное место Лирии (жетон, если есть, остаётся)
+        q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q, privileged: false }).then(refresh)
           .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
       }
@@ -1815,6 +1821,11 @@
       }
       // смена ресурса ЖЕТОННОЙ записи (отдельная, privileged=1) — всегда один ресурс
       if (isPriv) {
+        if (edit && edit.adminPriv) {   // админ-тест: правим жетон Лирии по id записи
+          q("POST", "/queue/admin/set-entry", { entry_id: edit.adminPriv, resource: resource })
+            .then(refresh).catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
+          return;
+        }
         q("POST", "/queue/set-entry", { queue: b.q, resource: resource, privileged: true })
           .then(refresh).catch(function (e2) { alert(e2.status === 400 ? "Жетоном — только обычные ресурсы." : ("Ошибка: " + (e2.detail || e2.message))); });
         return;
@@ -2026,10 +2037,12 @@
       });
       var iAmIn = !!myEntry, iAmPriv = !!myPriv;
       var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
-      var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
+      // ОБЫЧНОЕ место Лирии и её жетон — считаем раздельно (как у игрока iAmIn/iAmPriv)
+      var adminRegIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon && !e.privileged; });
+      var adminPrivIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon && e.privileged; });
       // Красная «Выйти» — только для ОБЫЧНОГО места (и админ-теста). Жетон ТОП-3 — отдельная
       // сущность (светящийся клон + панель «Взять вне очереди»), обычную кнопку не перекрашивает.
-      var showLeave = iAmIn || adminIn;
+      var showLeave = iAmIn || adminRegIn;
       // Кнопка «Список» объединена с шаром-счётчиком в единую ТАБЛИЧКУ (ниже, ключ cnt:).
       // кнопка «Встать/Выйти» на СЦЕНЕ — тумба-указатель. По умолчанию — в НАЧАЛЕ (хвосте)
       // очереди (перетаскивается в режиме расстановки).
@@ -2044,7 +2057,7 @@
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди с обычным местом — «Изменить / выйти» (клик открывает меню, не выходит сразу).
-      var btnTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : (iAmPriv ? "Встать в очередь ⚡" : "Встать в очередь"));
+      var btnTx = (iAmIn || (adminRegIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : ((iAmPriv || adminPrivIn) ? "Встать в очередь ⚡" : "Встать в очередь"));
       joinBtn.innerHTML =
         '<span class="qs-js-tx">' + btnTx + "</span>" +   // надпись НАД табличкой
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
@@ -2052,11 +2065,11 @@
       if (_placeMode) makeDraggable(joinBtn, "btn-join:" + b.q);
       else joinBtn.addEventListener("click", function () {
         if (_isAdmin && !_meAcc) {                            // админ тестирует как Лирия!
-          if (!adminIn) { openResourcePicker(b); return; }
-          // в очереди (как Лирия!) → тоже меню «изменить ресурсы или выйти», не выходим сразу
+          // «в очереди» = ОБЫЧНОЕ место Лирии (жетон не считаем — он отдельная запись/блок)
           var ae = entries.filter(function (e) { return canon(e.main_nick) === canon(ADMIN_NICK) && !e.privileged; })[0];
-          openResourcePicker(b, { resource: (ae && ae.resource) || "", resources: (ae && ae.resources),
-            recipient: (ae && ae.recipient) || "", auto_repeat: ae && ae.auto_repeat, plan: (ae && ae.auto_plan) || [] });
+          if (!ae) { openResourcePicker(b); return; }   // нет обычного места → встать (жетон покажется блоком)
+          openResourcePicker(b, { resource: ae.resource || "", resources: ae.resources,
+            recipient: ae.recipient || "", auto_repeat: ae.auto_repeat, plan: ae.auto_plan || [] });
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
@@ -2494,8 +2507,10 @@
           else { myIdx = i; iAmIn = true; myEntry = e; }
         }
       });
-      // для админ-теста: считаем «в очереди» наличие Лирия!
-      var adminIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon; });
+      // для админ-теста: ОБЫЧНОЕ место Лирии и её жетон — раздельно (как iAmIn/iAmPriv у игрока)
+      var adminRegIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon && !e.privileged; });
+      var adminPrivIn = adminCanon && entries.some(function (e) { return canon(e.main_nick) === adminCanon && e.privileged; });
+      var adminIn = adminRegIn;
       var lane = document.createElement("div");
       lane.className = "qs-lane"; lane.style.setProperty("--gc", b.accent);
       var head = document.createElement("div"); head.className = "qs-lane-head";
@@ -2524,7 +2539,7 @@
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди — «Изменить / выйти» (клик открывает меню, а не выходит сразу).
-      var joinTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : (myPriv ? "Встать в очередь ⚡" : "Встать в очередь"));
+      var joinTx = (iAmIn || (adminRegIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : ((myPriv || adminPrivIn) ? "Встать в очередь ⚡" : "Встать в очередь"));
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +

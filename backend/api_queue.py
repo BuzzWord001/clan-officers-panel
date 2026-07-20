@@ -586,6 +586,7 @@ class PrivClaimAsIn(BaseModel):
 class LeaveAsIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     queue: int
+    privileged: bool | None = None   # None = убрать всё (как раньше); False = только обычное; True = только жетон (+возврат)
 
 
 class EntryIn(BaseModel):
@@ -2206,12 +2207,31 @@ def priv_claim_as(payload: PrivClaimAsIn, request: Request, actor: dict = Depend
 
 @router.post("/admin/leave-as")
 def leave_as(payload: LeaveAsIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """ТЕСТ: убрать ник (напр. Лирия!) из очереди."""
+    """ТЕСТ: убрать ник (напр. Лирия!) из очереди. Зеркалит игрока:
+    privileged=None → убрать всё; False → только обычное место; True → только жетон (+возврат жетонов)."""
     with db.connection() as conn:
         cn, nick, _ = _canon_and_person(conn, payload.nick)
-        conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=?", (payload.queue, cn))
+        if payload.privileged is None:
+            conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=?", (payload.queue, cn))
+            det = "АДМИН убрал «%s» из очереди (всё)" % nick
+        elif payload.privileged:
+            # вернуть жетон ТОП-3: удалить привилегированную запись и вернуть потраченные жетоны в кошелёк
+            row = conn.execute(
+                "SELECT priv_stacks FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=1",
+                (payload.queue, cn)).fetchone()
+            stacks = row["priv_stacks"] if row else 0
+            cur = conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=1",
+                               (payload.queue, cn))
+            if cur.rowcount > 0 and stacks > 0:
+                conn.execute("UPDATE queue_privileges SET tokens=tokens+?, updated_at=? WHERE canon=?",
+                             (stacks, _now(), cn))
+            det = "АДМИН вернул жетон «%s» (обычное место осталось)" % nick
+        else:
+            conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+                         (payload.queue, cn))
+            det = "АДМИН убрал «%s» с обычного места (жетон остался)" % nick
         _log(conn, "leave_as", actor=_actor_name(actor), nick=nick, queue=payload.queue, request=request,
-             detail="АДМИН убрал «%s» из очереди" % nick)
+             detail=det)
     return {"ok": True}
 
 
