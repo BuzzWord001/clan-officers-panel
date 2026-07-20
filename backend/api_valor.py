@@ -148,13 +148,29 @@ def valor_screenshots_save(payload: ScreenshotsIn,
 
 # ── Триггер авто-публикации топа кнопкой «Готово» ──
 @router.post("/request-publish")
-def valor_request_publish_ep(_: dict = Depends(require_officer)) -> dict:
-    """Кнопка «Готово — обновить доблесть»: заявка на публикацию топа. Локальный
-    поллер увидит её и через 5 минут опубликует пост во все соцсети."""
+def valor_request_publish_ep(actor: dict = Depends(require_officer)) -> dict:
+    """Кнопка «Готово — обновить доблесть»: заявка на публикацию топа + начисление
+    жетонов ТОП-3 по доблести. Локальный поллер через 5 минут опубликует пост во все
+    соцсети. Жетоны ТОП-3 начисляются здесь ИДЕМПОТЕНТНО (за неделю — один раз), чтобы
+    они гарантированно выдавались при обновлении доблести, а не только при финализации
+    очереди."""
     week = db.valor_latest_week()
     if not week:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no_snapshot")
-    return db.valor_request_publish(week)
+    res = db.valor_request_publish(week)
+    # ТОП-3 доблести → +1 жетон суперспособности (идемпотентно за неделю). Ошибку тут
+    # не превращаем в отказ публикации — публикация важнее, жетоны довыдаст финализация.
+    try:
+        import api_queue
+        with db.connection() as conn:
+            gt = api_queue.grant_top3_valor_tokens(
+                conn, week=week,
+                actor_name=(actor.get("name") or actor.get("role") or "офицер"))
+        res["top3_tokens"] = gt.get("granted", [])
+        res["top3_tokens_already"] = gt.get("already", False)
+    except Exception as e:
+        res["top3_tokens_error"] = str(e)
+    return res
 
 
 @router.get("/publish-request")

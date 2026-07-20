@@ -184,6 +184,15 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- Маркер: за какую неделю доблести жетоны ТОП-3 уже начислены.
+            -- Идемпотентность: и валор-«Готово», и финализация очереди зовут одну
+            -- функцию — начислит ТОЛЬКО первый, повторные вызовы — no-op (без двойных жетонов).
+            CREATE TABLE IF NOT EXISTS valor_top3_grant (
+              week       TEXT PRIMARY KEY,
+              granted_at TEXT NOT NULL DEFAULT '',
+              nicks      TEXT NOT NULL DEFAULT ''
+            );
+
             -- Внеочередные захваты ТЕКУЩЕЙ недели (вычитаются из пула, чистятся при финализации).
             CREATE TABLE IF NOT EXISTS queue_priv_claims (
               id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1362,6 +1371,57 @@ def _valor_map(conn) -> tuple[dict, dict]:
     return vmap, nmap
 
 
+def grant_top3_valor_tokens(conn, week: str | None = None,
+                            actor_name: str = "система") -> dict:
+    """Начислить +1 жетон суперспособности ТОП-3 по доблести за неделю. ИДЕМПОТЕНТНО:
+    маркер valor_top3_grant(week) гарантирует, что жетоны за неделю начислятся ОДИН раз,
+    кто бы ни вызвал первым — валор-«Готово» или финализация очереди. ТОП-3 = 3 РАЗНЫХ
+    человека (твины свёрнуты в мэйн по main_canon), только с доблестью > 0. Жетон идёт
+    на МЭЙН-канон. Возвращает {ok, week, granted:[ники], already:bool}."""
+    snap = conn.execute(
+        "SELECT id, week FROM valor_snapshots WHERE week = ?", (week,)).fetchone() if week \
+        else conn.execute("SELECT id, week FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+    if not snap:
+        return {"ok": False, "reason": "no_snapshot", "granted": []}
+    wk = snap["week"]
+    if conn.execute("SELECT 1 FROM valor_top3_grant WHERE week = ?", (wk,)).fetchone():
+        return {"ok": True, "week": wk, "granted": [], "already": True}
+    # доблесть за неделю: canon -> макс valor, canon -> ник
+    vmap, nmap = {}, {}
+    for r in conn.execute(
+            "SELECT nick_canon, nick, valor FROM valor_members WHERE snapshot_id = ?", (snap["id"],)):
+        c, v = r["nick_canon"], r["valor"]
+        if c and v is not None and v > vmap.get(c, -1):
+            vmap[c] = v; nmap[c] = r["nick"]
+    idx = _people(conn)
+    main_map = {cn: p["main_canon"] for cn, p in idx.items() if p.get("main_canon")}
+    c2n = {p["main_canon"]: p["main_nick"] for p in idx.values() if p.get("main_canon")}
+    # сворачиваем доблесть по МЭЙНУ (человек = мэйн + твины), ранг = макс доблесть
+    person_valor, person_nick = {}, {}
+    for c, v in vmap.items():
+        p = main_map.get(c, c)
+        if (v or 0) > person_valor.get(p, -1):
+            person_valor[p] = v or 0
+            person_nick[p] = c2n.get(p) or nmap.get(c) or c
+    ranked = sorted(person_valor.items(), key=lambda kv: kv[1], reverse=True)
+    top3 = [(p, person_nick.get(p, p)) for p, v in ranked[:3] if v > 0]
+    granted = []
+    for canon, nk in top3:
+        conn.execute(
+            "INSERT INTO queue_privileges (canon, nick, tokens, updated_at) VALUES (?,?,1,?)"
+            " ON CONFLICT(canon) DO UPDATE SET tokens=tokens+1, nick=excluded.nick, updated_at=excluded.updated_at",
+            (canon, nk, _now()))
+        granted.append(nk)
+    conn.execute(
+        "INSERT INTO valor_top3_grant (week, granted_at, nicks) VALUES (?,?,?)"
+        " ON CONFLICT(week) DO NOTHING",
+        (wk, _now(), ", ".join(granted)))
+    if granted:
+        _log(conn, "priv_grant", actor=actor_name,
+             detail="жетон ТОП-3 доблести (неделя %s): %s" % (wk, ", ".join(granted)))
+    return {"ok": True, "week": wk, "granted": granted, "already": False}
+
+
 @router.get("/rewards")
 def rewards() -> dict:
     """Метаданные наград (режим/стак/порог/накопленный объём) — для пикера ресурса."""
@@ -2011,20 +2071,11 @@ async def advance(request: Request, actor: dict = Depends(require_admin)) -> dic
             " VALUES (?,?,?,?,?,?)",
             (_now(), report.get("stages", 0), _json.dumps(report, ensure_ascii=False),
              _json.dumps(channels, ensure_ascii=False), summary, _actor_name(actor)))
-        # СУПЕРСПОСОБНОСТЬ: топ-3 на момент финализации получают +1 жетон (использовать на след. неделе)
-        idx2 = _people(conn)
-        c2n = {p["main_canon"]: p["main_nick"] for p in idx2.values()}
-        granted = []
-        for c in (report.get("top3") or []):
-            nk = c2n.get(c, c)
-            conn.execute(
-                "INSERT INTO queue_privileges (canon, nick, tokens, updated_at) VALUES (?,?,1,?)"
-                " ON CONFLICT(canon) DO UPDATE SET tokens=tokens+1, nick=excluded.nick, updated_at=excluded.updated_at",
-                (c, nk, _now()))
-            granted.append(nk)
-        if granted:
-            _log(conn, "priv_grant", actor=_actor_name(actor), request=request,
-                 detail="жетон вне очереди топ-3: " + ", ".join(granted))
+        # СУПЕРСПОСОБНОСТЬ: топ-3 доблести получают +1 жетон (использовать на след. неделе).
+        # Единая ИДЕМПОТЕНТНАЯ функция (та же, что зовёт валор-«Готово») — если жетоны за
+        # эту неделю уже начислены при обновлении доблести, повторно НЕ начисляем.
+        _gt = grant_top3_valor_tokens(conn, week=None, actor_name=_actor_name(actor))
+        granted = _gt.get("granted", [])
         # УВЕДОМЛЕНИЯ «не хватило доблести»: у кого очередь подошла, но доблести не хватило —
         # копим по мэйн-канону, покажем при следующем входе в раздел.
         _save_low_valor_notices(conn, report)
