@@ -2554,8 +2554,11 @@
       var merchBox = document.createElement("div");
       merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
       var resItems = BOOTH_ITEMS[b.q] || [];
-      var resCount = {};
-      entries.forEach(function (e) { if (e.resource) resCount[e.resource] = (resCount[e.resource] || 0) + 1; });
+      var resCount = {};   // считаем по ВСЕМ выбранным ресурсам записи (мультивыбор), не только по первому
+      entries.forEach(function (e) {
+        var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+        rl.forEach(function (r) { resCount[r] = (resCount[r] || 0) + 1; });
+      });
       var anyFree = false;
       var resChips = resItems.map(function (it) {
         var rm = REWARDS_META[it] || {};
