@@ -351,8 +351,10 @@
   // или админ-тест как Лирия!) и обликов несколько. Кнопка кликабельна (окно становится интерактивным).
   function tipHtml(e) {
     var out = tipBody(e);
-    if (isMyModel(e) && modelVariants(e).length > 1)
-      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">🔄 Сменить облик модельки</button>';
+    // кнопка смены облика: своя моделька (игрок/админ-тест) ИЛИ любой админ (может менять всем)
+    if ((isMyModel(e) || _isAdmin) && modelVariants(e).length > 1)
+      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">🔄 Сменить облик' +
+        ((_isAdmin && !isMyModel(e)) ? " (админ)" : "") + "</button>";
     return out;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
@@ -1396,13 +1398,13 @@
     ".qs-stage .q-char-priv-lbl{font-size:clamp(8px,1.3cqw,12px)}" +
     ".qs-stage .qs-char-res{width:min(23px,2.5cqw);height:min(23px,2.5cqw)}" +
     ".qs-stage .qs-char-res.big{width:min(46px,5cqw);height:min(46px,5cqw)}" +
-    ".qs-char-resw{position:relative;display:inline-block;line-height:0}" +
-    ".qs-char-resn{position:absolute;right:-15px;bottom:0;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
-      "color:#ffe6a8;font:800 max(7px,0.95cqw) system-ui;padding:0 4px;border-radius:7px;" +
-      "border:1px solid rgba(232,202,120,.6);line-height:1.6;text-shadow:0 1px 1px #000}" +
-    ".qs-bubble{position:relative}" +
-    ".qs-bubble-n{position:absolute;right:-14px;bottom:0;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
-      "color:#ffe6a8;font:800 10px system-ui;padding:0 4px;border-radius:7px;border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 1px #000}" +
+    // иконка ресурса и счётчик «+N» — В ОДИН РЯД (inline-flex), бейдж СПРАВА от иконки, не наезжает
+    ".qs-char-resw{display:inline-flex;align-items:center;gap:3px;line-height:0}" +
+    ".qs-char-resn{flex:0 0 auto;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+      "color:#ffe6a8;font:800 max(7px,0.95cqw) system-ui;padding:1px 4px;border-radius:7px;" +
+      "border:1px solid rgba(232,202,120,.6);line-height:1.3;text-shadow:0 1px 1px #000}" +
+    ".qs-bubble-n{flex:0 0 auto;margin-left:1px;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+      "color:#ffe6a8;font:800 10px system-ui;padding:1px 4px;border-radius:7px;border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 1px #000}" +
     // ПРОВОДНИК: круто-тёмный бейдж «Проводник» над ником + красивое чёрное свечение вокруг
     // модельки (для любого, кто в списке проводников — и будущих тоже).
     ".q-char-guide-lbl{white-space:nowrap;font:800 9.5px system-ui;color:#ffe6a8;" +
@@ -2071,8 +2073,8 @@
         ? '<img class="qs-fl-res" src="' + resImg(rl[0]) + '" title="' + esc(rl.map(resName).join(", ")) + '" alt="">' +
           '<span class="qs-fl-rname">' + esc(resName(rl[0])) + (rl.length > 1 ? ' <b>+' + (rl.length - 1) + "</b>" : "") + "</span>"
         : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>';
-      // кнопка смены облика — только для СВОЕЙ модельки (игрок / админ-тест как Лирия!), если обликов несколько
-      var skinBtn = (isMyModel(e) && modelVariants(e).length > 1)
+      // кнопка смены облика — своя моделька (игрок/админ-тест) ИЛИ любой админ (меняет всем), если обликов несколько
+      var skinBtn = ((isMyModel(e) || _isAdmin) && modelVariants(e).length > 1)
         ? '<button data-act="skin" class="skin" title="сменить облик модельки">🔄 облик</button>' : "";
       var ctrls = "";
       if (_isAdmin) {                                   // админ-управление записью
@@ -2740,12 +2742,12 @@
     function commit(tok) {
       if (busy) return; busy = true;
       body.classList.add("saving");
-      // админ в режиме теста (как Лирия!) меняет вариант через админ-эндпоинт, игрок — обычным
-      var adminAs = _isAdmin && !_meAcc;
-      var path = adminAs ? "/queue/admin/model-variant-as" : "/queue/model-variant";
-      var pl = adminAs ? { nick: ADMIN_NICK, key: tok } : { key: tok };
+      // СВОЯ моделька → обычный эндпоинт; ЧУЖАЯ и я админ → админ-эндпоинт по нику этого игрока
+      var iAmOwner = _meAcc && canon(e.main_nick) === canon(_meAcc.main_nick);
+      var path = iAmOwner ? "/queue/model-variant" : "/queue/admin/model-variant-as";
+      var pl = iAmOwner ? { key: tok } : { nick: e.main_nick || e.nick, key: tok };
       q("POST", path, pl).then(function (d) {
-        if (!adminAs) _myVariant = (d && d.variant) || "";
+        if (iAmOwner) _myVariant = (d && d.variant) || "";
         busy = false; body.classList.remove("saving"); refresh();
       }).catch(function (e2) {
         busy = false; body.classList.remove("saving");
