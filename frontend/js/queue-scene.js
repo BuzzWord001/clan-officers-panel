@@ -1294,11 +1294,11 @@
     ".qs-stage .qs-char-res{width:min(23px,2.5cqw);height:min(23px,2.5cqw)}" +
     ".qs-stage .qs-char-res.big{width:min(46px,5cqw);height:min(46px,5cqw)}" +
     ".qs-char-resw{position:relative;display:inline-block;line-height:0}" +
-    ".qs-char-resn{position:absolute;right:-5px;bottom:-3px;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+    ".qs-char-resn{position:absolute;right:-15px;bottom:0;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
       "color:#ffe6a8;font:800 max(7px,0.95cqw) system-ui;padding:0 4px;border-radius:7px;" +
       "border:1px solid rgba(232,202,120,.6);line-height:1.6;text-shadow:0 1px 1px #000}" +
     ".qs-bubble{position:relative}" +
-    ".qs-bubble-n{position:absolute;right:-4px;bottom:-3px;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
+    ".qs-bubble-n{position:absolute;right:-14px;bottom:0;background:linear-gradient(180deg,#2a2a2e,#0c0c0e);" +
       "color:#ffe6a8;font:800 10px system-ui;padding:0 4px;border-radius:7px;border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 1px #000}" +
     // ПРОВОДНИК: круто-тёмный бейдж «Проводник» над ником + красивое чёрное свечение вокруг
     // модельки (для любого, кто в списке проводников — и будущих тоже).
