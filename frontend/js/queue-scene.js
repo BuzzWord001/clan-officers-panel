@@ -3706,7 +3706,9 @@
       '<details class="q-sec"><summary>📋 Логи и входы' +
         '<span class="q-sec-hint">кто что делал в разделе</span></summary>' +
         '<div class="q-sec-body">' +
-          '<div class="q-admin-row"><button class="sec" id="qa-log-btn">Показать лог и входы</button></div>' +
+          '<div class="q-admin-row"><button class="sec" id="qa-accts-btn">👥 Зарегистрированные + сверка ников</button>' +
+            '<button class="sec" id="qa-log-btn">Показать лог и входы</button></div>' +
+          '<div class="q-log" id="qa-accts" hidden></div>' +
           '<div class="q-log" id="qa-log" hidden></div>' +
         "</div></details>";
 
@@ -3753,6 +3755,35 @@
         q("POST", "/queue/admin/clear", c === "all" ? {} : { queue: +c })
           .then(function () { st("✓ Очищено", true); refresh(); }).catch(function (e) { st("Ошибка: " + (e.detail || e.message)); });
       });
+    });
+    box.querySelector("#qa-accts-btn").addEventListener("click", function () {
+      var el = box.querySelector("#qa-accts");
+      q("GET", "/queue/admin/accounts").then(function (d) {
+        el.hidden = false;
+        var list = d.accounts || [];
+        var bad = list.filter(function (a) { return a.status !== "exact"; }).length;
+        var stStyle = { exact: "color:#8fc36a", resolved: "color:#e0a86a", unknown: "color:#ff8a7a" };
+        var stTxt = { exact: "✓ точно", resolved: "≈ опознан", unknown: "⚠ не найден" };
+        var rows = list.map(function (a) {
+          var reg = esc(a.reg_nick || "—");
+          var op = a.roster_nick
+            ? esc(a.roster_nick) + (a.is_twin ? ' <span style="color:#e0a86a">(твин · мэйн ' + esc(a.roster_main) + ")</span>" : "")
+            : '<span style="color:#ff8a7a">— нет в реестре/доблести</span>';
+          var rowbg = a.status === "unknown" ? ' style="background:rgba(180,60,50,.15)"'
+            : (a.status === "resolved" ? ' style="background:rgba(224,168,74,.1)"' : "");
+          return "<tr" + rowbg + "><td><b>" + reg + "</b></td><td>" + op + "</td><td>" + esc(a.cls || "") +
+            "</td><td style='" + (stStyle[a.status] || "") + ";font-weight:700;white-space:nowrap'>" + (stTxt[a.status] || a.status) +
+            "</td><td style='text-align:center'>" + (a.in_queue ? "✅" : "—") + "</td><td>" + esc(a.email || "—") +
+            "</td><td style='white-space:nowrap'>" + esc((a.last_login_at || "").replace("T", " ").slice(0, 16)) + "</td></tr>";
+        }).join("");
+        el.innerHTML =
+          '<div style="margin:2px 0 6px;font-size:12px;color:#f0dcb4">Всего зарегистрировано: <b>' + list.length + "</b>" +
+            (bad ? ' · <span style="color:#e0a86a">ник введён неточно / не найден: <b>' + bad + "</b> — проверь</span>"
+                 : ' · <span style="color:#8fc36a">все ники совпадают с реестром</span>') + "</div>" +
+          '<div style="font-size:11px;color:#8a795a;margin-bottom:4px">✓ точно — ввёл существующий ник · ≈ опознан — распознан по мэйну, но ввод неточный (латиница/усечение/твин) · ⚠ не найден — ника нет в базе (вероятно ошибся)</div>' +
+          '<table><thead><tr><th>ввёл при рег.</th><th>опознан как (реестр/доблесть)</th><th>класс</th><th>совпадение</th><th>в очереди</th><th>почта</th><th>вход</th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="7">аккаунтов нет</td></tr>') + "</tbody></table>";
+      }).catch(function (e) { st("Доступно только админу: " + (e.detail || e.message)); });
     });
     box.querySelector("#qa-log-btn").addEventListener("click", function () {
       var logEl = box.querySelector("#qa-log");

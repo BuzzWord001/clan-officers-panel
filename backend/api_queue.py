@@ -2486,6 +2486,47 @@ def admin_log(_: dict = Depends(require_admin)) -> dict:
             "devices": [dict(x) for x in devs]}
 
 
+@router.get("/admin/accounts")
+def admin_accounts(_: dict = Depends(require_admin)) -> dict:
+    """Полный список зарегистрированных в очереди аккаунтов с анализом ника: что ввёл при
+    регистрации (reg_nick), к какому мэйну привязался, СОВПАДАЕТ ли с реестром/доблестью.
+    status: exact — ввёл существующий ник; resolved — опознан (мэйн есть, но ввод неточный,
+    напр. латиница/усечение); unknown — ника нет ни в реестре, ни в доблести (вероятно ошибся)."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        tmap = _build_translit_map(idx)
+        accs = conn.execute(
+            "SELECT main_canon, main_nick, reg_nick, email, created_at, last_login_at"
+            " FROM queue_accounts ORDER BY last_login_at DESC").fetchall()
+        inq = {r["main_canon"] for r in conn.execute("SELECT DISTINCT main_canon FROM queue_entries")}
+    out = []
+    for a in accs:
+        mc = a["main_canon"]
+        rc = db._valor_canon(a["reg_nick"] or "")
+        exact = bool(rc and rc in idx)
+        p = idx.get(mc) or idx.get(rc)
+        if p is None:                                   # префикс (усечённые твины) как в очереди
+            res = _resolve_partial(idx, mc)
+            if res:
+                p = res[1]
+        if p is None:                                   # латиница↔кириллица (однозначно)
+            tc = tmap.get(_translit_canon(a["reg_nick"] or ""))
+            if tc and tc in idx:
+                p = idx[tc]
+        status = "exact" if exact else ("resolved" if p is not None else "unknown")
+        roster_nick = (p or {}).get("nick", "")
+        out.append({
+            "reg_nick": a["reg_nick"], "main_nick": a["main_nick"], "email": a["email"],
+            "created_at": a["created_at"], "last_login_at": a["last_login_at"],
+            "status": status, "roster_nick": roster_nick,
+            "roster_main": (p or {}).get("main_nick", ""),
+            "is_twin": bool((p or {}).get("is_twin")),
+            "cls": (p or {}).get("cls", ""),
+            "in_queue": mc in inq,
+        })
+    return {"accounts": out}
+
+
 @router.get("/activity-log")
 def activity_log(_: dict = Depends(require_officer_or_admin)) -> dict:
     """Активность очереди (без IP/аккаунтов) — доступно офицерам и админу.
