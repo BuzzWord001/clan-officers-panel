@@ -216,6 +216,13 @@
     return modelInfoAuto(e);
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
+  // «моя ли это моделька» — для кнопки смены облика: игрок по своему нику, ИЛИ админ в режиме
+  // теста как Лирия! (у него нет игрового аккаунта, но он должен видеть, как всё выглядит).
+  function isMyModel(e) {
+    if (_meAcc) return canon(e.main_nick) === canon(_meAcc.main_nick);
+    if (_isAdmin) return canon(e.main_nick) === canon(ADMIN_NICK);
+    return false;
+  }
 
   // все модели (для админ-настройки поворота/зеркала)
   var ALL_MODELS = [
@@ -1393,7 +1400,7 @@
       "animation:qsBob 2.6s ease-in-out infinite}" +
     // кнопка смены облика на сцене — видна при наведении на свою модельку
     ".qs-skin-char{opacity:0;transition:opacity .12s;top:0;transform:scale(1.15)}" +
-    ".qs-char-me:hover .qs-skin-char{opacity:1}" +
+    ".qs-char-me:hover .qs-skin-char,.qs-char-mine-adm:hover .qs-skin-char{opacity:1}" +
     ".qs-char-inner img{height:100%;width:auto;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
     ".qs-char-inner .q-char-ph{height:100%}" +
     "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
@@ -1700,8 +1707,9 @@
         });
       });
     }
-    // владельцу с несколькими обликами — кнопка смены прямо на его модельке (наведение → клик)
-    if (mine && _meAcc && modelVariants(e).length > 1) {
+    // кнопка смены облика прямо на модельке (наведение → клик) — владельцу И админу-тесту (как Лирия!)
+    if (isMyModel(e) && modelVariants(e).length > 1) {
+      if (!mine) el.classList.add("q-char-mine-adm");   // чтобы кнопка проявлялась и в админ-тесте
       var sbc = document.createElement("button");
       sbc.className = "qs-skin-btn qs-skin-char"; sbc.style.cssText = "top:0;right:-4px";
       sbc.title = "Сменить облик"; sbc.textContent = "🔄";
@@ -2664,8 +2672,13 @@
     function commit(tok) {
       if (busy) return; busy = true;
       body.classList.add("saving");
-      q("POST", "/queue/model-variant", { key: tok }).then(function (d) {
-        _myVariant = (d && d.variant) || ""; busy = false; body.classList.remove("saving"); refresh();
+      // админ в режиме теста (как Лирия!) меняет вариант через админ-эндпоинт, игрок — обычным
+      var adminAs = _isAdmin && !_meAcc;
+      var path = adminAs ? "/queue/admin/model-variant-as" : "/queue/model-variant";
+      var pl = adminAs ? { nick: ADMIN_NICK, key: tok } : { key: tok };
+      q("POST", path, pl).then(function (d) {
+        if (!adminAs) _myVariant = (d && d.variant) || "";
+        busy = false; body.classList.remove("saving"); refresh();
       }).catch(function (e2) {
         busy = false; body.classList.remove("saving");
         alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Не удалось сменить облик: " + (e2.detail || e2.message)));
@@ -2815,14 +2828,15 @@
             openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "",
               auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
-          var vN = modelVariants(e).length;                 // несколько обликов → кнопка смены прямо на модельке
-          if (vN > 1) {
-            var sb = document.createElement("button");
-            sb.className = "qs-skin-btn"; sb.style.cssText = "top:1px;right:1px";
-            sb.title = "Сменить облик (" + vN + " на выбор)"; sb.textContent = "🔄";
-            sb.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
-            cell.appendChild(sb);
-          }
+        }
+        // кнопка смены облика — для владельца И для админа-теста (как Лирия!), если обликов несколько
+        if (isMyModel(e) && modelVariants(e).length > 1) {
+          var vN = modelVariants(e).length;
+          var sb = document.createElement("button");
+          sb.className = "qs-skin-btn"; sb.style.cssText = "top:1px;right:1px";
+          sb.title = "Сменить облик (" + vN + " на выбор)"; sb.textContent = "🔄";
+          sb.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
+          cell.appendChild(sb);
         }
         strip.appendChild(cell);
       });

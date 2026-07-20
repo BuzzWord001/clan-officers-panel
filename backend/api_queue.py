@@ -643,6 +643,11 @@ class ModelVariantIn(BaseModel):
     key: str = Field(default="", max_length=120)  # ключ выбранного варианта модели ('' = авто)
 
 
+class AdminModelVariantIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)  # чей вариант меняем (админ-тест, напр. Лирия!)
+    key: str = Field(default="", max_length=120)
+
+
 class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
@@ -1607,6 +1612,29 @@ def set_model_variant(payload: ModelVariantIn, request: Request) -> dict:
                 (cn, key, _now()))
         _log(conn, "model_variant", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
              detail="вариант=" + (key or "(авто)"))
+    return {"ok": True, "variant": key}
+
+
+@router.post("/admin/model-variant-as")
+def set_model_variant_as(payload: AdminModelVariantIn, request: Request,
+                         actor: dict = Depends(require_admin)) -> dict:
+    """ТЕСТ: админ меняет вариант модели ОТ ИМЕНИ ника (напр. Лирия!) — чтобы проверить,
+    как выглядит смена облика у игрока. Зеркалит /queue/model-variant."""
+    key = _safe_key(payload.key)
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        cn = p["main_canon"] if p else db._valor_canon(payload.nick)
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not key:
+            conn.execute("UPDATE queue_model_pref SET variant='', updated_at=? WHERE canon=?", (_now(), cn))
+        else:
+            conn.execute(
+                "INSERT INTO queue_model_pref (canon, prefer_class, variant, updated_at) VALUES (?,0,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET variant=excluded.variant, updated_at=excluded.updated_at",
+                (cn, key, _now()))
+        _log(conn, "model_variant_as", actor=_actor_name(actor), nick=payload.nick, request=request,
+             detail="АДМИН вариант «%s»=%s" % (payload.nick, key or "(авто)"))
     return {"ok": True, "variant": key}
 
 
