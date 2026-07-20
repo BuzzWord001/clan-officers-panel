@@ -114,32 +114,39 @@
   function uploadedUrl(key) {
     return UPLOADED[key] ? (API + "/queue/model-img/" + encodeURIComponent(key) + "?v=" + UPLOADED[key]) : null;
   }
-  function modelInfo(e) {
-    var keys = [canon(e.main_nick), canon(e.nick)];   // мэйн приоритетнее (твин наследует)
-    // 1) ЗАГРУЖЕННАЯ админом персональная модель
+  // ПЕРСОНАЛЬНАЯ модель по канонам (загруженная админом person-* или статический файл), иначе null
+  function personalInfo(keys) {
     for (var i = 0; i < keys.length; i++) {
       var pu = keys[i] && uploadedUrl("person-" + keys[i]);
       if (pu) return { url: pu, key: "person-" + keys[i], uploaded: true };
     }
-    // 2) статическая персональная (файл в assets)
     for (var j = 0; j < keys.length; j++) {
       if (keys[j] && PERSONAL[keys[j]]) { var f = PERSONAL[keys[j]];
         return { url: webpUrl("personal/" + f), key: "personal/" + f }; }
     }
-    // 3) КЛАССОВАЯ по полу
-    var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
-    var cu = uploadedUrl("class-" + e.cls + "-" + g) ||
-             uploadedUrl("class-" + e.cls + "-m") || uploadedUrl("class-" + e.cls + "-f");
-    if (cu) return { url: cu, key: "class-" + e.cls + "-" + g, uploaded: true };
-    var set = CLASS_MODEL[(e.cls || "").toLowerCase()];
-    if (set) {
-      var fn = set[g] || set.m || set.f;
-      return { url: webpUrl("class/" + fn), key: "class/" + fn };
-    }
-    // ВРЕМЕННО: для класса, которому ещё не сделали ИИ-модель → жрец по полу
-    // (женский — жрица, мужской — жрец). Потом заменим на настоящие модели классов.
+    return null;
+  }
+  // КЛАССОВАЯ модель по классу и полу g ('m'|'f') — загруженная админом class-* или файл CLASS_MODEL,
+  // иначе временный жрец по полу.
+  function classInfo(cls, g) {
+    var cu = uploadedUrl("class-" + cls + "-" + g) ||
+             uploadedUrl("class-" + cls + "-m") || uploadedUrl("class-" + cls + "-f");
+    if (cu) return { url: cu, key: "class-" + cls + "-" + g, uploaded: true };
+    var set = CLASS_MODEL[(cls || "").toLowerCase()];
+    if (set) { var fn = set[g] || set.m || set.f; return { url: webpUrl("class/" + fn), key: "class/" + fn }; }
     var pf = g === "f" ? "Жрец (ж).png" : "Жрец (м).png";
     return { url: webpUrl("class/" + pf), key: "class/" + pf };
+  }
+  // класс поддерживает ВЫБОР пола, только если модель для 'm' и 'f' реально РАЗНАЯ
+  function classHasBothGenders(cls) { return classInfo(cls, "m").url !== classInfo(cls, "f").url; }
+
+  function modelInfo(e) {
+    var keys = [canon(e.main_nick), canon(e.nick)];   // мэйн приоритетнее (твин наследует)
+    // Персональная модель — если она есть И игрок НЕ выбрал «показывать классовую» (prefer_class).
+    if (!e.prefer_class) { var pers = personalInfo(keys); if (pers) return pers; }
+    // КЛАССОВАЯ по полу (пол — вручную e.gender или авто по имени/классу)
+    var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
+    return classInfo(e.cls, g);
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
 
@@ -749,6 +756,11 @@
     ".qs-gn-auto{display:block;margin:10px auto 0;cursor:pointer;border:0;background:none;" +
       "font:700 11.5px system-ui;color:#a99169;text-decoration:underline;text-underline-offset:2px}" +
     ".qs-gn-auto:hover{color:#e4b65c}.qs-gn-auto:disabled{opacity:.5;cursor:default}" +
+    // сегмент выбора источника модели (персональная/классовая) + заблокированный пол + подсказка
+    ".qs-gn-opt.src.on{background:linear-gradient(180deg,#caa24e,#9c7a2e);border-color:#e4c37a;color:#20160a;" +
+      "box-shadow:0 3px 11px rgba(200,160,70,.4),inset 0 1px 0 rgba(255,240,200,.35)}" +
+    ".qs-gn-seg.off{opacity:.5}" +
+    ".qs-gn-note{margin:8px 4px 0;font:600 11px system-ui;color:#a99169;text-align:center;line-height:1.35}" +
     // ── ячейка полосы: только вырезанная фигурка (без рамки) + облачко-мысль с ресурсом над головой ──
     ".qs-cell{flex:0 0 auto;width:76px;display:flex;flex-direction:column;align-items:center;gap:2px;" +
       "padding:2px 2px 4px;background:none;border:0;position:relative}" +
@@ -2080,40 +2092,84 @@
     return el;
   }
 
-  // Переключатель пола своей модельки — доступен КАЖДОМУ вошедшему игроку (низ страницы).
-  // Пол меняет только КЛАССОВУЮ модель (персональные/гендер-локнутые классы не меняются).
+  // Меню «Моя моделька в очереди» — для вошедшего игрока (низ страницы).
+  //  • Есть персональная модель → сегмент Персональная/По классу; пол активен ТОЛЬКО когда
+  //    выбрана классовая И у класса есть модели обоих полов.
+  //  • Нет персональной, класс с двумя полами → переключатель пола (муж/жен) + авто.
+  //  • Нет персональной, у класса одна моделька → меню не показываем (менять нечего).
   function buildGenderPicker() {
-    if (!_meAcc) return null;                       // только вошедший игрок
-    var g = _myGender;                              // '', 'm', 'f'
+    if (!_meAcc) return null;
+    var keys = [canon(_meAcc.main_nick), canon(_meAcc.reg_nick)].filter(Boolean);
+    var pers = personalInfo(keys);                  // есть ли персональная модель
+    var ci = myClassInfo();                          // {cls, trueName}
+    var both = classHasBothGenders(ci.cls);         // класс поддерживает выбор пола
+    if (!pers && !both) return null;                // одна моделька — выбирать нечего
+
+    var usingClass = !pers || _myPreferClass;       // показывается ли сейчас классовая модель
+    var genderEnabled = both && usingClass;         // менять пол можно только у классовой с двумя полами
+    var eff = (_myGender === "m" || _myGender === "f") ? _myGender : genderOf(ci.cls, ci.trueName);
+
     var box = document.createElement("div");
     box.className = "qs-gender";
-    box.innerHTML =
+    var html =
       '<div class="qs-gn-head"><span class="qs-gn-ic">🧍</span>' +
-        '<div class="qs-gn-tx"><b>Пол моей модельки</b>' +
-          '<span class="qs-gn-sub">как ты выглядишь в очереди</span></div></div>' +
-      '<div class="qs-gn-seg" role="group" aria-label="Пол модели">' +
-        '<button class="qs-gn-opt m' + (g === "m" ? " on" : "") + '" data-g="m">' +
-          '<span class="qs-gn-sym">♂</span>Мужской</button>' +
-        '<button class="qs-gn-opt f' + (g === "f" ? " on" : "") + '" data-g="f">' +
-          '<span class="qs-gn-sym">♀</span>Женский</button>' +
-      "</div>" +
-      (g ? '<button class="qs-gn-auto" data-g="">↺ по имени (авто)</button>' : "");
-    function pick(ng) {
-      if (_myGender === ng) return;
-      box.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
-      q("POST", "/queue/gender", { gender: ng }).then(function (d) {
-        _myGender = (d && d.gender) || "";
-        refresh();                                  // обновит и модельку в очереди, и сам переключатель
-      }).catch(function (e) {
-        box.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
-        alert(e.status === 401 ? "Сессия истекла, войди заново."
-          : ("Не удалось сменить пол: " + (e.detail || e.message)));
-      });
+        '<div class="qs-gn-tx"><b>Моя моделька в очереди</b>' +
+          '<span class="qs-gn-sub">' + (pers ? "персональная или общая по классу" : "как ты выглядишь в очереди") + "</span></div></div>";
+    if (pers) {                                      // выбор источника модели — только при наличии персональной
+      html +=
+        '<div class="qs-gn-seg" role="group" aria-label="Модель">' +
+          '<button class="qs-gn-opt src' + (!usingClass ? " on" : "") + '" data-src="0"><span class="qs-gn-sym">★</span>Персональная</button>' +
+          '<button class="qs-gn-opt src' + (usingClass ? " on" : "") + '" data-src="1"><span class="qs-gn-sym">☰</span>По классу</button>' +
+        "</div>";
     }
-    box.querySelectorAll("[data-g]").forEach(function (b) {
-      b.addEventListener("click", function () { pick(b.getAttribute("data-g")); });
-    });
+    if (both) {                                      // выбор пола — только если у класса есть обе модели
+      html +=
+        '<div class="qs-gn-seg' + (genderEnabled ? "" : " off") + '" role="group" aria-label="Пол модели"' + (pers ? ' style="margin-top:8px"' : "") + ">" +
+          '<button class="qs-gn-opt m' + (eff === "m" ? " on" : "") + '" data-g="m"' + (genderEnabled ? "" : " disabled") + '><span class="qs-gn-sym">♂</span>Мужской</button>' +
+          '<button class="qs-gn-opt f' + (eff === "f" ? " on" : "") + '" data-g="f"' + (genderEnabled ? "" : " disabled") + '><span class="qs-gn-sym">♀</span>Женский</button>' +
+        "</div>";
+      if (genderEnabled && _myGender) html += '<button class="qs-gn-auto" data-g="">↺ по имени (авто)</button>';
+      else if (genderEnabled) html += '<div class="qs-gn-note">Пол определён автоматически — можно сменить кнопками.</div>';
+      else html += '<div class="qs-gn-note">Пол доступен для общей модели — переключись на «По классу».</div>';
+    }
+    box.innerHTML = html;
+
+    function resetDisabled() {
+      box.querySelectorAll("button").forEach(function (b) { b.disabled = (b.hasAttribute("data-g") && !genderEnabled); });
+    }
+    function setBusy() { box.querySelectorAll("button").forEach(function (b) { b.disabled = true; }); }
+    function pickGender(ng) {
+      if (!genderEnabled || _myGender === ng) return;
+      setBusy();
+      q("POST", "/queue/gender", { gender: ng }).then(function (d) {
+        _myGender = (d && d.gender) || ""; refresh();
+      }).catch(function (e) { resetDisabled();
+        alert(e.status === 401 ? "Сессия истекла, войди заново." : ("Не удалось сменить пол: " + (e.detail || e.message))); });
+    }
+    function pickSrc(pc) {
+      if (_myPreferClass === pc) return;
+      setBusy();
+      q("POST", "/queue/model-pref", { prefer_class: pc }).then(function (d) {
+        _myPreferClass = !!(d && d.prefer_class); refresh();
+      }).catch(function (e) { resetDisabled();
+        alert(e.status === 401 ? "Сессия истекла, войди заново." : ("Не удалось сменить модель: " + (e.detail || e.message))); });
+    }
+    box.querySelectorAll("[data-g]").forEach(function (b) { b.addEventListener("click", function () { pickGender(b.getAttribute("data-g")); }); });
+    box.querySelectorAll("[data-src]").forEach(function (b) { b.addEventListener("click", function () { pickSrc(b.getAttribute("data-src") === "1"); }); });
     return box;
+  }
+
+  // класс и игровое имя текущего игрока (для авто-пола и наличия модели) — из очереди либо ростера
+  function myClassInfo() {
+    var mc = canon(_meAcc.main_nick), rc = canon(_meAcc.reg_nick);
+    var qs = _lastState && _lastState.queues;
+    if (qs) for (var i = 0; i < qs.length; i++) { var arr = qs[i] || [];
+      for (var j = 0; j < arr.length; j++) { var e = arr[j];
+        if (canon(e.main_nick) === mc) return { cls: e.cls || "", trueName: e.true_name || "" }; } }
+    for (var k = 0; k < _roster.length; k++) { var r = _roster[k];
+      if (r && (canon(r.main_nick) === mc || canon(r.nick) === mc || canon(r.nick) === rc))
+        return { cls: r.cls || "", trueName: r.true_name || "" }; }
+    return { cls: "", trueName: "" };
   }
 
   function renderQueueStrips(state) {
@@ -2376,7 +2432,7 @@
     });
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _myGender = "", _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _lastState = { queues: [[], [], []] };
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -4317,7 +4373,7 @@
     // чтобы возврат жетона (выход из записи ТОП-3) и любые изменения были видны сразу.
     var jobs = [q("GET", "/queue/state")];
     if (_meAcc) jobs.push(q("GET", "/queue/me")
-      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; }).catch(function () {}));
+      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); }).catch(function () {}));
     jobs.push(q("GET", "/queue/token-board")
       .then(function (d) { if (d && d.holders) _tokenBoard = d.holders; }).catch(function () {}));
     return Promise.all(jobs).then(function (r) { render(r[0]); }).catch(function (e) {
@@ -4341,7 +4397,7 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
           .catch(function () { _role = ""; _isAdmin = false; }),
-        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; }),
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
       ]).then(function () { loadEnv(); refresh(); });

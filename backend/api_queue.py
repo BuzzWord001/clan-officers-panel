@@ -145,6 +145,14 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- Предпочтение модели: 1 = использовать ОБЩУЮ классовую модель вместо
+            -- персональной (у кого есть персональная и он хочет переключиться на классовую).
+            CREATE TABLE IF NOT EXISTS queue_model_pref (
+              canon        TEXT PRIMARY KEY,          -- канон мэйна
+              prefer_class INTEGER NOT NULL DEFAULT 0,
+              updated_at   TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS queue_placements (
               key        TEXT PRIMARY KEY,           -- 'item:kamen-doblesti' | 'mount'
               x          REAL NOT NULL DEFAULT 0,    -- % сцены
@@ -527,6 +535,10 @@ class MyGenderIn(BaseModel):
     gender: str = Field(default="")               # 'm' | 'f' | '' (авто по имени/классу)
 
 
+class ModelPrefIn(BaseModel):
+    prefer_class: bool = Field(default=False)     # True = общая классовая модель вместо персональной
+
+
 class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
@@ -745,6 +757,7 @@ def me(request: Request) -> dict:
         acc = _account_from_request(conn, request)
         tokens = 0
         gender = ""
+        prefer_class = False
         if acc:
             row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
                                (acc["main_canon"],)).fetchone()
@@ -752,7 +765,11 @@ def me(request: Request) -> dict:
             grow = conn.execute("SELECT gender FROM queue_gender WHERE canon=?",
                                 (acc["main_canon"],)).fetchone()
             gender = (grow["gender"] if grow else "") or ""
-        return {"account": _acc_public(acc) if acc else None, "tokens": tokens, "gender": gender}
+            prow = conn.execute("SELECT prefer_class FROM queue_model_pref WHERE canon=?",
+                                (acc["main_canon"],)).fetchone()
+            prefer_class = bool(prow["prefer_class"]) if prow else False
+        return {"account": _acc_public(acc) if acc else None, "tokens": tokens,
+                "gender": gender, "prefer_class": prefer_class}
 
 
 @router.get("/notices")
@@ -896,7 +913,7 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
-def _entry_public(r, idx, gmap, smap=None) -> dict:
+def _entry_public(r, idx, gmap, smap=None, pmap=None) -> dict:
     p = idx.get(r["main_canon"]) or {}
     cls = r["cls"] or p.get("cls", "")
     tn = p.get("true_name", "")
@@ -911,6 +928,7 @@ def _entry_public(r, idx, gmap, smap=None) -> dict:
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
             "gender": _gender_of(cls, tn, gmap.get(r["main_canon"], "")),
             "gender_by": ("manual" if gmap.get(r["main_canon"]) in ("m", "f") else "auto"),
+            "prefer_class": bool((pmap or {}).get(r["main_canon"], 0)),
             "resource": (r["resource"] if "resource" in keys else ""),
             "recipient": rcpt,
             "recipient_ok": _recipient_ok(rcpt, r["main_canon"], idx, smap),
@@ -962,10 +980,12 @@ def state() -> dict:
         idx = _people(conn)
         gmap = {r["canon"]: r["gender"]
                 for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+        pmap = {r["canon"]: r["prefer_class"]
+                for r in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
         smap = _spouse_map(conn)
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap))
     return {"queues": qs}
 
 
@@ -1331,6 +1351,30 @@ def set_my_gender(payload: MyGenderIn, request: Request) -> dict:
         _log(conn, "gender", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
              detail="сам: пол=" + (g or "авто"))
     return {"ok": True, "gender": g}
+
+
+@router.post("/model-pref")
+def set_model_pref(payload: ModelPrefIn, request: Request) -> dict:
+    """Игрок с персональной моделью выбирает: показывать общую классовую модель
+    вместо персональной (по device-куке). prefer_class=False → снова персональная."""
+    pref = 1 if payload.prefer_class else 0
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        cn = acc["main_canon"]
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not pref:
+            conn.execute("DELETE FROM queue_model_pref WHERE canon=?", (cn,))
+        else:
+            conn.execute(
+                "INSERT INTO queue_model_pref (canon, prefer_class, updated_at) VALUES (?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET prefer_class=excluded.prefer_class, updated_at=excluded.updated_at",
+                (cn, pref, _now()))
+        _log(conn, "model_pref", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
+             detail="модель=" + ("классовая" if pref else "персональная"))
+    return {"ok": True, "prefer_class": bool(pref)}
 
 
 @router.get("/placements")
