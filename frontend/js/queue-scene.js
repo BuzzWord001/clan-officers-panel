@@ -1760,9 +1760,11 @@
           .then(refresh).catch(function (e2) { alert(e2.status === 400 ? "Жетоном — только обычные ресурсы." : ("Ошибка: " + (e2.detail || e2.message))); });
         return;
       }
-      // Админ без игрового аккаунта встаёт/меняет ресурс ОТ ИМЕНИ Лирия! (тест)
+      // Админ без игрового аккаунта встаёт/меняет ресурсы ОТ ИМЕНИ Лирия! (тест)
       if (_isAdmin && !_meAcc) {
-        q("POST", "/queue/admin/join-as", { nick: ADMIN_NICK, queue: b.q, resource: resource, recipient: rcpt })
+        var aj = { nick: ADMIN_NICK, queue: b.q, recipient: rcpt };
+        if (multi) aj.resources = resources; else aj.resource = resource;
+        q("POST", "/queue/admin/join-as", aj)
           .then(function () { _justJoined = { q: b.q, canon: canon(ADMIN_NICK), src: src || "scene" }; refresh(); })
           .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
@@ -1981,7 +1983,7 @@
       var jsc = showLeave ? "join-red" : "join-green";
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди с обычным местом — «Изменить / выйти» (клик открывает меню, не выходит сразу).
-      var btnTx = iAmIn ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : "Встать в очередь");
+      var btnTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (showLeave ? "Выйти из очереди" : "Встать в очередь");
       joinBtn.innerHTML =
         '<span class="qs-js-tx">' + btnTx + "</span>" +   // надпись НАД табличкой
         '<span class="qs-js-tot"><img class="qs-js-dim" src="assets/queue/ui/' + jsc + '-dim.webp?v=3" alt="">' +
@@ -1990,9 +1992,10 @@
       else joinBtn.addEventListener("click", function () {
         if (_isAdmin && !_meAcc) {                            // админ тестирует как Лирия!
           if (!adminIn) { openResourcePicker(b); return; }
-          joinBtn.disabled = true;
-          q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
-            .catch(function (e2) { joinBtn.disabled = false; alert("Ошибка: " + (e2.detail || e2.message)); });
+          // в очереди (как Лирия!) → тоже меню «изменить ресурсы или выйти», не выходим сразу
+          var ae = entries.filter(function (e) { return canon(e.main_nick) === canon(ADMIN_NICK) && !e.privileged; })[0];
+          openResourcePicker(b, { resource: (ae && ae.resource) || "", resources: (ae && ae.resources),
+            recipient: (ae && ae.recipient) || "", auto_repeat: ae && ae.auto_repeat, plan: (ae && ae.auto_plan) || [] });
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
@@ -2468,7 +2471,7 @@
       joinCell.className = "qs-lane-join" + (inNow ? " leave" : "");
       // Надпись — всегда как у обычных игроков (даже когда админ тестирует как Лирия!).
       // В очереди — «Изменить / выйти» (клик открывает меню, а не выходит сразу).
-      var joinTx = iAmIn ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : "Встать в очередь");
+      var joinTx = (iAmIn || (adminIn && _isAdmin && !_meAcc)) ? "Изменить / выйти" : (inNow ? "Выйти из очереди" : "Встать в очередь");
       var jcolor = inNow ? "join-red" : "join-green";
       joinCell.innerHTML =
         '<span class="qs-lane-join-tot">' +
@@ -2480,9 +2483,9 @@
         // Админ без игрового аккаунта — тест от имени Лирия!
         if (_isAdmin && !_meAcc) {
           if (!adminIn) { openResourcePicker(b, null, null, "lane"); return; }
-          joinCell.disabled = true;
-          q("POST", "/queue/admin/leave-as", { nick: ADMIN_NICK, queue: b.q }).then(refresh)
-            .catch(function (e2) { joinCell.disabled = false; alert("Ошибка: " + (e2.detail || e2.message)); });
+          var ae2 = entries.filter(function (e) { return canon(e.main_nick) === canon(ADMIN_NICK) && !e.privileged; })[0];
+          openResourcePicker(b, { resource: (ae2 && ae2.resource) || "", resources: (ae2 && ae2.resources),
+            recipient: (ae2 && ae2.recipient) || "", auto_repeat: ae2 && ae2.auto_repeat, plan: (ae2 && ae2.auto_plan) || [] }, null, "lane");
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }

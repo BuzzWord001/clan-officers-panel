@@ -573,6 +573,7 @@ class JoinAsIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     queue: int
     resource: str = Field(default="", max_length=64)
+    resources: list[str] = Field(default_factory=list)
     recipient: str = Field(default="", max_length=64)
 
 
@@ -2148,19 +2149,27 @@ def join_as(payload: JoinAsIn, request: Request, actor: dict = Depends(require_a
     if payload.queue not in QUEUES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     res = (payload.resource or "").strip()[:64]
+    import json as _json
+    valid = _QUEUE_ITEMS[payload.queue] if 0 <= payload.queue < len(_QUEUE_ITEMS) else []
+    picked = [x for x in (payload.resources or []) if x in valid]
+    if not picked and res in valid:
+        picked = [res]
+    if picked:
+        res = picked[0]
+    res_json = _json.dumps(picked)
     with db.connection() as conn:
         cn, nick, cls = _canon_and_person(conn, payload.nick)
         ex = conn.execute("SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
                           (payload.queue, cn)).fetchone()
         if ex:
-            conn.execute("UPDATE queue_entries SET resource=?, recipient=? WHERE id=?",
-                         (res, (payload.recipient or "").strip()[:64], ex["id"]))
+            conn.execute("UPDATE queue_entries SET resource=?, resources=?, recipient=? WHERE id=?",
+                         (res, res_json, (payload.recipient or "").strip()[:64], ex["id"]))
         else:
             pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (payload.queue,)).fetchone()["m"] or 0) + 1
             conn.execute(
-                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient, added_by, added_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
-                (payload.queue, pos, cn, nick, cls, res, (payload.recipient or "").strip()[:64],
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources, recipient, added_by, added_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (payload.queue, pos, cn, nick, cls, res, res_json, (payload.recipient or "").strip()[:64],
                  "admin-as:" + _actor_name(actor), _now()))
         _log(conn, "join_as", actor=_actor_name(actor), nick=nick, queue=payload.queue, request=request,
              detail="АДМИН встал как «%s»%s" % (nick, (" за " + distribution.res_name(res)) if res else ""))
