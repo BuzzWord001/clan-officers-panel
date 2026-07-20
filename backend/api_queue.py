@@ -288,6 +288,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN priv_stacks INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
+        try:
+            conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: слой объекта на сцене — '' (авто по y) | 'front' | 'back'
         try:
             conn.execute("ALTER TABLE queue_placements ADD COLUMN z TEXT NOT NULL DEFAULT ''")
@@ -634,6 +639,10 @@ class ModelPrefIn(BaseModel):
     prefer_class: bool = Field(default=False)     # True = общая классовая модель вместо персональной
 
 
+class ModelVariantIn(BaseModel):
+    key: str = Field(default="", max_length=120)  # ключ выбранного варианта модели ('' = авто)
+
+
 class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
@@ -854,6 +863,7 @@ def me(request: Request) -> dict:
         tokens = 0
         gender = ""
         prefer_class = False
+        variant = ""
         if acc:
             row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
                                (acc["main_canon"],)).fetchone()
@@ -861,11 +871,12 @@ def me(request: Request) -> dict:
             grow = conn.execute("SELECT gender FROM queue_gender WHERE canon=?",
                                 (acc["main_canon"],)).fetchone()
             gender = (grow["gender"] if grow else "") or ""
-            prow = conn.execute("SELECT prefer_class FROM queue_model_pref WHERE canon=?",
+            prow = conn.execute("SELECT prefer_class, variant FROM queue_model_pref WHERE canon=?",
                                 (acc["main_canon"],)).fetchone()
             prefer_class = bool(prow["prefer_class"]) if prow else False
+            variant = (prow["variant"] if (prow and "variant" in prow.keys()) else "") or ""
         return {"account": _acc_public(dev) if dev else None, "tokens": tokens,
-                "gender": gender, "prefer_class": prefer_class}
+                "gender": gender, "prefer_class": prefer_class, "variant": variant}
 
 
 @router.get("/notices")
@@ -1041,7 +1052,7 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
-def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=None) -> dict:
+def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=None, vmap=None) -> dict:
     # Запись не совпала с реестром точно (ввели неполный/усечённый ник, напр. «Ада», или
     # набрали латиницей «SnegoVik» вместо «СнегоVик») — резолвим: точно → префикс →
     # транслитерация (однозначно). Покажем канонический ник/класс/модель как в базе.
@@ -1072,6 +1083,7 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
             "gender": _gender_of(cls, tn, gmap.get(mc, "")),
             "gender_by": ("manual" if gmap.get(mc) in ("m", "f") else "auto"),
             "prefer_class": bool((pmap or {}).get(mc, 0)),
+            "variant": ((vmap or {}).get(mc, "") or ""),
             "is_shooter": bool(shooters_canon and (mc in shooters_canon
                                or db._valor_canon(disp_nick) in shooters_canon)),
             "resource": (r["resource"] if "resource" in keys else ""),
@@ -1128,6 +1140,8 @@ def state() -> dict:
                 for r in conn.execute("SELECT canon, gender FROM queue_gender")}
         pmap = {r["canon"]: r["prefer_class"]
                 for r in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
+        vmap = {r["canon"]: (r["variant"] or "")
+                for r in conn.execute("SELECT canon, variant FROM queue_model_pref")}
         import json as _json
         try:
             _sh = [s for s in _json.loads(_cfg_val(conn, "shooters", "[]")) if s]
@@ -1138,7 +1152,7 @@ def state() -> dict:
         smap = _spouse_map(conn)
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap, shooters_canon, tmap))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap, shooters_canon, tmap, vmap))
     return {"queues": qs}
 
 
@@ -1558,16 +1572,42 @@ def set_model_pref(payload: ModelPrefIn, request: Request) -> dict:
         cn = acc["main_canon"]
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        # выбор «персональная/по классу» — это авто-режим, поэтому сбрасываем явно
+        # закреплённый вариант модели (variant), чтобы сработала обычная логика.
         if not pref:
             conn.execute("DELETE FROM queue_model_pref WHERE canon=?", (cn,))
         else:
             conn.execute(
-                "INSERT INTO queue_model_pref (canon, prefer_class, updated_at) VALUES (?,?,?)"
-                " ON CONFLICT(canon) DO UPDATE SET prefer_class=excluded.prefer_class, updated_at=excluded.updated_at",
+                "INSERT INTO queue_model_pref (canon, prefer_class, variant, updated_at) VALUES (?,?,'',?)"
+                " ON CONFLICT(canon) DO UPDATE SET prefer_class=excluded.prefer_class, variant='', updated_at=excluded.updated_at",
                 (cn, pref, _now()))
         _log(conn, "model_pref", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
              detail="модель=" + ("классовая" if pref else "персональная"))
     return {"ok": True, "prefer_class": bool(pref)}
+
+
+@router.post("/model-variant")
+def set_model_variant(payload: ModelVariantIn, request: Request) -> dict:
+    """Игрок выбирает КОНКРЕТНЫЙ вариант своей модели (если админ добавил несколько),
+    ключ модели (person-… / class-…-…). Пусто → снять закрепление (авто по логике)."""
+    key = _safe_key(payload.key)
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        cn = acc["main_canon"]
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not key:
+            conn.execute("UPDATE queue_model_pref SET variant='', updated_at=? WHERE canon=?", (_now(), cn))
+        else:
+            conn.execute(
+                "INSERT INTO queue_model_pref (canon, prefer_class, variant, updated_at) VALUES (?,0,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET variant=excluded.variant, updated_at=excluded.updated_at",
+                (cn, key, _now()))
+        _log(conn, "model_variant", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
+             detail="вариант=" + (key or "(авто)"))
+    return {"ok": True, "variant": key}
 
 
 @router.get("/placements")

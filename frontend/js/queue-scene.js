@@ -159,13 +159,61 @@
   // класс поддерживает ВЫБОР пола, только если модель для 'm' и 'f' реально РАЗНАЯ
   function classHasBothGenders(cls) { return classInfo(cls, "m").url !== classInfo(cls, "f").url; }
 
-  function modelInfo(e) {
-    var keys = [canon(e.main_nick), canon(e.nick)];   // мэйн приоритетнее (твин наследует)
-    // Персональная модель — если она есть И игрок НЕ выбрал «показывать классовую» (prefer_class).
+  // ВСЕ доступные варианты модели для записи e — [{key(токен), url, label, kind, mkey}].
+  // Токены безопасны для сервера (_safe_key): 'person-<canon>[--N]' | 'pers' | 'clsm' | 'clsf'.
+  //   • загруженные админом персональные (базовая + слоты --2, --3…),
+  //   • встроенная персональная (если нет загруженной базовой),
+  //   • классовые муж/жен (если реально разные).
+  function modelVariants(e) {
+    var keys = [canon(e.main_nick), canon(e.nick)].filter(Boolean);
+    var out = [], seenUrl = {}, seenTok = {};
+    function push(tok, url, label, kind, mkey) {
+      if (!url || seenUrl[url] || seenTok[tok]) return;
+      seenUrl[url] = 1; seenTok[tok] = 1; out.push({ key: tok, url: url, label: label, kind: kind, mkey: mkey || tok });
+    }
+    var n = 0;
+    keys.forEach(function (cn) {
+      var base = "person-" + cn;
+      Object.keys(UPLOADED).filter(function (k) { return k === base || k.indexOf(base + "--") === 0; })
+        .sort(function (a, b) { return a.length - b.length || a.localeCompare(b); })
+        .forEach(function (k) { n++; push(k, uploadedUrl(k), "Личная " + n, "person", k); });
+    });
+    keys.forEach(function (cn) {
+      if (PERSONAL[cn] && !UPLOADED["person-" + cn]) {
+        n++; push("pers", webpUrl("personal/" + PERSONAL[cn]), "Личная" + (n > 1 ? " " + n : ""), "person", "personal/" + PERSONAL[cn]);
+      }
+    });
+    var cm = classInfo(e.cls, "m"), cf = classInfo(e.cls, "f");
+    push("clsm", cm.url, "Общая · муж", "class", cm.key);
+    if (cf.url !== cm.url) push("clsf", cf.url, "Общая · жен", "class", cf.key);
+    return out;
+  }
+  // токен варианта, показываемый СЕЙЧАС (для стартовой позиции переключателя)
+  function currentVariantKey(e, vs) {
+    vs = vs || modelVariants(e);
+    if (e.variant) { for (var i = 0; i < vs.length; i++) if (vs[i].key === e.variant) return e.variant; }
+    var mi = modelInfoAuto(e);
+    if (mi) for (var j = 0; j < vs.length; j++) if (vs[j].url === mi.url) return vs[j].key;
+    return vs.length ? vs[0].key : "";
+  }
+  // авто-модель (без учёта явного варианта) — прежняя логика
+  function modelInfoAuto(e) {
+    var keys = [canon(e.main_nick), canon(e.nick)];
     if (!e.prefer_class) { var pers = personalInfo(keys); if (pers) return pers; }
-    // КЛАССОВАЯ по полу (пол — вручную e.gender или авто по имени/классу)
     var g = (e.gender === "f" || e.gender === "m") ? e.gender : genderOf(e.cls, e.true_name);
     return classInfo(e.cls, g);
+  }
+  function modelInfo(e) {
+    // Явно выбранный игроком вариант имеет приоритет (если он всё ещё доступен).
+    if (e.variant) {
+      var v = e.variant;
+      if (v === "clsm") return classInfo(e.cls, "m");
+      if (v === "clsf") return classInfo(e.cls, "f");
+      if (v === "pers") { var p = personalInfo([canon(e.main_nick), canon(e.nick)]); if (p) return p; }
+      else if (v.indexOf("person-") === 0) { var u = uploadedUrl(v); if (u) return { url: u, key: v }; }
+      // вариант больше не доступен → падаем в авто-логику
+    }
+    return modelInfoAuto(e);
   }
   function modelUrl(e) { var m = modelInfo(e); return m ? m.url : null; }
 
@@ -1050,6 +1098,7 @@
       "border:1px solid rgba(224,162,74,.35);border-radius:8px;outline:none;min-width:150px}" +
     ".qs-mm-addbtn{cursor:pointer;border:0;border-radius:8px;padding:8px 12px;font:800 12px system-ui;" +
       "color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
+    ".qs-mm-addhint{flex:1 1 100%;font:600 10.5px system-ui;color:#8a795a;margin-top:2px}" +
     ".qs-objp-bg{margin:2px 0 8px;padding:8px;border-radius:9px;background:rgba(40,60,90,.28);" +
       "border:1px solid rgba(130,180,240,.35);display:flex;flex-direction:column;gap:6px}" +
     ".qs-objp-bgh{font:800 11.5px system-ui;color:#bfe0ff}.qs-objp-bgh b{color:#fff}" +
@@ -1340,8 +1389,11 @@
       "50%{filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 9px #000) drop-shadow(0 0 20px rgba(0,0,0,.92))}}" +
     "@media(prefers-reduced-motion:reduce){.qs-char-guide .qs-char-inner img{animation:none;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 7px #000) drop-shadow(0 0 16px rgba(0,0,0,.85))}}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
-    ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
+    ".qs-char-inner{position:relative;height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
+    // кнопка смены облика на сцене — видна при наведении на свою модельку
+    ".qs-skin-char{opacity:0;transition:opacity .12s;top:0;transform:scale(1.15)}" +
+    ".qs-char-me:hover .qs-skin-char{opacity:1}" +
     ".qs-char-inner img{height:100%;width:auto;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45))}" +
     ".qs-char-inner .q-char-ph{height:100%}" +
     "@keyframes qsBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}" +
@@ -1406,6 +1458,41 @@
       "text-transform:uppercase;color:#b39a6c;white-space:nowrap}" +
     ".qtip-divider::before,.qtip-divider::after{content:'';flex:1;height:1px;" +
       "background:linear-gradient(90deg,rgba(240,200,120,0),rgba(240,200,120,.45),rgba(240,200,120,0))}" +
+    // ── переключатель облика (модалка) ──
+    ".qs-msw{padding:6px 14px 12px;max-width:440px}" +
+    ".qs-msw.saving{opacity:.6;pointer-events:none}" +
+    ".qs-msw-stage{display:flex;align-items:center;justify-content:center;gap:8px}" +
+    ".qs-msw-pic{position:relative;flex:1 1 auto;min-height:220px;display:flex;align-items:flex-end;justify-content:center;" +
+      "border-radius:14px;overflow:hidden;padding:14px 8px 10px;" +
+      "background:radial-gradient(120% 80% at 50% 10%,rgba(255,210,130,.14),rgba(35,23,8,0) 60%),linear-gradient(180deg,#3a2610,#1a1006)}" +
+    ".qs-msw-img{position:relative;z-index:1;max-height:230px;max-width:100%;width:auto;object-fit:contain;" +
+      "filter:drop-shadow(0 8px 13px rgba(0,0,0,.55));transition:opacity .12s}" +
+    ".qs-msw-shadow{position:absolute;z-index:0;bottom:10px;left:50%;transform:translateX(-50%);width:110px;height:18px;" +
+      "border-radius:50%;background:radial-gradient(50% 50% at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,0) 72%)}" +
+    ".qs-msw-arw{flex:0 0 auto;width:40px;height:56px;border-radius:11px;cursor:pointer;font:800 26px system-ui;color:#ffe0a0;" +
+      "background:linear-gradient(180deg,rgba(70,50,20,.7),rgba(40,26,10,.75));border:1px solid rgba(240,200,120,.5)}" +
+    ".qs-msw-arw:hover{background:rgba(224,162,74,.35);color:#fff}.qs-msw-arw:active{transform:scale(.94)}" +
+    ".qs-msw-label{text-align:center;margin:9px 0 4px;font:600 14px Georgia,serif;color:#ffe08a}" +
+    ".qs-msw-label .qs-msw-count{margin-left:8px;font:700 11px system-ui;color:#b39a6c}" +
+    ".qs-msw-thumbs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}" +
+    ".qs-msw-thumb{position:relative;width:70px;height:88px;border-radius:10px;cursor:pointer;padding:4px 3px 16px;overflow:hidden;" +
+      "background:linear-gradient(180deg,rgba(58,38,16,.55),rgba(30,19,8,.7));border:2px solid rgba(240,200,120,.22);" +
+      "display:flex;align-items:flex-end;justify-content:center;transition:border-color .12s,transform .12s}" +
+    ".qs-msw-thumb:hover{transform:translateY(-2px)}" +
+    ".qs-msw-thumb.on{border-color:#ffce6a;box-shadow:0 0 12px rgba(255,200,90,.4)}" +
+    ".qs-msw-thumb img{max-height:78px;max-width:100%;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qs-msw-thumb.person{border-color:rgba(120,95,180,.4)}.qs-msw-thumb.person.on{border-color:#c7a8ff;box-shadow:0 0 12px rgba(150,120,220,.45)}" +
+    ".qs-msw-thumb span{position:absolute;left:0;right:0;bottom:0;padding:2px 2px 3px;font:700 8px system-ui;text-align:center;" +
+      "color:#e7d6b7;background:linear-gradient(180deg,rgba(20,12,4,0),rgba(20,12,4,.92));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+    ".qs-msw-hint{margin-top:9px;font:600 11px system-ui;color:#9a8a68;text-align:center}" +
+    // кнопка «сменить облик» на модельке владельца (сцена/полоса) + в панели «Моя моделька»
+    ".qs-skin-btn{position:absolute;z-index:30;cursor:pointer;border:0;border-radius:50%;width:26px;height:26px;font-size:14px;line-height:1;" +
+      "background:radial-gradient(circle at 50% 35%,#ffe6a8,#e0a84a);color:#3a2600;box-shadow:0 2px 7px rgba(0,0,0,.5),0 0 0 2px rgba(30,18,4,.5);" +
+      "display:flex;align-items:center;justify-content:center;transition:transform .12s}" +
+    ".qs-skin-btn:hover{transform:scale(1.12)}.qs-skin-btn:active{transform:scale(.95)}" +
+    ".qs-gn-skin{margin-top:9px;width:100%;cursor:pointer;font:800 12.5px system-ui;color:#3a2600;padding:9px 12px;border:0;border-radius:10px;" +
+      "background:linear-gradient(180deg,#ffe0a0,#e6a83a);box-shadow:0 2px 8px rgba(0,0,0,.3)}" +
+    ".qs-gn-skin:hover{filter:brightness(1.06)}.qs-gn-skin .n{opacity:.7;font-weight:700}" +
     // ── свиток «дроп по этапам КХ» слева ──
     "#qs-scroll{position:fixed;left:0;top:120px;z-index:2147482000;display:flex;align-items:flex-start;max-width:96vw}" +
     "#qs-scroll .qsc-handle{flex:0 0 auto;cursor:pointer;border:0;width:52px;padding:14px 4px;border-radius:0 12px 12px 0;" +
@@ -1612,6 +1699,14 @@
             .then(refresh).catch(admErr);
         });
       });
+    }
+    // владельцу с несколькими обликами — кнопка смены прямо на его модельке (наведение → клик)
+    if (mine && _meAcc && modelVariants(e).length > 1) {
+      var sbc = document.createElement("button");
+      sbc.className = "qs-skin-btn qs-skin-char"; sbc.style.cssText = "top:0;right:-4px";
+      sbc.title = "Сменить облик"; sbc.textContent = "🔄";
+      sbc.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
+      var inner = el.querySelector(".qs-char-inner"); (inner || el).appendChild(sbc);
     }
     return el;
   }
@@ -2517,7 +2612,80 @@
     }
     box.querySelectorAll("[data-g]").forEach(function (b) { b.addEventListener("click", function () { pickGender(b.getAttribute("data-g")); }); });
     box.querySelectorAll("[data-src]").forEach(function (b) { b.addEventListener("click", function () { pickSrc(b.getAttribute("data-src") === "1"); }); });
+    // если доступно несколько обликов (личные + классовые) — кнопка удобного выбора с превью
+    try {
+      var _vs = modelVariants(myEntryLike());
+      if (_vs.length > 1) {
+        var skin = document.createElement("button");
+        skin.className = "qs-gn-skin";
+        skin.innerHTML = "🔄 Сменить облик <span class=\"n\">(" + _vs.length + " на выбор)</span>";
+        skin.addEventListener("click", function () { openModelSwitcher(myEntryLike()); });
+        box.appendChild(skin);
+      }
+    } catch (err) {}
     return box;
+  }
+
+  // ── переключатель облика: крупный портрет + стрелки + миниатюры всех доступных вариантов ──
+  // Открывается владельцем со своей модельки (наведение → кнопка) или из панели «Моя моделька».
+  function openModelSwitcher(e) {
+    var vs = modelVariants(e);
+    if (vs.length < 2) { alert("Пока доступна только одна моделька. Другие облики может добавить админ."); return; }
+    var curTok = currentVariantKey(e, vs);
+    var idx = 0; for (var i0 = 0; i0 < vs.length; i0++) if (vs[i0].key === curTok) { idx = i0; break; }
+    var busy = false;
+    var body = document.createElement("div"); body.className = "qs-msw";
+    body.innerHTML =
+      '<div class="qs-msw-stage">' +
+        '<button class="qs-msw-arw" data-d="-1" aria-label="назад">‹</button>' +
+        '<div class="qs-msw-pic"><span class="qs-msw-shadow"></span><img class="qs-msw-img" alt=""></div>' +
+        '<button class="qs-msw-arw" data-d="1" aria-label="вперёд">›</button>' +
+      "</div>" +
+      '<div class="qs-msw-label"></div>' +
+      '<div class="qs-msw-thumbs"></div>' +
+      '<div class="qs-msw-hint">Выбери облик — применится в очереди сразу. Сменить можно в любой момент.</div>';
+    var img = body.querySelector(".qs-msw-img"), label = body.querySelector(".qs-msw-label"),
+        thumbsEl = body.querySelector(".qs-msw-thumbs");
+    vs.forEach(function (v, i) {
+      var t = document.createElement("button");
+      t.className = "qs-msw-thumb" + (v.kind === "person" ? " person" : " cls");
+      t.dataset.i = i; t.title = v.label;
+      var tf = (MODEL_SETTINGS[v.mkey] && MODEL_SETTINGS[v.mkey].flip) ? ' style="transform:scaleX(-1)"' : "";
+      t.innerHTML = '<img src="' + esc(v.url) + '"' + tf + ' alt=""><span>' + esc(v.label) + "</span>";
+      thumbsEl.appendChild(t);
+    });
+    function paint() {
+      var v = vs[idx];
+      img.style.transform = (MODEL_SETTINGS[v.mkey] && MODEL_SETTINGS[v.mkey].flip) ? "scaleX(-1)" : "";
+      img.src = v.url;
+      label.innerHTML = '<b>' + esc(v.label) + "</b><span class='qs-msw-count'>" + (idx + 1) + " / " + vs.length + "</span>";
+      [].forEach.call(thumbsEl.children, function (c, i) { c.classList.toggle("on", i === idx); });
+    }
+    function commit(tok) {
+      if (busy) return; busy = true;
+      body.classList.add("saving");
+      q("POST", "/queue/model-variant", { key: tok }).then(function (d) {
+        _myVariant = (d && d.variant) || ""; busy = false; body.classList.remove("saving"); refresh();
+      }).catch(function (e2) {
+        busy = false; body.classList.remove("saving");
+        alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Не удалось сменить облик: " + (e2.detail || e2.message)));
+      });
+    }
+    function go(i) { idx = ((i % vs.length) + vs.length) % vs.length; paint(); commit(vs[idx].key); }
+    body.querySelectorAll(".qs-msw-arw").forEach(function (a) {
+      a.addEventListener("click", function () { go(idx + (+a.dataset.d)); });
+    });
+    thumbsEl.addEventListener("click", function (ev) {
+      var t = ev.target.closest(".qs-msw-thumb"); if (t) go(+t.dataset.i);
+    });
+    paint();
+    sceneModal("🧍 Моя моделька — выбери облик (" + vs.length + ")", body);
+  }
+  // псевдо-запись для владельца (когда открываем переключатель из панели, а не с модельки в очереди)
+  function myEntryLike() {
+    var ci = myClassInfo();
+    return { main_nick: _meAcc.main_nick, nick: _meAcc.reg_nick || _meAcc.main_nick, cls: ci.cls,
+             true_name: ci.trueName, gender: _myGender, prefer_class: _myPreferClass, variant: _myVariant };
   }
 
   // класс и игровое имя текущего игрока (для авто-пола и наличия модели) — из очереди либо ростера
@@ -2647,6 +2815,14 @@
             openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "",
               auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
+          var vN = modelVariants(e).length;                 // несколько обликов → кнопка смены прямо на модельке
+          if (vN > 1) {
+            var sb = document.createElement("button");
+            sb.className = "qs-skin-btn"; sb.style.cssText = "top:1px;right:1px";
+            sb.title = "Сменить облик (" + vN + " на выбор)"; sb.textContent = "🔄";
+            sb.addEventListener("click", function (ev) { ev.stopPropagation(); openModelSwitcher(e); });
+            cell.appendChild(sb);
+          }
         }
         strip.appendChild(cell);
       });
@@ -2800,7 +2976,7 @@
     });
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], []] };
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -3898,10 +4074,15 @@
       body.appendChild(h2);
       var add = document.createElement("div"); add.className = "qs-mm-addp";
       add.innerHTML = '<input class="qs-mm-nick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off">' +
-        '<button class="qs-mm-addbtn">➕ добавить персональную</button>';
+        '<button class="qs-mm-addbtn">➕ добавить персональную</button>' +
+        '<span class="qs-mm-addhint">можно добавить НЕСКОЛЬКО — игрок сам выберет облик кнопкой на модельке</span>';
       add.querySelector(".qs-mm-addbtn").addEventListener("click", function () {
         var nk = add.querySelector(".qs-mm-nick").value.trim(); if (!nk) return;
-        var key = "person-" + canon(nk);
+        var cn = canon(nk), base = "person-" + cn;
+        // следующий свободный слот: базовая, затем --2, --3… (не затираем ни встроенную, ни прежние)
+        var key;
+        if (!UPLOADED[base] && !PERSONAL[cn]) key = base;
+        else { var n = 2; while (UPLOADED[base + "--" + n]) n++; key = base + "--" + n; }
         pickFile(function (data) {
           q("POST", "/queue/admin/model-upload", { key: key, data: data }).then(function () {
             UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild);
@@ -3909,21 +4090,23 @@
         });
       });
       body.appendChild(add);
-      // объединяем встроенные персональные (PERSONAL_SRC) и загруженные (person-*)
-      var persMap = {};
+      // встроенные (PERSONAL_SRC) + загруженные (person-<canon> и слоты --N) — КАЖДЫЙ вариант отдельной карточкой
+      var persMap = {};   // uploadKey -> карточка
       Object.keys(PERSONAL_SRC).forEach(function (name) {
-        var cn = canon(name);
-        persMap[cn] = { uploadKey: "person-" + cn, staticKey: "personal/" + PERSONAL_SRC[name], title: name, kind: "person" };
+        var cn = canon(name), uk = "person-" + cn;
+        persMap[uk] = { uploadKey: uk, staticKey: "personal/" + PERSONAL_SRC[name], title: name, kind: "person" };
       });
       Object.keys(UPLOADED).filter(function (k) { return k.indexOf("person-") === 0; }).forEach(function (k) {
-        var cn = k.slice(7);
-        if (!persMap[cn]) persMap[cn] = { uploadKey: k, staticKey: null, title: nickByCanon(cn), kind: "person" };
+        var mm = k.match(/^person-(.+?)(?:--(\d+))?$/);
+        var cn = mm ? mm[1] : k.slice(7), slot = (mm && mm[2]) ? mm[2] : "";
+        if (!persMap[k]) persMap[k] = { uploadKey: k, staticKey: null,
+          title: nickByCanon(cn) + (slot ? " · вариант " + slot : ""), kind: "person" };
       });
       var g2 = document.createElement("div"); g2.className = "qs-mm-grid";
       var pk = Object.keys(persMap);
       if (!pk.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей нет — добавь по нику выше."; g2.appendChild(e); }
       pk.sort(function (a, b) { return persMap[a].title.localeCompare(persMap[b].title, "ru"); })
-        .forEach(function (cn) { var o = persMap[cn]; o.sub = "персональная"; g2.appendChild(card(o)); });
+        .forEach(function (uk) { var o = persMap[uk]; o.sub = "персональная"; g2.appendChild(card(o)); });
       body.appendChild(g2);
     }
     loadInfo(rebuild);
@@ -4743,7 +4926,7 @@
     // чтобы возврат жетона (выход из записи ТОП-3) и любые изменения были видны сразу.
     var jobs = [q("GET", "/queue/state")];
     if (_meAcc) jobs.push(q("GET", "/queue/me")
-      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); }).catch(function () {}));
+      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; }).catch(function () {}));
     jobs.push(q("GET", "/queue/token-board")
       .then(function (d) { if (d && d.holders) _tokenBoard = d.holders; }).catch(function () {}));
     return Promise.all(jobs).then(function (r) { render(r[0]); }).catch(function (e) {
@@ -4767,7 +4950,7 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; _officerName = (m && m.name) || ""; })
           .catch(function () { _role = ""; _isAdmin = false; _officerName = ""; }),
-        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; }),
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; _myVariant = ""; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
       ]).then(function () {
