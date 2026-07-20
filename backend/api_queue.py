@@ -311,6 +311,37 @@ def _resolve_partial(idx, cn):
     return None
 
 
+# Фонетическая транслитерация латиница→кириллица — чтобы «SnegoVik» (набрано латиницей)
+# сопоставилось с «СнегоVик» (кириллица). Применяем ТОЛЬКО как последний резерв и лишь при
+# ОДНОЗНАЧНОМ совпадении, иначе — не трогаем (риск ложных совпадений).
+_TRANSLIT = {
+    "a": "а", "b": "б", "c": "с", "d": "д", "e": "е", "f": "ф", "g": "г", "h": "х", "i": "и",
+    "j": "й", "k": "к", "l": "л", "m": "м", "n": "н", "o": "о", "p": "п", "q": "к", "r": "р",
+    "s": "с", "t": "т", "u": "у", "v": "в", "w": "в", "x": "х", "y": "у", "z": "з",
+}
+
+
+def _translit_canon(s: str) -> str:
+    import re as _re
+    s = _re.sub(r"[\W_]+", "", (s or "").lower(), flags=_re.UNICODE)
+    return "".join(_TRANSLIT.get(ch, ch) for ch in s)
+
+
+def _build_translit_map(idx) -> dict:
+    """translit-canon -> real_canon, ТОЛЬКО для однозначных (без коллизий) не-твин игроков."""
+    cnt: dict[str, int] = {}
+    first: dict[str, str] = {}
+    for c, pp in idx.items():
+        if pp.get("is_twin"):
+            continue
+        tc = _translit_canon(pp["nick"])
+        if not tc or len(tc) < 4:
+            continue
+        cnt[tc] = cnt.get(tc, 0) + 1
+        first.setdefault(tc, c)
+    return {tc: c for tc, c in first.items() if cnt[tc] == 1}
+
+
 def _people(conn) -> dict[str, dict]:
     """canon(ника) -> {nick, title, cls, main_nick, main_canon, is_twin, sources}.
     Источники: текущий снимок Доблести + активный реестр приёма."""
@@ -962,15 +993,20 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
-def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None) -> dict:
-    # Запись не совпала с реестром точно (ввели неполный/усечённый ник, напр. «Ада») —
-    # попробуем ОДНОЗНАЧНЫЙ префикс → покажем канонический ник/класс/модель как в базе.
+def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=None) -> dict:
+    # Запись не совпала с реестром точно (ввели неполный/усечённый ник, напр. «Ада», или
+    # набрали латиницей «SnegoVik» вместо «СнегоVик») — резолвим: точно → префикс →
+    # транслитерация (однозначно). Покажем канонический ник/класс/модель как в базе.
     mc = r["main_canon"]
     p = idx.get(mc)
     if p is None:
         res = _resolve_partial(idx, mc)
         if res:
             mc, p = res[0], res[1]
+    if p is None and tmap:                          # латиница↔кириллица (только однозначно)
+        rc = tmap.get(_translit_canon(r["nick"]))
+        if rc and rc in idx:
+            mc, p = rc, idx[rc]
     p = p or {}
     # ник для показа — как в таблице доблести/реестре (p["nick"]), иначе сохранённый при вставании
     disp_nick = p.get("nick") or r["nick"]
@@ -1049,10 +1085,11 @@ def state() -> dict:
         except (ValueError, TypeError):
             _sh = []
         shooters_canon = {db._valor_canon(s) for s in _sh if db._valor_canon(s)}
+        tmap = _build_translit_map(idx)   # латиница↔кириллица (однозначно) для «SnegoVik» и т.п.
         smap = _spouse_map(conn)
         for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
             if r["queue"] in QUEUES:
-                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap, shooters_canon))
+                qs[r["queue"]].append(_entry_public(r, idx, gmap, smap, pmap, shooters_canon, tmap))
     return {"queues": qs}
 
 
