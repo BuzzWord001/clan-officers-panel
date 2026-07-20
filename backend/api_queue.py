@@ -523,6 +523,10 @@ class GenderIn(BaseModel):
     gender: str = Field(default="")               # 'm' | 'f' | '' (сброс)
 
 
+class MyGenderIn(BaseModel):
+    gender: str = Field(default="")               # 'm' | 'f' | '' (авто по имени/классу)
+
+
 class PlacementIn(BaseModel):
     key: str = Field(min_length=1, max_length=80)
     x: float
@@ -740,11 +744,15 @@ def me(request: Request) -> dict:
     with db.connection() as conn:
         acc = _account_from_request(conn, request)
         tokens = 0
+        gender = ""
         if acc:
             row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
                                (acc["main_canon"],)).fetchone()
             tokens = row["tokens"] if row else 0
-        return {"account": _acc_public(acc) if acc else None, "tokens": tokens}
+            grow = conn.execute("SELECT gender FROM queue_gender WHERE canon=?",
+                                (acc["main_canon"],)).fetchone()
+            gender = (grow["gender"] if grow else "") or ""
+        return {"account": _acc_public(acc) if acc else None, "tokens": tokens, "gender": gender}
 
 
 @router.get("/notices")
@@ -1293,6 +1301,29 @@ def set_gender(payload: GenderIn, request: Request, actor: dict = Depends(requir
                 (cn, g, _now()))
         _log(conn, "gender", actor=_actor_name(actor), nick=payload.nick, request=request,
              detail="пол=" + (g or "авто"))
+    return {"ok": True, "gender": g}
+
+
+@router.post("/gender")
+def set_my_gender(payload: MyGenderIn, request: Request) -> dict:
+    """Игрок сам выбирает пол своей модельки (по device-куке). '' = авто по имени/классу."""
+    g = payload.gender if payload.gender in ("m", "f") else ""
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        cn = acc["main_canon"]
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not g:
+            conn.execute("DELETE FROM queue_gender WHERE canon=?", (cn,))
+        else:
+            conn.execute(
+                "INSERT INTO queue_gender (canon, gender, updated_at) VALUES (?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET gender=excluded.gender, updated_at=excluded.updated_at",
+                (cn, g, _now()))
+        _log(conn, "gender", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
+             detail="сам: пол=" + (g or "авто"))
     return {"ok": True, "gender": g}
 
 

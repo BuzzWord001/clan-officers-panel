@@ -708,9 +708,34 @@
     ".qs-merch-free{margin-left:6px;font:800 9px system-ui;color:#0e2c12;background:linear-gradient(180deg,#a8f0b0,#6cd07a);" +
       "padding:1px 6px;border-radius:6px}" +
     ".qs-merch-res::-webkit-scrollbar{width:5px}.qs-merch-res::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
-    "@media(max-width:640px){.qs-merch-box{width:220px}}" +
+    "@media(max-width:640px){.qs-merch-box{width:220px}.qs-lane-board{width:60px}}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
+    /* переключатель пола своей модельки (низ страницы, всем вошедшим) */
+    ".qs-gender{max-width:430px;margin:16px auto 6px;padding:13px 16px 15px;border:1px solid rgba(224,162,74,.34);" +
+      "border-radius:14px;background:linear-gradient(180deg,rgba(40,26,12,.74),rgba(22,14,7,.74));" +
+      "box-shadow:0 5px 16px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,210,130,.08)}" +
+    ".qs-gn-head{display:flex;align-items:center;gap:9px;margin:0 0 11px}" +
+    ".qs-gn-ic{font-size:20px;filter:drop-shadow(0 1px 2px #000)}" +
+    ".qs-gn-tx{display:flex;flex-direction:column;line-height:1.2}" +
+    ".qs-gn-tx b{font:800 14px Georgia,serif;color:#f0c878;text-shadow:0 1px 2px #000}" +
+    ".qs-gn-sub{font:500 11px system-ui;color:#a99169}" +
+    ".qs-gn-seg{display:flex;gap:7px}" +
+    ".qs-gn-opt{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;" +
+      "padding:11px 8px;border-radius:11px;border:1px solid rgba(224,162,74,.34);background:rgba(20,13,7,.6);" +
+      "color:#d8c39a;font:800 13.5px system-ui;text-shadow:0 1px 2px #000;" +
+      "transition:transform .1s,box-shadow .18s,background .18s,color .18s,border-color .18s}" +
+    ".qs-gn-opt:hover{background:rgba(224,162,74,.12);color:#f6ead2}" +
+    ".qs-gn-opt:active{transform:translateY(1px)}" +
+    ".qs-gn-sym{font-size:18px;line-height:1}" +
+    ".qs-gn-opt.m.on{background:linear-gradient(180deg,#5a86c8,#37589a);border-color:#7ea6e0;color:#fff;" +
+      "box-shadow:0 3px 11px rgba(60,110,200,.42),inset 0 1px 0 rgba(255,255,255,.25)}" +
+    ".qs-gn-opt.f.on{background:linear-gradient(180deg,#d08bb4,#a55684);border-color:#e6a6cc;color:#fff;" +
+      "box-shadow:0 3px 11px rgba(190,90,150,.42),inset 0 1px 0 rgba(255,255,255,.25)}" +
+    ".qs-gn-opt:disabled{opacity:.6;cursor:default}" +
+    ".qs-gn-auto{display:block;margin:10px auto 0;cursor:pointer;border:0;background:none;" +
+      "font:700 11.5px system-ui;color:#a99169;text-decoration:underline;text-underline-offset:2px}" +
+    ".qs-gn-auto:hover{color:#e4b65c}.qs-gn-auto:disabled{opacity:.5;cursor:default}" +
     // ── ячейка полосы: только вырезанная фигурка (без рамки) + облачко-мысль с ресурсом над головой ──
     ".qs-cell{flex:0 0 auto;width:76px;display:flex;flex-direction:column;align-items:center;gap:2px;" +
       "padding:2px 2px 4px;background:none;border:0;position:relative}" +
@@ -1005,7 +1030,7 @@
     ".qs-board-n{position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-family:system-ui;" +
       "color:#3a2208;text-shadow:0 1px 2px rgba(255,238,200,.75),0 0 5px rgba(255,200,90,.5);pointer-events:none;z-index:2;white-space:nowrap}" +
     /* мини-табличка в нижней полосе очереди (кликабельная, светится при наведении) */
-    ".qs-lane-board{position:relative;display:inline-block;width:92px;flex:0 0 auto;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
+    ".qs-lane-board{position:relative;display:inline-block;width:78px;flex:0 0 auto;align-self:center;margin:0 1px;line-height:0;cursor:pointer;border:0;background:none;padding:0;vertical-align:middle}" +
     ".qs-lane-board-idle,.qs-lane-board-glow{width:100%;height:auto;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}" +
     ".qs-lane-board-glow{position:absolute;left:0;top:0;opacity:0;transition:opacity .18s}" +
     ".qs-lane-board:hover .qs-lane-board-glow{opacity:1}" +
@@ -2029,6 +2054,42 @@
     return el;
   }
 
+  // Переключатель пола своей модельки — доступен КАЖДОМУ вошедшему игроку (низ страницы).
+  // Пол меняет только КЛАССОВУЮ модель (персональные/гендер-локнутые классы не меняются).
+  function buildGenderPicker() {
+    if (!_meAcc) return null;                       // только вошедший игрок
+    var g = _myGender;                              // '', 'm', 'f'
+    var box = document.createElement("div");
+    box.className = "qs-gender";
+    box.innerHTML =
+      '<div class="qs-gn-head"><span class="qs-gn-ic">🧍</span>' +
+        '<div class="qs-gn-tx"><b>Пол моей модельки</b>' +
+          '<span class="qs-gn-sub">как ты выглядишь в очереди</span></div></div>' +
+      '<div class="qs-gn-seg" role="group" aria-label="Пол модели">' +
+        '<button class="qs-gn-opt m' + (g === "m" ? " on" : "") + '" data-g="m">' +
+          '<span class="qs-gn-sym">♂</span>Мужской</button>' +
+        '<button class="qs-gn-opt f' + (g === "f" ? " on" : "") + '" data-g="f">' +
+          '<span class="qs-gn-sym">♀</span>Женский</button>' +
+      "</div>" +
+      (g ? '<button class="qs-gn-auto" data-g="">↺ по имени (авто)</button>' : "");
+    function pick(ng) {
+      if (_myGender === ng) return;
+      box.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+      q("POST", "/queue/gender", { gender: ng }).then(function (d) {
+        _myGender = (d && d.gender) || "";
+        refresh();                                  // обновит и модельку в очереди, и сам переключатель
+      }).catch(function (e) {
+        box.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+        alert(e.status === 401 ? "Сессия истекла, войди заново."
+          : ("Не удалось сменить пол: " + (e.detail || e.message)));
+      });
+    }
+    box.querySelectorAll("[data-g]").forEach(function (b) {
+      b.addEventListener("click", function () { pick(b.getAttribute("data-g")); });
+    });
+    return box;
+  }
+
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
@@ -2053,16 +2114,19 @@
       // шрифт числа в полосе — мельче для 3-значных, чтобы влезло в сферу
       var laneFs = String(entries.length).length >= 3 ? 12 : 15;
       head.innerHTML = '<span class="qs-lane-title">' + esc(b.title) + "</span>" +
-        '<button class="qs-lane-board" title="' + entries.length + ' чел в очереди — открыть список">' +
-          '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
-          '<img class="qs-lane-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-          '<b class="qs-lane-board-n" style="font-size:' + laneFs + 'px">' + entries.length + "</b>" +
-          '<span class="qs-lane-board-tip">Посмотреть список</span></button>' +
         (myIdx >= 0 ? '<span class="qs-lane-you">ты #' + (myIdx + 1) + "</span>" : "");
-      // мини-табличка в полосе кликабельна — открывает полный список этой очереди
+      // счётчик-табличку НЕ кладём в шапку (задирала высоту строки) — она едет ВБОК,
+      // к окну торговца (append в sw ниже). Кликабельна — открывает полный список.
+      var boardEl = document.createElement("button");
+      boardEl.className = "qs-lane-board";
+      boardEl.title = entries.length + " чел в очереди — открыть список";
+      boardEl.innerHTML =
+        '<img class="qs-lane-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
+        '<img class="qs-lane-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
+        '<b class="qs-lane-board-n" style="font-size:' + laneFs + 'px">' + entries.length + "</b>" +
+        '<span class="qs-lane-board-tip">Посмотреть список</span>';
       (function (bb, ent) {
-        var lb = head.querySelector(".qs-lane-board");
-        if (lb) lb.addEventListener("click", function () { openFullList(bb, ent); });
+        boardEl.addEventListener("click", function () { openFullList(bb, ent); });
       })(b, entries);
       var sw = document.createElement("div"); sw.className = "qs-lane-sw";
       // кнопка «Встать/Выйти» в начале очереди (отдельно, не скроллится с людьми)
@@ -2187,7 +2251,7 @@
       // очереди пересобирает всё) она не «прыгала» вправо, а осталась на месте
       strip.addEventListener("scroll", function () { _stripScroll[b.q] = strip.scrollLeft; });
       sw.appendChild(joinCell); sw.appendChild(lArr); sw.appendChild(strip);
-      sw.appendChild(rArr); sw.appendChild(merchBox);
+      sw.appendChild(rArr); sw.appendChild(boardEl); sw.appendChild(merchBox);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
@@ -2281,7 +2345,7 @@
     });
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _meAcc = null, _myTokens = 0, _myGender = "", _lastState = { queues: [[], [], []] };
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -2650,6 +2714,8 @@
     wrap.appendChild(renderStage(state));
     if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
+    // переключатель пола своей модельки — внизу, для каждого вошедшего игрока
+    if (!_pathMode && !_placeMode) { var _gp = buildGenderPicker(); if (_gp) wrap.appendChild(_gp); }
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
       wrap.appendChild(buildOfficerHeader());   // подпись «Офицерская панель — только у офицеров»
@@ -4237,7 +4303,7 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; })
           .catch(function () { _role = ""; _isAdmin = false; }),
-        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; }).catch(function () { _myTokens = 0; }),
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
       ]).then(function () { loadEnv(); refresh(); });
