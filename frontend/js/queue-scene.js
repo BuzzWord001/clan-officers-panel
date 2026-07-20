@@ -610,7 +610,7 @@
     /* сцена заходит под дерево по всему периметру (окно рамки ~16%/22%, сцена 13%) —
        дерево перекрывает край картинки как настоящая рама, без зазоров */
     /* inset ~15% ≈ окно рамки (16%/22%) → дерево закрывает лишь тонкую кромку, видна почти вся картина */
-    ".qs-stage{position:absolute;inset:15%;overflow:hidden;border-radius:4px;" +
+    ".qs-stage{position:absolute;inset:15%;overflow:hidden;border-radius:4px;container-type:inline-size;" +
       "background-size:100% 100%;background-repeat:no-repeat;box-shadow:inset 0 0 18px rgba(0,0,0,.18)}" +
     ".qs-stage.day{background-image:url('assets/queue/scene/scene-bg-day.webp?v=4')}" +
     ".qs-stage.night{background-image:url('assets/queue/scene/scene-bg-night.webp?v=4')}" +
@@ -752,9 +752,8 @@
       ".qs-lane-board{order:1;width:66px}" +
       ".qs-lane-strip{order:2;flex:1 1 100%;min-width:0}" +
       ".qs-merch-box{order:3;width:100%;flex:1 1 100%;align-self:auto}" +
-      // сцена узкая — ужимаем фикс-px UI, чтобы тумбы/счётчики не были гигантскими
-      ".qs-js-tot{height:76px}.qs-js-dim,.qs-js-lit{height:76px}.qs-js-tx{font-size:10px}" +
-      ".qs-lb-normal,.qs-lb-hover{height:70px}.qs-scnt{width:48px}.qs-scnt-n{font-size:14px}" +
+      // UI сцены (кнопки/таблички/ники) масштабируется через cqw (см. .qs-stage container),
+      // поэтому фикс-px оверрайды тут больше не нужны.
     "}" +
     ".qs-lane-strip::-webkit-scrollbar{height:6px}.qs-lane-strip::-webkit-scrollbar-thumb{background:rgba(224,162,74,.4);border-radius:3px}" +
     ".qs-lane-empty{font-size:11.5px;color:#7a6a4a;padding:10px 6px;font-style:italic}" +
@@ -1043,8 +1042,8 @@
     ".qs-lb-normal,.qs-lb-hover{height:100px;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 4px 7px rgba(0,0,0,.55))}" +
     // кнопка Встать/Выйти НА СЦЕНЕ — тумба (крупнее, чем в полосе)
     ".qs-js{cursor:pointer;border:0;background:none;padding:0;display:flex;flex-direction:column;align-items:center;gap:0;transition:filter .08s}" +
-    ".qs-js-tot{position:relative;display:flex;justify-content:center;height:106px}" +
-    ".qs-js-dim,.qs-js-lit{height:106px;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
+    ".qs-js-tot{position:relative;display:flex;justify-content:center;height:11.5cqw}" +
+    ".qs-js-dim,.qs-js-lit{height:11.5cqw;width:auto;object-fit:contain;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}" +
     ".qs-js-lit{position:absolute;left:50%;top:0;transform:translateX(-50%);opacity:0;transition:opacity .18s}" +
     ".qs-js:hover .qs-js-lit{opacity:1}.qs-js:active{filter:brightness(.9)}" +
     // цветной ореол таблички «Встать/Выйти» — под цвет своей очереди (редкие=золото),
@@ -1054,7 +1053,7 @@
     "@keyframes qsGlow{0%,100%{filter:drop-shadow(0 0 6px var(--gc,#7ec46a)) drop-shadow(0 0 13px var(--gc,#7ec46a))}" +
       "50%{filter:drop-shadow(0 0 10px var(--gc,#7ec46a)) drop-shadow(0 0 21px var(--gc,#7ec46a))}}" +
     "@media(prefers-reduced-motion:reduce){.qs-js-tot{animation:none;filter:drop-shadow(0 0 8px var(--gc,#7ec46a)) drop-shadow(0 0 17px var(--gc,#7ec46a))}}" +
-    ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
+    ".qs-js-tx{margin-bottom:2px;font:800 11px system-ui;font-size:max(8px,1.2cqw);color:#f6ead2;text-shadow:0 1px 3px #000,0 0 4px #000;white-space:nowrap}" +
     // счётчик-сфера НА СЦЕНЕ
     ".qs-scnt{position:relative;width:64px;line-height:0;pointer-events:auto}" +
     ".qs-scnt-bg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
@@ -1228,6 +1227,11 @@
     ".qs-fl-tag.shown{background:rgba(126,196,106,.2);color:#a9e08f;border:1px solid rgba(126,196,106,.4)}" +
     ".qs-fl-tag.wait{background:rgba(224,162,74,.16);color:#e6c48f;border:1px solid rgba(224,162,74,.35)}" +
     ".qs-char{position:absolute;height:calc(16% * var(--qs-char-scale,1) * var(--qs-mscale,1));transform-origin:bottom center;text-align:center}" +
+    // ник над головой масштабируется с шириной сцены (cqw), с минимумом 7px для читаемости
+    ".qs-stage .q-char-name{font-size:max(7px,1.14cqw)}" +
+    ".qs-stage .q-char-priv-lbl{font-size:max(8px,1.3cqw)}" +
+    ".qs-stage .qs-char-res{width:2.5cqw;height:2.5cqw}" +
+    ".qs-stage .qs-char-res.big{width:5cqw;height:5cqw}" +
     ".qs-char .q-char-name{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px}" +
     ".qs-char-inner{height:100%;display:flex;align-items:flex-end;justify-content:center;" +
       "animation:qsBob 2.6s ease-in-out infinite}" +
@@ -1825,17 +1829,18 @@
       var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
       var cntEl = document.createElement(_placeMode ? "div" : "button");
       cntEl.className = "qs-board qs-btn-abs";
+      // ширина таблички — в cqw (% ширины сцены), чтобы масштабировалась с картинкой (как персонажи)
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
-        "%;width:" + (128 * csz).toFixed(1) + "px;z-index:" + cnz +
+        "%;width:" + (13.9 * csz).toFixed(2) + "cqw;z-index:" + cnz +
         ";--gc:" + (b.glow || b.accent) +
         ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
-      // шрифт числа зависит от кол-ва знаков, чтобы 3-значное влезало в сферу
-      var cntFs = ((String(entries.length).length >= 3 ? 13 : 18) * csz).toFixed(1);
+      // шрифт числа — тоже в cqw (мельче для 3-значных), с полом 8px для читаемости
+      var cntFs = "max(8px," + ((String(entries.length).length >= 3 ? 1.41 : 1.95) * csz).toFixed(2) + "cqw)";
       cntEl.innerHTML =
         '<img class="qs-board-idle" src="assets/queue/ui/board-idle.webp?v=1" alt="">' +
         '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
-        '<b class="qs-board-n" style="font-size:' + cntFs + 'px">' + entries.length + "</b>" +
+        '<b class="qs-board-n" style="font-size:' + cntFs + '">' + entries.length + "</b>" +
         '<span class="qs-board-tip">Посмотреть список</span>';
       if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
       else cntEl.addEventListener("click", function () { openFullList(b, entries); });
