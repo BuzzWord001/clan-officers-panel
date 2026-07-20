@@ -1106,6 +1106,8 @@
     ".qs-mm-addbtn{cursor:pointer;border:0;border-radius:8px;padding:8px 12px;font:800 12px system-ui;" +
       "color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-mm-addhint{flex:1 1 100%;font:600 10.5px system-ui;color:#8a795a;margin-top:2px}" +
+    ".qs-mm-addv{color:#0f2a12 !important;background:linear-gradient(180deg,#a8e6a0,#5aa84a) !important;font-weight:800}" +
+    ".qs-mm-addv:hover{filter:brightness(1.07)}" +
     ".qs-objp-bg{margin:2px 0 8px;padding:8px;border-radius:9px;background:rgba(40,60,90,.28);" +
       "border:1px solid rgba(130,180,240,.35);display:flex;flex-direction:column;gap:6px}" +
     ".qs-objp-bgh{font:800 11.5px system-ui;color:#bfe0ff}.qs-objp-bgh b{color:#fff}" +
@@ -4031,6 +4033,7 @@
                    (o.kind === "class" ? "(всех этого класса)" : "(этого персонажа)") + '">⇋</button>' : "") +
           (up ? '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
                 '<button data-a="del" class="danger" title="удалить свою (вернётся встроенная)">✕</button>' : "") +
+          (o.kind === "person" ? '<button data-a="addv" class="qs-mm-addv" title="добавить ещё один облик этому игроку — он сам выберет">➕ ещё облик</button>' : "") +
         '</div><div class="qs-mm-st"></div>';
       var stEl = el.querySelector(".qs-mm-st");
       el.addEventListener("click", function (e) {
@@ -4056,6 +4059,18 @@
           q("POST", "/queue/admin/model-delete", { key: o.uploadKey }).then(function () {
             delete UPLOADED[o.uploadKey]; refresh(); loadInfo(rebuild);
           });
+        } else if (a === "addv") {   // добавить ЕЩЁ один облик этому же игроку (следующий слот)
+          var mm = o.uploadKey.match(/^person-(.+?)(?:--\d+)?$/);
+          var cn = mm ? mm[1] : o.uploadKey.slice(7);
+          var base = "person-" + cn, key, n = 2;
+          if (!UPLOADED[base] && !PERSONAL[cn]) key = base;
+          else { while (UPLOADED[base + "--" + n]) n++; key = base + "--" + n; }
+          pickFile(function (data) {
+            stEl.textContent = "Загрузка…";
+            q("POST", "/queue/admin/model-upload", { key: key, data: data }).then(function () {
+              UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild);
+            }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
+          }, stEl);
         }
       });
       return el;
