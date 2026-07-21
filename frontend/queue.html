@@ -177,7 +177,7 @@
         <div class="q-hint">🔑 Введи <b>общий пароль</b> гильдии (внизу окна «Список участников
           гильдии» в игре, кнопка <b>G</b>) <b>или офицерский пароль</b> — подойдёт любой.</div>
         <div class="q-field">
-          <label for="q-shared">Общий пароль (из игры) или офицерский пароль</label>
+          <label for="q-shared" id="q-shared-lbl">Общий пароль (из игры) или офицерский пароль</label>
           <input id="q-shared" type="password" autocomplete="off" maxlength="200">
         </div>
         <div class="q-field">
@@ -217,7 +217,23 @@
         </div>
         <label class="q-remember"><input type="checkbox" id="q-rem2" checked> оставаться в системе</label>
         <button class="q-btn" id="btn-login">Войти</button>
+        <button type="button" class="q-forgot" id="btn-forgot" style="background:none;border:0;color:#caa66a;cursor:pointer;font-size:12.5px;text-decoration:underline;padding:4px;margin:2px auto 0;display:block">Забыл пароль?</button>
         <button class="q-back-step" data-back>← другой ник</button>
+      </div>
+
+      <!-- шаг 2г: ВОССТАНОВЛЕНИЕ ПАРОЛЯ (по почте с регистрации) -->
+      <div id="step-recover" hidden>
+        <div class="q-hint" id="q-rec-hint">Введи <b>почту, которую указал при регистрации</b> — и задай новый пароль.</div>
+        <div class="q-field">
+          <label for="q-rec-email">Почта с регистрации</label>
+          <input id="q-rec-email" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-rec-newpass">Новый личный пароль</label>
+          <input id="q-rec-newpass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <button class="q-btn" id="btn-recover">Восстановить и войти</button>
+        <button class="q-back-step" data-back>← назад</button>
       </div>
 
       <p class="q-err" id="auth-err" role="alert"></p>
@@ -239,7 +255,7 @@
   <script src="config.js?v=1791600000"></script>
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/queue-open.js?v=1883001500"></script>
-  <script src="js/queue.js?v=1882700000"></script>
-  <script src="js/queue-scene.js?v=1885400000"></script>
+  <script src="js/queue.js?v=1885500000"></script>
+  <script src="js/queue-scene.js?v=1885500000"></script>
 </body>
 </html>

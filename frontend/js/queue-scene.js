@@ -3842,19 +3842,30 @@
             : '<span style="color:#ff8a7a">— нет в реестре/доблести</span>';
           var rowbg = a.status === "unknown" ? ' style="background:rgba(180,60,50,.15)"'
             : (a.status === "resolved" ? ' style="background:rgba(224,168,74,.1)"' : "");
+          var rnick = a.roster_nick || a.reg_nick || "";
           return "<tr" + rowbg + "><td><b>" + reg + "</b></td><td>" + op + "</td><td>" + esc(a.cls || "") +
             "</td><td style='" + (stStyle[a.status] || "") + ";font-weight:700;white-space:nowrap'>" + (stTxt[a.status] || a.status) +
             "</td><td style='text-align:center'>" + (a.in_queue ? "✅" : "—") + "</td><td>" + esc(a.email || "—") +
-            "</td><td style='white-space:nowrap'>" + esc((a.last_login_at || "").replace("T", " ").slice(0, 16)) + "</td></tr>";
+            "</td><td style='white-space:nowrap'>" + esc((a.last_login_at || "").replace("T", " ").slice(0, 16)) +
+            "</td><td><button class='sec qa-acc-reset' data-nick='" + esc(rnick) + "' title='сбросить регистрацию — человек создаст пароль заново' style='padding:2px 8px;font-size:11px'>🔑 сброс</button></td></tr>";
         }).join("");
         el.innerHTML =
           '<div style="margin:2px 0 6px;font-size:12px;color:#f0dcb4">Всего зарегистрировано: <b>' + list.length + "</b>" +
             (bad ? ' · <span style="color:#e0a86a">ник введён неточно / не найден: <b>' + bad + "</b> — проверь</span>"
                  : ' · <span style="color:#8fc36a">все ники совпадают с реестром</span>') + "</div>" +
-          '<div style="font-size:11px;color:#8a795a;margin-bottom:4px">✓ точно — ввёл существующий ник · ≈ опознан — распознан по мэйну, но ввод неточный (латиница/усечение/твин) · ⚠ не найден — ника нет в базе (вероятно ошибся)</div>' +
-          '<table><thead><tr><th>ввёл при рег.</th><th>опознан как (реестр/доблесть)</th><th>класс</th><th>совпадение</th><th>в очереди</th><th>почта</th><th>вход</th></tr></thead><tbody>' +
-          (rows || '<tr><td colspan="7">аккаунтов нет</td></tr>') + "</tbody></table>";
+          '<div style="font-size:11px;color:#8a795a;margin-bottom:4px">✓ точно — ввёл существующий ник · ≈ опознан — распознан по мэйну, но ввод неточный (латиница/усечение/твин) · ⚠ не найден — ника нет в базе (вероятно ошибся) · 🔑 сброс — удалить регистрацию (создаст пароль заново)</div>' +
+          '<table><thead><tr><th>ввёл при рег.</th><th>опознан как (реестр/доблесть)</th><th>класс</th><th>совпадение</th><th>в очереди</th><th>почта</th><th>вход</th><th></th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="8">аккаунтов нет</td></tr>') + "</tbody></table>";
       }).catch(function (e) { st("Доступно только админу: " + (e.detail || e.message)); });
+    });
+    box.querySelector("#qa-accts").addEventListener("click", function (ev) {
+      var b2 = ev.target.closest(".qa-acc-reset"); if (!b2) return;
+      var nk = b2.getAttribute("data-nick"); if (!nk) return;
+      if (!confirm("Сбросить регистрацию «" + nk + "»? Аккаунт удалится, человек создаст пароль заново при следующем входе.")) return;
+      b2.disabled = true;
+      q("POST", "/queue/admin/reset-password", { nick: nk }).then(function () {
+        b2.textContent = "✓ сброшен";
+      }).catch(function (e) { b2.disabled = false; st("Не удалось сбросить: " + (e.detail || e.message)); });
     });
     box.querySelector("#qa-log-btn").addEventListener("click", function () {
       var logEl = box.querySelector("#qa-log");

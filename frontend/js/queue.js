@@ -43,6 +43,7 @@
   }
 
   var selectedNick = "";
+  var _isOfficerNick = false;
 
   // ── переключение экранов ──
   // Монтирует красивый таймер обратного отсчёта до авто-открытия раздела в контейнер.
@@ -75,11 +76,13 @@
     $("step-register").hidden = which !== "register";
     $("step-login").hidden = which !== "login";
     $("step-officer").hidden = which !== "officer";
+    var sr = $("step-recover"); if (sr) sr.hidden = which !== "recover";
     err("");
     var sub = $("auth-sub");
     if (which === "nick") sub.textContent = "Выбери свой игровой ник, чтобы войти";
     else if (which === "register") sub.textContent = "Первый вход — создай личный пароль";
     else if (which === "officer") sub.textContent = "Это офицерский ник — нужен офицерский пароль";
+    else if (which === "recover") sub.textContent = "Восстановление пароля";
     else sub.textContent = "С возвращением! Введи свой личный пароль";
   }
   function err(msg, ok) {
@@ -162,9 +165,15 @@
         if (!d.ok) { err("Такой ник не найден в реестре и таблице клана. Проверь написание."); return; }
         selectedNick = d.nick;
         $("q-nick").value = d.nick;
-        // Офицерский ник → шаг с офицерским паролем (обычный/личный пароль не подойдёт).
-        if (d.officer) { goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); return; }
+        // Уже зарегистрирован (игрок ИЛИ офицер) → вход по ЛИЧНОМУ паролю.
+        // Не зарегистрирован → регистрация: игрок — общим паролём, офицер — офицерским (в том же поле).
+        _isOfficerNick = !!d.officer;
         goStep(d.registered ? "login" : "register");
+        // подсказка для офицера на шаге регистрации
+        var rl = $("q-shared-lbl");
+        if (rl) rl.textContent = d.officer
+          ? "Офицерский пароль (из закрепа чата гильдии) — подтверди, что ты офицер"
+          : "Общий пароль (из игры) или офицерский пароль";
         setTimeout(function () { $(d.registered ? "q-pass" : "q-shared").focus(); }, 30);
       })
       .catch(function (e) { btn.disabled = false; err("Ошибка проверки: " + (e.detail || e.message)); });
@@ -184,9 +193,9 @@
       showSection(d.account);
     }).catch(function (e) {
       btn.disabled = false;
-      if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); }
+      if (e.detail === "need_officer_password") { err("Это офицерский ник — в поле пароля введи ОФИЦЕРСКИЙ пароль (из закрепа чата), затем придумай личный."); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа чата гильдии)"; setTimeout(function () { $("q-shared").focus(); }, 30); }
       else if (e.detail === "personal_password_too_short") err("Придумай личный пароль — минимум 4 символа.");
-      else if (e.status === 401) err("Неверный пароль. Подойдёт общий пароль гильдии (в игре, кнопка G) или офицерский пароль.");
+      else if (e.status === 401) err(_isOfficerNick ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : "Неверный пароль. Подойдёт общий пароль гильдии (в игре, кнопка G) или офицерский пароль.");
       else if (e.status === 409) { err("На этот аккаунт пароль уже создан — входи по личному паролю."); goStep("login"); }
       else if (e.status === 503) err("Общий пароль ещё не задан админом. Напиши офицеру.");
       else if (e.detail === "nick_not_found") err("Ник не найден. Вернись и выбери из подсказок.");
@@ -198,10 +207,15 @@
   function doLogin() {
     var btn = $("btn-login"); btn.disabled = true; err("");
     api("POST", "/queue/login", { nick: selectedNick, personal_password: $("q-pass").value })
-      .then(function (d) { if (d.device_token) setDev(d.device_token); showSection(d.account); })
+      .then(function (d) {
+        if (d.device_token) setDev(d.device_token);
+        if (d.role === "officer") { setToken(d.token); location.reload(); return; }   // офицер по личному паролю
+        showSection(d.account);
+      })
       .catch(function (e) {
         btn.disabled = false;
-        if (e.detail === "need_officer_password") { err("Это офицерский ник — нужен офицерский пароль."); goStep("officer"); setTimeout(function () { $("q-off-pass").focus(); }, 30); return; }
+        // офицерский ник, но аккаунта ещё нет → регистрация личного пароля офиц. паролем
+        if (e.detail === "need_officer_password") { err("Первый вход офицера — создай личный пароль (нужен офицерский пароль)."); goStep("register"); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа чата гильдии)"; setTimeout(function () { $("q-shared").focus(); }, 30); return; }
         err(e.status === 401 ? "Неверный личный пароль." : ("Ошибка входа: " + (e.detail || e.message)));
       });
   }
@@ -215,6 +229,42 @@
         btn.disabled = false;
         err(e.status === 401 ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : ("Ошибка входа: " + (e.detail || e.message)));
       });
+  }
+
+  // ── восстановление пароля (по почте с регистрации, без писем) ──
+  function openRecover() {
+    err(""); goStep("recover");
+    var hint = $("q-rec-hint");
+    hint.innerHTML = "Проверяю…";
+    api("GET", "/queue/recover-hint?nick=" + encodeURIComponent(selectedNick)).then(function (d) {
+      if (!d.registered) { hint.innerHTML = "На этот ник ещё нет аккаунта — вернись и <b>зарегистрируйся</b>."; return; }
+      if (!d.has_email) {
+        hint.innerHTML = "⚠ При регистрации ты <b>не указывал почту</b>, поэтому сам восстановить пароль не сможешь. " +
+          "Напиши <b>офицеру или админу</b> — они сбросят регистрацию, и ты создашь пароль заново.";
+        $("q-rec-email").disabled = true; $("q-rec-newpass").disabled = true; $("btn-recover").disabled = true;
+      } else {
+        $("q-rec-email").disabled = false; $("q-rec-newpass").disabled = false; $("btn-recover").disabled = false;
+        hint.innerHTML = "Введи <b>почту, которую указал при регистрации</b> (" + esc(d.email_mask) + ") и задай новый пароль.";
+        setTimeout(function () { $("q-rec-email").focus(); }, 30);
+      }
+    }).catch(function () { hint.innerHTML = "Введи <b>почту с регистрации</b> и новый пароль."; });
+  }
+  function doRecover() {
+    var btn = $("btn-recover"); btn.disabled = true; err("");
+    api("POST", "/queue/recover", {
+      nick: selectedNick, email: $("q-rec-email").value.trim(), new_password: $("q-rec-newpass").value
+    }).then(function (d) {
+      if (d.device_token) setDev(d.device_token);
+      if (d.role === "officer") { setToken(d.token); location.reload(); return; }
+      showSection(d.account);
+    }).catch(function (e) {
+      btn.disabled = false;
+      if (e.detail === "email_mismatch") err("Почта не совпадает с той, что указана при регистрации.");
+      else if (e.detail === "no_email_on_file") err("К этому аккаунту не привязана почта — попроси офицера/админа сбросить пароль.");
+      else if (e.detail === "personal_password_too_short") err("Новый пароль — минимум 4 символа.");
+      else if (e.status === 404) err("Аккаунт не найден.");
+      else err("Не удалось восстановить: " + (e.detail || e.message));
+    });
   }
 
   function doLogout() {
@@ -233,6 +283,9 @@
     $("btn-login").addEventListener("click", doLogin);
     $("btn-officer").addEventListener("click", doOfficerLogin);
     $("q-off-pass").addEventListener("keydown", function (e) { if (e.key === "Enter") doOfficerLogin(); });
+    var bf = $("btn-forgot"); if (bf) bf.addEventListener("click", openRecover);
+    var br = $("btn-recover"); if (br) br.addEventListener("click", doRecover);
+    var rn = $("q-rec-newpass"); if (rn) rn.addEventListener("keydown", function (e) { if (e.key === "Enter") doRecover(); });
     $("btn-logout").addEventListener("click", doLogout);
     [].forEach.call(document.querySelectorAll("[data-back]"), function (b) {
       b.addEventListener("click", function () { goStep("nick"); $("q-nick").focus(); });

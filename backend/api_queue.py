@@ -309,6 +309,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_models ADD COLUMN aura TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: аккаунт офицера (личный пароль + офицерская роль по нику)
+        try:
+            conn.execute("ALTER TABLE queue_accounts ADD COLUMN is_officer INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
         # миграция: слой объекта на сцене — '' (авто по y) | 'front' | 'back'
         try:
             conn.execute("ALTER TABLE queue_placements ADD COLUMN z TEXT NOT NULL DEFAULT ''")
@@ -530,6 +535,16 @@ class LoginIn(BaseModel):
 class OfficerLoginIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=200)
+
+
+class RecoverIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    email: str = Field(default="", max_length=200)              # почта с регистрации (проверка)
+    new_password: str = Field(default="", max_length=200)       # новый личный пароль (мин. 4)
+
+
+class AdminNickIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
 
 
 class SharedPwIn(BaseModel):
@@ -819,61 +834,74 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         idx = _people(conn)
         p = idx.get(db._valor_canon(payload.nick))
         off_ok = auth_pwd.verify_officer(payload.shared_password)     # ЖИВОЙ офицерский пароль
-        # Кто ввёл ОФИЦЕРСКИЙ пароль — входит КАК ОФИЦЕР (сессия + панель), даже если его
-        # нет в чатах TG/VK. Аккаунт игрока не создаём — это отдельная роль.
-        if off_ok:
-            name = (p["main_nick"] if p else payload.nick.strip()) or "офицер"
-            _log(conn, "officer_login", actor=name, nick=name, request=request,
-                 detail="офицер через вход в очередь")
-            tok = set_session(response, role="officer", name=name)
-            return {"ok": True, "role": "officer", "officer": True, "token": tok}
-        # Не офицерский пароль. Если выбран ОФИЦЕРСКИЙ ник — обычным паролем нельзя.
-        if _is_officer_nick(conn, payload.nick):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
-        # Обычный игрок — по ОБЩЕМУ паролю гильдии.
-        if not (shared and _check(payload.shared_password, shared)):
-            if not shared:
-                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "shared_password_not_set")
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_shared_password")
+        is_off_nick = _is_officer_nick(conn, payload.nick)
+        # ОФИЦЕР (по офицерскому паролю ИЛИ офицерский ник) — регистрирует ЛИЧНЫЙ пароль,
+        # но офицерский пароль обязателен как доказательство, что он офицер.
+        role_officer = off_ok or is_off_nick
+        if role_officer:
+            if not off_ok:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
+        else:
+            # Обычный игрок — по ОБЩЕМУ паролю гильдии.
+            if not (shared and _check(payload.shared_password, shared)):
+                if not shared:
+                    raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "shared_password_not_set")
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_shared_password")
+            if not p:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
 
-        if not p:
+        main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
+        main_nick = (p["main_nick"] if p else payload.nick.strip()) or payload.nick.strip()
+        reg_nick = (p["nick"] if p else payload.nick.strip())
+        if not main_canon:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
-
-        acc = _account_by_main(conn, p["main_canon"])
+        acc = _account_by_main(conn, main_canon)
         if acc:
-            # уже есть аккаунт на мэйна — регистрация не нужна, пусть входит паролем
+            # уже есть аккаунт на мэйна — регистрация не нужна, пусть входит личным паролем
             raise HTTPException(status.HTTP_409_CONFLICT, "already_registered")
-        if len(payload.personal_password) < 4:      # личный пароль обязателен для игрока
+        if len(payload.personal_password) < 4:      # личный пароль обязателен (игроку и офицеру)
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
 
         cur = conn.execute(
             "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
-            " created_at, last_login_at) VALUES (?,?,?,?,?,?,?)",
-            (p["main_canon"], p["main_nick"], p["nick"], payload.email.strip(),
-             _hash(payload.personal_password), _now(), _now()))
+            " is_officer, created_at, last_login_at) VALUES (?,?,?,?,?,?,?,?)",
+            (main_canon, main_nick, reg_nick, payload.email.strip(),
+             _hash(payload.personal_password), 1 if role_officer else 0, _now(), _now()))
         acc_id = cur.lastrowid
         dev_token = _set_device(conn, response, acc_id, request)
-        _log(conn, "register", actor=p["nick"], nick=p["nick"], request=request,
-             detail="email" if payload.email.strip() else "no-email")
+        _log(conn, "register", actor=reg_nick, nick=reg_nick, request=request,
+             detail=("офицер · " if role_officer else "") + ("email" if payload.email.strip() else "no-email"))
         acc = conn.execute("SELECT * FROM queue_accounts WHERE id=?", (acc_id,)).fetchone()
+        if role_officer:
+            tok = set_session(response, role="officer", name=main_nick)
+            _log(conn, "officer_login", actor=main_nick, nick=main_nick, request=request,
+                 detail="офицер зарегистрировал личный пароль")
+            return {"ok": True, "role": "officer", "officer": True,
+                    "account": _acc_public(acc), "device_token": dev_token, "token": tok}
         return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
 
 
 @router.post("/login")
 def login(payload: LoginIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
-        # Офицерский ник — обычным паролем нельзя, только офицерский (защита ника офицера).
-        if _is_officer_nick(conn, payload.nick):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
         idx = _people(conn)
         p = idx.get(db._valor_canon(payload.nick))
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, main_canon)
+        # Офицерский ник, но аккаунта ещё нет → сначала зарегистрировать личный пароль офиц. паролем.
+        if not acc and _is_officer_nick(conn, payload.nick):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
         if not acc or not _check(payload.personal_password, acc["password_hash"]):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
         conn.execute("UPDATE queue_accounts SET last_login_at=? WHERE id=?", (_now(), acc["id"]))
         dev_token = _set_device(conn, response, acc["id"], request)
-        _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request)
+        is_off = bool(acc["is_officer"]) if "is_officer" in acc.keys() else False
+        _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
+             detail="офицер" if is_off else "")
+        if is_off:                                     # офицер входит личным паролём → офиц. сессия
+            tok = set_session(response, role="officer", name=acc["main_nick"])
+            return {"ok": True, "role": "officer", "officer": True,
+                    "account": _acc_public(acc), "device_token": dev_token, "token": tok}
         return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
 
 
@@ -890,6 +918,86 @@ def officer_login(payload: OfficerLoginIn, request: Request, response: Response)
              detail="вход офицером через очередь")
     tok = set_session(response, role="officer", name=name)
     return {"ok": True, "role": "officer", "nick": name, "token": tok}
+
+
+def _mask_email(e: str) -> str:
+    e = (e or "").strip()
+    if "@" not in e:
+        return ""
+    loc, dom = e.split("@", 1)
+
+    def m(s: str, keep: int) -> str:
+        s = s or ""
+        k = min(keep, max(1, len(s) - 1)) if len(s) > 1 else 1
+        return s[:k] + "***" if s else "***"
+    parts = dom.rsplit(".", 1)
+    dm = (m(parts[0], 1) + "." + parts[1]) if len(parts) == 2 else m(dom, 1)
+    return m(loc, 2) + "@" + dm
+
+
+@router.get("/recover-hint")
+def recover_hint(nick: str = Query(..., min_length=1, max_length=64)) -> dict:
+    """Подсказка для восстановления: есть ли аккаунт и указана ли почта (в маскированном виде)."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(nick))
+        mc = p["main_canon"] if p else db._valor_canon(nick)
+        acc = _account_by_main(conn, mc) if mc else None
+    if not acc:
+        return {"registered": False, "has_email": False, "email_mask": ""}
+    email = acc["email"] or ""
+    return {"registered": True, "has_email": bool(email.strip()),
+            "email_mask": _mask_email(email)}
+
+
+@router.post("/recover")
+def recover(payload: RecoverIn, request: Request, response: Response) -> dict:
+    """Восстановление пароля по ПОЧТЕ С РЕГИСТРАЦИИ (без отправки писем): ник + та же почта →
+    задать новый личный пароль. Кто почту не указывал/забыл — сброс делает офицер/админ."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        mc = p["main_canon"] if p else db._valor_canon(payload.nick)
+        acc = _account_by_main(conn, mc) if mc else None
+        if not acc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_account")
+        stored = (acc["email"] or "").strip().lower()
+        given = (payload.email or "").strip().lower()
+        if not stored:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no_email_on_file")
+        if not given or given != stored:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "email_mismatch")
+        if len(payload.new_password) < 4:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
+        conn.execute("UPDATE queue_accounts SET password_hash=?, last_login_at=? WHERE id=?",
+                     (_hash(payload.new_password), _now(), acc["id"]))
+        dev_token = _set_device(conn, response, acc["id"], request)
+        is_off = bool(acc["is_officer"]) if "is_officer" in acc.keys() else False
+        _log(conn, "recover", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
+             detail="пароль восстановлен по почте")
+        acc = conn.execute("SELECT * FROM queue_accounts WHERE id=?", (acc["id"],)).fetchone()
+        if is_off:
+            tok = set_session(response, role="officer", name=acc["main_nick"])
+            return {"ok": True, "role": "officer", "account": _acc_public(acc),
+                    "device_token": dev_token, "token": tok}
+        return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
+
+
+@router.post("/admin/reset-password")
+def admin_reset_password(payload: AdminNickIn, request: Request,
+                         actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Сброс регистрации игрока (офицер/админ): удаляет аккаунт — человек создаст пароль заново
+    при следующем входе. Нужен тем, кто не указал/забыл почту для самостоятельного восстановления."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.nick))
+        mc = p["main_canon"] if p else db._valor_canon(payload.nick)
+        acc = _account_by_main(conn, mc) if mc else None
+        if not acc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_account")
+        # снимаем привязанные устройства и сам аккаунт
+        conn.execute("DELETE FROM queue_devices WHERE account_id=?", (acc["id"],))
+        conn.execute("DELETE FROM queue_accounts WHERE id=?", (acc["id"],))
+        _log(conn, "reset_password", actor=_actor_name(actor), nick=acc["main_nick"],
+             request=request, detail="сброс регистрации (создаст пароль заново)")
+    return {"ok": True}
 
 
 @router.get("/nick-role")
