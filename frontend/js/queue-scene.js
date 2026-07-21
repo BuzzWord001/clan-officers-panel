@@ -395,6 +395,45 @@
       : (mskMin >= dayStart || mskMin < nightStart);
     return !isDay;
   }
+  // ── ПОГОДА в рамке: авто (реальная в Москве, Open-Meteo, без ключа) или вручную админом ──
+  var _autoWeather = "clear", _wStamp = 0, _wFetching = false, _wCbs = [];
+  function weatherRu(w) {
+    return { clear: "☀️ ясно", clouds: "☁️ облачно", rain: "🌧️ дождь", snow: "❄️ снег", fog: "🌫️ туман", thunder: "⛈️ гроза" }[w] || w;
+  }
+  function wmoToWeather(code) {
+    if (code == null) return "clear";
+    code = +code;
+    if (code >= 95) return "thunder";
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+    if (code === 45 || code === 48) return "fog";
+    if (code === 2 || code === 3) return "clouds";
+    return "clear";
+  }
+  function fetchAutoWeather(cb) {
+    if (cb) _wCbs.push(cb);
+    var fresh = _wStamp && (Date.now() - _wStamp < 15 * 60 * 1000);
+    if (fresh) { var c0 = _wCbs; _wCbs = []; c0.forEach(function (f) { f(_autoWeather); }); return; }
+    if (_wFetching) return;
+    _wFetching = true;
+    fetch("https://api.open-meteo.com/v1/forecast?latitude=55.75&longitude=37.62&current=weather_code")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var cur = d && d.current || {};
+        _autoWeather = wmoToWeather(cur.weather_code != null ? cur.weather_code : cur.weathercode);
+        done();
+      }).catch(function () { _autoWeather = "clear"; done(); });
+    function done() {
+      _wFetching = false; _wStamp = Date.now();
+      var c = _wCbs; _wCbs = []; c.forEach(function (f) { f(_autoWeather); });
+      if ((CONFIG["weather"] || "auto") === "auto" && _lastState) render(_lastState);   // применить свежую авто-погоду
+    }
+  }
+  function currentWeather() {
+    var f = CONFIG["weather"];
+    if (f && f !== "auto") return f;   // ручной выбор админа
+    return _autoWeather;               // реальная погода Москвы (кэш)
+  }
 
   var PLACEMENTS = {};     // key ('item:...'/'mount'/'env:<id>') -> {x,y} ручная расстановка
   var CONFIG = {};         // key -> string: 'path:N' (JSON точек), 'size:frame|char|item|mount'
@@ -727,6 +766,41 @@
       "filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}" +
     ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-merchant,.qs-stage.place .qs-btn-abs,.qs-stage.place .qs-env{" +
       "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
+    /* ── ПОГОДА (лёгкие CSS-анимации, только внутри картинки) ── */
+    ".qs-weather{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:9600;border-radius:6px}" +
+    ".qs-weather::before,.qs-weather::after{content:'';position:absolute;pointer-events:none}" +
+    // дождь: две диагональные полосы разной скорости
+    ".w-rain,.w-thunder{background-image:repeating-linear-gradient(102deg,transparent 0 9px,rgba(190,212,238,.16) 9px 10px);" +
+      "background-size:26px 130px;animation:qwRain .6s linear infinite;opacity:.5}" +
+    ".w-rain::before,.w-thunder::before{inset:0;background-image:repeating-linear-gradient(102deg,transparent 0 13px,rgba(200,220,245,.10) 13px 14px);" +
+      "background-size:34px 200px;animation:qwRain .95s linear infinite}" +
+    "@keyframes qwRain{to{background-position:-46px 240px}}" +
+    // снег: два слоя точек, медленно падают с дрейфом
+    ".w-snow{background-image:radial-gradient(2.4px 2.4px at 15% 20%,rgba(255,255,255,.95),transparent 60%)," +
+      "radial-gradient(2px 2px at 55% 65%,rgba(255,255,255,.85),transparent 60%)," +
+      "radial-gradient(2.6px 2.6px at 80% 35%,rgba(255,255,255,.9),transparent 60%)," +
+      "radial-gradient(1.8px 1.8px at 35% 80%,rgba(255,255,255,.8),transparent 60%);" +
+      "background-size:220px 220px;animation:qwSnow 7s linear infinite;opacity:.9}" +
+    ".w-snow::before{inset:0;background-image:radial-gradient(1.8px 1.8px at 25% 40%,rgba(255,255,255,.7),transparent 60%)," +
+      "radial-gradient(1.6px 1.6px at 70% 15%,rgba(255,255,255,.65),transparent 60%)," +
+      "radial-gradient(2px 2px at 90% 75%,rgba(255,255,255,.7),transparent 60%);" +
+      "background-size:160px 160px;animation:qwSnow 11s linear infinite}" +
+    "@keyframes qwSnow{to{background-position:24px 220px}}" +
+    // туман: мягкая дымка снизу + медленный дрейф
+    ".w-fog{background:radial-gradient(130% 60% at 50% 100%,rgba(206,212,222,.28),transparent 72%);opacity:.92}" +
+    ".w-fog::before{inset:-25%;filter:blur(6px);animation:qwFog 22s ease-in-out infinite alternate;" +
+      "background:radial-gradient(42% 32% at 30% 60%,rgba(220,224,232,.28),transparent 70%)," +
+      "radial-gradient(46% 34% at 72% 52%,rgba(210,214,222,.22),transparent 70%)}" +
+    "@keyframes qwFog{to{transform:translateX(9%)}}" +
+    // облачно: лёгкое затемнение сверху + плывущие тени облаков
+    ".w-clouds{background:linear-gradient(180deg,rgba(28,33,44,.22),transparent 46%);opacity:.9}" +
+    ".w-clouds::before{inset:-12% -32%;filter:blur(7px);animation:qwCloud 46s linear infinite;" +
+      "background:radial-gradient(50% 40% at 20% 18%,rgba(18,22,32,.26),transparent 70%)," +
+      "radial-gradient(46% 36% at 70% 14%,rgba(18,22,32,.2),transparent 70%)}" +
+    "@keyframes qwCloud{to{transform:translateX(34%)}}" +
+    // гроза: поверх дождя редкие вспышки
+    ".w-thunder::after{inset:0;background:rgba(232,238,255,.55);opacity:0;animation:qwFlash 8s linear infinite}" +
+    "@keyframes qwFlash{0%,3.5%,100%{opacity:0}1%{opacity:.55}2%{opacity:.08}3%{opacity:.45}}" +
     /* объекты окружения (деревья/камни/костры), загружаются админом */
     ".qs-env{position:absolute;transform-origin:50% 100%;pointer-events:none;" +
       "filter:drop-shadow(0 6px 9px rgba(0,0,0,.45))}" +
@@ -2354,6 +2428,13 @@
       stage.style.backgroundPosition = (CONFIG["bgx:" + bgSlot] || "50") + "% " + (CONFIG["bgy:" + bgSlot] || "50") + "%";
     }
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
+
+    // ПОГОДА — лёгкая CSS-анимация в пределах картинки (clip внутри .qs-stage)
+    var wx = currentWeather();
+    if (wx && wx !== "clear") {
+      var wl = document.createElement("div"); wl.className = "qs-weather w-" + wx; wl.setAttribute("aria-hidden", "true");
+      stage.appendChild(wl);
+    }
 
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
@@ -3998,6 +4079,17 @@
             '<label style="font-size:11px;color:#caa66a;display:inline-flex;align-items:center;gap:4px">🌙 ночь с ' +
               '<input type="time" id="qa-nightfrom" value="' + (CONFIG["nightFrom"] || "20:00") + '"></label>' +
           "</div>" +
+          '<div class="q-admin-row" style="align-items:center;flex-wrap:wrap">' +
+            '<span style="font-size:12.5px;color:#caa66a">Погода:</span>' +
+            '<button class="sec" data-weather="auto">🌍 Авто (Москва)</button>' +
+            '<button class="sec" data-weather="clear">☀️ Ясно</button>' +
+            '<button class="sec" data-weather="clouds">☁️ Облачно</button>' +
+            '<button class="sec" data-weather="rain">🌧️ Дождь</button>' +
+            '<button class="sec" data-weather="snow">❄️ Снег</button>' +
+            '<button class="sec" data-weather="fog">🌫️ Туман</button>' +
+            '<button class="sec" data-weather="thunder">⛈️ Гроза</button>' +
+            '<span id="qa-weather-now" style="font-size:11px;color:#8a795a;margin-left:6px"></span>' +
+          "</div>" +
           '<div class="q-admin-row" style="gap:16px;align-items:flex-end">' +
             '<span style="font-size:12px;color:#caa66a">Размеры:</span>' +
             sizeSlider("frame", "Рамка/сцена", 0.5, 4) + sizeSlider("char", "Модели") +
@@ -4284,6 +4376,14 @@
       if (btn.dataset.time === curTime) { btn.style.background = "rgba(224,162,74,.4)"; btn.style.color = "#fff"; }
       btn.addEventListener("click", function () { saveCfg("forceTime", btn.dataset.time); render(_lastState); });
     });
+    // погода: авто (реальная в Москве) или вручную
+    var curW = CONFIG["weather"] || "auto";
+    [].forEach.call(box.querySelectorAll("[data-weather]"), function (btn) {
+      if (btn.dataset.weather === curW) { btn.style.background = "rgba(224,162,74,.4)"; btn.style.color = "#fff"; }
+      btn.addEventListener("click", function () { saveCfg("weather", btn.dataset.weather); render(_lastState); });
+    });
+    var wNow = box.querySelector("#qa-weather-now");
+    if (wNow) { fetchAutoWeather(function (w) { wNow.textContent = "сейчас в Москве: " + weatherRu(w) + (curW === "auto" ? " (показывается)" : " · вручную: " + weatherRu(curW)); }); }
     var dfEl = box.querySelector("#qa-dayfrom"), nfEl = box.querySelector("#qa-nightfrom");
     if (dfEl) dfEl.addEventListener("change", function () { saveCfg("dayFrom", dfEl.value || "07:00"); render(_lastState); });
     if (nfEl) nfEl.addEventListener("change", function () { saveCfg("nightFrom", nfEl.value || "20:00"); render(_lastState); });
@@ -5625,9 +5725,12 @@
           _meAcc = { main_nick: _officerName, main_canon: canon(_officerName), reg_nick: _officerName };
         }
         loadEnv(); refresh(); startLinkPolling();
+        fetchAutoWeather();                                  // реальная погода Москвы (для авто-режима)
+        if (!_wPollT) _wPollT = setInterval(fetchAutoWeather, 15 * 60 * 1000);
       });
     }
   };
+  var _wPollT = null;
 
   // ── боковые окошки: запросы подтверждения связи (офицеру/админу) + уведомления игроку ──
   var _qlHost = null, _qlSeenMine = {}, _qlPollT = null, _qlShown = {}, _qlDecidedSeen = {};
