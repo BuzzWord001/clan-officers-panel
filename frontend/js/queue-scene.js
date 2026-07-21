@@ -353,11 +353,12 @@
     var out = tipBody(e);
     // кнопка облика: своя моделька (игрок) ИЛИ офицер/админ (на любой). Открывает окно облика,
     // где можно и переключить (если вариантов несколько), и загрузить новый.
-    if (isMyModel(e) || _isAdmin || _role === "officer") {
+    var mine = isMyModel(e);
+    if (mine || _isAdmin || _role === "officer") {
       var many = modelVariants(e).length > 1;
+      // владелец: сменить/загрузить; офицер/админ на ЧУЖОЙ: только загрузить (сменить нельзя)
       out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">' +
-        (many ? "🔄 Облик / загрузить" : "🖼 Загрузить облик") +
-        ((_role === "officer" || _isAdmin) && !isMyModel(e) ? " (офицер)" : "") + "</button>";
+        (mine ? (many ? "🔄 Сменить облик / загрузить" : "🖼 Загрузить облик") : "🖼 Загрузить облик игроку") + "</button>";
     }
     return out;
   }
@@ -3023,6 +3024,9 @@
     var idx = 0; for (var i0 = 0; i0 < vs.length; i0++) if (vs[i0].key === curTok) { idx = i0; break; }
     var busy = false;
     var multi = vs.length > 1;
+    // МЕНЯТЬ активный облик может ТОЛЬКО САМ игрок (его моделька / админ-тест как Лирия). Офицер/админ
+    // на ЧУЖОЙ модельке — только предпросмотр и ЗАГРУЗКА нового облика (сменить силой нельзя).
+    var canSwitch = isMyModel(e);
     // роли для загрузки: офицер/админ грузят игроку напрямую (не меняя силой); владелец-игрок — на подтверждение
     var iAmOwnerPlayer = _meAcc && canon(e.main_nick) === canon(_meAcc.main_nick);
     var canDirect = _isAdmin || _role === "officer";
@@ -3040,7 +3044,9 @@
       : '<div class="qs-msw-stage single"><div class="qs-msw-pic"><span class="qs-msw-shadow"></span><img class="qs-msw-img" alt=""></div></div>') +
       '<div class="qs-msw-label"></div>' +
       '<div class="qs-msw-thumbs"></div>' +
-      '<div class="qs-msw-hint">' + (multi ? "Выбери облик — применится в очереди сразу." : "Пока один облик. Можно добавить ещё ниже.") + "</div>" +
+      '<div class="qs-msw-hint">' + (canSwitch
+        ? (multi ? "Выбери облик — применится в очереди сразу." : "Пока один облик. Можно добавить ещё ниже.")
+        : "👀 Предпросмотр обликов игрока. Сменить активный облик может только сам игрок — ты можешь лишь загрузить ему новый ниже.") + "</div>" +
       (upBtn ? '<div class="qs-msw-upwrap">' + upBtn + "</div>" : "");
     var img = body.querySelector(".qs-msw-img"), label = body.querySelector(".qs-msw-label"),
         thumbsEl = body.querySelector(".qs-msw-thumbs"), picEl = body.querySelector(".qs-msw-pic");
@@ -3061,11 +3067,10 @@
       [].forEach.call(thumbsEl.children, function (c, i) { c.classList.toggle("on", i === idx); });
     }
     function commit(tok) {
-      if (busy) return; busy = true;
+      if (!canSwitch || busy) return; busy = true;   // менять активный облик — только сам игрок (или админ-тест как Лирия)
       body.classList.add("saving");
-      // СВОЯ моделька → обычный эндпоинт; ЧУЖАЯ и я админ → админ-эндпоинт по нику этого игрока
       var iAmOwner = _meAcc && canon(e.main_nick) === canon(_meAcc.main_nick);
-      var path = iAmOwner ? "/queue/model-variant" : "/queue/admin/model-variant-as";
+      var path = iAmOwner ? "/queue/model-variant" : "/queue/admin/model-variant-as";   // admin-as Лирия
       var pl = iAmOwner ? { key: tok } : { nick: e.main_nick || e.nick, key: tok };
       q("POST", path, pl).then(function (d) {
         if (iAmOwner) _myVariant = (d && d.variant) || "";
@@ -3075,7 +3080,8 @@
         alert(e2.status === 401 ? "Сессия истекла, войди заново." : ("Не удалось сменить облик: " + (e2.detail || e2.message)));
       });
     }
-    function go(i) { idx = ((i % vs.length) + vs.length) % vs.length; paint(); commit(vs[idx].key); }
+    // клик по стрелке/миниатюре: у владельца — переключает и применяет; у офицера/админа на чужой — только предпросмотр
+    function go(i) { idx = ((i % vs.length) + vs.length) % vs.length; paint(); if (canSwitch) commit(vs[idx].key); }
     body.querySelectorAll(".qs-msw-arw").forEach(function (a) {
       a.addEventListener("click", function () { go(idx + (+a.dataset.d)); });
     });
