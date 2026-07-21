@@ -1893,6 +1893,11 @@
       if (!t) return;
       cancelHide();
       _tipEl.innerHTML = t.getAttribute("data-tip");
+      // авто-обрезка прозрачных полей у портрета — чтобы моделька СТОЯЛА на пьедестале,
+      // а не «парила» при пустом пространстве снизу картинки. После обрезки — перепозиционируем.
+      autoCropAll(_tipEl, ".qtip-mdl");
+      var pim = _tipEl.querySelector(".qtip-mdl");
+      if (pim && !pim.complete) pim.addEventListener("load", function () { place(t); }, { once: true });
       // окно становится КЛИКАБЕЛЬНЫМ, только если внутри есть кнопка (смена облика) — иначе не мешает
       _tipEl.classList.toggle("interactive", !!_tipEl.querySelector(".qtip-skin"));
       place(t);
@@ -3173,10 +3178,11 @@
       t.innerHTML = '<img src="' + esc(v.url) + '"' + tf + ' alt=""><span>' + esc(v.label) + "</span>";
       thumbsEl.appendChild(t);
     });
+    autoCropAll(thumbsEl, "img");                          // обрезать прозрачные поля миниатюр
     function paint() {
       var v = vs[idx], ms = MODEL_SETTINGS[v.mkey] || {};
       img.style.transform = ms.flip ? "scaleX(-1)" : "";
-      img.src = v.url;
+      img.src = v.url; autoCropImg(img);                   // моделька стоит на пьедестале (без «парения»)
       if (picEl) picEl.classList.toggle("death", ms.aura === "death");   // зловещая дымка в превью
       label.innerHTML = '<b>' + esc(v.label) + "</b><span class='qs-msw-count'>" + (idx + 1) + " / " + vs.length + "</span>";
       [].forEach.call(thumbsEl.children, function (c, i) { c.classList.toggle("on", i === idx); });
