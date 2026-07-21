@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 import db
 import publisher
@@ -100,6 +101,11 @@ def _allowed_origins() -> list[str]:
             seen.append(o)
     return seen
 
+
+# СЖАТИЕ ответов (gzip) — критично: queue-scene.js ~466 КБ без сжатия. С gzip ~80–90 КБ,
+# раздел грузится в разы быстрее. Добавляем ПЕРВЫМ → в стеке Starlette окажется innermost и
+# сожмёт тело до того, как CORS/guard навесят заголовки (они тело не трогают).
+app.add_middleware(GZipMiddleware, minimum_size=700, compresslevel=6)
 
 app.add_middleware(
     CORSMiddleware,
