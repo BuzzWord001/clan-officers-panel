@@ -351,10 +351,14 @@
   // или админ-тест как Лирия!) и обликов несколько. Кнопка кликабельна (окно становится интерактивным).
   function tipHtml(e) {
     var out = tipBody(e);
-    // кнопка смены облика: своя моделька (игрок/админ-тест) ИЛИ любой админ (может менять всем)
-    if ((isMyModel(e) || _isAdmin) && modelVariants(e).length > 1)
-      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">🔄 Сменить облик' +
-        ((_isAdmin && !isMyModel(e)) ? " (админ)" : "") + "</button>";
+    // кнопка облика: своя моделька (игрок) ИЛИ офицер/админ (на любой). Открывает окно облика,
+    // где можно и переключить (если вариантов несколько), и загрузить новый.
+    if (isMyModel(e) || _isAdmin || _role === "officer") {
+      var many = modelVariants(e).length > 1;
+      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">' +
+        (many ? "🔄 Облик / загрузить" : "🖼 Загрузить облик") +
+        ((_role === "officer" || _isAdmin) && !isMyModel(e) ? " (офицер)" : "") + "</button>";
+    }
     return out;
   }
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
@@ -1100,6 +1104,20 @@
     ".qs-mm-h{font:800 13.5px Georgia,serif;color:#ffd98a;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid rgba(224,162,74,.25)}" +
     ".qs-mm-h:first-child{margin-top:0}" +
     ".qs-mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:9px}" +
+    // группировка персональных по человеку (раскрывающиеся блоки)
+    ".qs-mm-people{display:flex;flex-direction:column;gap:7px}" +
+    ".qs-mm-person{border:1px solid rgba(224,162,74,.22);border-radius:11px;background:rgba(224,162,74,.04);overflow:hidden}" +
+    ".qs-mm-person-sum{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;padding:9px 12px}" +
+    ".qs-mm-person-sum::-webkit-details-marker{display:none}" +
+    ".qs-mm-person-sum:hover{background:rgba(224,162,74,.1)}" +
+    ".qs-mm-person[open] .qs-mm-person-sum{border-bottom:1px solid rgba(224,162,74,.18)}" +
+    ".qs-mm-person-arr{font-size:14px;color:#e0a24a;transition:transform .18s}" +
+    ".qs-mm-person[open] .qs-mm-person-arr{transform:rotate(90deg)}" +
+    ".qs-mm-person-nm{font:800 13px Georgia,serif;color:#f6ead2;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-mm-person-n{font:700 10.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);border-radius:10px;padding:2px 8px}" +
+    ".qs-mm-person-add{margin-left:auto;cursor:pointer;font:800 11px system-ui;color:#0f2a12;border:0;border-radius:8px;padding:5px 10px;background:linear-gradient(180deg,#a8e6a0,#5aa84a)}" +
+    ".qs-mm-person-add:hover{filter:brightness(1.07)}" +
+    ".qs-mm-person .qs-mm-grid{margin:9px}" +
     ".qs-mm-card{display:flex;flex-direction:column;gap:6px;padding:9px;border-radius:11px;" +
       "background:rgba(255,220,150,.05);border:1px solid rgba(224,162,74,.25)}" +
     ".qs-mm-th{width:100%;height:110px;object-fit:contain;background:rgba(0,0,0,.25);border-radius:8px}" +
@@ -1539,6 +1557,11 @@
     ".qlreq-rej{color:#ffcdbf;background:rgba(180,70,55,.5);border:1px solid rgba(220,110,90,.6)}" +
     ".qlreq-btns button:hover{filter:brightness(1.08)}" +
     ".qlreq-note{background:linear-gradient(180deg,#1c2a18,#101609);border-color:rgba(126,196,106,.5)}" +
+    ".qlreq-issue{background:linear-gradient(180deg,#2e1c0c,#1a0f05);border-color:rgba(224,120,60,.6)}" +
+    ".qlreq-mrow{display:flex;gap:10px;align-items:center;margin-bottom:9px}" +
+    ".qlreq-mimg{width:66px;height:80px;object-fit:contain;flex:0 0 auto;border-radius:8px;background:repeating-conic-gradient(#241a10 0% 25%,#1a1208 0% 50%) 50%/14px 14px;" +
+      "filter:drop-shadow(0 3px 5px rgba(0,0,0,.5))}" +
+    ".qlreq-mrow .qlreq-tx{margin-bottom:0}" +
     ".qlreq-close{margin-left:auto;cursor:pointer;background:none;border:0;color:#8a795a;font-size:15px;line-height:1}" +
     // модалка связей
     ".qs-links{padding:8px 16px 14px;max-width:560px}" +
@@ -1581,7 +1604,9 @@
       "background:linear-gradient(180deg,#f3d489,#d09b2e);border-radius:11px;padding:2px 8px}" +
     ".qs-links-acc .qs-links-list{margin:8px 10px}" +
     ".qs-links-sublbl{font:700 10.5px system-ui;color:#8a795a;margin:8px 10px 2px;letter-spacing:.3px}" +
-    ".qs-links-autoi{font-size:12px;color:#c9b48f;padding:3px 10px}.qs-links-autoi b{color:#e7d6b7}.qs-links-autoi span{color:#8a795a}" +
+    ".qs-links-autoi{font-size:12px;color:#c9b48f;padding:4px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.qs-links-autoi b{color:#e7d6b7}.qs-links-autoi span{color:#8a795a}" +
+    ".qs-links-mini{cursor:pointer;font:700 10.5px system-ui;color:#f0dcb4;padding:2px 8px;border-radius:7px;border:1px solid rgba(224,162,74,.4);background:rgba(224,162,74,.1)}" +
+    ".qs-links-mini:hover{background:rgba(224,162,74,.2);color:#fff}.qs-links-autoi .qs-links-mini:first-of-type{margin-left:auto}" +
     // ── переключатель облика (модалка) ──
     ".qs-msw{padding:6px 14px 12px;max-width:440px}" +
     ".qs-msw.saving{opacity:.6;pointer-events:none}" +
@@ -1609,6 +1634,25 @@
     ".qs-msw-thumb span{position:absolute;left:0;right:0;bottom:0;padding:2px 2px 3px;font:700 8px system-ui;text-align:center;" +
       "color:#e7d6b7;background:linear-gradient(180deg,rgba(20,12,4,0),rgba(20,12,4,.92));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
     ".qs-msw-hint{margin-top:9px;font:600 11px system-ui;color:#9a8a68;text-align:center}" +
+    ".qs-msw-stage.single{justify-content:center}" +
+    ".qs-msw-upwrap{margin-top:12px;padding-top:11px;border-top:1px solid rgba(224,162,74,.2);display:flex;justify-content:center}" +
+    ".qs-msw-up{cursor:pointer;font:800 12.5px system-ui;color:#1b1006;border:0;border-radius:10px;padding:10px 16px;" +
+      "background:linear-gradient(180deg,#a8e6a0,#5aa84a);box-shadow:0 3px 10px rgba(0,0,0,.3)}" +
+    ".qs-msw-up.req{background:linear-gradient(180deg,#bfe0ff,#7fb4e0);color:#0f2233}" +
+    ".qs-msw-up:hover{filter:brightness(1.07)}" +
+    // диалог загрузки модельки
+    ".qs-upl{padding:8px 16px 14px;max-width:440px}" +
+    ".qs-upl-hint{font:600 11.5px/1.5 system-ui;color:#c9b48f;background:rgba(224,162,74,.1);border:1px solid rgba(224,162,74,.25);border-radius:9px;padding:8px 10px;margin-bottom:10px}" +
+    ".qs-upl-preview{position:relative;min-height:210px;display:flex;align-items:center;justify-content:center;border-radius:13px;overflow:hidden;" +
+      "background:radial-gradient(120% 80% at 50% 12%,rgba(255,210,130,.12),rgba(30,20,8,0) 60%),repeating-conic-gradient(#241a10 0% 25%,#1a1208 0% 50%) 50%/22px 22px}" +
+    ".qs-upl-empty{font:600 12px system-ui;color:#8a795a}" +
+    ".qs-upl-img{max-height:250px;max-width:100%;object-fit:contain;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}" +
+    ".qs-upl-tools{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}" +
+    ".qs-upl-btn{cursor:pointer;font:700 12px system-ui;color:#f0dcb4;padding:8px 12px;border-radius:9px;" +
+      "border:1px solid rgba(224,162,74,.45);background:rgba(224,162,74,.1)}" +
+    ".qs-upl-btn:hover{background:rgba(224,162,74,.2);color:#fff}.qs-upl-btn:disabled{opacity:.4;cursor:default}" +
+    ".qs-upl-st{min-height:16px;margin:8px 0 2px;font:600 11.5px system-ui;color:#e0a86a}" +
+    ".qs-upl-go{margin-top:6px}" +
     // кнопка «сменить облик» на модельке владельца (сцена/полоса) + в панели «Моя моделька»
     ".qs-skin-btn{position:absolute;z-index:30;cursor:pointer;border:0;border-radius:50%;width:26px;height:26px;font-size:14px;line-height:1;" +
       "background:radial-gradient(circle at 50% 35%,#ffe6a8,#e0a84a);color:#3a2600;box-shadow:0 2px 7px rgba(0,0,0,.5),0 0 0 2px rgba(30,18,4,.5);" +
@@ -2206,9 +2250,9 @@
         ? '<img class="qs-fl-res" src="' + resImg(rl[0]) + '" title="' + esc(rl.map(resName).join(", ")) + '" alt="">' +
           '<span class="qs-fl-rname">' + esc(resName(rl[0])) + (rl.length > 1 ? ' <b>+' + (rl.length - 1) + "</b>" : "") + "</span>"
         : '<span class="qs-fl-rname" style="opacity:.5">— ресурс не выбран</span>';
-      // кнопка смены облика — своя моделька (игрок/админ-тест) ИЛИ любой админ (меняет всем), если обликов несколько
-      var skinBtn = ((isMyModel(e) || _isAdmin) && modelVariants(e).length > 1)
-        ? '<button data-act="skin" class="skin" title="сменить облик модельки">🔄 облик</button>' : "";
+      // кнопка облика — своя моделька (игрок) ИЛИ офицер/админ (на любой): выбрать/загрузить
+      var skinBtn = (isMyModel(e) || _isAdmin || _role === "officer")
+        ? '<button data-act="skin" class="skin" title="облик / загрузить">🔄 облик</button>' : "";
       var ctrls = "";
       if (_isAdmin) {                                   // админ-управление записью
         ctrls = '<span class="qs-fl-adm">' +
@@ -2836,24 +2880,128 @@
     return box;
   }
 
+  // вырезать фон (клиентски): заливка от краёв цветом углов с порогом — для ровных фонов
+  function cutBgDataUrl(dataUrl, cb) {
+    var img = new Image();
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+      var ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0);
+      try { var id = ctx.getImageData(0, 0, w, h), d = id.data; } catch (er) { cb(null); return; }
+      function at(x, y) { var i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }
+      var cs = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)], bg = [0, 0, 0];
+      cs.forEach(function (c) { bg[0] += c[0]; bg[1] += c[1]; bg[2] += c[2]; });
+      bg = [bg[0] / 4, bg[1] / 4, bg[2] / 4];
+      var thr = 42, vis = new Uint8Array(w * h), stack = [];
+      function close(i) { return Math.abs(d[i] - bg[0]) < thr && Math.abs(d[i + 1] - bg[1]) < thr && Math.abs(d[i + 2] - bg[2]) < thr; }
+      function push(x, y) { if (x < 0 || y < 0 || x >= w || y >= h) return; var p = y * w + x; if (vis[p]) return; vis[p] = 1; if (close(p * 4)) stack.push(p); }
+      var x, y; for (x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+      while (stack.length) { var p = stack.pop(); d[p * 4 + 3] = 0; var xx = p % w, yy = (p / w) | 0; push(xx + 1, yy); push(xx - 1, yy); push(xx, yy + 1); push(xx, yy - 1); }
+      ctx.putImageData(id, 0, 0); cb(cv.toDataURL("image/webp", 0.9));
+    };
+    img.onerror = function () { cb(null); };
+    img.src = dataUrl;
+  }
+  function flipDataUrl(dataUrl, cb) {
+    var img = new Image();
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight, cv = document.createElement("canvas");
+      cv.width = w; cv.height = h; var ctx = cv.getContext("2d");
+      ctx.translate(w, 0); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0);
+      cb(cv.toDataURL("image/webp", 0.9));
+    };
+    img.onerror = function () { cb(null); };
+    img.src = dataUrl;
+  }
+  // диалог загрузки модельки: выбор файла → авто-оптимизация → вырезать фон / зеркало → отправка.
+  // mode 'direct' (офицер/админ грузит игроку), 'request' (игрок предлагает свою на подтверждение).
+  function openModelUploadDialog(opts, onDone) {
+    var isReq = opts.mode === "request";
+    var body = document.createElement("div"); body.className = "qs-upl";
+    body.innerHTML =
+      '<div class="qs-upl-hint">' + (isReq
+        ? "Выбери свою модельку (PNG/JPG/WebP, лучше с прозрачным/ровным фоном). Она уйдёт на подтверждение офицерам — после одобрения сможешь на неё переключиться."
+        : "Добавь игроку новый облик. Силой не применится — игрок сам переключится, если захочет.") + "</div>" +
+      '<div class="qs-upl-preview"><span class="qs-upl-empty">картинка не выбрана</span><img class="qs-upl-img" alt=""></div>' +
+      '<div class="qs-upl-tools">' +
+        '<button type="button" class="qs-upl-btn" id="qs-upl-pick">📁 Выбрать файл</button>' +
+        '<button type="button" class="qs-upl-btn" id="qs-upl-cut" disabled>✂ Вырезать фон</button>' +
+        '<button type="button" class="qs-upl-btn" id="qs-upl-mir" disabled>⇋ Зеркало</button>' +
+        '<button type="button" class="qs-upl-btn" id="qs-upl-reset" disabled>↺ Сброс</button>' +
+      "</div>" +
+      '<div class="qs-upl-st"></div>' +
+      '<button class="qs-join qs-upl-go" id="qs-upl-go" disabled>' + (isReq ? "Отправить на подтверждение" : "Загрузить игроку") + "</button>";
+    var m = sceneModal(isReq ? "📤 Предложить свою модельку" : ("📤 Загрузить облик" + (opts.nick ? " — «" + esc(opts.nick) + "»" : "")), body);
+    var img = body.querySelector(".qs-upl-img"), emptyEl = body.querySelector(".qs-upl-empty"),
+        st = body.querySelector(".qs-upl-st"), go = body.querySelector("#qs-upl-go");
+    var orig = null, cur = null, mir = false;
+    function setSt(t, ok) { st.textContent = t || ""; st.style.color = ok ? "#8fc36a" : "#e0a86a"; }
+    function render() {
+      if (cur) { img.src = cur; img.style.display = "block"; img.style.transform = mir ? "scaleX(-1)" : ""; emptyEl.style.display = "none"; }
+      else { img.style.display = "none"; emptyEl.style.display = "block"; }
+      ["qs-upl-cut", "qs-upl-mir", "qs-upl-reset"].forEach(function (id) { body.querySelector("#" + id).disabled = !cur; });
+      go.disabled = !cur;
+    }
+    body.querySelector("#qs-upl-pick").addEventListener("click", function () {
+      var f = document.createElement("input"); f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
+      f.addEventListener("change", function () {
+        var file = f.files[0]; if (!file) return; setSt("Обрабатываю…");
+        fileToDataURL(file, function (du) { optimizeDataUrl(du, function (opt) { orig = cur = (opt || du); mir = false; render(); setSt("✓ готово — можно вырезать фон и зеркалить", true); }); },
+          function (msg) { setSt(msg); });
+      });
+      f.click();
+    });
+    body.querySelector("#qs-upl-cut").addEventListener("click", function () {
+      if (!cur) return; setSt("Вырезаю фон…");
+      cutBgDataUrl(cur, function (out) { if (out) { cur = out; render(); setSt("✓ фон вырезан (если осталось лишнее — возьми файл с более ровным фоном)", true); } else setSt("Не удалось вырезать фон"); });
+    });
+    body.querySelector("#qs-upl-mir").addEventListener("click", function () { mir = !mir; render(); });
+    body.querySelector("#qs-upl-reset").addEventListener("click", function () { cur = orig; mir = false; render(); setSt(""); });
+    go.addEventListener("click", function () {
+      if (!cur) return; go.disabled = true; setSt("Отправляю…");
+      function send(dataUrl) {
+        var path = isReq ? "/queue/model-request" : "/queue/officer/model-upload";
+        var pl = isReq ? { key: "self", data: dataUrl } : { key: opts.nick, data: dataUrl };
+        q("POST", path, pl).then(function () {
+          if (m) m.close();
+          alert(isReq ? "✓ Отправлено офицерам на подтверждение. Как одобрят — сможешь переключиться на эту модельку."
+                      : "✓ Облик добавлен игроку — появится у него на выбор.");
+          if (onDone) onDone();
+        }).catch(function (e2) { go.disabled = false; setSt("Ошибка: " + (e2.detail || e2.message)); });
+      }
+      if (mir) flipDataUrl(cur, function (fl) { send(fl || cur); }); else send(cur);
+    });
+    render();
+  }
+
   // ── переключатель облика: крупный портрет + стрелки + миниатюры всех доступных вариантов ──
   // Открывается владельцем со своей модельки (наведение → кнопка) или из панели «Моя моделька».
   function openModelSwitcher(e) {
     var vs = modelVariants(e);
-    if (vs.length < 2) { alert("Пока доступна только одна моделька. Другие облики может добавить админ."); return; }
+    if (!vs.length) { alert("Модель не найдена."); return; }
     var curTok = currentVariantKey(e, vs);
     var idx = 0; for (var i0 = 0; i0 < vs.length; i0++) if (vs[i0].key === curTok) { idx = i0; break; }
     var busy = false;
+    var multi = vs.length > 1;
+    // роли для загрузки: офицер/админ грузят игроку напрямую (не меняя силой); владелец-игрок — на подтверждение
+    var iAmOwnerPlayer = _meAcc && canon(e.main_nick) === canon(_meAcc.main_nick);
+    var canDirect = _isAdmin || _role === "officer";
+    var upNick = e.main_nick || e.nick;
+    var upBtn = canDirect
+      ? '<button class="qs-msw-up" id="qs-msw-up">📤 Загрузить новый облик' + (iAmOwnerPlayer ? " себе" : ' игроку «' + esc(upNick) + '»') + "</button>"
+      : (iAmOwnerPlayer ? '<button class="qs-msw-up req" id="qs-msw-up">📤 Предложить свою модельку (на подтверждение офицерам)</button>' : "");
     var body = document.createElement("div"); body.className = "qs-msw";
     body.innerHTML =
-      '<div class="qs-msw-stage">' +
+      (multi ? '<div class="qs-msw-stage">' +
         '<button class="qs-msw-arw" data-d="-1" aria-label="назад">‹</button>' +
         '<div class="qs-msw-pic"><span class="qs-msw-shadow"></span><img class="qs-msw-img" alt=""></div>' +
         '<button class="qs-msw-arw" data-d="1" aria-label="вперёд">›</button>' +
-      "</div>" +
+      "</div>"
+      : '<div class="qs-msw-stage single"><div class="qs-msw-pic"><span class="qs-msw-shadow"></span><img class="qs-msw-img" alt=""></div></div>') +
       '<div class="qs-msw-label"></div>' +
       '<div class="qs-msw-thumbs"></div>' +
-      '<div class="qs-msw-hint">Выбери облик — применится в очереди сразу. Сменить можно в любой момент.</div>';
+      '<div class="qs-msw-hint">' + (multi ? "Выбери облик — применится в очереди сразу." : "Пока один облик. Можно добавить ещё ниже.") + "</div>" +
+      (upBtn ? '<div class="qs-msw-upwrap">' + upBtn + "</div>" : "");
     var img = body.querySelector(".qs-msw-img"), label = body.querySelector(".qs-msw-label"),
         thumbsEl = body.querySelector(".qs-msw-thumbs"), picEl = body.querySelector(".qs-msw-pic");
     vs.forEach(function (v, i) {
@@ -2895,7 +3043,12 @@
       var t = ev.target.closest(".qs-msw-thumb"); if (t) go(+t.dataset.i);
     });
     paint();
-    sceneModal("🧍 Моя моделька — выбери облик (" + vs.length + ")", body);
+    var m = sceneModal("🧍 Облик игрока «" + esc(upNick) + "»" + (multi ? " — выбери (" + vs.length + ")" : ""), body);
+    var up = body.querySelector("#qs-msw-up");
+    if (up) up.addEventListener("click", function () {
+      openModelUploadDialog(canDirect ? { mode: "direct", nick: upNick, own: iAmOwnerPlayer } : { mode: "request" },
+        function () { if (m) m.close(); refresh(); });
+    });
   }
   // псевдо-запись для владельца (когда открываем переключатель из панели, а не с модельки в очереди)
   function myEntryLike() {
@@ -4233,8 +4386,12 @@
       }).catch(function () { cb(); });
     }
     function nickByCanon(cn) {
-      var p = (_roster || []).filter(function (r) { return canon(r.nick) === cn || canon(r.main_nick || "") === cn; })[0];
-      return p ? p.nick : cn;
+      // предпочитаем МЭЙН-ник (не твина): сначала запись, чей ник == канон и НЕ твин; затем чей мэйн == канон.
+      var list = (_roster || []).filter(function (r) { return canon(r.nick) === cn || canon(r.main_nick || "") === cn; });
+      var main = list.filter(function (r) { return !r.is_twin && canon(r.main_nick || r.nick) === cn; })[0]
+              || list.filter(function (r) { return canon(r.main_nick || "") === cn; })[0]
+              || list[0];
+      return main ? (main.main_nick || main.nick) : cn;
     }
     function pickFile(onData, stEl) {
       var f = document.createElement("input"); f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
@@ -4393,23 +4550,46 @@
         });
       });
       body.appendChild(add);
-      // встроенные (PERSONAL_SRC) + загруженные (person-<canon> и слоты --N) — КАЖДЫЙ вариант отдельной карточкой
-      var persMap = {};   // uploadKey -> карточка
-      Object.keys(PERSONAL_SRC).forEach(function (name) {
-        var cn = canon(name), uk = "person-" + cn;
-        persMap[uk] = { uploadKey: uk, staticKey: "personal/" + PERSONAL_SRC[name], title: name, kind: "person" };
-      });
+      // ГРУППИРОВКА по человеку (канону мэйна): у каждого — раскрывающийся блок со всеми его обликами,
+      // а не куча вперемешку. Встроенные (PERSONAL_SRC) + загруженные (person-<canon> и слоты --N).
+      function addModelForCanon(cn) {
+        var base = "person-" + cn, key, n = 2;
+        if (!UPLOADED[base] && !PERSONAL[cn]) key = base;
+        else { while (UPLOADED[base + "--" + n]) n++; key = base + "--" + n; }
+        pickFile(function (data) {
+          q("POST", "/queue/admin/model-upload", { key: key, data: data })
+            .then(function () { UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild); });
+        });
+      }
+      var groups = {};   // canon -> { title, keys:[{uploadKey,staticKey}] }
+      function addKey(cn, uk, staticKey) {
+        if (!groups[cn]) groups[cn] = { title: nickByCanon(cn), keys: [] };
+        if (!groups[cn].keys.some(function (x) { return x.uploadKey === uk; })) groups[cn].keys.push({ uploadKey: uk, staticKey: staticKey });
+      }
+      Object.keys(PERSONAL_SRC).forEach(function (name) { var cn = canon(name); addKey(cn, "person-" + cn, "personal/" + PERSONAL_SRC[name]); });
       Object.keys(UPLOADED).filter(function (k) { return k.indexOf("person-") === 0; }).forEach(function (k) {
-        var mm = k.match(/^person-(.+?)(?:--(\d+))?$/);
-        var cn = mm ? mm[1] : k.slice(7), slot = (mm && mm[2]) ? mm[2] : "";
-        if (!persMap[k]) persMap[k] = { uploadKey: k, staticKey: null,
-          title: nickByCanon(cn) + (slot ? " · вариант " + slot : ""), kind: "person" };
+        var mm = k.match(/^person-(.+?)(?:--\d+)?$/); addKey(mm ? mm[1] : k.slice(7), k, null);
       });
-      var g2 = document.createElement("div"); g2.className = "qs-mm-grid";
-      var pk = Object.keys(persMap);
-      if (!pk.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей нет — добавь по нику выше."; g2.appendChild(e); }
-      pk.sort(function (a, b) { return persMap[a].title.localeCompare(persMap[b].title, "ru"); })
-        .forEach(function (uk) { var o = persMap[uk]; o.sub = "персональная"; g2.appendChild(card(o)); });
+      var g2 = document.createElement("div"); g2.className = "qs-mm-people";
+      var gk = Object.keys(groups);
+      if (!gk.length) { var e = document.createElement("div"); e.className = "qs-mm-empty"; e.textContent = "Персональных моделей нет — добавь по нику выше."; g2.appendChild(e); }
+      gk.sort(function (a, b) { return groups[a].title.localeCompare(groups[b].title, "ru"); }).forEach(function (cn) {
+        var g = groups[cn];
+        var det = document.createElement("details"); det.className = "qs-mm-person";
+        var sum = document.createElement("summary"); sum.className = "qs-mm-person-sum";
+        sum.innerHTML = '<span class="qs-mm-person-arr">▸</span><b class="qs-mm-person-nm">' + esc(g.title) + "</b>" +
+          '<span class="qs-mm-person-n">' + g.keys.length + " обл.</span>" +
+          '<button class="qs-mm-person-add" type="button" title="добавить облик этому игроку">➕ ещё</button>';
+        det.appendChild(sum);
+        var grid = document.createElement("div"); grid.className = "qs-mm-grid";
+        g.keys.forEach(function (kk, i) {
+          grid.appendChild(card({ uploadKey: kk.uploadKey, staticKey: kk.staticKey,
+            title: g.title + (i > 0 ? " · вариант " + (i + 1) : ""), kind: "person", sub: "персональная" }));
+        });
+        det.appendChild(grid);
+        sum.querySelector(".qs-mm-person-add").addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); addModelForCanon(cn); });
+        g2.appendChild(det);
+      });
       body.appendChild(g2);
     }
     loadInfo(rebuild);
@@ -4807,15 +4987,25 @@
           row.appendChild(delBtn(function () { saveTw(it.twin_nick, ""); }));
           twList.appendChild(row);
         });
-        twAuto.innerHTML = auto.length
-          ? auto.map(function (it) { return '<div class="qs-links-autoi"><b>' + esc(it.twin_nick) + '</b> <span>— твин мэйна</span> ' + esc(it.main_nick) + "</div>"; }).join("")
-          : '<span class="qs-links-empty">Авто-твинов нет.</span>';
+        twAuto.innerHTML = "";
+        if (!auto.length) { twAuto.innerHTML = '<span class="qs-links-empty">Авто-твинов нет.</span>'; }
+        else auto.forEach(function (it) {
+          var row = document.createElement("div"); row.className = "qs-links-autoi";
+          row.innerHTML = "<b>" + esc(it.twin_nick) + '</b> <span>— твин мэйна</span> ' + esc(it.main_nick);
+          var fix = document.createElement("button"); fix.className = "sec qs-links-mini"; fix.textContent = "✎ исправить"; fix.title = "переназначить мэйна";
+          fix.addEventListener("click", function () { body.querySelector("#qlk-tw-nick").value = it.twin_nick; body.querySelector("#qlk-tw-main").value = ""; body.querySelector("#qlk-tw-main").focus(); });
+          var mm = document.createElement("button"); mm.className = "sec qs-links-mini"; mm.textContent = "это мэйн"; mm.title = "снять авто-твин — это отдельный мэйн";
+          mm.addEventListener("click", function () { if (confirm("Отметить «" + it.twin_nick + "» как отдельный МЭЙН (снять авто-твин)?")) saveTw(it.twin_nick, it.twin_nick); });
+          row.appendChild(fix); row.appendChild(mm);
+          twAuto.appendChild(row);
+        });
       }).catch(function (e) { status("Твины не загрузились: " + (e.detail || e.message)); });
     }
     function saveTw(nick, main) {
+      var forceMain = main && canon(main) === canon(nick);
       q("POST", "/queue/twin", { nick: nick, main_nick: main }).then(function () {
-        status(main ? ("✓ " + nick + " → мэйн " + main) : ("Связь снята: " + nick), true); reloadTw(); afterChange();
-      }).catch(function (e) { status(e.status === 400 ? "Нельзя привязать к самому себе / нет мэйна." : e.status === 404 ? "Ник не найден." : e.status === 403 ? "Нужны права офицера/админа." : ("Ошибка: " + (e.detail || e.message))); });
+        status(forceMain ? ("✓ «" + nick + "» отмечен как мэйн") : main ? ("✓ " + nick + " → мэйн " + main) : ("Связь снята: " + nick), true); reloadTw(); afterChange();
+      }).catch(function (e) { status(e.status === 400 ? "Не удалось (проверь ник мэйна)." : e.status === 404 ? "Ник не найден." : e.status === 403 ? "Нужны права офицера/админа." : ("Ошибка: " + (e.detail || e.message))); });
     }
     body.querySelector("#qlk-tw-save").addEventListener("click", function () {
       var n = body.querySelector("#qlk-tw-nick").value.trim(), m = body.querySelector("#qlk-tw-main").value.trim();
@@ -5426,8 +5616,51 @@
     });
     qlHost().appendChild(el); _qlShown[id] = el;
   }
+  function renderModelReqCard(r) {
+    var id = "mr" + r.id;
+    if (_qlShown[id]) return;
+    var el = document.createElement("div"); el.className = "qlreq";
+    var src = API + "/queue/model-img/" + encodeURIComponent(r.img_key);
+    el.innerHTML = '<div class="qlreq-h">🖼 Модель на подтверждение<button class="qlreq-close">✕</button></div>' +
+      '<div class="qlreq-mrow"><img class="qlreq-mimg" src="' + esc(src) + '" alt="">' +
+        '<div class="qlreq-tx"><b>' + esc(r.nick) + '</b> предлагает свою модельку. Одобрить?</div></div>' +
+      '<div class="qlreq-btns"><button class="qlreq-tw" data-d="approve">✓ Одобрить</button>' +
+      '<button class="qlreq-rej" data-d="reject">✕ Отклонить</button></div>';
+    el.querySelector(".qlreq-close").addEventListener("click", function () { el.remove(); delete _qlShown[id]; });
+    el.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-d]"); if (!b) return;
+      el._deciding = true; el.querySelectorAll("button").forEach(function (x) { x.disabled = true; });
+      q("POST", "/queue/model-request/decide", { id: r.id, decision: b.dataset.d }).then(function (res) {
+        _qlDecidedSeen[id] = 1;
+        el.querySelector(".qlreq-tx").innerHTML = (res && res.already)
+          ? ('Уже решил офицер <b>' + esc(res.decided_by) + '</b>.')
+          : (res.status === "approved" ? "✓ Одобрено — игрок сможет переключиться." : "Отклонено.");
+        var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
+        var mr = el.querySelector(".qlreq-mimg"); if (mr) mr.remove();
+        setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; }, 2600);
+      }).catch(function (e2) { el._deciding = false; el.querySelectorAll("button").forEach(function (x) { x.disabled = false; }); alert("Ошибка: " + (e2.detail || e2.message)); });
+    });
+    qlHost().appendChild(el); _qlShown[id] = el;
+  }
+  function renderIssueNote(iss) {
+    var id = "iss" + iss.canon;
+    if (_qlShown[id]) return;
+    var el = document.createElement("div"); el.className = "qlreq qlreq-issue";
+    el.innerHTML = '<div class="qlreq-h">⚠ Противоречие в связях<button class="qlreq-close">✕</button></div>' +
+      '<div class="qlreq-tx"><b>' + esc(iss.nick) + '</b> помечен твином <b>' + esc(iss.main_nick) + '</b>, но сам числится мэйном для: ' +
+        esc((iss.also_main_of || []).join(", ")) + '. Похоже, направление связи перепутано — разрули.</div>' +
+      '<div class="qlreq-btns"><button class="qlreq-tw" data-a="fix">⚙ Открыть связи</button>' +
+      '<button class="qlreq-rej" data-a="hide">Скрыть</button></div>';
+    el.querySelector(".qlreq-close").addEventListener("click", function () { el.remove(); delete _qlShown[id]; });
+    el.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-a]"); if (!b) return;
+      if (b.dataset.a === "fix") openLinksManager(function () { refresh(); });
+      el.remove(); delete _qlShown[id];
+    });
+    qlHost().appendChild(el); _qlShown[id] = el;
+  }
   function pollLinks() {
-    // игрок: узнать, что офицер решил по МОИМ запросам
+    // игрок: решения по МОИМ запросам связи
     q("GET", "/queue/link-requests/mine").then(function (d) {
       (d.requests || []).forEach(function (r) {
         if (r.status === "pending") return;
@@ -5437,29 +5670,51 @@
           : ('офицер <b>' + esc(r.decided_by) + '</b> отклонил связь с <b>' + esc(r.target_nick) + '</b>.'));
       });
     }).catch(function () {});
-    // офицер/админ: ожидающие + недавно решённые
-    if (_isAdmin || _role === "officer") {
-      q("GET", "/queue/link-requests").then(function (d) {
-        var pending = {};
-        (d.requests || []).forEach(function (r) { pending["r" + r.id] = 1; renderReqCard(r); });
-        // решённые кем-то другим → у меня окошко сменить на «офицер X …» и убрать
-        (d.decided || []).forEach(function (r) {
-          var id = "r" + r.id;
-          if (_qlDecidedSeen[id]) return;
-          if (_qlShown[id]) {
-            _qlDecidedSeen[id] = 1;
-            var el = _qlShown[id];
-            el.querySelector(".qlreq-tx").innerHTML = 'Офицер <b>' + esc(r.decided_by) + '</b> уже отметил: ' + statusRu(r.status) + ".";
-            var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
-            setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; }, 2600);
-          }
-        });
-        // убрать окошки, которых больше нет ни в pending, ни в decided (устарели)
-        Object.keys(_qlShown).forEach(function (id) {
-          if (!pending[id] && !_qlDecidedSeen[id]) { var c = _qlShown[id]; if (c && !c._deciding) { c.remove(); delete _qlShown[id]; } }
-        });
-      }).catch(function () {});
-    }
+    // игрок: решения по МОИМ моделькам
+    q("GET", "/queue/model-requests/mine").then(function (d) {
+      (d.requests || []).forEach(function (r) {
+        if (r.status === "pending") return;
+        var key = "mm" + r.id + r.status; if (_qlSeenMine[key]) return; _qlSeenMine[key] = 1;
+        qlNote(r.status === "approved" ? ('офицер <b>' + esc(r.decided_by) + '</b> одобрил твою модельку — переключись на неё кнопкой облика.')
+          : ('офицер <b>' + esc(r.decided_by) + '</b> отклонил предложенную модельку.'));
+      });
+    }).catch(function () {});
+    if (!(_isAdmin || _role === "officer")) return;
+    // офицер/админ: запросы связей + модельки + противоречия
+    q("GET", "/queue/link-requests").then(function (d) {
+      var pending = {};
+      (d.requests || []).forEach(function (r) { pending["r" + r.id] = 1; renderReqCard(r); });
+      (d.decided || []).forEach(function (r) {
+        var id = "r" + r.id; if (_qlDecidedSeen[id]) return;
+        if (_qlShown[id]) {
+          _qlDecidedSeen[id] = 1; var el = _qlShown[id];
+          el.querySelector(".qlreq-tx").innerHTML = 'Офицер <b>' + esc(r.decided_by) + '</b> уже отметил: ' + statusRu(r.status) + ".";
+          var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
+          setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; }, 2600);
+        }
+      });
+      (d.issues || []).forEach(function (iss) { renderIssueNote(iss); });
+      Object.keys(_qlShown).forEach(function (id) {
+        if (id.charAt(0) === "r" && !pending[id] && !_qlDecidedSeen[id]) { var c = _qlShown[id]; if (c && !c._deciding) { c.remove(); delete _qlShown[id]; } }
+      });
+    }).catch(function () {});
+    q("GET", "/queue/model-requests").then(function (d) {
+      var pend = {};
+      (d.requests || []).forEach(function (r) { pend["mr" + r.id] = 1; renderModelReqCard(r); });
+      (d.decided || []).forEach(function (r) {
+        var id = "mr" + r.id; if (_qlDecidedSeen[id]) return;
+        if (_qlShown[id]) {
+          _qlDecidedSeen[id] = 1; var el = _qlShown[id];
+          el.querySelector(".qlreq-tx").innerHTML = 'Офицер <b>' + esc(r.decided_by) + '</b> уже ' + (r.status === "approved" ? "одобрил" : "отклонил") + " модельку.";
+          var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
+          var mr = el.querySelector(".qlreq-mimg"); if (mr) mr.remove();
+          setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; }, 2600);
+        }
+      });
+      Object.keys(_qlShown).forEach(function (id) {
+        if (id.indexOf("mr") === 0 && !pend[id] && !_qlDecidedSeen[id]) { var c = _qlShown[id]; if (c && !c._deciding) { c.remove(); delete _qlShown[id]; } }
+      });
+    }).catch(function () {});
   }
   function startLinkPolling() {
     if (_qlPollT) return;

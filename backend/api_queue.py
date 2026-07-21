@@ -199,6 +199,19 @@ def ensure_queue_tables() -> None:
               created_at   TEXT NOT NULL DEFAULT ''
             );
 
+            -- Запросы игроков на ПОДТВЕРЖДЕНИЕ новой ПЕРСОНАЛЬНОЙ модельки офицером/админом.
+            -- Картинка складывается на том как 'mreq-<id>', при одобрении переносится в слот игрока.
+            CREATE TABLE IF NOT EXISTS queue_model_requests (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              main_canon  TEXT NOT NULL DEFAULT '',    -- чей мэйн-аккаунт (кому модель)
+              nick        TEXT NOT NULL DEFAULT '',    -- отображаемый ник просителя
+              img_key     TEXT NOT NULL DEFAULT '',    -- временный ключ картинки на томе (mreq-<id>)
+              status      TEXT NOT NULL DEFAULT 'pending',  -- pending|approved|rejected
+              decided_by  TEXT NOT NULL DEFAULT '',
+              decided_at  TEXT NOT NULL DEFAULT '',
+              created_at  TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS queue_reports (
               id         INTEGER PRIMARY KEY AUTOINCREMENT,
               created_at TEXT NOT NULL,              -- когда финализировали неделю (ISO)
@@ -1709,20 +1722,42 @@ def link_request(payload: LinkRequestIn, request: Request) -> dict:
         return {"ok": True, "id": cur.lastrowid}
 
 
+def _link_issues(idx) -> list:
+    """Логические противоречия в связях (для уведомлений офицерам/админу):
+    аккаунт помечен ТВИНОМ, но при этом сам является МЭЙНОМ для других (кто-то указывает на него).
+    Напр. если у LiXin в титуле мэйн Мortаlitу, а у кого-то ещё мэйн LiXin — это надо разрулить."""
+    is_main_of: dict[str, list] = {}
+    for cn, p in idx.items():
+        if p.get("is_twin") and p.get("main_canon"):
+            is_main_of.setdefault(p["main_canon"], []).append(p.get("nick", cn))
+    issues = []
+    for cn, p in idx.items():
+        if p.get("is_twin") and cn in is_main_of:
+            issues.append({
+                "nick": p.get("nick", cn),
+                "main_nick": p.get("main_nick", ""),          # чьим твином помечен
+                "also_main_of": is_main_of[cn][:6],           # но сам мэйн для этих
+                "canon": cn,
+            })
+    return issues[:20]
+
+
 @router.get("/link-requests")
 def link_requests(_: dict = Depends(require_officer_or_admin)) -> dict:
-    """Для офицеров/админа: ожидающие запросы (боковые окошки) + недавно решённые (чтобы у всех
-    окошко сменилось на «офицер X подтвердил/отклонил» и пропало)."""
+    """Для офицеров/админа: ожидающие запросы (боковые окошки) + недавно решённые + логические
+    противоречия связей (twin-but-also-main), чтобы офицеры их исправили."""
     import datetime as _dt
     cutoff = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=3)).isoformat(timespec="seconds")
     with db.connection() as conn:
+        idx = _people(conn)
         pend = conn.execute(
             "SELECT id, from_nick, target_nick, created_at FROM queue_link_requests"
             " WHERE status='pending' ORDER BY id").fetchall()
         dec = conn.execute(
             "SELECT id, from_nick, target_nick, status, decided_by, decided_at FROM queue_link_requests"
             " WHERE status!='pending' AND decided_at>=? ORDER BY id", (cutoff,)).fetchall()
-    return {"requests": [dict(r) for r in pend], "decided": [dict(r) for r in dec]}
+    return {"requests": [dict(r) for r in pend], "decided": [dict(r) for r in dec],
+            "issues": _link_issues(idx)}
 
 
 @router.get("/link-requests/mine")
@@ -1922,6 +1957,149 @@ def model_upload(payload: ModelUploadIn, request: Request, actor: dict = Depends
         _log(conn, "model_upload", actor=_actor_name(actor), request=request,
              detail=key + " (%d КБ)" % (len(raw) // 1024))
     return {"ok": True, "key": key}
+
+
+def _save_model_image(key: str, data_url: str) -> str:
+    """Сохранить dataURL-картинку под ключом на томе. Возвращает key или бросает HTTPException."""
+    key = _safe_key(key)
+    if not key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_key")
+    m = re.match(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", data_url or "", re.S)
+    if not m:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_image")
+    try:
+        raw = base64.b64decode(m.group(2), validate=True)
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_base64")
+    if len(raw) > 5_000_000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "too_big")
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    for old in _UPLOAD_DIR.glob(key + ".*"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    (_UPLOAD_DIR / (key + "." + _IMG_EXT[m.group(1)])).write_bytes(raw)
+    return key
+
+
+def _uploaded_keys() -> set:
+    out = set()
+    if _UPLOAD_DIR.exists():
+        for f in _UPLOAD_DIR.glob("*.*"):
+            out.add(f.stem)
+    return out
+
+
+def _next_person_slot(canon: str, extra_taken: set | None = None) -> str:
+    """Следующий свободный слот персональной модели: person-<canon>, затем --2, --3…"""
+    base = "person-" + canon
+    taken = _uploaded_keys()
+    if extra_taken:
+        taken |= extra_taken
+    if base not in taken:
+        return base
+    n = 2
+    while (base + "--" + str(n)) in taken:
+        n += 1
+    return base + "--" + str(n)
+
+
+@router.post("/officer/model-upload")
+def officer_model_upload(payload: ModelUploadIn, request: Request,
+                         actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Офицер/админ добавляет игроку ЕЩЁ ОДНУ персональную модельку (новый слот) — НЕ меняет
+    силой: игрок сам переключится, если захочет. key = ник игрока (не сырой ключ)."""
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(payload.key))
+        cn = p["main_canon"] if p else db._valor_canon(payload.key)
+        nick = p["nick"] if p else payload.key.strip()
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        slot = _next_person_slot(cn)
+        _save_model_image(slot, payload.data)
+        _log(conn, "officer_model_upload", actor=_actor_name(actor), nick=nick, request=request,
+             detail="добавил облик игроку → " + slot)
+    return {"ok": True, "key": slot}
+
+
+@router.post("/model-request")
+def model_request(payload: ModelUploadIn, request: Request) -> dict:
+    """Игрок предлагает СВОЮ персональную модельку — уходит на подтверждение офицеру/админу.
+    Картинка сохраняется во временный ключ mreq-<id>; при одобрении переносится в слот игрока."""
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        cn, nick = acc["main_canon"], (acc["main_nick"] or acc["reg_nick"])
+        cur = conn.execute(
+            "INSERT INTO queue_model_requests (main_canon, nick, img_key, status, created_at)"
+            " VALUES (?,?,?, 'pending', ?)", (cn, nick, "", _now()))
+        rid = cur.lastrowid
+        img_key = _save_model_image("mreq-" + str(rid), payload.data)
+        conn.execute("UPDATE queue_model_requests SET img_key=? WHERE id=?", (img_key, rid))
+        _log(conn, "model_request", actor=nick, nick=nick, request=request, detail="предложил модельку")
+    return {"ok": True, "id": rid}
+
+
+@router.get("/model-requests")
+def model_requests(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Для офицеров/админа: ожидающие модельки + недавно решённые (для боковых окошек)."""
+    import datetime as _dt
+    cutoff = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=3)).isoformat(timespec="seconds")
+    with db.connection() as conn:
+        pend = conn.execute(
+            "SELECT id, nick, img_key, created_at FROM queue_model_requests"
+            " WHERE status='pending' ORDER BY id").fetchall()
+        dec = conn.execute(
+            "SELECT id, nick, status, decided_by, decided_at FROM queue_model_requests"
+            " WHERE status!='pending' AND decided_at>=? ORDER BY id", (cutoff,)).fetchall()
+    return {"requests": [dict(r) for r in pend], "decided": [dict(r) for r in dec]}
+
+
+@router.get("/model-requests/mine")
+def model_requests_mine(request: Request) -> dict:
+    out = []
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if acc:
+            for r in conn.execute(
+                    "SELECT id, status, decided_by FROM queue_model_requests"
+                    " WHERE main_canon=? ORDER BY id DESC LIMIT 8", (acc["main_canon"],)):
+                out.append(dict(r))
+    return {"requests": out}
+
+
+@router.post("/model-request/decide")
+def model_request_decide(payload: LinkDecideIn, request: Request,
+                         actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Офицер/админ одобряет (переносит картинку в слот игрока) или отклоняет предложенную модельку."""
+    who = _actor_name(actor)
+    approve = payload.decision != "reject"
+    with db.connection() as conn:
+        row = conn.execute("SELECT * FROM queue_model_requests WHERE id=?", (payload.id,)).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        if row["status"] != "pending":
+            return {"ok": True, "already": True, "status": row["status"], "decided_by": row["decided_by"]}
+        img_key = row["img_key"]
+        files = sorted(_UPLOAD_DIR.glob(img_key + ".*")) if (img_key and _UPLOAD_DIR.exists()) else []
+        if approve and files:
+            slot = _next_person_slot(row["main_canon"])
+            src = files[0]
+            (_UPLOAD_DIR / (slot + src.suffix)).write_bytes(src.read_bytes())
+            new_status = "approved"
+        else:
+            new_status = "rejected" if not approve else "approved"
+        for f in files:                                 # временный файл больше не нужен
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        conn.execute("UPDATE queue_model_requests SET status=?, decided_by=?, decided_at=?, img_key='' WHERE id=?",
+                     (new_status, who, _now(), payload.id))
+        _log(conn, "model_decide", actor=who, nick=row["nick"], request=request, detail=new_status)
+    return {"ok": True, "status": new_status, "decided_by": who}
 
 
 @router.post("/admin/model-delete")
