@@ -1651,7 +1651,8 @@
     ".qs-upl-btn{cursor:pointer;font:700 12px system-ui;color:#f0dcb4;padding:8px 12px;border-radius:9px;" +
       "border:1px solid rgba(224,162,74,.45);background:rgba(224,162,74,.1)}" +
     ".qs-upl-btn:hover{background:rgba(224,162,74,.2);color:#fff}.qs-upl-btn:disabled{opacity:.4;cursor:default}" +
-    ".qs-upl-st{min-height:16px;margin:8px 0 2px;font:600 11.5px system-ui;color:#e0a86a}" +
+    ".qs-upl-size{margin:7px 0 0;font:600 11px system-ui;color:#8fc36a}" +
+    ".qs-upl-st{min-height:16px;margin:4px 0 2px;font:600 11.5px system-ui;color:#e0a86a}" +
     ".qs-upl-go{margin-top:6px}" +
     // кнопка «сменить облик» на модельке владельца (сцена/полоса) + в панели «Моя моделька»
     ".qs-skin-btn{position:absolute;z-index:30;cursor:pointer;border:0;border-radius:50%;width:26px;height:26px;font-size:14px;line-height:1;" +
@@ -2880,24 +2881,51 @@
     return box;
   }
 
-  // вырезать фон (клиентски): заливка от краёв цветом углов с порогом — для ровных фонов
+  // вырезать фон (клиентски, best-practice для ровных/хромакей-фонов):
+  //  1) цвет фона = МЕДИАНА пикселей по краю (устойчиво к шуму/пятнам);
+  //  2) заливка от краёв только по связному фону (пламя/детали ВНУТРИ модели не трогаем);
+  //  3) РАСТУШЁВКА края (частичная прозрачность) — без резкого ореола;
+  //  4) ДЕСПИЛЛ зелёного перелива у краёв (если фон зелёный хромакей).
   function cutBgDataUrl(dataUrl, cb) {
     var img = new Image();
     img.onload = function () {
       var w = img.naturalWidth, h = img.naturalHeight;
       var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-      var ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0);
-      try { var id = ctx.getImageData(0, 0, w, h), d = id.data; } catch (er) { cb(null); return; }
-      function at(x, y) { var i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }
-      var cs = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)], bg = [0, 0, 0];
-      cs.forEach(function (c) { bg[0] += c[0]; bg[1] += c[1]; bg[2] += c[2]; });
-      bg = [bg[0] / 4, bg[1] / 4, bg[2] / 4];
-      var thr = 42, vis = new Uint8Array(w * h), stack = [];
-      function close(i) { return Math.abs(d[i] - bg[0]) < thr && Math.abs(d[i + 1] - bg[1]) < thr && Math.abs(d[i + 2] - bg[2]) < thr; }
-      function push(x, y) { if (x < 0 || y < 0 || x >= w || y >= h) return; var p = y * w + x; if (vis[p]) return; vis[p] = 1; if (close(p * 4)) stack.push(p); }
-      var x, y; for (x = 0; x < w; x++) { push(x, 0); push(x, h - 1); } for (y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
-      while (stack.length) { var p = stack.pop(); d[p * 4 + 3] = 0; var xx = p % w, yy = (p / w) | 0; push(xx + 1, yy); push(xx - 1, yy); push(xx, yy + 1); push(xx, yy - 1); }
-      ctx.putImageData(id, 0, 0); cb(cv.toDataURL("image/webp", 0.9));
+      var ctx = cv.getContext("2d", { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
+      var id, d; try { id = ctx.getImageData(0, 0, w, h); d = id.data; } catch (er) { cb(null); return; }
+      var rs = [], gs = [], bs = [], step = Math.max(1, Math.floor(Math.min(w, h) / 90));
+      function samp(x, y) { var i = (y * w + x) * 4; rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]); }
+      var x, y;
+      for (x = 0; x < w; x += step) { samp(x, 0); samp(x, h - 1); }
+      for (y = 0; y < h; y += step) { samp(0, y); samp(w - 1, y); }
+      function med(a) { a.sort(function (p, q) { return p - q; }); return a[a.length >> 1]; }
+      var br = med(rs), bgc = med(gs), bb = med(bs);
+      var greenBg = bgc > br + 25 && bgc > bb + 25;   // зелёный хромакей?
+      function dist(i) { var dr = d[i] - br, dg = d[i + 1] - bgc, db = d[i + 2] - bb; return Math.sqrt(dr * dr + dg * dg + db * db); }
+      var hard = greenBg ? 95 : 72, soft = hard + 72;
+      var vis = new Uint8Array(w * h), st = [];
+      function push(px, py) { if (px < 0 || py < 0 || px >= w || py >= h) return; var p = py * w + px; if (vis[p]) return; vis[p] = 1; if (dist(p * 4) < soft) st.push(p); }
+      for (x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+      for (y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+      while (st.length) {
+        var p = st.pop(), i = p * 4, dd = dist(i);
+        if (dd < hard) d[i + 3] = 0;
+        else { var a = Math.round(((dd - hard) / (soft - hard)) * 255); if (a < d[i + 3]) d[i + 3] = a; }
+        var xx = p % w, yy = (p / w) | 0; push(xx + 1, yy); push(xx - 1, yy); push(xx, yy + 1); push(xx, yy - 1);
+      }
+      if (greenBg) {                                   // деспилл: убрать зелёный ореол ТОЛЬКО у краёв
+        for (var q = 0; q < w * h; q++) {
+          var j = q * 4; if (d[j + 3] === 0) continue;
+          var edge = d[j + 3] < 255;
+          if (!edge) {
+            var ex = q % w, ey = (q / w) | 0;
+            edge = (ex > 0 && d[(q - 1) * 4 + 3] === 0) || (ex < w - 1 && d[(q + 1) * 4 + 3] === 0) ||
+                   (ey > 0 && d[(q - w) * 4 + 3] === 0) || (ey < h - 1 && d[(q + w) * 4 + 3] === 0);
+          }
+          if (edge) { var mx = Math.max(d[j], d[j + 2]); if (d[j + 1] > mx) d[j + 1] = mx; }
+        }
+      }
+      ctx.putImageData(id, 0, 0); cb(cv.toDataURL("image/webp", 0.92));
     };
     img.onerror = function () { cb(null); };
     img.src = dataUrl;
@@ -2927,33 +2955,45 @@
         '<button type="button" class="qs-upl-btn" id="qs-upl-pick">📁 Выбрать файл</button>' +
         '<button type="button" class="qs-upl-btn" id="qs-upl-cut" disabled>✂ Вырезать фон</button>' +
         '<button type="button" class="qs-upl-btn" id="qs-upl-mir" disabled>⇋ Зеркало</button>' +
+        '<button type="button" class="qs-upl-btn" id="qs-upl-opt" disabled>🗜 Оптимизировать</button>' +
         '<button type="button" class="qs-upl-btn" id="qs-upl-reset" disabled>↺ Сброс</button>' +
       "</div>" +
+      '<div class="qs-upl-size" id="qs-upl-size"></div>' +
       '<div class="qs-upl-st"></div>' +
       '<button class="qs-join qs-upl-go" id="qs-upl-go" disabled>' + (isReq ? "Отправить на подтверждение" : "Загрузить игроку") + "</button>";
     var m = sceneModal(isReq ? "📤 Предложить свою модельку" : ("📤 Загрузить облик" + (opts.nick ? " — «" + esc(opts.nick) + "»" : "")), body);
     var img = body.querySelector(".qs-upl-img"), emptyEl = body.querySelector(".qs-upl-empty"),
         st = body.querySelector(".qs-upl-st"), go = body.querySelector("#qs-upl-go");
-    var orig = null, cur = null, mir = false;
+    var orig = null, cur = null, mir = false, sizeEl = body.querySelector("#qs-upl-size");
+    function kb(du) { return du ? Math.round(du.length * 0.75 / 1024) : 0; }
     function setSt(t, ok) { st.textContent = t || ""; st.style.color = ok ? "#8fc36a" : "#e0a86a"; }
     function render() {
       if (cur) { img.src = cur; img.style.display = "block"; img.style.transform = mir ? "scaleX(-1)" : ""; emptyEl.style.display = "none"; }
       else { img.style.display = "none"; emptyEl.style.display = "block"; }
-      ["qs-upl-cut", "qs-upl-mir", "qs-upl-reset"].forEach(function (id) { body.querySelector("#" + id).disabled = !cur; });
+      ["qs-upl-cut", "qs-upl-mir", "qs-upl-opt", "qs-upl-reset"].forEach(function (id) { body.querySelector("#" + id).disabled = !cur; });
       go.disabled = !cur;
+      if (sizeEl) {
+        var k = kb(cur);
+        sizeEl.textContent = cur ? ("Размер: ~" + k + " КБ" + (k > 180 ? " — можно нажать «🗜 Оптимизировать»" : " ✓ оптимально")) : "";
+        sizeEl.style.color = k > 180 ? "#e0a86a" : "#8fc36a";
+      }
     }
     body.querySelector("#qs-upl-pick").addEventListener("click", function () {
       var f = document.createElement("input"); f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
       f.addEventListener("change", function () {
-        var file = f.files[0]; if (!file) return; setSt("Обрабатываю…");
-        fileToDataURL(file, function (du) { optimizeDataUrl(du, function (opt) { orig = cur = (opt || du); mir = false; render(); setSt("✓ готово — можно вырезать фон и зеркалить", true); }); },
+        var file = f.files[0]; if (!file) return; setSt("Обрабатываю и оптимизирую…");
+        fileToDataURL(file, function (du) { optimizeDataUrl(du, function (opt) { orig = cur = (opt || du); mir = false; render(); setSt("✓ загружено и авто-оптимизировано — можно вырезать фон и зеркалить", true); }); },
           function (msg) { setSt(msg); });
       });
       f.click();
     });
     body.querySelector("#qs-upl-cut").addEventListener("click", function () {
       if (!cur) return; setSt("Вырезаю фон…");
-      cutBgDataUrl(cur, function (out) { if (out) { cur = out; render(); setSt("✓ фон вырезан (если осталось лишнее — возьми файл с более ровным фоном)", true); } else setSt("Не удалось вырезать фон"); });
+      cutBgDataUrl(cur, function (out) { if (out) { cur = out; render(); setSt("✓ фон вырезан. Не идеально? Возьми кадр с ровным однотонным фоном.", true); } else setSt("Не удалось вырезать фон"); });
+    });
+    body.querySelector("#qs-upl-opt").addEventListener("click", function () {
+      if (!cur) return; setSt("Оптимизирую…");
+      optimizeDataUrl(cur, function (opt) { if (opt) { cur = opt; render(); setSt("✓ оптимизировано", true); } else setSt("Не удалось оптимизировать"); });
     });
     body.querySelector("#qs-upl-mir").addEventListener("click", function () { mir = !mir; render(); });
     body.querySelector("#qs-upl-reset").addEventListener("click", function () { cur = orig; mir = false; render(); setSt(""); });
