@@ -1544,6 +1544,28 @@
     ".qs-links-auto{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow:auto;margin-top:4px}" +
     ".qs-links-autoi{font-size:11.5px;color:#c9b48f;padding:2px 6px}.qs-links-autoi span{color:#8a795a}" +
     ".qs-links-status{min-height:16px;font-size:11.5px;color:#e0a86a;margin-top:4px}" +
+    // canon-автокомплит ников в панели связей
+    ".qlk-sugg{position:absolute;left:0;right:0;top:calc(100% + 3px);z-index:40;max-height:230px;overflow-y:auto;" +
+      "background:#1a1109;border:1px solid rgba(224,162,74,.5);border-radius:9px;box-shadow:0 12px 34px rgba(0,0,0,.6);padding:3px;display:none}" +
+    ".qlk-sugg-i{padding:6px 9px;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;gap:1px}" +
+    ".qlk-sugg-i:hover{background:rgba(224,162,74,.14)}" +
+    ".qlk-sugg-i b{font-size:13px;color:#f6ead2}.qlk-sugg-i span{font-size:10.5px;color:#a58c68}" +
+    ".qlk-sugg-empty{padding:8px 9px;font-size:11.5px;color:#8a795a;font-style:italic}" +
+    // заметный раскрывающийся полный список (стрелка + счётчик)
+    ".qs-links-acc{margin-top:8px;border:1px solid rgba(224,162,74,.3);border-radius:10px;overflow:hidden;background:rgba(224,162,74,.05)}" +
+    ".qs-links-sum{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;padding:9px 12px;" +
+      "font:800 12.5px system-ui;color:#ffd98a;user-select:none}" +
+    ".qs-links-sum::-webkit-details-marker{display:none}" +
+    ".qs-links-sum:hover{background:rgba(224,162,74,.12)}" +
+    ".qs-links-sum-arr{font-size:15px;color:#e0a24a;transition:transform .18s;display:inline-block}" +
+    ".qs-links-acc[open] .qs-links-sum-arr{transform:rotate(90deg)}" +
+    ".qs-links-acc[open] .qs-links-sum{border-bottom:1px solid rgba(224,162,74,.22)}" +
+    ".qs-links-sum-t{flex:1}" +
+    ".qs-links-sum-n{min-width:22px;text-align:center;font:800 11px system-ui;color:#1b1006;" +
+      "background:linear-gradient(180deg,#f3d489,#d09b2e);border-radius:11px;padding:2px 8px}" +
+    ".qs-links-acc .qs-links-list{margin:8px 10px}" +
+    ".qs-links-sublbl{font:700 10.5px system-ui;color:#8a795a;margin:8px 10px 2px;letter-spacing:.3px}" +
+    ".qs-links-autoi{font-size:12px;color:#c9b48f;padding:3px 10px}.qs-links-autoi b{color:#e7d6b7}.qs-links-autoi span{color:#8a795a}" +
     // ── переключатель облика (модалка) ──
     ".qs-msw{padding:6px 14px 12px;max-width:440px}" +
     ".qs-msw.saving{opacity:.6;pointer-events:none}" +
@@ -2084,8 +2106,16 @@
       var resource = multi ? (resources[0] || "") : sel;
       if (!edit && (multi ? !resources.length : !resource)) { return; }
       var rcpt = (rcptEl.value || "").trim();
-      if (rcpt && recipientRel(rcpt) === "other" &&
-          !confirm("«" + rcpt + "» не твин и не супруг. Всё равно передать ресурс ему?")) return;
+      // ЗАПРЕТ: передавать можно только твину или супругу. Офицер/админ могут тут же указать связь
+      // (кнопки выше). Обычному игроку — блок с понятным сообщением.
+      if (rcpt && recipientRel(rcpt) === "other") {
+        if (canLinks) {
+          if (!confirm("«" + rcpt + "» пока не отмечен как твин/супруг. Сначала укажи связь кнопками выше (💞/👥). Всё равно продолжить?")) return;
+        } else {
+          alert("Передавать ресурс можно только своему твину или супругу. «" + rcpt + "» таковым не отмечен — обратись к офицеру, чтобы он указал связь. Либо оставь поле пустым (заберёшь сам).");
+          return;
+        }
+      }
       if (m) m.close();
       // АДМИН меняет ресурсы чужой записи (по id) — через админ-эндпоинт
       if (edit && edit.adminEid) {
@@ -2122,7 +2152,8 @@
         if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick), src: src || "scene" };
         refresh();
       }).catch(function (e2) {
-        alert(e2.status === 409 ? "Ты уже стоишь в этой очереди." :
+        alert(e2.detail === "recipient_not_linked" ? "Передавать можно только твину или супругу. Укажи связь (офицер/админ — кнопками выше) или оставь получателя пустым." :
+              e2.status === 409 ? "Ты уже стоишь в этой очереди." :
               e2.status === 401 ? "Сессия истекла, войди заново." :
               e2.status === 404 ? "Тебя нет в этой очереди." : ("Ошибка: " + (e2.detail || e2.message)));
       });
@@ -4643,28 +4674,59 @@
   }
 
   // ── ПОЛНАЯ панель связей (модалка): супруги + твины — для офицера/админа ──
+  // canon-поиск ника (сворачивает греч./лат. двойники: Τοмατ = Томат) — выпадающий список
+  function attachNickSuggest(inp) {
+    var box = document.createElement("div"); box.className = "qlk-sugg";
+    inp.parentNode.style.position = "relative"; inp.parentNode.appendChild(box);
+    var items = [];
+    function hide() { box.style.display = "none"; box.innerHTML = ""; }
+    function pick(i) { var p = items[i]; if (!p) return; inp.value = p.nick; hide(); inp.dispatchEvent(new Event("input", { bubbles: false })); }
+    function draw() {
+      var qv = canon(inp.value.trim());
+      if (!qv) { hide(); return; }
+      items = [];
+      for (var i = 0; i < _roster.length && items.length < 12; i++) {
+        var p = _roster[i];
+        if (canon(p.nick).indexOf(qv) >= 0 || canon(p.main_nick || "").indexOf(qv) >= 0) items.push(p);
+      }
+      if (!items.length) { box.innerHTML = '<div class="qlk-sugg-empty">ник не найден в реестре/доблести</div>'; box.style.display = "block"; return; }
+      box.innerHTML = items.map(function (p, i) {
+        var meta = []; if (p.cls) meta.push(esc(p.cls));
+        meta.push(p.is_twin ? ('твин · мэйн ' + esc(p.main_nick)) : "мэйн");
+        return '<div class="qlk-sugg-i" data-i="' + i + '"><b>' + esc(p.nick) + "</b><span>" + meta.join(" · ") + "</span></div>";
+      }).join(""); box.style.display = "block";
+    }
+    inp.addEventListener("input", function (e) { if (e.isTrusted !== false) draw(); });
+    inp.addEventListener("focus", draw);
+    box.addEventListener("mousedown", function (e) { var it = e.target.closest(".qlk-sugg-i"); if (it) { e.preventDefault(); pick(+it.dataset.i); } });
+    inp.addEventListener("blur", function () { setTimeout(hide, 160); });
+    hide();
+  }
   function openLinksManager(onChange) {
     var body = document.createElement("div");
     body.className = "qs-links";
-    var dl = _roster.slice(0, 800).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
     body.innerHTML =
-      '<datalist id="qlk-dl">' + dl + "</datalist>" +
-      '<div class="qs-links-hint">Настрой, кому игрок передаёт ресурс (супруг) и какие ники — один и тот же человек (твины). ' +
-        'Пиши мэйн-ник — по нему всё и объединяется. Можно исправлять и удалять существующие связи.</div>' +
+      '<div class="qs-links-hint">Пиши ник как в игре (понимает и <b>Τοмατ</b>, и <b>Томат</b>). ' +
+        'Настрой, кому игрок передаёт ресурс (<b>супруг</b>) и какие ники — <b>один и тот же человек</b> (твины). ' +
+        'По мэйн-нику всё объединяется. Твинов система распознаёт сама по титулам — тут можно поправить/дополнить.</div>' +
       // СУПРУГИ
       '<div class="qs-links-sec"><div class="qs-links-h">💞 Супруги / получатели <span>— кому игрок передаёт полученный ресурс</span></div>' +
-        '<div class="qs-links-row"><input id="qlk-sp-nick" list="qlk-dl" placeholder="игрок…" autocomplete="off">' +
-          '<span class="qs-links-arr">→ кому:</span><input id="qlk-sp-rcpt" list="qlk-dl" placeholder="получатель…" autocomplete="off">' +
+        '<div class="qs-links-row"><input id="qlk-sp-nick" placeholder="игрок…" autocomplete="off">' +
+          '<span class="qs-links-arr">→ кому:</span><input id="qlk-sp-rcpt" placeholder="получатель…" autocomplete="off">' +
           '<button id="qlk-sp-save">Сохранить</button></div>' +
-        '<div id="qlk-sp-list" class="qs-links-list"></div></div>' +
+        '<details class="qs-links-acc" id="qlk-sp-acc"><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
+          '<span class="qs-links-sum-t">📋 Показать весь список супругов</span><span class="qs-links-sum-n" id="qlk-sp-n">0</span></summary>' +
+          '<div id="qlk-sp-list" class="qs-links-list"></div></details></div>' +
       // ТВИНЫ
-      '<div class="qs-links-sec"><div class="qs-links-h">👥 Твины <span>— какие ники это ОДИН и тот же игрок (если авто по титулу не сработало)</span></div>' +
-        '<div class="qs-links-row"><input id="qlk-tw-nick" list="qlk-dl" placeholder="ник-твин…" autocomplete="off">' +
-          '<span class="qs-links-arr">→ это мэйн:</span><input id="qlk-tw-main" list="qlk-dl" placeholder="ник мэйна…" autocomplete="off">' +
+      '<div class="qs-links-sec"><div class="qs-links-h">👥 Твины <span>— какие ники это ОДИН и тот же игрок</span></div>' +
+        '<div class="qs-links-row"><input id="qlk-tw-nick" placeholder="ник-твин…" autocomplete="off">' +
+          '<span class="qs-links-arr">→ это мэйн:</span><input id="qlk-tw-main" placeholder="ник мэйна…" autocomplete="off">' +
           '<button id="qlk-tw-save">Связать</button></div>' +
-        '<div id="qlk-tw-list" class="qs-links-list"></div>' +
-        '<details style="margin-top:6px"><summary class="qs-links-auto-sum">Показать авто-твины (из титулов доблести) — для справки</summary>' +
-          '<div id="qlk-tw-auto" class="qs-links-auto"></div></details></div>' +
+        '<details class="qs-links-acc" id="qlk-tw-acc"><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
+          '<span class="qs-links-sum-t">📋 Показать весь список твинов</span><span class="qs-links-sum-n" id="qlk-tw-n">0</span></summary>' +
+          '<div class="qs-links-sublbl">✍ добавленные вручную:</div><div id="qlk-tw-list" class="qs-links-list"></div>' +
+          '<div class="qs-links-sublbl">🤖 распознаны автоматически (по титулам доблести):</div><div id="qlk-tw-auto" class="qs-links-auto"></div>' +
+        "</details></div>" +
       '<div id="qlk-status" class="qs-links-status"></div>';
     var stEl = body.querySelector("#qlk-status");
     function status(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
@@ -4673,12 +4735,14 @@
       q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; }).catch(function () {});
     }
     function delBtn(fn) { var b = document.createElement("button"); b.className = "sec qs-links-del"; b.textContent = "✕"; b.title = "удалить"; b.addEventListener("click", fn); return b; }
+    ["qlk-sp-nick", "qlk-sp-rcpt", "qlk-tw-nick", "qlk-tw-main"].forEach(function (id) { attachNickSuggest(body.querySelector("#" + id)); });
     // супруги
-    var spList = body.querySelector("#qlk-sp-list");
+    var spList = body.querySelector("#qlk-sp-list"), spN = body.querySelector("#qlk-sp-n");
     function reloadSp() {
       q("GET", "/queue/spouses").then(function (d) {
         applySpouses(d);
         var items = d.items || [];
+        spN.textContent = items.length;
         spList.innerHTML = items.length ? "" : '<span class="qs-links-empty">Связей супругов пока нет.</span>';
         items.forEach(function (it) {
           var row = document.createElement("div"); row.className = "qs-links-item sp";
@@ -4697,12 +4761,14 @@
       var n = body.querySelector("#qlk-sp-nick").value.trim(), r = body.querySelector("#qlk-sp-rcpt").value.trim();
       if (!n || !r) { status("Укажи игрока и получателя."); return; }
       saveSp(n, r); body.querySelector("#qlk-sp-nick").value = ""; body.querySelector("#qlk-sp-rcpt").value = "";
+      body.querySelector("#qlk-sp-acc").open = true;
     });
     // твины
-    var twList = body.querySelector("#qlk-tw-list"), twAuto = body.querySelector("#qlk-tw-auto");
+    var twList = body.querySelector("#qlk-tw-list"), twAuto = body.querySelector("#qlk-tw-auto"), twN = body.querySelector("#qlk-tw-n");
     function reloadTw() {
       q("GET", "/queue/twins").then(function (d) {
         var man = d.manual || [], auto = d.auto || [];
+        twN.textContent = man.length + auto.length;
         twList.innerHTML = man.length ? "" : '<span class="qs-links-empty">Ручных твин-связей нет.</span>';
         man.forEach(function (it) {
           var row = document.createElement("div"); row.className = "qs-links-item tw";
@@ -4711,7 +4777,7 @@
           twList.appendChild(row);
         });
         twAuto.innerHTML = auto.length
-          ? auto.map(function (it) { return '<div class="qs-links-autoi">' + esc(it.twin_nick) + ' <span>— твин мэйна</span> ' + esc(it.main_nick) + "</div>"; }).join("")
+          ? auto.map(function (it) { return '<div class="qs-links-autoi"><b>' + esc(it.twin_nick) + '</b> <span>— твин мэйна</span> ' + esc(it.main_nick) + "</div>"; }).join("")
           : '<span class="qs-links-empty">Авто-твинов нет.</span>';
       }).catch(function (e) { status("Твины не загрузились: " + (e.detail || e.message)); });
     }
@@ -4724,6 +4790,7 @@
       var n = body.querySelector("#qlk-tw-nick").value.trim(), m = body.querySelector("#qlk-tw-main").value.trim();
       if (!n || !m) { status("Укажи ник-твин и ник мэйна."); return; }
       saveTw(n, m); body.querySelector("#qlk-tw-nick").value = ""; body.querySelector("#qlk-tw-main").value = "";
+      body.querySelector("#qlk-tw-acc").open = true;
     });
     reloadSp(); reloadTw();
     sceneModal("💞 Связи: твины и супруги", body);

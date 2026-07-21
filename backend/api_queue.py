@@ -1204,6 +1204,43 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
+def _migrate_recipients(conn) -> int:
+    """Разовая миграция: у кого в очереди уже указан получатель, который НЕ твин и НЕ супруг —
+    НЕ удаляем связь, а закрепляем её как супруга (если это твин — он и так распознан по мэйну,
+    связку не создаём). Так все прежние получатели становятся «разрешёнными». Идемпотентна."""
+    if _cfg_val(conn, "recipients_migrated_v1", "") == "1":
+        return 0
+    idx = _people(conn)
+    smap = _spouse_map(conn)
+    made = 0
+    seen: set[str] = set()
+    for r in conn.execute("SELECT main_canon, recipient FROM queue_entries WHERE recipient!=''"):
+        mc, rcpt = r["main_canon"], (r["recipient"] or "").strip()
+        if not rcpt or mc in seen:
+            continue
+        # резолвим отправителя к реальному мэйну (усечённый/латиница)
+        p = idx.get(mc)
+        if p is None:
+            res = _resolve_partial(idx, mc)
+            if res:
+                mc, p = res[0], res[1]
+        real_mc = (p["main_canon"] if p else mc)
+        if _recipient_ok(rcpt, real_mc, idx, smap):        # уже твин/супруг — ничего не делаем
+            continue
+        conn.execute(
+            "INSERT INTO queue_spouses (canon, recipient, updated_by, updated_at) VALUES (?,?,?,?)"
+            " ON CONFLICT(canon) DO UPDATE SET recipient=excluded.recipient,"
+            " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+            (real_mc, rcpt, "миграция", _now()))
+        smap[real_mc] = rcpt
+        seen.add(real_mc)
+        made += 1
+    conn.execute(
+        "INSERT INTO queue_kv (key, val, updated_at) VALUES ('recipients_migrated_v1','1',?)"
+        " ON CONFLICT(key) DO UPDATE SET val='1', updated_at=excluded.updated_at", (_now(),))
+    return made
+
+
 def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=None, vmap=None) -> dict:
     # Запись не совпала с реестром точно (ввели неполный/усечённый ник, напр. «Ада», или
     # набрали латиницей «SnegoVik» вместо «СнегоVик») — резолвим: точно → префикс →
@@ -1287,6 +1324,10 @@ def _spouse_map(conn) -> dict:
 def state() -> dict:
     qs = [[], [], []]
     with db.connection() as conn:
+        try:
+            _migrate_recipients(conn)      # разово: прежние получатели → супруги (идемпотентно)
+        except Exception:
+            pass
         idx = _people(conn)
         gmap = {r["canon"]: r["gender"]
                 for r in conn.execute("SELECT canon, gender FROM queue_gender")}
@@ -1330,6 +1371,9 @@ def join(payload: JoinIn, request: Request) -> dict:
             sp = conn.execute("SELECT recipient FROM queue_spouses WHERE canon=?",
                               (acc["main_canon"],)).fetchone()
             rcpt = (sp["recipient"] if sp else "")[:64]
+        # ЗАПРЕТ: передавать можно ТОЛЬКО твину или супругу. Иначе — не сохраняем получателя.
+        if rcpt and not _recipient_ok(rcpt, acc["main_canon"], _people(conn), _spouse_map(conn)):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "recipient_not_linked")
         import json as _json
         plan = _clean_plan(payload.plan, q)
         # мульти-выбор: только валидные ресурсы своей очереди; resource = первый (совместимость)
@@ -1416,7 +1460,10 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
                 sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
                 sets.append("resource=?"); vals.append(picked[0])   # resource = первый (совместимость)
         if payload.recipient is not None:
-            sets.append("recipient=?"); vals.append(payload.recipient.strip()[:64])
+            _rcpt = payload.recipient.strip()[:64]
+            if _rcpt and not _recipient_ok(_rcpt, acc["main_canon"], _people(conn), _spouse_map(conn)):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "recipient_not_linked")
+            sets.append("recipient=?"); vals.append(_rcpt)
         if payload.auto_repeat is not None:
             sets.append("auto_repeat=?"); vals.append(1 if payload.auto_repeat else 0)
         if payload.plan is not None:
