@@ -2023,6 +2023,32 @@ def officer_model_upload(payload: ModelUploadIn, request: Request,
     return {"ok": True, "key": slot}
 
 
+@router.post("/officer/model-set")
+def officer_model_set(payload: ModelIn, request: Request,
+                      actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Офицер/админ настраивает ПЕРСОНАЛЬНУЮ модельку (размер/зеркало/поворот). Только person-*
+    ключи (классовые трогать нельзя — они общие, это только у админа). Ауру сохраняем."""
+    key = _safe_key(payload.key)
+    if not key or not key.startswith("person-"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "person_key_only")
+    flip = 1 if payload.flip else 0
+    rot = max(-180, min(180, int(payload.rotate)))
+    scl = max(0.2, min(3.0, float(payload.scale)))
+    with db.connection() as conn:
+        aura = ""
+        row = conn.execute("SELECT aura FROM queue_models WHERE model_key=?", (key,)).fetchone()
+        if row and "aura" in row.keys():
+            aura = row["aura"] or ""
+        conn.execute(
+            "INSERT INTO queue_models (model_key, flip, rotate, scale, aura, updated_at) VALUES (?,?,?,?,?,?)"
+            " ON CONFLICT(model_key) DO UPDATE SET flip=excluded.flip, rotate=excluded.rotate,"
+            " scale=excluded.scale, updated_at=excluded.updated_at",
+            (key, flip, rot, scl, aura, _now()))
+        _log(conn, "officer_model_set", actor=_actor_name(actor), request=request,
+             detail=key + " scale=%.2f" % scl)
+    return {"ok": True}
+
+
 @router.post("/model-request")
 def model_request(payload: ModelUploadIn, request: Request) -> dict:
     """Игрок предлагает СВОЮ персональную модельку — уходит на подтверждение офицеру/админу.

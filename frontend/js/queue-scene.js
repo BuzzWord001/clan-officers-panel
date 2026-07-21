@@ -1195,6 +1195,12 @@
     ".qs-mm-person-add{margin-left:auto;cursor:pointer;font:800 11px system-ui;color:#0f2a12;border:0;border-radius:8px;padding:5px 10px;background:linear-gradient(180deg,#a8e6a0,#5aa84a)}" +
     ".qs-mm-person-add:hover{filter:brightness(1.07)}" +
     ".qs-mm-person .qs-mm-grid{margin:9px}" +
+    ".qs-mm-scale{display:flex;align-items:center;gap:6px;margin-top:6px;font:700 10.5px system-ui;color:#caa66a}" +
+    ".qs-mm-scale span:first-child{flex:0 0 auto}" +
+    ".qs-mm-scale input[type=range]{flex:1;min-width:40px;accent-color:#e0a24a}" +
+    ".qs-mm-scale .qs-mm-scv{min-width:38px;text-align:right;color:#f0dcb4}" +
+    ".qs-mm-scale [data-a=scdn],.qs-mm-scale [data-a=scup]{cursor:pointer;width:22px;height:22px;border-radius:6px;border:1px solid rgba(224,162,74,.5);background:rgba(224,162,74,.12);color:#f0dcb4;font:800 13px system-ui;line-height:1;padding:0}" +
+    ".qs-mm-scale [data-a=scdn]:hover,.qs-mm-scale [data-a=scup]:hover{background:rgba(224,162,74,.22);color:#fff}" +
     ".qs-mm-card{display:flex;flex-direction:column;gap:6px;padding:9px;border-radius:11px;" +
       "background:rgba(255,220,150,.05);border:1px solid rgba(224,162,74,.25)}" +
     ".qs-mm-th{width:100%;height:110px;object-fit:contain;background:rgba(0,0,0,.25);border-radius:8px}" +
@@ -1728,6 +1734,11 @@
     ".qs-upl-btn{cursor:pointer;font:700 12px system-ui;color:#f0dcb4;padding:8px 12px;border-radius:9px;" +
       "border:1px solid rgba(224,162,74,.45);background:rgba(224,162,74,.1)}" +
     ".qs-upl-btn:hover{background:rgba(224,162,74,.2);color:#fff}.qs-upl-btn:disabled{opacity:.4;cursor:default}" +
+    ".qs-upl-scale-row{display:flex;align-items:center;gap:8px;margin-top:9px;font:700 12px system-ui;color:#caa66a}" +
+    ".qs-upl-scale-row input[type=range]{flex:1;accent-color:#e0a24a}" +
+    ".qs-upl-scale-row #qs-upl-scale-v{min-width:44px;text-align:right;color:#f0dcb4}" +
+    ".qs-upl-sc-b{cursor:pointer;width:26px;height:26px;border-radius:7px;border:1px solid rgba(224,162,74,.5);background:rgba(224,162,74,.12);color:#f0dcb4;font:800 15px system-ui;line-height:1}" +
+    ".qs-upl-sc-b:hover{background:rgba(224,162,74,.22);color:#fff}.qs-upl-sc-b:disabled{opacity:.4;cursor:default}" +
     ".qs-upl-size{margin:7px 0 0;font:600 11px system-ui;color:#8fc36a}" +
     ".qs-upl-st{min-height:16px;margin:4px 0 2px;font:600 11.5px system-ui;color:#e0a86a}" +
     ".qs-upl-go{margin-top:6px}" +
@@ -3042,25 +3053,39 @@
         '<button type="button" class="qs-upl-btn" id="qs-upl-opt" disabled>🗜 Оптимизировать</button>' +
         '<button type="button" class="qs-upl-btn" id="qs-upl-reset" disabled>↺ Сброс</button>' +
       "</div>" +
+      (!isReq ? '<div class="qs-upl-scale-row"><span>📏 Размер:</span>' +
+        '<button type="button" class="qs-upl-sc-b" id="qs-upl-sc-dn">−</button>' +
+        '<input type="range" id="qs-upl-scale" min="0.4" max="2" step="0.05" value="1" disabled>' +
+        '<button type="button" class="qs-upl-sc-b" id="qs-upl-sc-up">＋</button>' +
+        '<span id="qs-upl-scale-v">1.00×</span></div>' : "") +
       '<div class="qs-upl-size" id="qs-upl-size"></div>' +
       '<div class="qs-upl-st"></div>' +
       '<button class="qs-join qs-upl-go" id="qs-upl-go" disabled>' + (isReq ? "Отправить на подтверждение" : "Загрузить игроку") + "</button>";
     var m = sceneModal(isReq ? "📤 Предложить свою модельку" : ("📤 Загрузить облик" + (opts.nick ? " — «" + esc(opts.nick) + "»" : "")), body);
     var img = body.querySelector(".qs-upl-img"), emptyEl = body.querySelector(".qs-upl-empty"),
         st = body.querySelector(".qs-upl-st"), go = body.querySelector("#qs-upl-go");
-    var orig = null, cur = null, mir = false, sizeEl = body.querySelector("#qs-upl-size");
+    var orig = null, cur = null, mir = false, scale = 1, sizeEl = body.querySelector("#qs-upl-size");
+    var scRng = body.querySelector("#qs-upl-scale"), scV = body.querySelector("#qs-upl-scale-v");
     function kb(du) { return du ? Math.round(du.length * 0.75 / 1024) : 0; }
     function setSt(t, ok) { st.textContent = t || ""; st.style.color = ok ? "#8fc36a" : "#e0a86a"; }
     function render() {
-      if (cur) { img.src = cur; img.style.display = "block"; img.style.transform = mir ? "scaleX(-1)" : ""; emptyEl.style.display = "none"; }
+      if (cur) { img.src = cur; img.style.display = "block"; img.style.transform = (mir ? "scaleX(-1) " : "") + "scale(" + scale + ")"; emptyEl.style.display = "none"; }
       else { img.style.display = "none"; emptyEl.style.display = "block"; }
       ["qs-upl-cut", "qs-upl-mir", "qs-upl-opt", "qs-upl-reset"].forEach(function (id) { body.querySelector("#" + id).disabled = !cur; });
+      if (scRng) { scRng.disabled = !cur; body.querySelector("#qs-upl-sc-dn").disabled = !cur; body.querySelector("#qs-upl-sc-up").disabled = !cur; }
+      if (scV) scV.textContent = scale.toFixed(2) + "×";
       go.disabled = !cur;
       if (sizeEl) {
         var k = kb(cur);
-        sizeEl.textContent = cur ? ("Размер: ~" + k + " КБ" + (k > 180 ? " — можно нажать «🗜 Оптимизировать»" : " ✓ оптимально")) : "";
+        sizeEl.textContent = cur ? ("Вес: ~" + k + " КБ" + (k > 180 ? " — можно «🗜 Оптимизировать»" : " ✓")) : "";
         sizeEl.style.color = k > 180 ? "#e0a86a" : "#8fc36a";
       }
+    }
+    function setScale(v) { scale = Math.max(0.4, Math.min(2, v)); if (scRng) scRng.value = String(scale); render(); }
+    if (scRng) {
+      scRng.addEventListener("input", function () { setScale(+scRng.value); });
+      body.querySelector("#qs-upl-sc-dn").addEventListener("click", function () { setScale(scale - 0.1); });
+      body.querySelector("#qs-upl-sc-up").addEventListener("click", function () { setScale(scale + 0.1); });
     }
     body.querySelector("#qs-upl-pick").addEventListener("click", function () {
       var f = document.createElement("input"); f.type = "file"; f.accept = "image/png,image/webp,image/jpeg";
@@ -3083,14 +3108,21 @@
     body.querySelector("#qs-upl-reset").addEventListener("click", function () { cur = orig; mir = false; render(); setSt(""); });
     go.addEventListener("click", function () {
       if (!cur) return; go.disabled = true; setSt("Отправляю…");
+      function finish() {
+        if (m) m.close();
+        alert(isReq ? "✓ Отправлено офицерам на подтверждение. Как одобрят — сможешь переключиться на эту модельку."
+                    : "✓ Облик добавлен игроку — появится у него на выбор.");
+        if (onDone) onDone();
+      }
       function send(dataUrl) {
         var path = isReq ? "/queue/model-request" : "/queue/officer/model-upload";
         var pl = isReq ? { key: "self", data: dataUrl } : { key: opts.nick, data: dataUrl };
-        q("POST", path, pl).then(function () {
-          if (m) m.close();
-          alert(isReq ? "✓ Отправлено офицерам на подтверждение. Как одобрят — сможешь переключиться на эту модельку."
-                      : "✓ Облик добавлен игроку — появится у него на выбор.");
-          if (onDone) onDone();
+        q("POST", path, pl).then(function (d) {
+          // прямая загрузка + выбран нестандартный размер → сохранить размер этой модельки
+          if (!isReq && d && d.key && Math.abs(scale - 1) > 0.01) {
+            q("POST", "/queue/officer/model-set", { key: d.key, scale: scale, flip: 0, rotate: 0 })
+              .then(finish).catch(finish);
+          } else finish();
         }).catch(function (e2) { go.disabled = false; setSt("Ошибка: " + (e2.detail || e2.message)); });
       }
       if (mir) flipDataUrl(cur, function (fl) { send(fl || cur); }); else send(cur);
@@ -4575,8 +4607,26 @@
           (up ? '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
                 '<button data-a="del" class="danger" title="удалить свою (вернётся встроенная)">✕</button>' : "") +
           (o.kind === "person" ? '<button data-a="addv" class="qs-mm-addv" title="добавить ещё один облик этому игроку — он сам выберет">➕ ещё облик</button>' : "") +
-        '</div><div class="qs-mm-st"></div>';
+        "</div>" +
+        (thumb ? '<div class="qs-mm-scale"><span>📏 размер</span><button data-a="scdn" title="меньше">−</button>' +
+          '<input type="range" class="qs-mm-scrng" min="0.4" max="2" step="0.05" value="' + (((+ms.scale) || 1)) + '">' +
+          '<button data-a="scup" title="больше">＋</button><span class="qs-mm-scv">' + (((+ms.scale) || 1).toFixed(2)) + '×</span></div>' : "") +
+        '<div class="qs-mm-st"></div>';
       var stEl = el.querySelector(".qs-mm-st");
+      function saveScale(sc, rerender) {
+        sc = Math.max(0.4, Math.min(2, sc));
+        var c = MODEL_SETTINGS[sKey] || {};
+        MODEL_SETTINGS[sKey] = { flip: c.flip || 0, rotate: c.rotate || 0, scale: sc, aura: c.aura || "" };
+        var rng = el.querySelector(".qs-mm-scrng"), v = el.querySelector(".qs-mm-scv");
+        if (rng) rng.value = String(sc); if (v) v.textContent = sc.toFixed(2) + "×";
+        applyModelLive(sKey, MODEL_SETTINGS[sKey]);
+        clearTimeout(el._scT); el._scT = setTimeout(function () {
+          q("POST", "/queue/admin/model", { key: sKey, flip: c.flip || 0, rotate: c.rotate || 0, scale: sc, aura: c.aura || "" }).catch(function () {});
+          if (rerender) refresh();
+        }, 350);
+      }
+      var scrng = el.querySelector(".qs-mm-scrng");
+      if (scrng) scrng.addEventListener("input", function () { saveScale(+scrng.value); });
       el.addEventListener("click", function (e) {
         var btn = e.target.closest("button"); if (!btn) return;
         var a = btn.dataset.a;
@@ -4617,6 +4667,9 @@
               UPLOADED[key] = Date.now(); refresh(); loadInfo(rebuild);
             }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
           }, stEl);
+        } else if (a === "scdn" || a === "scup") {
+          var cs = (+(MODEL_SETTINGS[sKey] || {}).scale) || 1;
+          saveScale(cs + (a === "scup" ? 0.1 : -0.1));
         }
       });
       return el;
