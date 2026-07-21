@@ -356,9 +356,11 @@
     var mine = isMyModel(e);
     if (mine || _isAdmin || _role === "officer") {
       var many = modelVariants(e).length > 1;
-      // владелец: сменить/загрузить; офицер/админ на ЧУЖОЙ: только загрузить (сменить нельзя)
-      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">' +
-        (mine ? (many ? "🔄 Сменить облик / загрузить" : "🖼 Загрузить облик") : "🖼 Загрузить облик игроку") + "</button>";
+      // владелец и АДМИН: сменить/загрузить; ОФИЦЕР на чужой: только загрузить (сменить нельзя)
+      var lbl = (mine || _isAdmin)
+        ? ((many || _isAdmin) ? "🔄 Сменить облик / загрузить" : "🖼 Загрузить облик") + (_isAdmin && !mine ? " (админ)" : "")
+        : "🖼 Загрузить облик игроку";
+      out += '<button type="button" class="qtip-skin" data-eid="' + (e.id || "") + '">' + lbl + "</button>";
     }
     return out;
   }
@@ -3024,9 +3026,9 @@
     var idx = 0; for (var i0 = 0; i0 < vs.length; i0++) if (vs[i0].key === curTok) { idx = i0; break; }
     var busy = false;
     var multi = vs.length > 1;
-    // МЕНЯТЬ активный облик может ТОЛЬКО САМ игрок (его моделька / админ-тест как Лирия). Офицер/админ
-    // на ЧУЖОЙ модельке — только предпросмотр и ЗАГРУЗКА нового облика (сменить силой нельзя).
-    var canSwitch = isMyModel(e);
+    // Менять активный облик: САМ игрок (своя моделька) ИЛИ АДМИН (все права, любому). ОФИЦЕР на
+    // ЧУЖОЙ модельке — НЕЛЬЗЯ (только предпросмотр + загрузка нового облика).
+    var canSwitch = isMyModel(e) || _isAdmin;
     // роли для загрузки: офицер/админ грузят игроку напрямую (не меняя силой); владелец-игрок — на подтверждение
     var iAmOwnerPlayer = _meAcc && canon(e.main_nick) === canon(_meAcc.main_nick);
     var canDirect = _isAdmin || _role === "officer";
