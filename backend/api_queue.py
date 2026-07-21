@@ -547,6 +547,11 @@ class AdminNickIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
 
 
+class OfficerSetupIn(BaseModel):
+    personal_password: str = Field(min_length=1, max_length=200)
+    email: str = Field(default="", max_length=200)
+
+
 class SharedPwIn(BaseModel):
     password: str = Field(min_length=1, max_length=200)
 
@@ -1000,6 +1005,43 @@ def admin_reset_password(payload: AdminNickIn, request: Request,
     return {"ok": True}
 
 
+@router.post("/officer-setup")
+def officer_setup(payload: OfficerSetupIn, request: Request, response: Response) -> dict:
+    """Офицер, вошедший по офиц. сессии ДО нововведения (без личного пароля), придумывает
+    личный пароль и указывает почту. Создаёт офицерский аккаунт — дальше вход личным паролём."""
+    try:
+        s = current_session(request)
+    except HTTPException:
+        s = None
+    if not s or s.get("role") != "officer":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_officer_session")
+    name = (s.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no_officer_name")
+    if len(payload.personal_password) < 4:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
+    with db.connection() as conn:
+        p = _people(conn).get(db._valor_canon(name))
+        mc = p["main_canon"] if p else db._valor_canon(name)
+        main_nick = (p["main_nick"] if p else name) or name
+        reg_nick = (p["nick"] if p else name)
+        if not mc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if _account_by_main(conn, mc):
+            raise HTTPException(status.HTTP_409_CONFLICT, "already_registered")
+        cur = conn.execute(
+            "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
+            " is_officer, created_at, last_login_at) VALUES (?,?,?,?,?,1,?,?)",
+            (mc, main_nick, reg_nick, payload.email.strip(),
+             _hash(payload.personal_password), _now(), _now()))
+        acc_id = cur.lastrowid
+        dev_token = _set_device(conn, response, acc_id, request)
+        _log(conn, "officer_setup", actor=main_nick, nick=main_nick, request=request,
+             detail="офицер задал личный пароль" + (" +email" if payload.email.strip() else ""))
+        acc = conn.execute("SELECT * FROM queue_accounts WHERE id=?", (acc_id,)).fetchone()
+        return {"ok": True, "role": "officer", "account": _acc_public(acc), "device_token": dev_token}
+
+
 @router.get("/nick-role")
 def nick_role(nick: str = Query(..., min_length=1, max_length=64)) -> dict:
     """Является ли ник офицерским (для подсказки на входе — сменить надпись у пароля)."""
@@ -1027,8 +1069,22 @@ def me(request: Request) -> dict:
                                 (acc["main_canon"],)).fetchone()
             prefer_class = bool(prow["prefer_class"]) if prow else False
             variant = (prow["variant"] if (prow and "variant" in prow.keys()) else "") or ""
+        # ОФИЦЕР без личного пароля (вошёл по офиц. сессии до нововведения) → надо предложить
+        # придумать личный пароль и указать почту, как настроено для всех.
+        officer_needs_setup = False
+        try:
+            s = current_session(request)
+        except HTTPException:
+            s = None
+        if s and s.get("role") == "officer":
+            nm = (s.get("name") or "").strip()
+            cn = db._valor_canon(nm) if nm else ""
+            pp = _people(conn).get(cn)
+            mc = pp["main_canon"] if pp else cn
+            officer_needs_setup = not (mc and _account_by_main(conn, mc))
         return {"account": _acc_public(dev) if dev else None, "tokens": tokens,
-                "gender": gender, "prefer_class": prefer_class, "variant": variant}
+                "gender": gender, "prefer_class": prefer_class, "variant": variant,
+                "officer_needs_setup": officer_needs_setup}
 
 
 @router.get("/notices")

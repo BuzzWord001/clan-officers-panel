@@ -44,6 +44,10 @@
 
   var selectedNick = "";
   var _isOfficerNick = false;
+  function canonLike(a, b) {
+    function c(s) { return (s || "").toString().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
+    return c(a) === c(b);
+  }
 
   // ── переключение экранов ──
   // Монтирует красивый таймер обратного отсчёта до авто-открытия раздела в контейнер.
@@ -77,11 +81,13 @@
     $("step-login").hidden = which !== "login";
     $("step-officer").hidden = which !== "officer";
     var sr = $("step-recover"); if (sr) sr.hidden = which !== "recover";
+    var so = $("step-officer-setup"); if (so) so.hidden = which !== "officer-setup";
     err("");
     var sub = $("auth-sub");
     if (which === "nick") sub.textContent = "Выбери свой игровой ник, чтобы войти";
     else if (which === "register") sub.textContent = "Первый вход — создай личный пароль";
     else if (which === "officer") sub.textContent = "Это офицерский ник — нужен офицерский пароль";
+    else if (which === "officer-setup") sub.textContent = "Создай личный пароль офицера";
     else if (which === "recover") sub.textContent = "Восстановление пароля";
     else sub.textContent = "С возвращением! Введи свой личный пароль";
   }
@@ -162,7 +168,11 @@
     api("POST", "/queue/check-nick", { nick: nick })
       .then(function (d) {
         btn.disabled = false;
-        if (!d.ok) { err("Такой ник не найден в реестре и таблице клана. Проверь написание."); return; }
+        if (!d.ok) {
+          err("Такой ник не найден в реестре и таблице клана. Проверь написание. Если ты админ — разверни «⚙ Вход для администратора» внизу.");
+          var ad = $("q-admin-login"); if (ad && canonLike(nick, "Лирия!")) ad.open = true;   // админ-персона → сразу раскрыть
+          return;
+        }
         selectedNick = d.nick;
         $("q-nick").value = d.nick;
         // Уже зарегистрирован (игрок ИЛИ офицер) → вход по ЛИЧНОМУ паролю.
@@ -267,6 +277,37 @@
     });
   }
 
+  // ── офицер дозаполняет личный пароль (вошёл раньше без него) ──
+  function showOfficerSetup(name) {
+    $("auth").hidden = false; $("section").hidden = true; $("dev").hidden = true;
+    goStep("officer-setup");
+    var nm = $("q-osetup-name"); if (nm) nm.textContent = name || "офицер";
+    setTimeout(function () { $("q-osetup-pass").focus(); }, 40);
+  }
+  function doOfficerSetup() {
+    var btn = $("btn-osetup"); btn.disabled = true; err("");
+    api("POST", "/queue/officer-setup", {
+      personal_password: $("q-osetup-pass").value, email: $("q-osetup-email").value.trim()
+    }).then(function () { location.reload(); })
+      .catch(function (e) {
+        btn.disabled = false;
+        if (e.detail === "personal_password_too_short") err("Пароль — минимум 4 символа.");
+        else if (e.status === 401) err("Сессия истекла — войди офицером заново.");
+        else if (e.status === 409) { err("Пароль уже создан — входи личным паролём."); }
+        else err("Не удалось сохранить: " + (e.detail || e.message));
+      });
+  }
+  // ── вход администратора (с экрана авторизации, если админ вышел) ──
+  function doAdminLoginAuth() {
+    var u = ($("q-adm-user").value || "").trim(), p = $("q-adm-pass").value || "";
+    var e = $("q-adm-err"); e.textContent = "";
+    if (!u || !p) { e.textContent = "Введи логин и пароль администратора."; return; }
+    var btn = $("btn-adm-login"); btn.disabled = true;
+    api("POST", "/auth/admin/login", { username: u, password: p })
+      .then(function () { location.reload(); })
+      .catch(function (er) { btn.disabled = false; e.textContent = er.status === 401 ? "Неверный логин или пароль." : ("Ошибка: " + (er.detail || er.message)); });
+  }
+
   function doLogout() {
     setToken(""); setDev("");   // чистим и офицерский токен, и device-токен игрока, и сессию
     Promise.all([
@@ -286,6 +327,10 @@
     var bf = $("btn-forgot"); if (bf) bf.addEventListener("click", openRecover);
     var br = $("btn-recover"); if (br) br.addEventListener("click", doRecover);
     var rn = $("q-rec-newpass"); if (rn) rn.addEventListener("keydown", function (e) { if (e.key === "Enter") doRecover(); });
+    var bos = $("btn-osetup"); if (bos) bos.addEventListener("click", doOfficerSetup);
+    var osp = $("q-osetup-pass"); if (osp) osp.addEventListener("keydown", function (e) { if (e.key === "Enter") doOfficerSetup(); });
+    var bal = $("btn-adm-login"); if (bal) bal.addEventListener("click", doAdminLoginAuth);
+    var alp = $("q-adm-pass"); if (alp) alp.addEventListener("keydown", function (e) { if (e.key === "Enter") doAdminLoginAuth(); });
     $("btn-logout").addEventListener("click", doLogout);
     [].forEach.call(document.querySelectorAll("[data-back]"), function (b) {
       b.addEventListener("click", function () { goStep("nick"); $("q-nick").focus(); });
@@ -320,6 +365,8 @@
         // ОФИЦЕР (по офицерской сессии) — приоритет над возможным старым queue-аккаунтом:
         // он должен видеть офицерскую панель, а не игрока.
         if (m && m.role === "officer") {
+          // офицер вошёл раньше без личного пароля → предложить его создать (как у всех)
+          if (d && d.officer_needs_setup) { showOfficerSetup(m.name); return; }
           $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
           $("who").textContent = (m.name || "офицер") + " · офицер";
           if (window.QueueScene) window.QueueScene.enter(null);

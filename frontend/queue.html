@@ -236,7 +236,37 @@
         <button class="q-back-step" data-back>← назад</button>
       </div>
 
+      <!-- шаг: ОФИЦЕР дозаполняет личный пароль (вошёл раньше без него) -->
+      <div id="step-officer-setup" hidden>
+        <div class="q-hint">✦ Ты вошёл как офицер <b id="q-osetup-name"></b>. Теперь, как и у всех,
+          придумай <b>свой личный пароль</b> — дальше будешь входить только им.</div>
+        <div class="q-field">
+          <label for="q-osetup-email">Почта (для восстановления пароля, необязательно)</label>
+          <input id="q-osetup-email" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-osetup-pass">Придумай свой личный пароль</label>
+          <input id="q-osetup-pass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <button class="q-btn" id="btn-osetup">Сохранить пароль и продолжить</button>
+      </div>
+
       <p class="q-err" id="auth-err" role="alert"></p>
+
+      <!-- вход администратора (доступен всегда — если админ вышел и попал на этот экран) -->
+      <details id="q-admin-login" style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:12px;color:#8a795a;list-style:none;text-align:center">⚙ Вход для администратора</summary>
+        <div class="q-field" style="margin-top:10px">
+          <label for="q-adm-user">Логин администратора</label>
+          <input id="q-adm-user" type="text" autocomplete="username" maxlength="120">
+        </div>
+        <div class="q-field">
+          <label for="q-adm-pass">Пароль администратора</label>
+          <input id="q-adm-pass" type="password" autocomplete="current-password" maxlength="200">
+        </div>
+        <button class="q-btn" id="btn-adm-login">Войти как админ</button>
+        <p class="q-err" id="q-adm-err"></p>
+      </details>
     </main>
 
     <!-- РАЗДЕЛ ОЧЕРЕДИ (после входа) -->
@@ -255,7 +285,7 @@
   <script src="config.js?v=1791600000"></script>
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/queue-open.js?v=1883001500"></script>
-  <script src="js/queue.js?v=1885500000"></script>
+  <script src="js/queue.js?v=1885700000"></script>
   <script src="js/queue-scene.js?v=1885600000"></script>
 </body>
 </html>
