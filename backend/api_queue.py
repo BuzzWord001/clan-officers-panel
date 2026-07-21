@@ -184,6 +184,21 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- Запросы игроков на ПОДТВЕРЖДЕНИЕ связи (твин/супруг) офицерами. Игрок хочет
+            -- передать ресурс тому, кого система ещё не знает как связь → создаёт запрос;
+            -- офицер/админ подтверждает как твина/супруга или отклоняет.
+            CREATE TABLE IF NOT EXISTS queue_link_requests (
+              id           INTEGER PRIMARY KEY AUTOINCREMENT,
+              from_canon   TEXT NOT NULL DEFAULT '',   -- кто просит (отправитель ресурса)
+              from_nick    TEXT NOT NULL DEFAULT '',
+              target_canon TEXT NOT NULL DEFAULT '',   -- кому хочет передать
+              target_nick  TEXT NOT NULL DEFAULT '',
+              status       TEXT NOT NULL DEFAULT 'pending',  -- pending|twin|spouse|rejected
+              decided_by   TEXT NOT NULL DEFAULT '',   -- ник офицера/админа, кто решил
+              decided_at   TEXT NOT NULL DEFAULT '',
+              created_at   TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS queue_reports (
               id         INTEGER PRIMARY KEY AUTOINCREMENT,
               created_at TEXT NOT NULL,              -- когда финализировали неделю (ISO)
@@ -425,16 +440,44 @@ def _people(conn) -> dict[str, dict]:
             res = _resolve_partial(idx, p["main_canon"])
             if res:
                 p["main_canon"], p["main_nick"] = res[0], res[1]["nick"]
-    # Ручные твины (офицер/админ): переопределяют мэйна для указанных ников — приоритетнее авто.
+    # АВТО-твины по БАРЕ-титулу: клановая практика — писать в титул НИК своего мэйна.
+    # Если титул человека (после снятия ~~) ТОЧНО совпадает с ником реального игрока-мэйна
+    # (сворачивая гомоглифы Τοмат=Томат) — значит это его твин. Напр. Ocheeva с титулом
+    # «Череп@шка» → твин Череп@шки. Не трогаем тех, у кого связь задана вручную (ниже).
+    manual_forced = set()
+    try:
+        manual_forced = {r["canon"] for r in conn.execute("SELECT canon FROM queue_twins")}
+    except Exception:
+        manual_forced = set()
+    for cn, p in list(idx.items()):
+        if p.get("is_twin") or cn in manual_forced:
+            continue
+        title = (p.get("title") or "").strip()
+        if not title:
+            continue
+        mm = _MAIN_RE.match(title)
+        inner = mm.group(1).strip() if mm else title
+        tc = db._valor_canon(inner)
+        if not tc or tc == cn:
+            continue
+        q = idx.get(tc)
+        if q is not None and not q.get("is_twin") and q.get("main_canon") and q["main_canon"] != cn:
+            p["main_canon"], p["main_nick"], p["is_twin"] = q["main_canon"], q["main_nick"], True
+    # Ручные твины/фиксация мэйна (офицер/админ) — ПРИОРИТЕТНЕЕ авто. main_canon==canon → «это МЭЙН»
+    # (снять ошибочный авто-твин). Иначе — привязать твина к указанному мэйну.
     try:
         for r in conn.execute("SELECT canon, main_canon, main_nick, twin_nick FROM queue_twins"):
             tc, mmc = r["canon"], r["main_canon"]
-            if not tc or not mmc or tc == mmc:
+            if not tc or not mmc:
+                continue
+            p = idx.get(tc)
+            if mmc == tc:                       # ЗАФИКСИРОВАН как мэйн (не твин)
+                if p is not None:
+                    p["main_canon"], p["main_nick"], p["is_twin"] = tc, (p.get("nick") or r["twin_nick"] or tc), False
                 continue
             target = idx.get(mmc)
             real_mc = (target["main_canon"] if target else mmc) or mmc
             real_mn = (target["main_nick"] if target else "") or r["main_nick"] or mmc
-            p = idx.get(tc)
             if p is not None:
                 p["main_canon"], p["main_nick"], p["is_twin"] = real_mc, real_mn, True
             else:
@@ -584,6 +627,15 @@ class SpouseIn(BaseModel):
 class TwinIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)               # ник-твин, который привязываем
     main_nick: str = Field(default="", max_length=64)            # ник мэйна; пусто = снять ручную привязку
+
+
+class LinkRequestIn(BaseModel):
+    recipient: str = Field(min_length=1, max_length=64)          # кому игрок хочет передать ресурс
+
+
+class LinkDecideIn(BaseModel):
+    id: int
+    decision: str = Field(default="")                            # 'twin' | 'spouse' | 'reject'
 
 
 class MarkUncollectedIn(BaseModel):
@@ -1609,8 +1661,9 @@ def set_twin(payload: TwinIn, request: Request,
         mp = idx.get(db._valor_canon(mn_in))
         mmc = (mp["main_canon"] if mp else db._valor_canon(mn_in))
         mmn = (mp["main_nick"] if mp else mn_in)
-        if not mmc or mmc == tc:
+        if not mmc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_main")
+        # mmc == tc → ЗАФИКСИРОВАТЬ как мэйн (снять ошибочный авто-твин): записываем self.
         tp = idx.get(tc)
         twin_nick = tp["nick"] if tp else payload.nick.strip()
         conn.execute(
@@ -1622,6 +1675,113 @@ def set_twin(payload: TwinIn, request: Request,
         _log(conn, "twin", actor=_actor_name(actor), nick=payload.nick, request=request,
              detail="твин → мэйн " + mmn)
     return {"ok": True, "main_nick": mmn}
+
+
+@router.post("/link-request")
+def link_request(payload: LinkRequestIn, request: Request) -> dict:
+    """Игрок просит офицеров ПОДТВЕРДИТЬ связь с получателем (твин/супруг), если система её
+    ещё не знает. Создаёт запрос, который увидят все офицеры и админ."""
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        idx = _people(conn)
+        fmc, fnick = acc["main_canon"], (acc["main_nick"] or acc["reg_nick"])
+        tp = idx.get(db._valor_canon(payload.recipient))
+        if not tp:                                   # получатель должен быть реальным игроком
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "recipient_not_found")
+        tmc, tnick = tp["main_canon"], tp["nick"]
+        if tmc == fmc:                               # уже один и тот же аккаунт/твин
+            return {"ok": True, "already_linked": True}
+        if _recipient_ok(payload.recipient, fmc, idx, _spouse_map(conn)):
+            return {"ok": True, "already_linked": True}
+        # не плодим дубликаты pending на ту же пару
+        ex = conn.execute(
+            "SELECT id FROM queue_link_requests WHERE from_canon=? AND target_canon=? AND status='pending'",
+            (fmc, tmc)).fetchone()
+        if ex:
+            return {"ok": True, "pending": True, "id": ex["id"]}
+        cur = conn.execute(
+            "INSERT INTO queue_link_requests (from_canon, from_nick, target_canon, target_nick, status, created_at)"
+            " VALUES (?,?,?,?, 'pending', ?)", (fmc, fnick, tmc, tnick, _now()))
+        _log(conn, "link_request", actor=fnick, nick=fnick, request=request,
+             detail="просит подтвердить связь с " + tnick)
+        return {"ok": True, "id": cur.lastrowid}
+
+
+@router.get("/link-requests")
+def link_requests(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Для офицеров/админа: ожидающие запросы (боковые окошки) + недавно решённые (чтобы у всех
+    окошко сменилось на «офицер X подтвердил/отклонил» и пропало)."""
+    import datetime as _dt
+    cutoff = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=3)).isoformat(timespec="seconds")
+    with db.connection() as conn:
+        pend = conn.execute(
+            "SELECT id, from_nick, target_nick, created_at FROM queue_link_requests"
+            " WHERE status='pending' ORDER BY id").fetchall()
+        dec = conn.execute(
+            "SELECT id, from_nick, target_nick, status, decided_by, decided_at FROM queue_link_requests"
+            " WHERE status!='pending' AND decided_at>=? ORDER BY id", (cutoff,)).fetchall()
+    return {"requests": [dict(r) for r in pend], "decided": [dict(r) for r in dec]}
+
+
+@router.get("/link-requests/mine")
+def link_requests_mine(request: Request) -> dict:
+    """Статусы моих запросов (для игрока — увидеть, что офицер подтвердил/отклонил)."""
+    out = []
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if acc:
+            for r in conn.execute(
+                    "SELECT id, target_nick, status, decided_by FROM queue_link_requests"
+                    " WHERE from_canon=? ORDER BY id DESC LIMIT 8", (acc["main_canon"],)):
+                out.append(dict(r))
+    return {"requests": out}
+
+
+@router.post("/link-request/decide")
+def link_request_decide(payload: LinkDecideIn, request: Request,
+                        actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Офицер/админ подтверждает связь как ТВИН или СУПРУГ, либо отклоняет. Создаёт связь,
+    запоминает кто подтвердил. Если запрос уже решён кем-то — возвращаем, кем именно."""
+    who = _actor_name(actor)
+    with db.connection() as conn:
+        row = conn.execute("SELECT * FROM queue_link_requests WHERE id=?", (payload.id,)).fetchone()
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        if row["status"] != "pending":               # уже кто-то решил
+            return {"ok": True, "already": True, "status": row["status"], "decided_by": row["decided_by"]}
+        idx = _people(conn)
+        fmc, tmc = row["from_canon"], row["target_canon"]
+        fp, tp = idx.get(fmc), idx.get(tmc)
+        dec = payload.decision
+        if dec == "twin":
+            # получатель (target) — твин мэйна отправителя (общий мэйн). Привязываем target к мэйну from.
+            anchor_mc = (fp["main_canon"] if fp else fmc)
+            anchor_mn = (fp["main_nick"] if fp else row["from_nick"])
+            twin_nick = tp["nick"] if tp else row["target_nick"]
+            if anchor_mc and tmc and anchor_mc != tmc:
+                conn.execute(
+                    "INSERT INTO queue_twins (canon, main_canon, main_nick, twin_nick, updated_by, updated_at)"
+                    " VALUES (?,?,?,?,?,?) ON CONFLICT(canon) DO UPDATE SET main_canon=excluded.main_canon,"
+                    " main_nick=excluded.main_nick, twin_nick=excluded.twin_nick,"
+                    " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                    (tmc, anchor_mc, anchor_mn, twin_nick, who, _now()))
+            new_status = "twin"
+        elif dec == "spouse":
+            conn.execute(
+                "INSERT INTO queue_spouses (canon, recipient, updated_by, updated_at) VALUES (?,?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET recipient=excluded.recipient,"
+                " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
+                (fmc, row["target_nick"], who, _now()))
+            new_status = "spouse"
+        else:
+            new_status = "rejected"
+        conn.execute("UPDATE queue_link_requests SET status=?, decided_by=?, decided_at=? WHERE id=?",
+                     (new_status, who, _now(), payload.id))
+        _log(conn, "link_decide", actor=who, nick=row["from_nick"], request=request,
+             detail=new_status + " (" + row["from_nick"] + " ↔ " + row["target_nick"] + ")")
+    return {"ok": True, "status": new_status, "decided_by": who}
 
 
 @router.post("/admin/add")

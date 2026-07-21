@@ -1524,6 +1524,22 @@
     ".qs-rcpt-manage{display:block;width:100%;margin:7px 0 2px;cursor:pointer;font:800 12px system-ui;color:#1b1006;" +
       "padding:8px 12px;border:0;border-radius:9px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-rcpt-manage:hover{filter:brightness(1.06)}" +
+    ".qs-rcpt-cls.req{flex:1 1 100%;color:#bfe0ff;border-color:rgba(120,180,224,.6);background:rgba(120,180,224,.16)}" +
+    // ── боковые окошки-запросы подтверждения связи (офицеру/админу) + уведомления игроку ──
+    ".qlreq-host{position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px}" +
+    ".qlreq{background:linear-gradient(180deg,#2c1d0c,#181005);border:1px solid rgba(240,200,120,.6);border-radius:13px;" +
+      "box-shadow:0 14px 40px rgba(0,0,0,.6),0 0 22px rgba(245,200,120,.12);padding:12px 13px;animation:qlreqIn .22s ease}" +
+    "@keyframes qlreqIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}" +
+    ".qlreq-h{font:800 12.5px system-ui;color:#ffd98a;margin-bottom:4px;display:flex;align-items:center;gap:6px}" +
+    ".qlreq-tx{font:600 12px/1.45 system-ui;color:#e7d6b7;margin-bottom:9px}.qlreq-tx b{color:#ffe6a8}" +
+    ".qlreq-btns{display:flex;gap:6px;flex-wrap:wrap}" +
+    ".qlreq-btns button{cursor:pointer;border:0;border-radius:8px;padding:7px 10px;font:800 11.5px system-ui}" +
+    ".qlreq-tw{color:#0f2233;background:linear-gradient(180deg,#bfe0ff,#7fb4e0)}" +
+    ".qlreq-sp{color:#3a0f2a;background:linear-gradient(180deg,#ffcdea,#e078be)}" +
+    ".qlreq-rej{color:#ffcdbf;background:rgba(180,70,55,.5);border:1px solid rgba(220,110,90,.6)}" +
+    ".qlreq-btns button:hover{filter:brightness(1.08)}" +
+    ".qlreq-note{background:linear-gradient(180deg,#1c2a18,#101609);border-color:rgba(126,196,106,.5)}" +
+    ".qlreq-close{margin-left:auto;cursor:pointer;background:none;border:0;color:#8a795a;font-size:15px;line-height:1}" +
     // модалка связей
     ".qs-links{padding:8px 16px 14px;max-width:560px}" +
     ".qs-links-hint{font:600 11.5px/1.5 system-ui;color:#8a795a;margin-bottom:10px}" +
@@ -1925,9 +1941,9 @@
           '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
           '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
           '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
+          '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
           ((_isAdmin || _role === "officer")
-            ? '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
-              '<button type="button" id="qs-rcpt-manage" class="qs-rcpt-manage">⚙ Настроить связи твинов и супругов</button>'
+            ? '<button type="button" id="qs-rcpt-manage" class="qs-rcpt-manage">⚙ Настроить связи твинов и супругов</button>'
             : "") +
           '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
             '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
@@ -2001,14 +2017,19 @@
       else if (rel === "twin") { warnEl.textContent = "✓ твой аккаунт/твин"; warnEl.style.color = "#8fc36a"; warnEl.style.display = "block"; }
       else { warnEl.style.display = "none"; }
       if (rel === "other") warnEl.style.color = "#e0a86a";
-      // офицер/админ: если «посторонний» и есть отправитель — предложить запомнить связь
       if (actEl) {
         var rc = (rcptEl.value || "").trim();
-        if (canLinks && rel === "other" && rc && senderNick) {
+        if (rel === "other" && rc && senderNick && canLinks) {
+          // офицер/админ: сразу отметить связь
           actEl.style.display = "flex";
           actEl.innerHTML = '<span class="qs-rcpt-q">Кем «' + esc(rc) + '» приходится игроку «' + esc(senderNick) + '»? Запомнить связь:</span>' +
-            '<button type="button" class="qs-rcpt-cls sp" data-rel="spouse">💞 Супруг(а)</button>' +
-            '<button type="button" class="qs-rcpt-cls tw" data-rel="twin">👥 Твин (тот же игрок)</button>';
+            '<button type="button" class="qs-rcpt-cls sp" data-act="spouse">💞 Супруг(а)</button>' +
+            '<button type="button" class="qs-rcpt-cls tw" data-act="twin">👥 Твин (тот же игрок)</button>';
+        } else if (rel === "other" && rc && senderNick) {
+          // обычный игрок: запросить подтверждение у офицеров
+          actEl.style.display = "flex";
+          actEl.innerHTML = '<span class="qs-rcpt-q">Связь с «' + esc(rc) + '» ещё не подтверждена офицерами.</span>' +
+            '<button type="button" class="qs-rcpt-cls req" data-act="request">🔔 Запросить подтверждение у офицеров</button>';
         } else { actEl.style.display = "none"; actEl.innerHTML = ""; }
       }
     }
@@ -2016,16 +2037,26 @@
       var b2 = ev.target.closest(".qs-rcpt-cls"); if (!b2) return;
       var rc = (rcptEl.value || "").trim(); if (!rc || !senderNick) return;
       b2.disabled = true;
-      if (b2.dataset.rel === "spouse") {           // супруг(а): senderNick → rc
+      var act = b2.dataset.act;
+      if (act === "spouse") {
         q("POST", "/queue/spouse", { nick: senderNick, recipient: rc })
           .then(function () { return q("GET", "/queue/spouses").then(applySpouses); })
           .then(function () { checkRcpt(); })
           .catch(function (e2) { alert("Не удалось: " + (e2.detail || e2.message)); b2.disabled = false; });
-      } else {                                     // твин: rc привязываем к мэйну senderNick
+      } else if (act === "twin") {
         q("POST", "/queue/twin", { nick: rc, main_nick: senderNick })
           .then(function () { return q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; }); })
           .then(function () { checkRcpt(); })
           .catch(function (e2) { alert("Не удалось: " + (e2.detail || e2.message)); b2.disabled = false; });
+      } else if (act === "request") {          // игрок → запрос подтверждения офицерам
+        q("POST", "/queue/link-request", { recipient: rc })
+          .then(function (d) {
+            actEl.innerHTML = d && d.already_linked
+              ? '<span class="qs-rcpt-q" style="color:#8fc36a">✓ Связь уже есть — можно передавать.</span>'
+              : '<span class="qs-rcpt-q" style="color:#8fc36a">✓ Запрос отправлен офицерам. Как подтвердят — сможешь передать этому игроку.</span>';
+            if (d && d.already_linked) setTimeout(checkRcpt, 400);
+          })
+          .catch(function (e2) { b2.disabled = false; alert(e2.status === 404 ? "Такого игрока нет в реестре/доблести." : ("Не удалось отправить запрос: " + (e2.detail || e2.message))); });
       }
     });
     var mng = body.querySelector("#qs-rcpt-manage");
@@ -2112,7 +2143,7 @@
         if (canLinks) {
           if (!confirm("«" + rcpt + "» пока не отмечен как твин/супруг. Сначала укажи связь кнопками выше (💞/👥). Всё равно продолжить?")) return;
         } else {
-          alert("Передавать ресурс можно только своему твину или супругу. «" + rcpt + "» таковым не отмечен — обратись к офицеру, чтобы он указал связь. Либо оставь поле пустым (заберёшь сам).");
+          alert("Передавать ресурс можно только своему твину или супругу. «" + rcpt + "» пока не подтверждён — нажми «🔔 Запросить подтверждение у офицеров» выше, а пока встань с пустым получателем (заберёшь сам).");
           return;
         }
       }
@@ -5355,8 +5386,88 @@
         if (!_meAcc && _role === "officer" && _officerName) {
           _meAcc = { main_nick: _officerName, main_canon: canon(_officerName), reg_nick: _officerName };
         }
-        loadEnv(); refresh();
+        loadEnv(); refresh(); startLinkPolling();
       });
     }
   };
+
+  // ── боковые окошки: запросы подтверждения связи (офицеру/админу) + уведомления игроку ──
+  var _qlHost = null, _qlSeenMine = {}, _qlPollT = null, _qlShown = {}, _qlDecidedSeen = {};
+  function qlHost() { if (!_qlHost) { _qlHost = document.createElement("div"); _qlHost.className = "qlreq-host"; document.body.appendChild(_qlHost); } return _qlHost; }
+  function statusRu(s) { return s === "twin" ? "твины" : s === "spouse" ? "супруги" : "отклонено"; }
+  function qlNote(html) {
+    var el = document.createElement("div"); el.className = "qlreq qlreq-note";
+    el.innerHTML = '<div class="qlreq-h">🔔 Связь<button class="qlreq-close">✕</button></div><div class="qlreq-tx">' + html + "</div>";
+    el.querySelector(".qlreq-close").addEventListener("click", function () { el.remove(); });
+    qlHost().appendChild(el);
+    setTimeout(function () { if (el.parentNode) el.remove(); }, 16000);
+  }
+  function renderReqCard(r) {
+    var id = "r" + r.id;
+    if (_qlShown[id]) return;
+    var el = document.createElement("div"); el.className = "qlreq";
+    el.innerHTML = '<div class="qlreq-h">🔔 Запрос подтверждения связи<button class="qlreq-close">✕</button></div>' +
+      '<div class="qlreq-tx"><b>' + esc(r.from_nick) + '</b> хочет передавать ресурс игроку <b>' + esc(r.target_nick) + '</b>. Кто они друг другу?</div>' +
+      '<div class="qlreq-btns"><button class="qlreq-tw" data-d="twin">✓ Твины</button>' +
+      '<button class="qlreq-sp" data-d="spouse">💞 Супруги</button>' +
+      '<button class="qlreq-rej" data-d="reject">✕ Отклонить</button></div>';
+    el.querySelector(".qlreq-close").addEventListener("click", function () { el.remove(); delete _qlShown[id]; });
+    el.addEventListener("click", function (ev) {
+      var b = ev.target.closest("[data-d]"); if (!b) return;
+      el._deciding = true; el.querySelectorAll("button").forEach(function (x) { x.disabled = true; });
+      q("POST", "/queue/link-request/decide", { id: r.id, decision: b.dataset.d }).then(function (res) {
+        _qlDecidedSeen[id] = 1;
+        el.querySelector(".qlreq-tx").innerHTML = (res && res.already)
+          ? ('Уже решил офицер <b>' + esc(res.decided_by) + '</b> — ' + statusRu(res.status) + ".")
+          : ('✓ Сохранено: ' + statusRu(res.status) + ".");
+        var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
+        setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; refresh(); }, 2600);
+      }).catch(function (e2) { el._deciding = false; el.querySelectorAll("button").forEach(function (x) { x.disabled = false; }); alert("Ошибка: " + (e2.detail || e2.message)); });
+    });
+    qlHost().appendChild(el); _qlShown[id] = el;
+  }
+  function pollLinks() {
+    // игрок: узнать, что офицер решил по МОИМ запросам
+    q("GET", "/queue/link-requests/mine").then(function (d) {
+      (d.requests || []).forEach(function (r) {
+        if (r.status === "pending") return;
+        var key = "m" + r.id + r.status; if (_qlSeenMine[key]) return; _qlSeenMine[key] = 1;
+        qlNote(r.status === "twin" ? ('офицер <b>' + esc(r.decided_by) + '</b> подтвердил: <b>' + esc(r.target_nick) + '</b> — твой твин. Теперь можно передавать.')
+          : r.status === "spouse" ? ('офицер <b>' + esc(r.decided_by) + '</b> подтвердил <b>' + esc(r.target_nick) + '</b> как супруга. Теперь можно передавать.')
+          : ('офицер <b>' + esc(r.decided_by) + '</b> отклонил связь с <b>' + esc(r.target_nick) + '</b>.'));
+      });
+    }).catch(function () {});
+    // офицер/админ: ожидающие + недавно решённые
+    if (_isAdmin || _role === "officer") {
+      q("GET", "/queue/link-requests").then(function (d) {
+        var pending = {};
+        (d.requests || []).forEach(function (r) { pending["r" + r.id] = 1; renderReqCard(r); });
+        // решённые кем-то другим → у меня окошко сменить на «офицер X …» и убрать
+        (d.decided || []).forEach(function (r) {
+          var id = "r" + r.id;
+          if (_qlDecidedSeen[id]) return;
+          if (_qlShown[id]) {
+            _qlDecidedSeen[id] = 1;
+            var el = _qlShown[id];
+            el.querySelector(".qlreq-tx").innerHTML = 'Офицер <b>' + esc(r.decided_by) + '</b> уже отметил: ' + statusRu(r.status) + ".";
+            var bb = el.querySelector(".qlreq-btns"); if (bb) bb.remove();
+            setTimeout(function () { if (el.parentNode) el.remove(); delete _qlShown[id]; }, 2600);
+          }
+        });
+        // убрать окошки, которых больше нет ни в pending, ни в decided (устарели)
+        Object.keys(_qlShown).forEach(function (id) {
+          if (!pending[id] && !_qlDecidedSeen[id]) { var c = _qlShown[id]; if (c && !c._deciding) { c.remove(); delete _qlShown[id]; } }
+        });
+      }).catch(function () {});
+    }
+  }
+  function startLinkPolling() {
+    if (_qlPollT) return;
+    // первую пачку «моих решённых» помечаем прочитанной — чтобы не сыпать старьём, показывать только новые
+    q("GET", "/queue/link-requests/mine").then(function (d) {
+      (d.requests || []).forEach(function (r) { if (r.status !== "pending") _qlSeenMine["m" + r.id + r.status] = 1; });
+    }).catch(function () {}).then(function () {
+      pollLinks(); _qlPollT = setInterval(pollLinks, 15000);
+    });
+  }
 })();
