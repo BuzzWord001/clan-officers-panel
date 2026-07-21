@@ -373,9 +373,11 @@
           return;
         }
         if (d.account) { showSection(d.account); return; }
-        if (realAdmin && !open) {                    // админ-предпросмотр закрытого раздела
+        // АДМИН в режиме «Смотреть как игрок/гость» — у него нет игрового аккаунта, поэтому
+        // РАНЬШЕ его кидало на форму входа. Теперь показываем раздел ГЛАЗАМИ ИГРОКА (без входа).
+        if (realAdmin) {
           $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
-          $("who").textContent = (m && m.name || "предпросмотр") + " · предпросмотр (раздел закрыт)";
+          $("who").textContent = (m && m.name || "предпросмотр") + " · как игрок" + (open ? "" : " (раздел закрыт)");
           if (window.QueueScene) window.QueueScene.enter(null);
         } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
       }).catch(function () { showAuth(); });
