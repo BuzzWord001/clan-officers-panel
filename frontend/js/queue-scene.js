@@ -159,6 +159,29 @@
   // класс поддерживает ВЫБОР пола, только если модель для 'm' и 'f' реально РАЗНАЯ
   function classHasBothGenders(cls) { return classInfo(cls, "m").url !== classInfo(cls, "f").url; }
 
+  // Кто из уже стоящих в очереди БЕЗ личного облика (в сцене показывается общая по классу).
+  // Возвращает [{id, nick, main, cls, qs:[индексы очередей]}]; твины схлопнуты к мэйну.
+  // «Есть облик» = personalInfo([канон мэйна, канон ника]) вернул модель — та же логика, что в сцене.
+  function queueNoModel(state) {
+    var seen = {}, rows = [];
+    ((state && state.queues) || []).forEach(function (arr, qi) {
+      (arr || []).forEach(function (e) {
+        if (!e || !e.nick) return;
+        var keys = [canon(e.main_nick), canon(e.nick)].filter(Boolean);
+        if (personalInfo(keys)) return;                 // личный облик уже есть
+        var idk = keys[0] || canon(e.nick) || e.nick;   // идентичность = мэйн
+        if (seen[idk]) { if (seen[idk].qs.indexOf(qi) < 0) seen[idk].qs.push(qi); return; }
+        var row = {
+          id: e.id, nick: e.nick,
+          main: (e.main_nick && canon(e.main_nick) !== canon(e.nick)) ? e.main_nick : "",
+          cls: e.cls || "", qs: [qi]
+        };
+        seen[idk] = row; rows.push(row);
+      });
+    });
+    return rows;
+  }
+
   // ВСЕ доступные варианты модели для записи e — [{key(токен), url, label, kind, mkey}].
   // Токены безопасны для сервера (_safe_key): 'person-<canon>[--N]' | 'pers' | 'clsm' | 'clsf'.
   //   • загруженные админом персональные (базовая + слоты --2, --3…),
@@ -738,16 +761,6 @@
       "padding:8px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".q-admin button.sec{background:none;border:1px solid rgba(224,162,74,.5);color:#caa66a}" +
     ".q-admin button.danger{background:linear-gradient(180deg,#e07a6a,#b0453a);color:#fff}" +
-    // 🖼 список «без личного облика»
-    ".qs-nomodel-list{display:flex;flex-direction:column;gap:5px;max-height:320px;overflow:auto}" +
-    ".qs-nomodel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 9px;border-radius:9px;" +
-      "background:rgba(224,162,74,.07);border:1px solid rgba(224,162,74,.2)}" +
-    ".qs-nm-nick{font:700 13px Georgia,serif;color:#f5ecda}" +
-    ".qs-nm-main{font-size:11px;color:#e0a86a}" +
-    ".qs-nm-cls{font-size:11.5px;color:#a58c68}" +
-    ".qs-nm-noc{color:#8a795a;font-style:italic}" +
-    ".qs-nm-q{margin-left:auto;font-size:11px;color:#8a795a;white-space:nowrap}" +
-    ".qs-nm-btn{padding:5px 10px !important;font-size:11.5px !important}" +
     ".q-adm-sugg{position:relative}" +
     ".q-adm-list{position:absolute;left:0;top:calc(100% + 3px);z-index:30;max-height:220px;overflow:auto;" +
       "min-width:220px;background:#1a1109;border:1px solid rgba(224,162,74,.4);border-radius:9px;padding:4px;display:none}" +
@@ -1173,6 +1186,19 @@
     ".qs-objp-em{width:34px;height:34px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;" +
       "font-size:20px;border-radius:6px;background:rgba(0,0,0,.25);border:1px solid rgba(224,162,74,.25)}" +
     ".qs-objp-ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
+    // 🖼 «Без облика» в правой панели
+    ".qs-objp-nomodel{margin-bottom:8px;border:1px solid rgba(224,162,74,.3);border-radius:9px;overflow:hidden;background:rgba(224,162,74,.06)}" +
+    ".qs-objp-nomodel>summary{list-style:none;cursor:pointer;padding:7px 9px;font:700 11.5px system-ui;color:#f0c878}" +
+    ".qs-objp-nomodel>summary::-webkit-details-marker{display:none}" +
+    ".qs-objp-nomodel>summary b{color:#ffd98a}" +
+    ".qs-nmp-hint{font-size:10px;color:#c9b48f;line-height:1.4;padding:0 9px 6px}" +
+    ".qs-nmp-list{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow:auto;padding:0 6px 7px}" +
+    ".qs-nmp-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;background:rgba(255,240,200,.05)}" +
+    ".qs-nmp-nk{flex:1 1 auto;min-width:0;font:700 11px system-ui;color:#ffe0a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-nmp-tw{font-style:normal;font-size:9px;color:#e0a86a;font-weight:400}" +
+    ".qs-nmp-q{flex:0 0 auto;font-size:9.5px;color:#8a795a}" +
+    ".qs-nmp-btn{flex:0 0 auto;cursor:pointer;border:0;border-radius:6px;padding:3px 7px;font-size:12px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
+    ".qs-nmp-empty{font-size:11px;color:#8fc36a;padding:0 9px 8px}" +
     ".qs-objp-pad{display:inline-grid;grid-template-columns:repeat(3,1fr);gap:1px;justify-items:center}" +
     ".qs-objp-lr{display:flex;gap:1px;grid-column:1/4}" +
     ".qs-objp button{cursor:pointer;border:1px solid rgba(224,162,74,.35);background:rgba(30,20,9,.85);" +
@@ -3594,6 +3620,40 @@
     pe.addEventListener("click", function () { _pathMode = !_pathMode; if (_pathMode) _placeMode = false; render(_lastState); });
     bodyEl.appendChild(pe);
 
+    // ── 🖼 БЕЗ ЛИЧНОГО ОБЛИКА: кто уже в очереди, но без своей модельки (для админа) ──
+    (function () {
+      var rows = queueNoModel(_lastState);
+      var QS = ["об", "R", "S"];
+      var nm = document.createElement("div");
+      nm.className = "qs-objp-nomodel";
+      nm.innerHTML =
+        "<details" + (rows.length ? " open" : "") + ">" +
+          "<summary>🖼 Без облика <b>" + rows.length + "</b></summary>" +
+          (rows.length
+            ? '<div class="qs-nmp-hint">Стоят в очереди, но без своей модельки (показывается общая по классу). 🎨 — загрузить/сменить.</div>' +
+              '<div class="qs-nmp-list">' +
+                rows.map(function (r) {
+                  return '<div class="qs-nmp-row">' +
+                    '<span class="qs-nmp-nk" title="' + esc(r.nick) + (r.main ? " · твин " + esc(r.main) : "") + (r.cls ? " · " + esc(r.cls) : " · без класса") + '">' +
+                      esc(r.nick) + (r.main ? ' <i class="qs-nmp-tw">тв</i>' : "") + "</span>" +
+                    '<span class="qs-nmp-q">' + r.qs.map(function (qi) { return QS[qi]; }).join("·") + "</span>" +
+                    '<button class="qs-nmp-btn" data-eid="' + r.id + '" title="загрузить/сменить облик">🎨</button>' +
+                  "</div>";
+                }).join("") +
+              "</div>"
+            : '<div class="qs-nmp-empty">✓ у всех в очереди есть облик</div>') +
+        "</details>";
+      nm.addEventListener("click", function (e) {
+        var b = e.target.closest(".qs-nmp-btn"); if (!b) return;
+        var eid = +b.dataset.eid, ent = null;
+        ((_lastState && _lastState.queues) || []).forEach(function (arr) {
+          (arr || []).forEach(function (x) { if (x && x.id === eid) ent = x; });
+        });
+        if (ent) openModelSwitcher(ent);
+      });
+      bodyEl.appendChild(nm);
+    })();
+
     // ── ЦЕНТР СЦЕНЫ (фон день/ночь): переключатель времени, замена картинки, зум и сдвиг ──
     var bgSlot2 = isNight() ? "bg-night" : "bg-day";
     var slotName = isNight() ? "ночь" : "день";
@@ -4034,28 +4094,6 @@
     var box = document.createElement("div");
     box.className = "q-admin";
     var _open = CONFIG["queue_open"] === "1";
-    // 🖼 кто уже стоит в очереди, но БЕЗ личного облика (показывается общая модель по классу).
-    // Личный облик есть, если personalInfo([канон мэйна, канон ника]) вернул модель.
-    var _QLBL = ["Обычные", "Редкие (R)", "Легендарные (S)"];
-    var _noModel = (function () {
-      var seen = {}, rows = [];
-      ((state && state.queues) || []).forEach(function (arr, qi) {
-        (arr || []).forEach(function (e) {
-          if (!e || !e.nick) return;
-          var keys = [canon(e.main_nick), canon(e.nick)].filter(Boolean);
-          if (personalInfo(keys)) return;                       // личный облик уже есть
-          var idk = keys[0] || canon(e.nick) || e.nick;         // идентичность = мэйн (твины схлопываются)
-          if (seen[idk]) { if (seen[idk].qs.indexOf(qi) < 0) seen[idk].qs.push(qi); return; }
-          var row = {
-            id: e.id, nick: e.nick,
-            main: (e.main_nick && canon(e.main_nick) !== canon(e.nick)) ? e.main_nick : "",
-            cls: e.cls || "", qs: [qi]
-          };
-          seen[idk] = row; rows.push(row);
-        });
-      });
-      return rows;
-    })();
     box.innerHTML =
       "<h3>⚙️ Управление разделом «Очередь за ресурсами с КХ» (админ)</h3>" +
       '<div class="q-adm-status" id="qa-status"></div>' +
@@ -4071,32 +4109,6 @@
         '<div class="q-sec-body">' +
           '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 8px">Всё в одном окне: кто чей <b>ТВИН</b> (один игрок = несколько ников), кто кому <b>СУПРУГ</b> (кому передаётся ресурс) и <b>РУЧНЫЕ ники</b>. Любая правка применяется <b>сразу на всём сайте</b> и подтягивается системой.</div>' +
           '<button id="qa-links-btn">🔗 Открыть меню связей</button>' +
-        "</div></details>" +
-
-      // ── 🖼 БЕЗ ЛИЧНОГО ОБЛИКА (кто в очереди ещё без своей модельки) ──
-      '<details class="q-sec" open><summary>🖼 Без личного облика' +
-        '<span class="q-sec-hint">' +
-          (_noModel.length
-            ? _noModel.length + " чел. в очереди без своей модельки"
-            : "у всех в очереди есть облик") +
-        "</span></summary>" +
-        '<div class="q-sec-body">' +
-          (_noModel.length
-            ? '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 8px">Эти игроки <b>уже стоят в очереди</b>, но у них <b>нет персональной модельки</b> — в сцене показывается общая по классу. Нажми <b>🎨 облик</b>, чтобы загрузить/сменить их модель.</div>' +
-              '<div class="qs-nomodel-list">' +
-                _noModel.map(function (r) {
-                  return '<div class="qs-nomodel-row">' +
-                    '<span class="qs-nm-nick">' + esc(r.nick) + "</span>" +
-                    (r.main ? '<span class="qs-nm-main">твин · ' + esc(r.main) + "</span>" : "") +
-                    (r.cls
-                      ? '<span class="qs-nm-cls">' + esc(r.cls) + "</span>"
-                      : '<span class="qs-nm-cls qs-nm-noc">без класса</span>') +
-                    '<span class="qs-nm-q">' + r.qs.map(function (qi) { return _QLBL[qi]; }).join(" · ") + "</span>" +
-                    '<button class="sec qs-nm-btn" data-eid="' + r.id + '">🎨 облик</button>' +
-                  "</div>";
-                }).join("") +
-              "</div>"
-            : '<div style="font-size:12.5px;color:#8fc36a">✓ У всех, кто стоит в очереди, уже есть персональный облик.</div>') +
         "</div></details>" +
 
       // ── 🧪 ТЕСТИРОВАНИЕ ──
@@ -4293,16 +4305,6 @@
     // 🔗 Меню связей (твины/супруги/ручные ники) — открыть + после правок обновить всю сцену.
     var linksBtn = box.querySelector("#qa-links-btn");
     if (linksBtn) linksBtn.addEventListener("click", function () { openLinksManager(function () { refresh(); }); });
-    // 🖼 «Без личного облика»: кнопка 🎨 — открыть загрузку/смену модели для игрока из очереди
-    box.querySelectorAll(".qs-nm-btn").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var eid = +b.dataset.eid, ent = null;
-        ((state && state.queues) || []).forEach(function (arr) {
-          (arr || []).forEach(function (x) { if (x && x.id === eid) ent = x; });
-        });
-        if (ent) openModelSwitcher(ent);
-      });
-    });
 
     box.querySelector("#qa-add").addEventListener("click", function () {
       var n = (chosen || nick.value).trim();
