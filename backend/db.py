@@ -961,6 +961,22 @@ def acceptance_exists(acc_id: int) -> bool:
         return conn.execute("SELECT 1 FROM acceptances WHERE id=?", (acc_id,)).fetchone() is not None
 
 
+def _manual_canon(conn, nick: str) -> str:
+    """Manual-aware канон для реестра: если ник подтверждён вручную в очереди
+    (queue_manual_nicks по скрипто-чувствительному raw) — вернуть его РАЗДЕЛЬНЫЙ
+    canon (напр. hardkiss~2), иначе обычный _valor_canon (folded). Так HARDKISS
+    (латиница) в реестре — ОТДЕЛЬНЫЙ человек от НаRDKisS (кириллица)."""
+    raw = "".join(ch for ch in (nick or "").lower() if ch.isalnum())
+    if raw:
+        try:
+            row = conn.execute("SELECT canon FROM queue_manual_nicks WHERE raw=?", (raw,)).fetchone()
+            if row and row["canon"]:
+                return row["canon"]
+        except sqlite3.OperationalError:
+            pass
+    return _valor_canon(nick)
+
+
 def member_nick_by_platform_id(platform: str, user_id: str) -> str:
     """Игровой ник участника по его TG/VK id (зеркало clan_members от clan-reg-bot).
     Для подписи «кто принял» в чат-командах офицеров. Пусто если не нашли."""
@@ -1057,7 +1073,7 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
         out = []
         for r in rows:
             d = _row_to_acceptance(r)
-            canon = _valor_canon(d["game_nick"])
+            canon = _manual_canon(conn, d["game_nick"])   # ручной ник → раздельный canon
             d["veteran"] = canon in vet
             d["elite"] = canon in elite_set
             d["nick_canon"] = canon
@@ -1627,7 +1643,7 @@ def create_acceptance(
         # запись реестра к нему: эталонное написание ника, снятие «ИИ/новичок»-флага,
         # миграция canon при расхождении написания. Тот же механизм, что при
         # переименовании (update_acceptance). Если в доблести его ещё нет — безвредно.
-        canon = _valor_canon(game_nick)
+        canon = _manual_canon(conn, game_nick)   # ручной ник → раздельный canon (не сливать с двойником)
         if canon:
             _by = actor.get("name") or actor.get("role") or ""
             _sync_nick_in_conn(conn, canon, game_nick.strip(), now, _by)
@@ -6479,6 +6495,10 @@ def valor_departed_match(game_nick: str) -> list[dict]:
     {input, nick, nick_canon, kicked, reason, by, last_week, departed_at}."""
     out: list[dict] = []
     with connection() as conn:
+        # Ручной ник (админ подтвердил как ОТДЕЛЬНОГО человека) → НЕ ищем совпадений
+        # с чужим архивом: HARDKISS (латиница) ≠ НаRDKisS (кириллица), хоть и один folded canon.
+        if _manual_canon(conn, game_nick) != _valor_canon(game_nick):
+            return []
         amap = _alias_map(conn)
         # Логин админа → показываем как «Админ» (не светим личный логin Лира).
         arow = conn.execute(

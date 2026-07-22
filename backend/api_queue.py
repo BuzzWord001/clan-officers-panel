@@ -515,6 +515,17 @@ def _people(conn) -> dict[str, dict]:
                            "main_nick": real_mn, "main_canon": real_mc, "is_twin": True, "sources": {"manual"}}
     except Exception:
         pass
+    # Ручные ники (админ подтвердил) — как ОТДЕЛЬНЫЕ люди по их distinct canon.
+    # Так они резолвятся ВЕЗДЕ по canon (записи очереди, модели), не сливаясь с двойником.
+    try:
+        for r in conn.execute("SELECT canon, nick, cls, title FROM queue_manual_nicks"):
+            idx[r["canon"]] = {
+                "nick": r["nick"], "title": r["title"] or "", "cls": r["cls"] or "",
+                "true_name": "", "main_nick": r["nick"], "main_canon": r["canon"],
+                "is_twin": False, "sources": {"manual"},
+            }
+    except Exception:
+        pass
     return idx
 
 
@@ -928,18 +939,6 @@ def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
                     "sources": sorted(p["sources"]),
                     "officer": (cn in offs or p["main_canon"] in offs),
                 })
-        # Ручные ники (админ подтвердил вручную) — тоже предлагаем в списке для входа.
-        qraw = _raw_canon(ql)
-        seen_nick = {e["nick"] for e in out}
-        for r in conn.execute("SELECT * FROM queue_manual_nicks"):
-            if r["nick"] in seen_nick:
-                continue
-            if ql in r["nick"].lower() or (qraw and qraw in (r["raw"] or "")):
-                out.append({
-                    "nick": r["nick"], "cls": r["cls"] or "", "title": r["title"] or "",
-                    "main_nick": r["nick"], "is_twin": False,
-                    "sources": ["manual"], "officer": False,
-                })
     out.sort(key=lambda e: (0 if e["nick"].lower().startswith(ql) else 1, e["nick"].lower()))
     return {"results": out[:12]}
 
@@ -1098,7 +1097,7 @@ def officer_login(payload: OfficerLoginIn, request: Request, response: Response)
     if not auth_pwd.verify_officer(payload.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_officer_password")
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         name = (p["main_nick"] if p else payload.nick.strip()) or "офицер"
         _log(conn, "officer_login", actor=name, nick=name, request=request,
              detail="вход офицером через очередь")
@@ -1140,7 +1139,7 @@ def recover(payload: RecoverIn, request: Request, response: Response) -> dict:
     """Восстановление пароля по ПОЧТЕ С РЕГИСТРАЦИИ (без отправки писем): ник + та же почта →
     задать новый личный пароль. Кто почту не указывал/забыл — сброс делает офицер/админ."""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         mc = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, mc) if mc else None
         if not acc:
@@ -1173,7 +1172,7 @@ def admin_reset_password(payload: AdminNickIn, request: Request,
     """Сброс регистрации игрока (офицер/админ): удаляет аккаунт — человек создаст пароль заново
     при следующем входе. Нужен тем, кто не указал/забыл почту для самостоятельного восстановления."""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         mc = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, mc) if mc else None
         if not acc:
@@ -1759,7 +1758,7 @@ def set_spouse(payload: SpouseIn, request: Request,
                actor: dict = Depends(require_officer_or_admin)) -> dict:
     """Связка «кому этот человек передаёт рес». Доступно офицеру И админу."""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         cn = p["main_canon"] if p else db._valor_canon(payload.nick)
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
@@ -1963,7 +1962,7 @@ def admin_add(payload: AdminAddIn, request: Request, actor: dict = Depends(requi
     if payload.queue not in QUEUES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_queue")
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         if not p:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
         # не плодим дубли обычного места (privileged=0) — как в join/join-as
@@ -2171,7 +2170,7 @@ def officer_model_upload(payload: ModelUploadIn, request: Request,
     """Офицер/админ добавляет игроку ЕЩЁ ОДНУ персональную модельку (новый слот) — НЕ меняет
     силой: игрок сам переключится, если захочет. key = ник игрока (не сырой ключ)."""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.key))
+        p = _resolve_person(conn, payload.key)
         nick = p["nick"] if p else payload.key.strip()
         # Ключ модели считаем ФРОНТ-каноном ника МЭЙНА (как ищет переключатель),
         # а не db-каноном — иначе загруженная модель не находится (EvgeniY-баг).
@@ -2274,7 +2273,7 @@ def model_request_decide(payload: LinkDecideIn, request: Request,
         files = sorted(_UPLOAD_DIR.glob(img_key + ".*")) if (img_key and _UPLOAD_DIR.exists()) else []
         if approve and files:
             # Ключ модели — ФРОНТ-каноном ника мэйна (как ищет переключатель), не db-каноном.
-            mp = _people(conn).get(db._valor_canon(row["nick"]))
+            mp = _resolve_person(conn, row["nick"])
             slot = _next_person_slot(_model_canon(mp["main_nick"] if mp else row["nick"]))
             src = files[0]
             (_UPLOAD_DIR / (slot + src.suffix)).write_bytes(src.read_bytes())
@@ -2357,7 +2356,7 @@ def model_img(key: str) -> FileResponse:
 def set_gender(payload: GenderIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     g = payload.gender if payload.gender in ("m", "f") else ""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         cn = p["main_canon"] if p else db._valor_canon(payload.nick)
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
@@ -2453,7 +2452,7 @@ def set_model_variant_as(payload: AdminModelVariantIn, request: Request,
     как выглядит смена облика у игрока. Зеркалит /queue/model-variant."""
     key = _safe_key(payload.key)
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         cn = p["main_canon"] if p else db._valor_canon(payload.nick)
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
@@ -2915,7 +2914,7 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
 def grant_token(payload: GrantTokenIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     """Админ выдаёт/снимает жетоны суперспособности игроку (для теста, напр. Лирия!)."""
     with db.connection() as conn:
-        p = _people(conn).get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)
         cn = p["main_canon"] if p else db._valor_canon(payload.nick)
         nick = p["main_nick"] if p else payload.nick
         if not cn:
