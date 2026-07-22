@@ -134,6 +134,16 @@
     accArchivedList: () => request("GET", "/acceptances/archived"),
     accArchive:    (id, reason) => request("POST", `/acceptances/${id}/archive`, { reason: reason || "" }),
     accUnarchive:  (id) => request("POST", `/acceptances/${id}/unarchive`),
+    // Скрин боевых характеристик: тянем как blob С авторизацией (cookie может не
+    // доехать в Firefox/Yandex) и отдаём object-URL — годится и для <img>, и для open().
+    accShotBlobUrl: async (id) => {
+      const init = { method: "GET", credentials: "include", headers: {} };
+      const tok = getToken();
+      if (tok) init.headers["Authorization"] = "Bearer " + tok;
+      const res = await fetch(BASE + `/acceptances/${id}/shot`, init);
+      if (!res.ok) { const e = new Error("no_shot"); e.status = res.status; throw e; }
+      return URL.createObjectURL(await res.blob());
+    },
     rolePendingGet: () => request("GET", "/acceptances/role-pending-default"),
     rolePendingSet: (enabled) => request("POST", "/acceptances/role-pending-default", { enabled: !!enabled }),
     rolePendingClear: () => request("POST", "/acceptances/role-pending-clear"),
@@ -141,6 +151,8 @@
     audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
     auditDelete:   (id) => request("DELETE", `/audit/${id}`),
     auditClear:    () => request("DELETE", `/audit`),
+    commandLog:      (limit = 300) => request("GET", `/audit/commands?limit=${limit}`),
+    commandLogClear: () => request("DELETE", `/audit/commands`),
 
     loginLog:        (limit = 200) => request("GET", `/admin/login-log?limit=${limit}`),
     loginLogClear:   () => request("DELETE", "/admin/login-log"),

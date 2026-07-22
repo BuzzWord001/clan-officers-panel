@@ -20,6 +20,20 @@ def history(
     return db.list_audit(limit)
 
 
+@router.get("/commands")
+def command_log(
+    limit: int = Query(default=300, ge=1, le=1000),
+    _: dict = Depends(require_admin),
+) -> list[dict]:
+    """Подробный лог команд офицеров из чатов (кто/что/когда). Только админ."""
+    return db.list_chat_commands(limit)
+
+
+@router.delete("/commands", status_code=status.HTTP_204_NO_CONTENT)
+def clear_command_log(_: dict = Depends(require_admin)) -> None:
+    db.clear_chat_commands()
+
+
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_entry(entry_id: int, _: dict = Depends(require_admin)) -> None:
     if not db.delete_audit_entry(entry_id):

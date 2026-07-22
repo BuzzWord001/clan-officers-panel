@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
-  <title>SanTDeviL — Реестр приёма в клан</title>
-  <link rel="stylesheet" href="styles.css?v=1809000000">
+  <title>SanTDeviL — Приём в клан новичков</title>
+  <link rel="stylesheet" href="styles.css?v=1881100000">
   <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .shell{visibility:hidden}@keyframes bootReveal{to{visibility:visible}}html.booting .shell{animation:bootReveal 0s linear 4s forwards}</style>
   <noscript><style>html.booting .shell{visibility:visible!important}</style></noscript>
   <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
@@ -45,6 +45,111 @@
     .reg-role-elite { color:#ff8a94; background:rgba(255,90,106,.16); text-shadow:0 1px 2px rgba(0,0,0,.6); }
     .reg-role-vet   { color:#ffd24a; background:rgba(255,200,80,.15); text-shadow:0 1px 2px rgba(0,0,0,.6); }
     .reg-role-pending { color:#ffb15a; background:rgba(255,150,60,.18); text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    /* Скрыть админ-элементы формы от офицеров (роли/тумблер) */
+    body:not([data-role="admin"]) .admin-only { display:none !important; }
+
+    /* ===== Форма приёма новичка — единая панель, секции через разделители ===== */
+    #form-panel { padding-top:18px; padding-bottom:18px; }
+    .accept-form { display:flex; flex-direction:column; }
+    .af-head { margin-bottom:16px; }
+    .af-head h2 { margin:0 0 5px; border:0; padding:0; font-size:19px; }
+    .af-lead { margin:0; font-size:13px; line-height:1.5; color:#b7a488; }
+
+    /* Секции — без вложенных «коробок», разделены тонкой линией */
+    .af-sec { padding:15px 0; border-top:1px solid rgba(224,162,74,.14); }
+    .af-sec-head { display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+      font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#d8bd8e; margin-bottom:12px; }
+    .af-num { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
+      border-radius:50%; background:#e0a86a; color:#241606; font-size:11.5px; font-weight:900; flex:0 0 auto; }
+    .af-num--g { background:#7cc45c; color:#10250a; }
+    .af-sec--combat .af-sec-head { color:#bfe0a6; }
+    .af-rec { font-size:11px; font-weight:700; color:#0f2a12; background:#8fd06a;
+      padding:2px 9px; border-radius:10px; letter-spacing:.3px; text-transform:none; }
+
+    /* Поля — чёткий, но лёгкий контур */
+    .accept-form input[type=text], .accept-form input[type=number] {
+      border:1px solid rgba(224,162,74,.3); border-radius:8px; padding:9px 12px; background:rgba(0,0,0,.5); }
+    .accept-form input:focus { border-color:var(--accent); box-shadow:0 0 7px rgba(224,162,74,.28); }
+    .accept-form input::placeholder { color:#7c6d52; }
+
+    /* Секция 1 — поля по размеру контента (не растянуты на всю ширину) */
+    .af-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 140px; gap:14px;
+      align-items:start; max-width:640px; }
+    @media (max-width:640px){ .af-grid { grid-template-columns:1fr; max-width:none; } }
+    .af-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+    .af-field > label { font-size:11px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:#c3a877; }
+    .af-opt { font-weight:400; text-transform:none; letter-spacing:0; color:#8c7a5b; font-size:10.5px; }
+    .req { color:#ff6a6a; font-weight:800; }
+
+    /* Секция 2 — компактно: скрин · или · 2 цифры с подписью сбоку */
+    .af-combat-hint { font-size:12.5px; color:#c3ac82; line-height:1.5; margin-bottom:12px; }
+    .af-combat-body { display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+    .af-shot-col { display:flex; flex-direction:column; gap:6px; }
+    /* Скрин — вторичное действие: нейтральная контурная кнопка (зелёная только «Принять») */
+    .af-shot-btn { cursor:pointer; font:600 12px system-ui; letter-spacing:.5px; text-transform:uppercase;
+      color:#e6c98f; text-shadow:none; border:1px solid rgba(224,162,74,.5); border-radius:8px; padding:8px 15px;
+      background:rgba(224,162,74,.08); transition:background .12s, border-color .12s; }
+    .af-shot-btn:hover { background:rgba(224,162,74,.16); border-color:var(--accent); box-shadow:none; }
+    .af-shot-status { display:flex; align-items:center; gap:10px; min-height:14px; }
+    .af-shot-name { font-size:12px; color:#8fd06a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px; }
+    .af-shot-clear { cursor:pointer; font-size:12px; color:#ff9a8a; background:none; border:0; flex:0 0 auto; }
+    .af-combat-divider { color:#7d6e50; font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; }
+    .af-combat-nums { display:flex; flex-direction:column; gap:8px; }
+    .af-numrow { display:flex; align-items:center; gap:10px; cursor:text; }
+    .af-numrow input[type=number] { width:92px; flex:0 0 auto; text-align:center; }
+    .af-sec--combat input[type=number] { border-color:rgba(120,190,110,.4); }
+    .af-sec--combat input[type=number]:focus { border-color:#8fd06a; box-shadow:0 0 7px rgba(120,190,110,.4); }
+    .af-num-label { font-size:12px; color:#b39c72; }
+    .af-shot-preview { margin-top:11px; }
+    .af-shot-preview img { max-height:140px; max-width:100%; border-radius:10px; border:1px solid rgba(224,162,74,.3); }
+    .af-shot-btns { display:flex; gap:8px; flex-wrap:wrap; }
+    .af-shot-paste { font-size:11.5px; color:#a9946c; line-height:1.4; }
+    .af-shot-paste b { color:#e6c98f; background:rgba(224,162,74,.12); padding:1px 6px; border-radius:5px; }
+    .af-shot-paste-sub { display:block; font-size:10.5px; color:#8c7a5b; margin-top:2px; }
+
+    /* Дополнительно (только админ) */
+    .af-more { border:1px solid rgba(224,162,74,.18); border-radius:10px; background:rgba(224,162,74,.03); margin-top:15px; }
+    .af-more > summary { cursor:pointer; list-style:none; padding:11px 14px; font-weight:800; font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; color:#c3a877; user-select:none; }
+    .af-more > summary::-webkit-details-marker { display:none; }
+    .af-more[open] > summary { border-bottom:1px solid rgba(224,162,74,.14); }
+    .af-more-body { padding:14px; display:flex; flex-direction:column; gap:13px; }
+    .af-roles { display:flex; gap:18px; flex-wrap:wrap; }
+    .af-rolep-toggle { font-size:13px; color:#ffb15a; cursor:pointer; display:flex; align-items:center; gap:7px; }
+
+    /* Футер действий — единственный зелёный акцент */
+    .af-actions { margin-top:16px; padding-top:16px; border-top:1px solid rgba(224,162,74,.14); }
+    .af-submit { font:700 13.5px system-ui; letter-spacing:.7px; text-transform:uppercase;
+      padding:11px 30px; cursor:pointer; color:#123214; text-shadow:none; border:0; border-radius:9px;
+      background:linear-gradient(180deg,#9ad98f,#63ac52); box-shadow:0 2px 8px rgba(60,120,50,.35);
+      transition:filter .12s, box-shadow .12s, transform .12s; }
+    .af-submit:hover { filter:brightness(1.05); box-shadow:0 4px 12px rgba(60,120,50,.45); transform:translateY(-1px); }
+    .af-submit:active { transform:translateY(0); }
+    @media (max-width:640px){ .af-submit { width:100%; } }
+    /* Фильтр «Только принятые офицерами» (только админ) */
+    .reg-offfilter { display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+      font-size:13px; color:#ffb15a; margin:0 0 12px; user-select:none;
+      background:rgba(255,150,60,.08); border:1px solid rgba(255,150,60,.3);
+      border-radius:8px; padding:7px 12px; }
+    .reg-offfilter:hover { background:rgba(255,150,60,.14); }
+    #reg-offfilter-count { color:var(--text-dim); font-size:12px; }
+    /* Бейдж «принят офицером» в колонке «Добавил» (виден только админу) */
+    .reg-off-badge { display:inline-block; margin-left:6px; font-size:10.5px; font-weight:700;
+      color:#ffb15a; background:rgba(255,150,60,.16); border:1px solid rgba(255,150,60,.4);
+      border-radius:9px; padding:0 7px; white-space:nowrap; vertical-align:middle; }
+    body:not([data-role="admin"]) .reg-off-badge { display:none; }
+
+    /* Сворачиваемый заголовок «Список принятых» */
+    .reg-list-head { cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; user-select:none; }
+    .reg-list-head b { font-size:15px; }
+    #reg-arrow { display:inline-block; margin-right:6px; color:#e0a86a; }
+    .reg-head-hint { color:var(--text-dim); font-size:11.5px; white-space:nowrap; }
+    #reg-wrap { margin-top:12px; }
+
+    /* Боевые характеристики в таблице */
+    .reg-combat { font-size:12px; color:#f0dcb4; white-space:nowrap; line-height:1.5; }
+    .reg-combat .rc-cp { color:#ff9a6a; } .reg-combat .rc-sv { color:#6ad0ff; }
+    .reg-combat a.rc-shot { color:#8fc36a; text-decoration:underline; cursor:pointer; }
+    .reg-combat .rc-none { color:#6a5c44; }
   </style>
   <!-- Восстановление из bfcache (Назад/Вперёд) → reload, чтобы не показывать
        устаревшую вкладку из кэша (старые иконки/разметку). -->
@@ -69,7 +174,7 @@
 
     <section class="title-block">
       <div class="glitch">S a n T D e v i L</div>
-      <div class="subtitle">Реестр приёма в клан</div>
+      <div class="subtitle">Приём в клан новичков</div>
     </section>
 
     <main>
@@ -77,12 +182,12 @@
         <div class="tabs-group">
           <span class="tabs-group-label">приём</span>
           <div class="tabs-group-links">
-            <a href="index.html" class="active">Реестр</a>
+            <a href="index.html" class="active tab-primary">➕ Приём в клан</a>
             <a href="audit.html">История</a>
           </div>
         </div>
-        <div class="tabs-sep" aria-hidden="true"></div>
-        <div class="tabs-group">
+        <div class="tabs-sep admin-only" aria-hidden="true"></div>
+        <div class="tabs-group admin-only">
           <span class="tabs-group-label">чаты</span>
           <div class="tabs-group-links">
             <a href="chat-archive.html">Архив</a>
@@ -107,62 +212,103 @@
         </div>
       </div>
 
-      <div class="intro panel">
-        <p>
-          Закрытая офицерская панель клана <b>SanTDeviL</b>. Здесь офицеры вносят
-          новичков, принятых в клан: ник в игре, имя или мэйн-ник игрока и дату
-          приёма. К дате автоматически считается 7-дневный иммунитет — на это время
-          новичка освобождают от обязательной доблести и клановых событий.
-          Через 5 минут после изменений обновлённый список автоматически
-          публикуется в офицерских чатах Telegram и VK.
-        </p>
-      </div>
-
       <div class="panel" id="form-panel">
-        <h2>Новая запись</h2>
-        <form class="form-row" id="add-form" autocomplete="off">
-          <div class="ff required">
-            <label for="f-nick">Ник в игре<span class="req">*</span></label>
-            <input type="text" id="f-nick" name="nick" placeholder="например, Мелодька" required maxlength="64">
-            <div id="nick-dup-note" class="dup-note" hidden></div>
-            <div id="nick-kicked-note" class="kicked-note" hidden></div>
+        <form class="accept-form" id="add-form" autocomplete="off">
+
+          <div class="af-head">
+            <h2>➕ Принять новичка в клан</h2>
+            <p class="af-lead">Заполни <b>ник</b> и <b>титул</b> — этого достаточно. Боевые характеристики очень желательны, но не обязательны. Дата приёма ставится сама.</p>
           </div>
-          <div class="ff optional">
-            <label for="f-title">Титул</label>
-            <input type="text" id="f-title" name="title" placeholder="имя или мэйн-ник" maxlength="100">
+
+          <!-- Секция 1 — кого принимаем -->
+          <div class="af-sec">
+            <div class="af-sec-head"><span class="af-num">1</span> Кого принимаем</div>
+            <div class="af-grid">
+              <div class="af-field">
+                <label for="f-nick">Ник в игре <span class="req">*</span></label>
+                <input type="text" id="f-nick" name="nick" placeholder="как в игре" required maxlength="64">
+                <div id="nick-dup-note" class="dup-note" hidden></div>
+                <div id="nick-kicked-note" class="kicked-note" hidden></div>
+              </div>
+              <div class="af-field">
+                <label for="f-title">Титул <span class="af-opt">имя или ~мэйн~ для твина</span></label>
+                <input type="text" id="f-title" name="title" placeholder="имя или мэйн-ник" maxlength="100">
+              </div>
+              <div class="af-field af-field--date">
+                <label for="f-date">Дата приёма</label>
+                <input type="text" id="f-date" name="date" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+              </div>
+            </div>
           </div>
-          <div class="ff required">
-            <label for="f-date">Дата приёма<span class="req">*</span></label>
-            <input type="text" id="f-date" name="date" placeholder="ДД.ММ.ГГГГ" required maxlength="10">
+
+          <!-- Секция 2 — боевые характеристики: скрин ИЛИ две цифры -->
+          <div class="af-sec af-sec--combat">
+            <div class="af-sec-head"><span class="af-num af-num--g">2</span> ⚔ Боевые характеристики <span class="af-rec">очень желательно</span></div>
+            <div class="af-combat-hint">Прикрепи <b>скрин Боевых Характеристик</b> игрока — <b>или</b> впиши со скрина 2 цифры.</div>
+            <div class="af-combat-body">
+              <div class="af-shot-col">
+                <div class="af-shot-btns">
+                  <button type="button" id="f-shot-btn" class="af-shot-btn">📎 Прикрепить скрин</button>
+                </div>
+                <input type="file" id="f-shot-input" accept="image/png,image/jpeg,image/webp" hidden>
+                <div class="af-shot-paste">…или вставь скрин из буфера — <b>Ctrl + V</b>
+                  <span class="af-shot-paste-sub">Нажми <b>PrtScn</b> (или <b>Ctrl + PrtScn</b>) — экран копируется в буфер; <b>Alt + PrtScn</b> — только активное окно. Потом <b>Ctrl + V</b> сюда.</span></div>
+                <div class="af-shot-status">
+                  <span id="f-shot-name" class="af-shot-name"></span>
+                  <button type="button" id="f-shot-clear" class="af-shot-clear" hidden>✕ убрать</button>
+                </div>
+              </div>
+              <div class="af-combat-divider"><span>или</span></div>
+              <div class="af-combat-nums">
+                <label class="af-numrow"><input type="number" id="f-cp" placeholder="0" min="0" step="0.1"><span class="af-num-label">Боевые качества (урон), млн</span></label>
+                <label class="af-numrow"><input type="number" id="f-sv" placeholder="0" min="0" step="0.1"><span class="af-num-label">Выживаемость, млн</span></label>
+              </div>
+            </div>
+            <div id="f-shot-preview" class="af-shot-preview" hidden></div>
           </div>
-          <div class="ff optional">
-            <label for="f-note">Примечание</label>
-            <input type="text" id="f-note" name="note" placeholder="необязательно" maxlength="200">
-          </div>
-          <div class="ff optional">
-            <label for="f-veteran" title="Роли в Доблести — можно отметить сразу при приёме">Роль</label>
-            <label class="vet-chk"><input type="checkbox" id="f-veteran"> ★ Сразу Ветеран</label>
-            <label class="elite-chk" title="Топ по урону — сразу выдать роль Элита в Доблести"><input type="checkbox" id="f-elite"> ⚔ Сразу Элита</label>
-          </div>
-          <div class="ff optional" id="f-rolep-row" hidden>
-            <label class="rolep-chk" title="Пока включено — КАЖДОМУ новому (и от тебя, и от офицеров) ставится флаг «титул пока не выдан в игре», пока не выключишь">
-              <input type="checkbox" id="f-role-pending"> ⏳ Титул пока не выдан в игре — для всех новых</label>
-          </div>
-          <div class="ff">
-            <button type="submit">Добавить</button>
+
+          <!-- Дополнительно — только для админа (офицеры не видят). Примечание + роли/тумблер. -->
+          <details class="af-more admin-only">
+            <summary>⚙ Дополнительно <span class="af-opt">примечание, роли — необязательно</span></summary>
+            <div class="af-more-body">
+              <div class="af-field">
+                <label for="f-note">Примечание</label>
+                <input type="text" id="f-note" name="note" placeholder="Необязательно" maxlength="200">
+              </div>
+              <div class="admin-only af-roles">
+                <label class="vet-chk"><input type="checkbox" id="f-veteran"> ★ Сразу Ветеран</label>
+                <label class="elite-chk" title="Топ по урону"><input type="checkbox" id="f-elite"> ⚔ Сразу Элита</label>
+              </div>
+              <label class="admin-only af-rolep-toggle" id="f-rolep-row" hidden
+                     title="Пока включено — КАЖДОМУ новому ставится флаг «титул пока не выдан в игре», пока не выключишь">
+                <input type="checkbox" id="f-role-pending"> ⏳ Титул пока не выдан в игре — ставить всем новым</label>
+            </div>
+          </details>
+
+          <div class="af-actions">
+            <button type="submit" class="af-submit">✓ Принять в клан</button>
           </div>
         </form>
-        <div class="form-legend"><span class="req">*</span> — обязательное поле</div>
         <div class="status-line" id="form-status"></div>
       </div>
 
-      <div class="panel">
-        <h2>Принятые в клан</h2>
+      <div class="panel" id="reg-panel">
+        <div class="members-header reg-list-head" id="reg-toggle">
+          <div><span id="reg-arrow">▶</span>
+            <b>📋 Список принятых в клан</b>
+            <small id="reg-count" style="color:var(--text-dim);margin-left:6px"></small></div>
+          <small class="reg-head-hint">нажми, чтобы раскрыть</small>
+        </div>
+        <div id="reg-wrap" style="display:none">
         <div class="reg-search-wrap">
           <input type="text" id="reg-search" class="reg-search"
                  placeholder="Поиск по нику, титулу, примечанию, дате, кто принял, роли (ветеран/элита)…" autocomplete="off">
           <span id="reg-search-count" class="reg-search-count"></span>
         </div>
+        <label class="reg-offfilter admin-only" id="reg-offfilter-lbl" title="Показать только тех, кого приняли офицеры (не ты) — возможно, стоит перепроверить">
+          <input type="checkbox" id="reg-offfilter"> 👮 Только принятые офицерами
+          <span id="reg-offfilter-count"></span>
+        </label>
         <div class="table-scroll">
           <table id="acceptances-table" data-help="acceptances">
             <thead>
@@ -170,8 +316,9 @@
                 <th style="width:42px;">№</th>
                 <th>Ник</th>
                 <th>Титул</th>
-                <th style="width:130px;">Принят</th>
-                <th style="width:200px;">Иммунитет</th>
+                <th style="width:150px;">⚔ Боевые хар-ки</th>
+                <th style="width:120px;">Принят</th>
+                <th style="width:180px;">Иммунитет</th>
                 <th>Примечание</th>
                 <th style="width:140px;">Добавил</th>
                 <th style="width:160px;"></th>
@@ -180,7 +327,8 @@
             <tbody id="tbody"></tbody>
           </table>
         </div>
-        <div class="empty" id="empty-state" hidden>Список пуст — добавьте первого офицера</div>
+        <div class="empty" id="empty-state" hidden>Пока никого не приняли — добавь первого новичка выше.</div>
+        </div>
       </div>
 
       <div class="panel" id="rolep-panel" hidden style="margin-top:14px">
@@ -193,7 +341,7 @@
         <textarea id="rolep-text" readonly rows="6" style="width:100%;font-family:monospace;font-size:13px;resize:vertical;background:rgba(0,0,0,.2);color:var(--text);border:1px solid rgba(255,150,60,.3);border-radius:6px;padding:8px;box-sizing:border-box"></textarea>
       </div>
 
-      <div class="panel" id="arch-panel" style="margin-top:14px">
+      <div class="panel admin-only" id="arch-panel" style="margin-top:14px">
         <div class="members-header" style="cursor:pointer" id="arch-toggle">
           <div><span id="arch-arrow">▶</span>
             <b>Архив реестра — ушли из клана</b>
@@ -225,14 +373,14 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1880700000"></script>
+  <script src="js/api.js?v=1880900000"></script>
   <script src="js/view-as.js?v=1815100000"></script>
   <script src="js/global-search.js?v=1817000000"></script>
   <script src="js/queue-tab.js?v=1811000000"></script>
   <script src="js/dateutil.js?v=1795930000"></script>
   <script src="js/help-tips.js?v=1802000000"></script>
   <script src="js/note-scroll.js?v=1801400000"></script>
-  <script src="js/app.js?v=1880800000"></script>
+  <script src="js/app.js?v=1881400000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1800100000"></script>
   <script src="js/chamber-door.js?v=1800300000"></script>

@@ -46,6 +46,84 @@
   DateRu.bindDateInput($("f-date"));
   $("f-date").value = DateRu.today();
 
+  // ── Скрин «Боевых Характеристик» (необязательно). Два способа приложить: ──
+  //   1) файл с диска;
+  //   2) ВСТАВКА из буфера (Ctrl+V) — работает с Ctrl+PrtScn и Win+Shift+S (вырезать область).
+  // Любую картинку нормализуем в JPEG ≤1600px по большей стороне (меньше вес, влезает в лимит).
+  let shotDataUrl = "";
+  const SHOT_MAX = 1600;
+
+  function setShotDataUrl(dataUrl, label) {
+    shotDataUrl = dataUrl;
+    if ($("f-shot-name")) $("f-shot-name").textContent = "✓ " + (label || "скрин прикреплён");
+    if ($("f-shot-clear")) $("f-shot-clear").hidden = false;
+    const pv = $("f-shot-preview");
+    if (pv) { pv.hidden = false; pv.innerHTML = '<img alt="скрин боевых характеристик">'; pv.firstChild.src = dataUrl; }
+  }
+  function clearShot() {
+    shotDataUrl = "";
+    if ($("f-shot-input")) $("f-shot-input").value = "";
+    if ($("f-shot-name")) $("f-shot-name").textContent = "";
+    if ($("f-shot-clear")) $("f-shot-clear").hidden = true;
+    const pv = $("f-shot-preview");
+    if (pv) { pv.hidden = true; pv.innerHTML = ""; }
+  }
+
+  // Загрузить картинку из File/Blob/dataURL в <img>.
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const url = (typeof src === "string") ? src : URL.createObjectURL(src);
+      const img = new Image();
+      const done = (ok) => { if (typeof src !== "string") { try { URL.revokeObjectURL(url); } catch (_) {} } ok(); };
+      img.onload = () => done(() => resolve(img));
+      img.onerror = () => done(() => reject(new Error("img_load")));
+      img.src = url;
+    });
+  }
+  // Нормализовать в JPEG, ограничив бОльшую сторону SHOT_MAX.
+  async function normalizeToDataUrl(src) {
+    const img = await loadImage(src);
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const scale = Math.min(1, SHOT_MAX / Math.max(w, h || 1));
+    w = Math.max(1, Math.round(w * scale)); h = Math.max(1, Math.round(h * scale));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(img, 0, 0, w, h);
+    return cv.toDataURL("image/jpeg", 0.85);
+  }
+  async function attachShotFrom(src, label) {
+    try { setShotDataUrl(await normalizeToDataUrl(src), label); return true; }
+    catch (_) { setStatus("✗ Не удалось обработать изображение"); return false; }
+  }
+
+  // 1) Файл с диска
+  if ($("f-shot-btn")) $("f-shot-btn").addEventListener("click", () => $("f-shot-input").click());
+  if ($("f-shot-clear")) $("f-shot-clear").addEventListener("click", clearShot);
+  if ($("f-shot-input")) $("f-shot-input").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type || "")) { setStatus("✗ Это не изображение"); return; }
+    if (await attachShotFrom(file, file.name)) setStatus("✓ Скрин прикреплён (файл)");
+  });
+
+  // 2) Вставка из буфера (Ctrl+V) — image-элемент буфера. Текст не трогаем.
+  document.addEventListener("paste", async (e) => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.type && it.type.indexOf("image") === 0) {
+        const blob = it.getAsFile();
+        if (blob) {
+          e.preventDefault();
+          if (await attachShotFrom(blob, "вставлен из буфера")) {
+            setStatus("✓ Скрин вставлен из буфера");
+            const pv = $("f-shot-preview"); if (pv) pv.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }
+        }
+        return;
+      }
+    }
+  });
+
   // ── Ники из таблицы Доблести — для уведомления о дубле при регистрации ──
   const normNick = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "");
   let valorNickSet = new Set();
@@ -216,6 +294,7 @@
 
   // ── Поиск по реестру ──
   if ($("reg-search")) $("reg-search").addEventListener("input", applyFilter);
+  if ($("reg-offfilter")) $("reg-offfilter").addEventListener("change", applyFilter);
 
   // ── Add form ──
   $("add-form").addEventListener("submit", async (ev) => {
@@ -226,6 +305,8 @@
     const note = $("f-note").value.trim();
     const veteran = $("f-veteran") ? $("f-veteran").checked : false;
     const elite = $("f-elite") ? $("f-elite").checked : false;
+    const combat_power = $("f-cp") ? Math.max(0, parseFloat($("f-cp").value) || 0) : 0;
+    const survivability = $("f-sv") ? Math.max(0, parseFloat($("f-sv").value) || 0) : 0;
 
     const iso = DateRu.parseRus(rusDate);
     if (!nick) return;
@@ -236,17 +317,29 @@
 
     setStatus("Добавляю…");
     try {
-      await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran, elite });
+      await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran, elite,
+        combat_power, survivability, combat_shot: shotDataUrl || "" });
       $("f-nick").value = "";
       $("f-title").value = "";
       $("f-note").value = "";
       $("f-date").value = DateRu.today();
+      if ($("f-cp")) $("f-cp").value = "";
+      if ($("f-sv")) $("f-sv").value = "";
+      clearShot();
       if ($("f-veteran")) $("f-veteran").checked = false;
       if ($("f-elite")) $("f-elite").checked = false;
       if ($("nick-dup-note")) $("nick-dup-note").hidden = true;
       if ($("nick-kicked-note")) { $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = ""; }
-      setStatus(`✓ Добавлен: ${nick}${veteran ? " (★ Ветеран)" : ""}${elite ? " (⚔ Элита)" : ""}`);
+      const cc = (combat_power || survivability) ? ` (БК ${combat_power} · Выж ${survivability})`
+               : (shotDataUrl ? " (📎 скрин)" : "");
+      setStatus(`✓ Принят: ${nick}${veteran ? " (★ Ветеран)" : ""}${elite ? " (⚔ Элита)" : ""}${cc}`);
       await reload();
+      // Раскрываем список и показываем свежую запись (она вверху) — без прокрутки вручную.
+      setRegListOpen(true, true);
+      const panel = $("reg-panel");
+      if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstRow = document.querySelector("#tbody tr");
+      if (firstRow) { firstRow.classList.add("reg-row-flash"); setTimeout(() => firstRow.classList.remove("reg-row-flash"), 1600); }
     } catch (e) {
       setStatus(`✗ Ошибка: ${e.detail || e.message}`);
     }
@@ -332,6 +425,56 @@
     }, 500);
   }
 
+  // Открыть скрин боевых характеристик (тянем с авторизацией → object-URL).
+  async function openShot(id) {
+    try {
+      const url = await API.accShotBlobUrl(id);
+      const w = window.open(url, "_blank");
+      // Через минуту отзываем URL (окно уже загрузило картинку).
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+      if (!w) setStatus("✗ Всплывающее окно заблокировано браузером");
+    } catch (e) {
+      setStatus(e.status === 404 ? "✗ Скрин не найден" : "✗ Не удалось открыть скрин");
+    }
+  }
+
+  // Ячейка «Боевые хар-ки»: цифры (БК/Выж) и/или ссылка на скрин, иначе «—».
+  function fmtMln(v) {
+    const n = Number(v) || 0;
+    if (!n) return "";
+    // Красиво: 12 / 12.5 (без лишних нулей).
+    return (Math.round(n * 10) / 10).toString();
+  }
+  function fillCombatCell(cell, r) {
+    if (!cell) return;
+    cell.innerHTML = "";
+    cell.className = "combat reg-combat";
+    const cp = fmtMln(r.combat_power), sv = fmtMln(r.survivability);
+    let any = false;
+    if (cp) {
+      const s = document.createElement("span"); s.className = "rc-cp";
+      s.textContent = "БК " + cp + " млн"; s.title = "Боевые качества (урон)";
+      cell.appendChild(s); any = true;
+    }
+    if (sv) {
+      if (any) cell.appendChild(document.createTextNode(" · "));
+      const s = document.createElement("span"); s.className = "rc-sv";
+      s.textContent = "Выж " + sv + " млн"; s.title = "Выживаемость";
+      cell.appendChild(s); any = true;
+    }
+    if (r.has_shot) {
+      if (any) cell.appendChild(document.createElement("br"));
+      const a = document.createElement("a");
+      a.className = "rc-shot"; a.textContent = "📎 скрин"; a.title = "Открыть скрин Боевых Характеристик";
+      a.addEventListener("click", (e) => { e.preventDefault(); openShot(r.id); });
+      cell.appendChild(a); any = true;
+    }
+    if (!any) {
+      const s = document.createElement("span"); s.className = "rc-none"; s.textContent = "—";
+      cell.appendChild(s);
+    }
+  }
+
   // ── Render table ──
   function renderTable(rows) {
     const tbody = $("tbody");
@@ -353,6 +496,7 @@
         <td>${i + 1}</td>
         <td class="nick"></td>
         <td class="title"></td>
+        <td class="combat"></td>
         <td class="date">${DateRu.fmtRus(r.accepted_date)}</td>
         <td class="${r.immune_active ? "immune-active" : "immune-expired"}">
           ${r.immune_active ? "до " : "истёк "}${DateRu.fmtRus(r.immune_until)}
@@ -396,7 +540,16 @@
         nickCell.appendChild(box);
       }
       tr.querySelector(".title").textContent = r.title || "—";
-      tr.querySelector(".actor").textContent = r.created_by_name;
+      fillCombatCell(tr.querySelector(".combat"), r);
+      const actorCell = tr.querySelector(".actor");
+      actorCell.textContent = r.created_by_name;
+      if (r.by_officer) {   // пометка «принят офицером» — видна только админу (CSS-гейт)
+        const b = document.createElement("span");
+        b.className = "reg-off-badge";
+        b.textContent = "👮 офицер";
+        b.title = "Принят офицером (не тобой) — возможно, стоит перепроверить данные";
+        actorCell.appendChild(b);
+      }
 
       // Примечание — тот же «свиток», что и в таблице Доблести (общий модуль,
       // общие данные). Клик открывает историю; правки синхронны с Доблестью.
@@ -492,9 +645,11 @@
   function applyFilter() {
     const box = $("reg-search");
     const q = (box ? box.value : "").trim().toLowerCase();
+    const offOnly = $("reg-offfilter") && $("reg-offfilter").checked;
     let rows = allRows;
+    if (offOnly) rows = rows.filter((r) => r.by_officer);   // только принятые офицерами
     if (q) {
-      rows = allRows.filter((r) =>
+      rows = rows.filter((r) =>
         [r.game_nick, r.title, r.note, r.created_by_name,
          DateRu.fmtRus(r.accepted_date),
          // Роли — чтобы искать по «ветеран» / «элита» (топ по урону).
@@ -505,17 +660,51 @@
     renderTable(rows);
     const c = $("reg-search-count");
     if (c) c.textContent = q ? `найдено ${rows.length} из ${allRows.length}` : "";
+    // Счётчик «принятых офицерами» рядом с фильтром (только админ видит сам фильтр).
+    const oc = $("reg-offfilter-count");
+    if (oc) { const n = allRows.filter((r) => r.by_officer).length; oc.textContent = n ? `— ${n}` : ""; }
   }
 
   async function reload() {
     try {
       allRows = await API.list();
+      // Новые — СВЕРХУ: только что принятый виден сразу, без прокрутки вниз.
+      // Сортируем по дате приёма, при равенстве — по id (позже внесён = выше).
+      allRows.sort((a, b) =>
+        String(b.accepted_date).localeCompare(String(a.accepted_date)) || (b.id - a.id));
       applyFilter();
       renderRolePendingPanel();
+      updateRegCount();
     } catch (e) {
       setStatus(`✗ Не удалось загрузить: ${e.message}`);
     }
   }
+
+  // Счётчик в свёрнутом заголовке списка.
+  function updateRegCount() {
+    const c = $("reg-count");
+    if (c) c.textContent = allRows.length ? `(${allRows.length})` : "";
+  }
+
+  // ── Сворачиваемый список принятых (как вкладка) ──
+  const REG_OPEN_KEY = "reg_list_open";
+  function setRegListOpen(open, save) {
+    const w = $("reg-wrap"), arrow = $("reg-arrow"), hint = document.querySelector(".reg-head-hint");
+    if (!w) return;
+    w.style.display = open ? "block" : "none";
+    if (arrow) arrow.textContent = open ? "▼" : "▶";
+    if (hint) hint.textContent = open ? "нажми, чтобы свернуть" : "нажми, чтобы раскрыть";
+    if (save) { try { localStorage.setItem(REG_OPEN_KEY, open ? "1" : "0"); } catch (_) {} }
+  }
+  function isRegListOpen() { return $("reg-wrap") && $("reg-wrap").style.display !== "none"; }
+  (function initRegToggle() {
+    const t = $("reg-toggle");
+    if (!t) return;
+    let open = false;
+    try { open = localStorage.getItem(REG_OPEN_KEY) === "1"; } catch (_) {}
+    setRegListOpen(open, false);
+    t.addEventListener("click", () => setRegListOpen(!isRegListOpen(), true));
+  })();
 
   // Панель «Роль пока не выдана в игре» (только админ=Лир): ники+титулы в столбик
   // для копирования в чат. Список строится из записей реестра с флагом role_pending.
@@ -554,6 +743,7 @@
 
     const nickCell  = tr.querySelector(".nick");
     const titleCell = tr.querySelector(".title");
+    const combatCell = tr.querySelector(".combat");
     const dateCell  = tr.querySelector(".date");
     const noteCell  = tr.querySelector(".note");
     const actions   = tr.querySelector(".row-actions");
@@ -561,6 +751,37 @@
     nickCell.innerHTML  = `<input type="text" value="${esc(r.game_nick)}" style="width:100%">`;
     titleCell.innerHTML = `<input type="text" value="${esc(r.title || "")}" placeholder="титул / ~мэйн~" style="width:100%">`;
     attachNickSuggest(titleCell.querySelector("input"));   // подсказки ников клана для титула-твина
+
+    // Боевые характеристики: 2 цифры + управление скрином (заменить/убрать/открыть).
+    // editShot: undefined = не менять; "" = удалить; dataURL = заменить.
+    let editShot;
+    const cpVal = (Number(r.combat_power) || 0) || "";
+    const svVal = (Number(r.survivability) || 0) || "";
+    combatCell.innerHTML =
+      `<input type="number" class="ed-cp combat-num" style="width:78px" min="0" step="0.1" placeholder="БК млн" value="${cpVal}">`
+      + `<input type="number" class="ed-sv combat-num" style="width:78px;margin-left:4px" min="0" step="0.1" placeholder="Выж млн" value="${svVal}">`
+      + `<div class="ed-shot-ctl" style="margin-top:5px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">`
+      + (r.has_shot
+          ? `<a href="#" class="ed-shot-open rc-shot">📎 открыть</a><a href="#" class="ed-shot-del" style="color:#ff9a8a">✕ убрать скрин</a>`
+          : "")
+      + `<label class="ed-shot-replace" style="color:#8fc36a;cursor:pointer">📎 ${r.has_shot ? "заменить" : "прикрепить"}<input type="file" accept="image/png,image/jpeg,image/webp" hidden></label>`
+      + `<span class="ed-shot-state" style="color:#8fc36a"></span></div>`;
+    const shotState = combatCell.querySelector(".ed-shot-state");
+    const openLink = combatCell.querySelector(".ed-shot-open");
+    if (openLink) openLink.addEventListener("click", (e) => { e.preventDefault(); openShot(r.id); });
+    const delLink = combatCell.querySelector(".ed-shot-del");
+    if (delLink) delLink.addEventListener("click", (e) => {
+      e.preventDefault(); editShot = ""; if (shotState) shotState.textContent = "скрин будет удалён";
+    });
+    const replInput = combatCell.querySelector(".ed-shot-replace input");
+    if (replInput) replInput.addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (!/^image\//.test(f.type || "")) { if (shotState) shotState.textContent = "не изображение"; return; }
+      try { editShot = await normalizeToDataUrl(f); if (shotState) shotState.textContent = "✓ новый скрин"; }
+      catch (_) { if (shotState) shotState.textContent = "ошибка чтения"; }
+    });
+
     dateCell.innerHTML  = `<input type="text" value="${DateRu.fmtRus(r.accepted_date)}" placeholder="ДД.ММ.ГГГГ" style="width:100%">`;
     noteCell.innerHTML  = `<input type="text" value="${esc(r.note || "")}" style="width:100%">`;
     actions.innerHTML =
@@ -606,6 +827,8 @@
       const vetBox = actions.querySelector(".ed-vet");
       const eliteBox = actions.querySelector(".ed-elite");
       const rolepBox = actions.querySelector(".ed-rolep");
+      const cpBox = combatCell.querySelector(".ed-cp");
+      const svBox = combatCell.querySelector(".ed-sv");
       const payload = {
         game_nick:     nickCell.querySelector("input").value.trim(),
         title:         titleCell.querySelector("input").value.trim(),
@@ -614,7 +837,10 @@
         veteran:       vetBox ? vetBox.checked : undefined,
         elite:         eliteBox ? eliteBox.checked : undefined,
         role_pending:  rolepBox ? rolepBox.checked : undefined,
+        combat_power:  cpBox ? Math.max(0, parseFloat(cpBox.value) || 0) : undefined,
+        survivability: svBox ? Math.max(0, parseFloat(svBox.value) || 0) : undefined,
       };
+      if (editShot !== undefined) payload.combat_shot = editShot;   // ""=удалить, dataURL=заменить
       try {
         await API.update(r.id, payload);
         await finish();

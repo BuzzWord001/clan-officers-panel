@@ -12,6 +12,9 @@ class AcceptanceIn(BaseModel):
     veteran: bool = False   # сразу пометить ролью «Ветеран» (твин старичка)
     elite: bool = False     # сразу пометить ролью «Элита» (Топ по урону)
     role_pending: bool | None = None   # None=взять глобальный тумблер; True/False=явно
+    combat_power: float = Field(default=0, ge=0)     # Боевые качества (урон), млн
+    survivability: float = Field(default=0, ge=0)    # Выживаемость, млн
+    combat_shot: str = Field(default="", max_length=8_000_000)  # dataURL скрина (необязательно)
 
 
 class AcceptanceUpdate(BaseModel):
@@ -22,6 +25,9 @@ class AcceptanceUpdate(BaseModel):
     veteran: bool | None = None   # None=не менять, True/False=поставить/снять роль
     elite: bool | None = None     # None=не менять, True/False=поставить/снять «Элита»
     role_pending: bool | None = None   # None=не менять; True/False=роль (не)выдана в игре
+    combat_power: float | None = None      # None=не менять
+    survivability: float | None = None     # None=не менять
+    combat_shot: str | None = None         # None=не менять; ""=удалить; dataURL=заменить
 
 
 class AcceptanceOut(BaseModel):
@@ -46,6 +52,10 @@ class AcceptanceOut(BaseModel):
     archived_reason: str = ""
     nick_canon: str = ""      # канон-ник — для «свитка» примечаний (общий с Доблестью)
     note_count: int = 0       # число записей в истории примечаний (для бейджа)
+    combat_power: float = 0   # Боевые качества (урон), млн
+    survivability: float = 0  # Выживаемость, млн
+    has_shot: bool = False    # прикреплён скрин Боевых Характеристик
+    by_officer: bool = False  # принят офицером (не лично админом) — для пометки/фильтра
 
 
 class ArchiveIn(BaseModel):

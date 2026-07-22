@@ -1280,6 +1280,40 @@ footer.bottom {
    «админ» и её разделитель не отображаются. */
 body:not([data-role="admin"]) .tabs .admin-only { display: none !important; }
 
+/* Офицерам показываем ТОЛЬКО «Приём в клан» и «Таблица доблести».
+   Прячем отдельные ссылки внутри групп, где остаётся другая видимая вкладка
+   (История — в группе «приём», Скрины — в группе «доблесть»). Группа «чаты»
+   и её разделитель скрыты классом admin-only в разметке. Админ видит всё. */
+body:not([data-role="admin"]) .tabs a[href="audit.html"],
+body:not([data-role="admin"]) .tabs a[href="valor-screens.html"] { display: none !important; }
+
+/* Главная кнопка офицера — «Приём в клан»: яркая пилюля, видна сразу.
+   Чистый пропорциональный шрифт (не моноширинный Cascadia) + нормальный трекинг —
+   так CTA читается ясно и выглядит как кнопка, а не как терминальный текст. */
+.tabs a.tab-primary {
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  line-height: 1;
+  padding: 8px 20px;
+  border: 1px solid #f4d089;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f6d089 0%, #e3a94f 100%);
+  color: #2a1a06 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 10px rgba(224, 162, 74, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: filter 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.tabs a.tab-primary:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 4px 15px rgba(224, 162, 74, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+  border-bottom-color: #f4d089;
+}
+.tabs a.tab-primary.active { border-bottom-color: transparent; }
+
 @media (max-width: 520px) {
   .tabs { gap: 10px; }
   .tabs-group-label { font-size: 8px; }

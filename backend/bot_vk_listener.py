@@ -17,10 +17,50 @@ from typing import Any
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 
+import bot_vk
+import officer_commands
 import publisher
 from config import settings
 
 log = logging.getLogger("officers.bot.vk.listener")
+
+
+def _vk_name(session, uid: int) -> str:
+    """Читаемое имя автора VK (для колонки «Добавил»)."""
+    try:
+        r = session.method("users.get", {"user_ids": uid})
+        if r:
+            nm = ((r[0].get("first_name") or "") + " " + (r[0].get("last_name") or "")).strip()
+            if nm:
+                return nm
+    except Exception:
+        pass
+    return "VK " + str(uid)
+
+
+def _handle_command(session, raw: dict, target_peer: int) -> None:
+    """Офицерская команда (/принять …) из VK-чата → выполнить и ответить."""
+    msg = (raw.get("object") or {}).get("message") or {}
+    text = (msg.get("text") or "").strip()
+    if not text.startswith("/"):
+        return
+    if msg.get("peer_id") != target_peer:
+        return
+    from_id = msg.get("from_id") or 0
+    if from_id <= 0:                       # сообщение от группы/бота — игнор
+        return
+    actor = {"platform": "vk", "id": str(from_id),
+             "name": _vk_name(session, from_id), "ip": "", "user_agent": "vk-command"}
+    try:
+        reply = officer_commands.handle(text, actor)
+    except Exception:
+        log.exception("officer command crashed")
+        reply = "⚠ Ошибка команды. Попробуй ещё раз или сделай на сайте."
+    if reply:
+        try:
+            bot_vk.send_text(reply)
+        except Exception:
+            log.exception("VK command reply failed")
 
 _REPOST_COOLDOWN_SEC = 60
 _RECONNECT_BACKOFF_INITIAL = 2.0
@@ -103,6 +143,12 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
                     return
                 raw = event.raw if hasattr(event, "raw") else {}
                 etype = event.type
+                # Офицерская команда приёма (/принять, /удалить, /список, /помощь)
+                if etype == VkBotEventType.MESSAGE_NEW:
+                    try:
+                        _handle_command(session, raw, target_peer)
+                    except Exception:
+                        log.exception("VK command handling failed")
                 if not _is_invite_event(etype, raw):
                     continue
                 peer = _event_peer_id(etype, raw)

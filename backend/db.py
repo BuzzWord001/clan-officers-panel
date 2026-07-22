@@ -64,6 +64,21 @@ CREATE INDEX IF NOT EXISTS idx_login_time ON login_log(timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(timestamp);
 
+-- Лог команд офицеров из чатов TG/VK (/принять, /отмена, /список, /help).
+-- Для админа: кто, что писал, когда, полный текст и ответ — чтобы разбирать ошибки.
+CREATE TABLE IF NOT EXISTS chat_command_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT    NOT NULL,
+    platform    TEXT    NOT NULL,               -- tg | vk
+    user_id     TEXT    NOT NULL,               -- id автора в TG/VK
+    user_name   TEXT    NOT NULL DEFAULT '',    -- игровой ник (резолв) / имя из чата
+    command     TEXT    NOT NULL DEFAULT '',    -- принять | отмена | список | help ...
+    text        TEXT    NOT NULL DEFAULT '',    -- сырой текст команды
+    ok          INTEGER NOT NULL DEFAULT 1,     -- 1 = выполнена, 0 = ошибка
+    reply       TEXT    NOT NULL DEFAULT ''     -- ответ бота (кратко)
+);
+CREATE INDEX IF NOT EXISTS idx_cmdlog_time ON chat_command_log(timestamp);
+
 CREATE TABLE IF NOT EXISTS render_state (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
     dirty           INTEGER NOT NULL DEFAULT 0,
@@ -571,6 +586,23 @@ def _migrate(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # 2026-07-22: боевые характеристики при приёме — Боевые качества (урон, млн) и
+    # Выживаемость (млн). Плюс флаг наличия скрина «Боевых Характеристик» (файл на томе).
+    for col in ("combat_power REAL NOT NULL DEFAULT 0",
+                "survivability REAL NOT NULL DEFAULT 0",
+                "combat_shot INTEGER NOT NULL DEFAULT 0"):
+        try:
+            conn.execute(f"ALTER TABLE acceptances ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
+
+    # 2026-07-22: флаг «принят офицером» (не лично админом/Лиром). Для админской
+    # пометки «эти данные, возможно, надо перепроверить» + фильтр в UI.
+    try:
+        conn.execute("ALTER TABLE acceptances ADD COLUMN by_officer INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     # 2026-06-08: архив скриншотов сбора доблести (по неделям) — ссылки на R2.
     # Сами кадры в R2 (заливает pw-valor-tracker), здесь — метаданные/ссылки.
     try:
@@ -909,7 +941,40 @@ def _row_to_acceptance(row: sqlite3.Row) -> dict[str, Any]:
         "archived_by": row["archived_by"] if "archived_by" in keys else "",
         "archived_reason": row["archived_reason"] if "archived_reason" in keys else "",
         "role_pending": bool(row["role_pending"]) if "role_pending" in keys else False,
+        "combat_power": (row["combat_power"] if "combat_power" in keys else 0) or 0,
+        "survivability": (row["survivability"] if "survivability" in keys else 0) or 0,
+        "has_shot": bool(row["combat_shot"]) if "combat_shot" in keys else False,
+        "by_officer": bool(row["by_officer"]) if "by_officer" in keys else False,
     }
+
+
+def acceptance_set_shot(acc_id: int, has: bool) -> bool:
+    """Отметить наличие/отсутствие скрина боевых характеристик у записи приёма."""
+    with connection() as conn:
+        cur = conn.execute("UPDATE acceptances SET combat_shot=? WHERE id=?",
+                           (1 if has else 0, acc_id))
+        return cur.rowcount > 0
+
+
+def acceptance_exists(acc_id: int) -> bool:
+    with connection() as conn:
+        return conn.execute("SELECT 1 FROM acceptances WHERE id=?", (acc_id,)).fetchone() is not None
+
+
+def member_nick_by_platform_id(platform: str, user_id: str) -> str:
+    """Игровой ник участника по его TG/VK id (зеркало clan_members от clan-reg-bot).
+    Для подписи «кто принял» в чат-командах офицеров. Пусто если не нашли."""
+    col = "tg_id" if platform == "tg" else ("vk_id" if platform == "vk" else "")
+    if not col or not user_id:
+        return ""
+    with connection() as conn:
+        row = conn.execute(
+            f"SELECT game_nick, display_name FROM clan_members WHERE {col} = ? LIMIT 1",
+            (str(user_id),)).fetchone()
+    if not row:
+        return ""
+    gn = (row["game_nick"] or "").split(",")[0].strip()   # game_nick через запятую — первый
+    return gn or (row["display_name"] or "").strip()
 
 
 def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
@@ -1466,6 +1531,9 @@ def create_acceptance(
     veteran: bool = False,
     elite: bool = False,
     role_pending: bool | None = None,
+    combat_power: float = 0,
+    survivability: float = 0,
+    by_officer: bool = False,
     actor: dict[str, str],
 ) -> dict[str, Any]:
     now = datetime.utcnow().isoformat(timespec="seconds")
@@ -1476,8 +1544,9 @@ def create_acceptance(
         cur = conn.execute(
             """INSERT INTO acceptances
                (game_nick, title, accepted_date, note, created_at, updated_at,
-                created_by_platform, created_by_id, created_by_name, role_pending)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_by_platform, created_by_id, created_by_name, role_pending,
+                combat_power, survivability, by_officer)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 game_nick.strip(),
                 title.strip(),
@@ -1489,6 +1558,9 @@ def create_acceptance(
                 str(actor["id"]),
                 actor["name"],
                 1 if rp else 0,
+                max(0, float(combat_power or 0)),
+                max(0, float(survivability or 0)),
+                1 if by_officer else 0,
             ),
         )
         acc_id = cur.lastrowid
@@ -1533,6 +1605,8 @@ def update_acceptance(
     veteran: bool | None = None,
     elite: bool | None = None,
     role_pending: bool | None = None,
+    combat_power: float | None = None,
+    survivability: float | None = None,
     actor: dict[str, str],
 ) -> dict[str, Any] | None:
     with connection() as conn:
@@ -1548,14 +1622,17 @@ def update_acceptance(
         new_note = before["note"] if note is None else note.strip()
         cur_rp = (before["role_pending"] if "role_pending" in before.keys() else 0)
         new_rp = cur_rp if role_pending is None else (1 if role_pending else 0)
+        _bk = before.keys()
+        new_cp = (before["combat_power"] if "combat_power" in _bk else 0) if combat_power is None else max(0, float(combat_power))
+        new_sv = (before["survivability"] if "survivability" in _bk else 0) if survivability is None else max(0, float(survivability))
         now = datetime.utcnow().isoformat(timespec="seconds")
 
         conn.execute(
             """UPDATE acceptances
                SET game_nick = ?, title = ?, accepted_date = ?, note = ?, updated_at = ?,
-                   role_pending = ?
+                   role_pending = ?, combat_power = ?, survivability = ?
                WHERE id = ?""",
-            (new_nick, new_title, new_date, new_note, now, new_rp, acc_id),
+            (new_nick, new_title, new_date, new_note, now, new_rp, new_cp, new_sv, acc_id),
         )
         after = conn.execute(
             "SELECT * FROM acceptances WHERE id = ?", (acc_id,)
@@ -1876,6 +1953,39 @@ def list_logins(limit: int = 200) -> list[dict[str, Any]]:
             }
             for r in rows
         ]
+
+
+def log_chat_command(*, platform: str, user_id: str, user_name: str,
+                     command: str, text: str, ok: bool, reply: str) -> None:
+    """Записать команду офицера из чата (для админского лога)."""
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO chat_command_log "
+            "(timestamp, platform, user_id, user_name, command, text, ok, reply) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (datetime.utcnow().isoformat(timespec="seconds"),
+             (platform or ""), str(user_id or ""), (user_name or "")[:120],
+             (command or "")[:40], (text or "")[:500], 1 if ok else 0, (reply or "")[:500]),
+        )
+
+
+def list_chat_commands(limit: int = 200) -> list[dict[str, Any]]:
+    limit = max(1, min(int(limit or 200), 1000))
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_command_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [
+        {"id": r["id"], "timestamp": r["timestamp"], "platform": r["platform"],
+         "user_id": r["user_id"], "user_name": r["user_name"], "command": r["command"],
+         "text": r["text"], "ok": bool(r["ok"]), "reply": r["reply"]}
+        for r in rows
+    ]
+
+
+def clear_chat_commands() -> int:
+    with connection() as conn:
+        cur = conn.execute("DELETE FROM chat_command_log")
+        return cur.rowcount
 
 
 def clear_logins() -> int:
@@ -4471,16 +4581,11 @@ def _streak_tier_weight(weeks: int) -> float:
 
 
 def _title_warn(title: str):
-    """Предупреждения, отмеченные офицером В ИГРЕ через числовой титул.
-
-    Однозначная цифра 1–9 в титуле = столько предупреждений у человека
-    (кикаем обычно после 2-го). Многозначные числа (даты вроде «0305»,
-    «1205», «100526») — это НЕ предупреждения, игнорируем.
-    Возвращает int 1..9 или None.
+    """ОТКЛЮЧЕНО (Лир, 2026-07-22): цифры в титуле больше НЕ считаются
+    предупреждениями. Титул просто записывается и меняется (история титулов
+    ведётся отдельно), никаких предупреждений из него не выдаётся. Норматив-
+    и ручные предупреждения работают как прежде. Всегда None (совместимость).
     """
-    t = (title or "").strip()
-    if len(t) == 1 and t.isdigit() and t != "0":
-        return int(t)
     return None
 
 

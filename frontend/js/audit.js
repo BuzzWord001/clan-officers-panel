@@ -146,5 +146,40 @@
     }
   });
 
+  // ── Лог команд офицеров из чатов (только админ) ──
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  }
+  async function reloadCommands() {
+    if (!isAdmin) return;
+    let data;
+    try { data = await API.commandLog(300); }
+    catch (e) { $("cmdlog-list").innerHTML = `<div class="empty">Ошибка: ${esc(e.detail || e.message)}</div>`; return; }
+    const list = $("cmdlog-list");
+    list.innerHTML = "";
+    $("cmdlog-count").textContent = data.length ? `(${data.length})` : "";
+    $("cmdlog-empty").hidden = data.length > 0;
+    for (const it of data) {
+      const div = document.createElement("div");
+      div.className = "cmdlog-item" + (it.ok ? "" : " err");
+      div.innerHTML =
+        `<span class="cl-ts">${fmtTs(it.timestamp)}</span>` +
+        `<span class="cl-who">${esc(it.user_name || it.user_id)}</span>` +
+        `<span class="cl-plat">${esc(it.platform)}</span>` +
+        `<span class="cl-cmd">/${esc(it.command)}</span>` +
+        (it.text ? `<span class="cl-text">${esc(it.text)}</span>` : "") +
+        (it.reply ? `<span class="cl-reply">↳ ${esc(it.reply)}</span>` : "");
+      list.appendChild(div);
+    }
+  }
+  if (isAdmin && $("cmdlog-clear")) {
+    $("cmdlog-clear").addEventListener("click", async () => {
+      if (!confirm("Очистить лог команд из чатов? Это нельзя отменить.")) return;
+      try { await API.commandLogClear(); await reloadCommands(); }
+      catch (e) { alert(`Не удалось очистить: ${e.detail || e.message}`); }
+    });
+  }
+
   await reload();
+  await reloadCommands();
 })();

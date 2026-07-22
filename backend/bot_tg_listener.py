@@ -14,10 +14,43 @@ from typing import Any
 
 import httpx
 
+import bot_tg
+import officer_commands
 import publisher
 from config import settings
 
 log = logging.getLogger("officers.bot.tg.listener")
+
+
+def _tg_name(frm: dict) -> str:
+    """Читаемое имя автора из TG-сообщения (для колонки «Добавил»)."""
+    fn = (frm.get("first_name") or "").strip()
+    ln = (frm.get("last_name") or "").strip()
+    full = (fn + " " + ln).strip()
+    return full or ("@" + frm["username"] if frm.get("username") else "офицер")
+
+
+async def _handle_command(msg: dict) -> None:
+    """Если это офицерская команда (/принять …) — выполнить и ответить в чат."""
+    text = msg.get("text") or ""
+    if not text.startswith("/"):
+        return
+    frm = msg.get("from") or {}
+    self_id = _bot_self_id()
+    if self_id and frm.get("id") == self_id:      # своё сообщение — игнор
+        return
+    actor = {"platform": "tg", "id": str(frm.get("id") or "0"),
+             "name": _tg_name(frm), "ip": "", "user_agent": "tg-command"}
+    try:
+        reply = officer_commands.handle(text, actor)
+    except Exception:
+        log.exception("officer command crashed")
+        reply = "⚠ Ошибка команды. Попробуй ещё раз или сделай на сайте."
+    if reply:
+        try:
+            await bot_tg.send_text(reply)
+        except Exception:
+            log.exception("TG command reply failed")
 
 _OFFSET_PATH = Path(os.environ.get("TG_OFFSET_PATH") or "/data/.tg_offset")
 _LONG_POLL_TIMEOUT = 30  # сек — TG держит соединение до этого срока
@@ -162,6 +195,8 @@ async def run() -> None:
                 if _has_join_event(msg):
                     log.info("Join detected in officer chat (msg_id=%s)", msg.get("message_id"))
                     join_seen_in_batch = True
+                # Офицерская команда приёма (/принять, /удалить, /список, /помощь)
+                await _handle_command(msg)
 
             _write_offset(offset)
 
