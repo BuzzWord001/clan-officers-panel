@@ -738,6 +738,16 @@
       "padding:8px 12px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".q-admin button.sec{background:none;border:1px solid rgba(224,162,74,.5);color:#caa66a}" +
     ".q-admin button.danger{background:linear-gradient(180deg,#e07a6a,#b0453a);color:#fff}" +
+    // 🖼 список «без личного облика»
+    ".qs-nomodel-list{display:flex;flex-direction:column;gap:5px;max-height:320px;overflow:auto}" +
+    ".qs-nomodel-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 9px;border-radius:9px;" +
+      "background:rgba(224,162,74,.07);border:1px solid rgba(224,162,74,.2)}" +
+    ".qs-nm-nick{font:700 13px Georgia,serif;color:#f5ecda}" +
+    ".qs-nm-main{font-size:11px;color:#e0a86a}" +
+    ".qs-nm-cls{font-size:11.5px;color:#a58c68}" +
+    ".qs-nm-noc{color:#8a795a;font-style:italic}" +
+    ".qs-nm-q{margin-left:auto;font-size:11px;color:#8a795a;white-space:nowrap}" +
+    ".qs-nm-btn{padding:5px 10px !important;font-size:11.5px !important}" +
     ".q-adm-sugg{position:relative}" +
     ".q-adm-list{position:absolute;left:0;top:calc(100% + 3px);z-index:30;max-height:220px;overflow:auto;" +
       "min-width:220px;background:#1a1109;border:1px solid rgba(224,162,74,.4);border-radius:9px;padding:4px;display:none}" +
@@ -4024,6 +4034,28 @@
     var box = document.createElement("div");
     box.className = "q-admin";
     var _open = CONFIG["queue_open"] === "1";
+    // 🖼 кто уже стоит в очереди, но БЕЗ личного облика (показывается общая модель по классу).
+    // Личный облик есть, если personalInfo([канон мэйна, канон ника]) вернул модель.
+    var _QLBL = ["Обычные", "Редкие (R)", "Легендарные (S)"];
+    var _noModel = (function () {
+      var seen = {}, rows = [];
+      ((state && state.queues) || []).forEach(function (arr, qi) {
+        (arr || []).forEach(function (e) {
+          if (!e || !e.nick) return;
+          var keys = [canon(e.main_nick), canon(e.nick)].filter(Boolean);
+          if (personalInfo(keys)) return;                       // личный облик уже есть
+          var idk = keys[0] || canon(e.nick) || e.nick;         // идентичность = мэйн (твины схлопываются)
+          if (seen[idk]) { if (seen[idk].qs.indexOf(qi) < 0) seen[idk].qs.push(qi); return; }
+          var row = {
+            id: e.id, nick: e.nick,
+            main: (e.main_nick && canon(e.main_nick) !== canon(e.nick)) ? e.main_nick : "",
+            cls: e.cls || "", qs: [qi]
+          };
+          seen[idk] = row; rows.push(row);
+        });
+      });
+      return rows;
+    })();
     box.innerHTML =
       "<h3>⚙️ Управление разделом «Очередь за ресурсами с КХ» (админ)</h3>" +
       '<div class="q-adm-status" id="qa-status"></div>' +
@@ -4039,6 +4071,32 @@
         '<div class="q-sec-body">' +
           '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 8px">Всё в одном окне: кто чей <b>ТВИН</b> (один игрок = несколько ников), кто кому <b>СУПРУГ</b> (кому передаётся ресурс) и <b>РУЧНЫЕ ники</b>. Любая правка применяется <b>сразу на всём сайте</b> и подтягивается системой.</div>' +
           '<button id="qa-links-btn">🔗 Открыть меню связей</button>' +
+        "</div></details>" +
+
+      // ── 🖼 БЕЗ ЛИЧНОГО ОБЛИКА (кто в очереди ещё без своей модельки) ──
+      '<details class="q-sec"><summary>🖼 Без личного облика' +
+        '<span class="q-sec-hint">' +
+          (_noModel.length
+            ? _noModel.length + " чел. в очереди без своей модельки"
+            : "у всех в очереди есть облик") +
+        "</span></summary>" +
+        '<div class="q-sec-body">' +
+          (_noModel.length
+            ? '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 8px">Эти игроки <b>уже стоят в очереди</b>, но у них <b>нет персональной модельки</b> — в сцене показывается общая по классу. Нажми <b>🎨 облик</b>, чтобы загрузить/сменить их модель.</div>' +
+              '<div class="qs-nomodel-list">' +
+                _noModel.map(function (r) {
+                  return '<div class="qs-nomodel-row">' +
+                    '<span class="qs-nm-nick">' + esc(r.nick) + "</span>" +
+                    (r.main ? '<span class="qs-nm-main">твин · ' + esc(r.main) + "</span>" : "") +
+                    (r.cls
+                      ? '<span class="qs-nm-cls">' + esc(r.cls) + "</span>"
+                      : '<span class="qs-nm-cls qs-nm-noc">без класса</span>') +
+                    '<span class="qs-nm-q">' + r.qs.map(function (qi) { return _QLBL[qi]; }).join(" · ") + "</span>" +
+                    '<button class="sec qs-nm-btn" data-eid="' + r.id + '">🎨 облик</button>' +
+                  "</div>";
+                }).join("") +
+              "</div>"
+            : '<div style="font-size:12.5px;color:#8fc36a">✓ У всех, кто стоит в очереди, уже есть персональный облик.</div>') +
         "</div></details>" +
 
       // ── 🧪 ТЕСТИРОВАНИЕ ──
@@ -4235,6 +4293,16 @@
     // 🔗 Меню связей (твины/супруги/ручные ники) — открыть + после правок обновить всю сцену.
     var linksBtn = box.querySelector("#qa-links-btn");
     if (linksBtn) linksBtn.addEventListener("click", function () { openLinksManager(function () { refresh(); }); });
+    // 🖼 «Без личного облика»: кнопка 🎨 — открыть загрузку/смену модели для игрока из очереди
+    box.querySelectorAll(".qs-nm-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var eid = +b.dataset.eid, ent = null;
+        ((state && state.queues) || []).forEach(function (arr) {
+          (arr || []).forEach(function (x) { if (x && x.id === eid) ent = x; });
+        });
+        if (ent) openModelSwitcher(ent);
+      });
+    });
 
     box.querySelector("#qa-add").addEventListener("click", function () {
       var n = (chosen || nick.value).trim();
