@@ -6905,6 +6905,20 @@ def valor_get_current(with_reg_notes: bool = False,
                 if cn and cn not in socials:
                     socials[cn] = entry
 
+        # Соцсеть ТВИНА → подписываем и к его МЭЙНУ (и наоборот). Если человек
+        # зарегался в чате под ником-твином (напр. DarkKing = твин HARDKISS), данные
+        # его соцсетей привязываются и к мэйн-аккаунту — чтобы сайт понимал, что это
+        # один человек. Ручные твин-связи (queue_twins) — источник истины.
+        try:
+            for tr in conn.execute("SELECT canon, main_canon FROM queue_twins"):
+                tw, mn = tr["canon"], tr["main_canon"]
+                if tw in socials and mn and mn not in socials:
+                    socials[mn] = socials[tw]
+                elif mn in socials and tw and tw not in socials:
+                    socials[tw] = socials[mn]
+        except sqlite3.OperationalError:
+            pass
+
         rows = conn.execute(
             """SELECT * FROM valor_members
                WHERE snapshot_id = ?
