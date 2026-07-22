@@ -1510,8 +1510,10 @@ def join(payload: JoinIn, request: Request) -> dict:
             (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, _json.dumps(picked), rcpt,
              1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
-             detail=("res=" + res + (" →" + rcpt if rcpt else "") +
-                     (" 🔁" if payload.auto_repeat else "") + (" план:%d" % len(plan) if plan else "")))
+             detail=("res=%s resources=%r%s%s%s" % (
+                 res, picked, (" →" + rcpt if rcpt else ""),
+                 (" 🔁" if payload.auto_repeat else ""),
+                 (" план:%d" % len(plan) if plan else ""))))
     return {"ok": True}
 
 
@@ -1539,11 +1541,15 @@ def leave(payload: JoinIn, request: Request) -> dict:
             if cur.rowcount > 0 and stacks > 0:
                 conn.execute("UPDATE queue_privileges SET tokens=tokens+?, updated_at=? WHERE canon=?",
                              (stacks, _now(), acc["main_canon"]))
+            _dn = 0
         else:
-            conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
-                         (payload.queue, acc["main_canon"]))
+            _cur = conn.execute("DELETE FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+                                (payload.queue, acc["main_canon"]))
+            _dn = _cur.rowcount
         _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
-             queue=payload.queue, request=request, detail=("жетон (возвращён)" if priv else "обычное место"))
+             queue=payload.queue, request=request,
+             detail=("priv=%d удалено=%d %s" % (priv, (cur.rowcount if priv else _dn),
+                     "жетон (возвращён)" if priv else "обычное место")))
     return {"ok": True}
 
 
@@ -1576,10 +1582,18 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
         if payload.resources is not None and not row["privileged"]:   # мульти-выбор (обычная/редкая)
             valid = _QUEUE_ITEMS[payload.queue] if 0 <= payload.queue < len(_QUEUE_ITEMS) else []
             picked = [x for x in payload.resources if x in valid]
-            if picked:                    # пустой НЕ сохраняем (иначе трактуется как «все ресурсы»)
-                import json as _jsonr
-                sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
-                sets.append("resource=?"); vals.append(picked[0])   # resource = первый (совместимость)
+            if not picked:
+                # Игрок снял ВСЕ галочки-ресурсы → это выход из очереди. Раньше пустой
+                # список молча игнорировался (галочка «зависала», сохранить не срабатывало).
+                cur = conn.execute("DELETE FROM queue_entries WHERE id=?", (row["id"],))
+                _log(conn, "leave", actor=acc["main_nick"], nick=acc["main_nick"],
+                     queue=payload.queue, request=request,
+                     detail="сняты все ресурсы → выход из очереди (set-entry resources=%r, удалено %d)"
+                            % (list(payload.resources or []), cur.rowcount))
+                return {"ok": True, "left": True}
+            import json as _jsonr
+            sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
+            sets.append("resource=?"); vals.append(picked[0])   # resource = первый (совместимость)
         if payload.recipient is not None:
             _rcpt = payload.recipient.strip()[:64]
             if _rcpt and not _recipient_ok(_rcpt, acc["main_canon"], _people(conn), _spouse_map(conn)):
@@ -1590,13 +1604,22 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
         if payload.plan is not None:
             import json as _json
             sets.append("auto_plan=?"); vals.append(_json.dumps(_clean_plan(payload.plan, payload.queue)))
+        _res_in = (list(payload.resources) if payload.resources is not None else None)
         if sets:
             vals.append(row["id"])
             conn.execute("UPDATE queue_entries SET " + ",".join(sets) + " WHERE id=?", vals)
             _log(conn, "set_entry", actor=acc["main_nick"], nick=acc["main_nick"],
                  queue=payload.queue, request=request,
-                 detail=("res=" + (payload.resource or "—") + " →" + (payload.recipient or "—") +
-                         ("" if payload.auto_repeat is None else (" 🔁" if payload.auto_repeat else " 🚫🔁"))))
+                 detail=("priv=%d res=%s resources=%r →%s%s поля:%s" % (
+                     want_priv, (payload.resource or "—"), _res_in, (payload.recipient or "—"),
+                     ("" if payload.auto_repeat is None else (" 🔁" if payload.auto_repeat else " 🚫🔁")),
+                     ",".join(s.split("=")[0] for s in sets))))
+        else:
+            # Ничего не поменялось — логируем, чтобы «сохранить не сработало» было видно в логах.
+            _log(conn, "set_entry_noop", actor=acc["main_nick"], nick=acc["main_nick"],
+                 queue=payload.queue, request=request,
+                 detail="нет изменений (priv=%d res=%r resources=%r rcpt=%r)" % (
+                     want_priv, payload.resource, _res_in, payload.recipient))
     return {"ok": True}
 
 

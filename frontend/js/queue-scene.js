@@ -2274,6 +2274,12 @@
       var resources = multi ? Object.keys(selSet) : null;
       var resource = multi ? (resources[0] || "") : sel;
       if (!edit && (multi ? !resources.length : !resource)) { return; }
+      // Игрок В очереди снял ВСЕ галочки-ресурсы → это выход из очереди. Раньше
+      // «Сохранить» молча не срабатывал (галочка зависала). Теперь подтверждаем и
+      // отправляем set-entry с пустым списком — бэкенд удалит запись (выход).
+      if (edit && multi && !isPriv && !edit.adminEid && resources.length === 0) {
+        if (!confirm("Ты снял все ресурсы. Выйти из очереди «" + b.title + "»?")) return;
+      }
       var rcpt = (rcptEl.value || "").trim();
       // ЗАПРЕТ: передавать можно только твину или супругу. Офицер/админ могут тут же указать связь
       // (кнопки выше). Обычному игроку — блок с понятным сообщением.
