@@ -3143,7 +3143,17 @@
 
   // ── переключатель облика: крупный портрет + стрелки + миниатюры всех доступных вариантов ──
   // Открывается владельцем со своей модельки (наведение → кнопка) или из панели «Моя моделька».
+  var _mswReady = false;
   function openModelSwitcher(e) {
+    // Перед показом ВСЕГДА подтягиваем свежий список загруженных моделей — чтобы
+    // только что загруженный/переименованный облик был виден без перезагрузки страницы.
+    if (!_mswReady) {
+      q("GET", "/queue/uploaded-models")
+        .then(function (d) { if (d && d.keys) UPLOADED = d.keys; })
+        .catch(function () {})
+        .then(function () { _mswReady = true; try { openModelSwitcher(e); } finally { _mswReady = false; } });
+      return;
+    }
     var vs = modelVariants(e);
     if (!vs.length) { alert("Модель не найдена."); return; }
     var curTok = currentVariantKey(e, vs);
