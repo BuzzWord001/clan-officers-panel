@@ -5161,6 +5161,14 @@
           '<div class="qs-links-sublbl">✍ добавленные вручную:</div><div id="qlk-tw-list" class="qs-links-list"></div>' +
           '<div class="qs-links-sublbl">🤖 распознаны автоматически (по титулам доблести):</div><div id="qlk-tw-auto" class="qs-links-auto"></div>' +
         "</details></div>" +
+      // РУЧНЫЕ НИКИ (только админ) — для новых людей / гомоглиф-двойников
+      (_isAdmin ?
+      '<div class="qs-links-sec"><div class="qs-links-h">🆕 Ручные ники <span>— новых людей или двойников (HARDKISS ≠ НаRDKisS)</span></div>' +
+        '<div class="qs-links-hint" style="margin:0 0 6px">Кого ещё нет в доблести или чей ник совпадает с чужим — добавь тут. Он появится в списке для входа как ОТДЕЛЬНЫЙ игрок. Пиши точное написание ника.</div>' +
+        '<div class="qs-links-row"><input id="qlk-mn-nick" placeholder="ник как в игре…" autocomplete="off">' +
+          '<input id="qlk-mn-title" placeholder="имя/титул (необяз.)" autocomplete="off">' +
+          '<button id="qlk-mn-save">Добавить</button></div>' +
+        '<div id="qlk-mn-list" class="qs-links-list" style="margin-top:6px"></div></div>' : "") +
       '<div id="qlk-status" class="qs-links-status"></div>';
     var stEl = body.querySelector("#qlk-status");
     function status(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
@@ -5170,6 +5178,39 @@
     }
     function delBtn(fn) { var b = document.createElement("button"); b.className = "sec qs-links-del"; b.textContent = "✕"; b.title = "удалить"; b.addEventListener("click", fn); return b; }
     ["qlk-sp-nick", "qlk-sp-rcpt", "qlk-tw-nick", "qlk-tw-main"].forEach(function (id) { attachNickSuggest(body.querySelector("#" + id)); });
+    // Ручные ники (только админ): добавить/список/удалить.
+    if (_isAdmin && body.querySelector("#qlk-mn-save")) {
+      var mnList = body.querySelector("#qlk-mn-list");
+      var reloadMn = function () {
+        q("GET", "/queue/admin/manual-nicks").then(function (d) {
+          mnList.innerHTML = "";
+          (d.items || []).forEach(function (it) {
+            var row = document.createElement("div"); row.className = "qs-links-item";
+            var t = document.createElement("span");
+            t.textContent = it.nick + (it.title ? " — " + it.title : "") + (it.registered ? "  ✅ вошёл" : "  ⏳ не входил");
+            row.appendChild(t);
+            row.appendChild(delBtn(function () {
+              if (!confirm("Удалить ручной ник «" + it.nick + "»? Если он уже зарегистрировался — потеряет доступ.")) return;
+              q("POST", "/queue/admin/manual-nick-delete", { canon: it.canon })
+                .then(function () { reloadMn(); status("Удалён: " + it.nick, true); })
+                .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+            }));
+            mnList.appendChild(row);
+          });
+        }).catch(function () {});
+      };
+      body.querySelector("#qlk-mn-save").addEventListener("click", function () {
+        var nk = (body.querySelector("#qlk-mn-nick").value || "").trim();
+        var tl = (body.querySelector("#qlk-mn-title").value || "").trim();
+        if (!nk) { status("Введи ник"); return; }
+        q("POST", "/queue/admin/manual-nick", { nick: nk, title: tl }).then(function (r) {
+          body.querySelector("#qlk-mn-nick").value = ""; body.querySelector("#qlk-mn-title").value = "";
+          status("✓ Добавлен: " + r.nick + " — теперь он в списке для входа", true);
+          reloadMn(); afterChange();
+        }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+      });
+      reloadMn();
+    }
     // супруги
     var spList = body.querySelector("#qlk-sp-list"), spN = body.querySelector("#qlk-sp-n");
     function reloadSp() {

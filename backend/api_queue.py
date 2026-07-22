@@ -184,6 +184,23 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- Ручные ники (админ подтверждает вручную) — для НОВЫХ людей, которых ещё нет
+            -- в ростере доблести, ИЛИ чей ник сворачивается в тот же canon, что у другого
+            -- человека (гомоглифы: HARDKISS латиница ≠ НаRDKisS кириллица, но оба → hardkiss).
+            -- raw = регистро-НЕ-чувствительный, но СКРИПТО-чувствительный ключ (без свёртки
+            -- гомоглифов) — по нему различаем таких людей. canon = уникальный identity очереди.
+            CREATE TABLE IF NOT EXISTS queue_manual_nicks (
+              canon      TEXT PRIMARY KEY,           -- уникальный identity (raw или raw~N при коллизии)
+              raw        TEXT NOT NULL DEFAULT '',   -- скрипто-чувствительный ключ для сопоставления ввода
+              nick       TEXT NOT NULL DEFAULT '',   -- отображаемый ник (точное написание)
+              cls        TEXT NOT NULL DEFAULT '',   -- класс (необязательно)
+              title      TEXT NOT NULL DEFAULT '',   -- имя/титул (необязательно, для различия)
+              gender     TEXT NOT NULL DEFAULT '',   -- m|f|'' (для модели по умолчанию)
+              added_by   TEXT NOT NULL DEFAULT '',
+              added_at   TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_manual_raw ON queue_manual_nicks(raw);
+
             -- Запросы игроков на ПОДТВЕРЖДЕНИЕ связи (твин/супруг) офицерами. Игрок хочет
             -- передать ресурс тому, кого система ещё не знает как связь → создаёт запрос;
             -- офицер/админ подтверждает как твина/супруга или отклоняет.
@@ -860,6 +877,40 @@ def _is_officer_nick(conn, nick: str) -> bool:
 
 
 # ─────────────────────────── эндпоинты ───────────────────────────
+def _raw_canon(s: str) -> str:
+    """Скрипто-чувствительный ключ: lower + только буквы/цифры, БЕЗ свёртки гомоглифов.
+    Так HARDKISS (латиница) и НаRDKisS (кириллица) РАЗЛИЧАЮТСЯ, хотя db._valor_canon
+    сводит оба в 'hardkiss'. По нему сопоставляем ручные ники с введённым."""
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def _manual_person(row) -> dict:
+    """Ручной ник в форме записи _people (для nick-suggest/check-nick/register)."""
+    return {
+        "nick": row["nick"], "cls": row["cls"] or "", "title": row["title"] or "",
+        "main_nick": row["nick"], "main_canon": row["canon"], "is_twin": False,
+        "sources": ["manual"], "gender": row["gender"] or "",
+    }
+
+
+def _manual_by_raw(conn, typed: str):
+    """Ручной ник, совпадающий с введённым по скрипто-чувствительному ключу, или None."""
+    raw = _raw_canon(typed)
+    if not raw:
+        return None
+    row = conn.execute("SELECT * FROM queue_manual_nicks WHERE raw=? LIMIT 1", (raw,)).fetchone()
+    return _manual_person(row) if row else None
+
+
+def _resolve_person(conn, typed: str):
+    """Резолв ника → человек. РУЧНОЙ ник (по raw) имеет ПРИОРИТЕТ над ростерным
+    (folded canon), чтобы гомоглиф-двойники (HARDKISS/НаRDKisS) не сливались."""
+    mp = _manual_by_raw(conn, typed)
+    if mp:
+        return mp
+    return _people(conn).get(db._valor_canon(typed))
+
+
 @router.get("/nick-suggest")
 def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
     ql = q.strip().lower()
@@ -877,6 +928,18 @@ def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
                     "sources": sorted(p["sources"]),
                     "officer": (cn in offs or p["main_canon"] in offs),
                 })
+        # Ручные ники (админ подтвердил вручную) — тоже предлагаем в списке для входа.
+        qraw = _raw_canon(ql)
+        seen_nick = {e["nick"] for e in out}
+        for r in conn.execute("SELECT * FROM queue_manual_nicks"):
+            if r["nick"] in seen_nick:
+                continue
+            if ql in r["nick"].lower() or (qraw and qraw in (r["raw"] or "")):
+                out.append({
+                    "nick": r["nick"], "cls": r["cls"] or "", "title": r["title"] or "",
+                    "main_nick": r["nick"], "is_twin": False,
+                    "sources": ["manual"], "officer": False,
+                })
     out.sort(key=lambda e: (0 if e["nick"].lower().startswith(ql) else 1, e["nick"].lower()))
     return {"results": out[:12]}
 
@@ -884,16 +947,68 @@ def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
 @router.post("/check-nick")
 def check_nick(payload: CheckIn) -> dict:
     with db.connection() as conn:
-        idx = _people(conn)
-        cn = db._valor_canon(payload.nick)
-        p = idx.get(cn)
+        p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         if not p:
             return {"ok": False, "reason": "not_found"}
         acc = _account_by_main(conn, p["main_canon"])
         offs = _officer_canons(conn)
+        cn = p["main_canon"]
         return {"ok": True, "nick": p["nick"], "main_nick": p["main_nick"],
                 "is_twin": p["is_twin"], "registered": bool(acc),
                 "officer": (cn in offs or p["main_canon"] in offs)}
+
+
+@router.get("/admin/manual-nicks")
+def manual_nicks_list(_: dict = Depends(require_admin)) -> dict:
+    """Список ручных ников (для админ-панели)."""
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT canon, raw, nick, cls, title, gender, added_by, added_at "
+            "FROM queue_manual_nicks ORDER BY added_at DESC").fetchall()
+        accs = {r["main_canon"] for r in conn.execute("SELECT main_canon FROM queue_accounts")}
+    return {"items": [{**dict(r), "registered": r["canon"] in accs} for r in rows]}
+
+
+@router.post("/admin/manual-nick")
+def manual_nick_add(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Админ вручную подтверждает ник (для новых людей / гомоглиф-двойников). Ник появится
+    в подсказках при входе и будет РАЗДЕЛЬНЫМ identity (не сольётся с похожим ростерным)."""
+    nick = (payload.get("nick") or "").strip()[:64]
+    raw = _raw_canon(nick)
+    if not nick or not raw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    cls = (payload.get("cls") or "").strip()[:32]
+    title = (payload.get("title") or "").strip()[:64]
+    gender = (payload.get("gender") or "").strip().lower()
+    gender = gender if gender in ("m", "f") else ""
+    with db.connection() as conn:
+        exist = conn.execute("SELECT canon FROM queue_manual_nicks WHERE raw=?", (raw,)).fetchone()
+        if exist:
+            canon = exist["canon"]
+            conn.execute("UPDATE queue_manual_nicks SET nick=?, cls=?, title=?, gender=?, added_by=?, added_at=? WHERE canon=?",
+                         (nick, cls, title, gender, _actor_name(actor), _now(), canon))
+        else:
+            # canon = raw, а при коллизии с ростерным/аккаунтом/другим ручным — raw~2, raw~3…
+            taken = set(_people(conn).keys())
+            taken |= {r["canon"] for r in conn.execute("SELECT canon FROM queue_manual_nicks")}
+            taken |= {r["main_canon"] for r in conn.execute("SELECT main_canon FROM queue_accounts")}
+            canon = raw
+            n = 2
+            while canon in taken:
+                canon = raw + "~" + str(n); n += 1
+            conn.execute("INSERT INTO queue_manual_nicks (canon, raw, nick, cls, title, gender, added_by, added_at) "
+                         "VALUES (?,?,?,?,?,?,?,?)", (canon, raw, nick, cls, title, gender, _actor_name(actor), _now()))
+        _log(conn, "manual_nick_add", actor=_actor_name(actor), nick=nick, request=request, detail="canon=" + canon)
+    return {"ok": True, "canon": canon, "nick": nick}
+
+
+@router.post("/admin/manual-nick-delete")
+def manual_nick_delete(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    canon = (payload.get("canon") or "").strip()
+    with db.connection() as conn:
+        cur = conn.execute("DELETE FROM queue_manual_nicks WHERE canon=?", (canon,))
+        _log(conn, "manual_nick_del", actor=_actor_name(actor), request=request, detail="canon=" + canon)
+    return {"ok": True, "deleted": cur.rowcount}
 
 
 @router.post("/register")
@@ -901,8 +1016,7 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
         cfg = conn.execute("SELECT shared_password_hash FROM queue_config WHERE id=1").fetchone()
         shared = cfg["shared_password_hash"] if cfg else ""
-        idx = _people(conn)
-        p = idx.get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет над ростерным
         off_ok = auth_pwd.verify_officer(payload.shared_password)     # ЖИВОЙ офицерский пароль
         is_off_nick = _is_officer_nick(conn, payload.nick)
         # ОФИЦЕР (по офицерскому паролю ИЛИ офицерский ник) — регистрирует ЛИЧНЫЙ пароль,
@@ -954,8 +1068,7 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
 @router.post("/login")
 def login(payload: LoginIn, request: Request, response: Response) -> dict:
     with db.connection() as conn:
-        idx = _people(conn)
-        p = idx.get(db._valor_canon(payload.nick))
+        p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, main_canon)
         # Офицерский ник, но аккаунта ещё нет → сначала зарегистрировать личный пароль офиц. паролем.
