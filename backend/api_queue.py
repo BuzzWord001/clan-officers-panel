@@ -364,6 +364,22 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_placements ADD COLUMN z TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: АКТИВНАЯ ЛИЧНОСТЬ аккаунта — кем человек стоит/отображается (мэйн ИЛИ один
+        # из его твинов). Пусто → мэйн. Аккаунт по-прежнему один на мэйн-канон (двойное стояние
+        # невозможно), меняется только отображаемый ник/класс.
+        try:
+            conn.execute("ALTER TABLE queue_accounts ADD COLUMN active_nick TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE queue_accounts ADD COLUMN active_canon TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        # миграция: активная личность записи очереди (канон выбранного ника). Пусто → мэйн.
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN active_canon TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
 
 
 def _main_of(nick: str, title: str) -> tuple[str, bool]:
@@ -568,8 +584,10 @@ def _account_from_request(conn, request: Request):
 
 
 def _acc_public(acc) -> dict:
+    k = acc.keys()
     return {"main_nick": acc["main_nick"], "main_canon": acc["main_canon"],
-            "reg_nick": acc["reg_nick"], "email": acc["email"]}
+            "reg_nick": acc["reg_nick"], "email": acc["email"],
+            "active_nick": ((acc["active_nick"] if "active_nick" in k else "") or acc["main_nick"])}
 
 
 def _player_ctx(conn, request: Request):
@@ -1047,11 +1065,15 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         if len(payload.personal_password) < 4:      # личный пароль обязателен (игроку и офицеру)
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
 
+        # активная личность = ник, которым регистрируются (мэйн ИЛИ его твин)
+        act_nick, act_canon, _ = _active_identity(_people(conn), main_canon, payload.nick)
         cur = conn.execute(
             "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
-            " is_officer, created_at, last_login_at) VALUES (?,?,?,?,?,?,?,?)",
+            " is_officer, active_nick, active_canon, created_at, last_login_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
             (main_canon, main_nick, reg_nick, payload.email.strip(),
-             _hash(payload.personal_password), 1 if role_officer else 0, _now(), _now()))
+             _hash(payload.personal_password), 1 if role_officer else 0,
+             act_nick, act_canon, _now(), _now()))
         acc_id = cur.lastrowid
         dev_token = _set_device(conn, response, acc_id, request)
         _log(conn, "register", actor=reg_nick, nick=reg_nick, request=request,
@@ -1081,6 +1103,9 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         conn.execute("UPDATE queue_accounts SET last_login_at=? WHERE id=?", (_now(), acc["id"]))
         dev_token = _set_device(conn, response, acc["id"], request)
         is_off = bool(acc["is_officer"]) if "is_officer" in acc.keys() else False
+        # игрок вошёл конкретным ником (мэйн/твин) → это его активная личность; записи обновляем
+        if not is_off:
+            _apply_identity(conn, acc["id"], acc["main_canon"], payload.nick)
         _log(conn, "login", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
              detail="офицер" if is_off else "")
         if is_off:                                     # офицер входит личным паролём → офиц. сессия
@@ -1262,9 +1287,40 @@ def me(request: Request) -> dict:
             pp = _people(conn).get(cn)
             mc = pp["main_canon"] if pp else cn
             officer_needs_setup = not (mc and _account_by_main(conn, mc))
+        # активная личность (мэйн/твин) + список своих ников (для переключения) — только у игрока
+        active_nick, active_canon, identities = "", "", []
+        if dev:
+            dk = dev.keys()
+            active_nick = (dev["active_nick"] if "active_nick" in dk else "") or dev["main_nick"]
+            active_canon = (dev["active_canon"] if "active_canon" in dk else "") or dev["main_canon"]
+            identities = _own_nicks(_people(conn), dev["main_canon"])
         return {"account": _acc_public(dev) if dev else None, "tokens": tokens,
                 "gender": gender, "prefer_class": prefer_class, "variant": variant,
+                "active_nick": active_nick, "active_canon": active_canon, "identities": identities,
                 "officer_needs_setup": officer_needs_setup}
+
+
+class SetIdentityIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/set-identity")
+def set_identity(payload: SetIdentityIn, request: Request) -> dict:
+    """Игрок выбирает, каким из СВОИХ ников (мэйн или твин) стоять/отображаться в очереди.
+    Меняет активную личность и обновляет его существующие записи (место сохраняется)."""
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)     # только настоящий игрок (не офицер-сессия)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        idx = _people(conn)
+        own = {x["canon"] for x in _own_nicks(idx, acc["main_canon"])}
+        tc = db._valor_canon(payload.nick)
+        if not tc or tc not in own:                    # можно выбрать ТОЛЬКО свой ник
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "not_your_identity")
+        an, acn, _acl = _apply_identity(conn, acc["id"], acc["main_canon"], payload.nick)
+        _log(conn, "set_identity", actor=acc["main_nick"], nick=an, request=request,
+             detail="стоит как %s (%s)" % (an, "мэйн" if acn == acc["main_canon"] else "твин"))
+    return {"ok": True, "active_nick": an, "active_canon": acn}
 
 
 @router.get("/notices")
@@ -1428,6 +1484,42 @@ def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
         " VALUES (?,?,?,?,?,?,?,?)", (_now(), kind, actor, nick, queue, ip, ua, detail))
 
 
+def _own_nicks(idx, main_canon) -> list[dict]:
+    """Все ники ОДНОГО человека (его мэйн + все твины) для главного канона main_canon.
+    [{nick, canon, cls, is_main}] — мэйн первым. Твины = записи с тем же main_canon."""
+    out = []
+    for cn, p in idx.items():
+        if p.get("main_canon") == main_canon:
+            out.append({"nick": p.get("nick", "") or cn, "canon": cn,
+                        "cls": p.get("cls", ""), "is_main": (cn == main_canon)})
+    out.sort(key=lambda x: (not x["is_main"], (x["nick"] or "").lower()))
+    return out
+
+
+def _active_identity(idx, main_canon, typed_nick):
+    """(active_nick, active_canon, active_cls) для выбранной личности. Если typed_nick —
+    свой ник (мэйн или твин этого же main_canon), берём его; иначе — мэйн (безопасный дефолт)."""
+    tc = db._valor_canon(typed_nick or "")
+    p = idx.get(tc)
+    if tc and p and p.get("main_canon") == main_canon:
+        return (p.get("nick") or typed_nick, tc, p.get("cls", ""))
+    mp = idx.get(main_canon) or {}
+    return ((mp.get("nick") or main_canon), main_canon, mp.get("cls", ""))
+
+
+def _apply_identity(conn, acc_id: int, main_canon: str, typed_nick: str):
+    """Ставит выбранную личность (мэйн/твин) аккаунту и ОБНОВЛЯЕТ его записи в очередях
+    (ник/класс/активный канон) — место в очереди сохраняется. Возвращает (nick, canon, cls)."""
+    idx = _people(conn)
+    an, acn, acl = _active_identity(idx, main_canon, typed_nick)
+    conn.execute("UPDATE queue_accounts SET active_nick=?, active_canon=? WHERE id=?",
+                 (an, acn, acc_id))
+    # обновляем все текущие записи этого человека (обычную и привилегированную во всех очередях)
+    conn.execute("UPDATE queue_entries SET active_canon=?, nick=?, cls=? WHERE main_canon=?",
+                 (acn, an, acl, main_canon))
+    return an, acn, acl
+
+
 def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     """True если получатель — твин (тот же мэйн) или супруг (связка); пусто → True."""
     if not rcpt:
@@ -1492,11 +1584,23 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
         if rc and rc in idx:
             mc, p = rc, idx[rc]
     p = p or {}
-    # ник для показа — как в таблице доблести/реестре (p["nick"]), иначе сохранённый при вставании
-    disp_nick = p.get("nick") or r["nick"]
-    cls = r["cls"] or p.get("cls", "")
-    tn = p.get("true_name", "")
     keys = r.keys()
+    # АКТИВНАЯ ЛИЧНОСТЬ: кем игрок выбрал стоять — мэйн ИЛИ его твин. Пусто/чужой → мэйн.
+    ac = (r["active_canon"] if "active_canon" in keys else "") or ""
+    dp = idx.get(ac) if ac else None
+    if dp is None or dp.get("main_canon") != mc:       # защита: активный ник должен быть свой
+        dp, ac = p, mc
+    # ник/класс для показа — по активной личности; иначе сохранённый при вставании
+    disp_nick = dp.get("nick") or r["nick"]
+    cls = r["cls"] or dp.get("cls", "") or p.get("cls", "")
+    tn = p.get("true_name", "")
+    # РОДНЯ (админу/офицеру): остальные ники этого человека — мэйн + твины, кроме активного
+    kin = []
+    for _cn, _pp in idx.items():
+        if _pp.get("main_canon") == mc and _cn != ac:
+            kin.append({"nick": _pp.get("nick", "") or _cn, "cls": _pp.get("cls", ""),
+                        "is_main": (_cn == mc)})
+    kin.sort(key=lambda x: (not x["is_main"], (x["nick"] or "").lower()))
     rcpt = r["recipient"] if "recipient" in keys else ""
     import json as _json
     try:
@@ -1505,6 +1609,7 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
         plan = []
     return {"id": r["id"], "nick": disp_nick, "cls": cls,
             "main_nick": p.get("main_nick", r["nick"]), "true_name": tn,
+            "kin": kin, "active_canon": ac,
             "gender": _gender_of(cls, tn, gmap.get(mc, "")),
             "gender_by": ("manual" if gmap.get(mc) in ("m", "f") else "auto"),
             "prefer_class": bool((pmap or {}).get(mc, 0)),
@@ -1599,8 +1704,16 @@ def join(payload: JoinIn, request: Request) -> dict:
         if conn.execute("SELECT 1 FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
                         (q, acc["main_canon"])).fetchone():
             raise HTTPException(status.HTTP_409_CONFLICT, "already_in_queue")
-        p = _people(conn).get(acc["main_canon"]) or {}
-        nick = acc["main_nick"] or acc["reg_nick"]
+        idx = _people(conn)
+        p = idx.get(acc["main_canon"]) or {}
+        # АКТИВНАЯ ЛИЧНОСТЬ: кем игрок выбрал стоять (мэйн/твин). Дефолт — мэйн.
+        _ac = (acc.get("active_canon") or "") if isinstance(acc, dict) else ""
+        _ap = idx.get(_ac) if _ac else None
+        if _ap is None or _ap.get("main_canon") != acc["main_canon"]:
+            _ap, _ac = p, acc["main_canon"]
+        nick = (_ap.get("nick") or (acc.get("active_nick") if isinstance(acc, dict) else "")
+                or acc["main_nick"] or acc["reg_nick"])
+        ent_cls = _ap.get("cls", "") or p.get("cls", "")
         res = (payload.resource or "").strip()[:64]
         rcpt = (payload.recipient or "").strip()[:64]
         if not rcpt:   # не указан явно → берём получателя по умолчанию из связки супругов
@@ -1620,9 +1733,9 @@ def join(payload: JoinIn, request: Request) -> dict:
         if picked:
             res = picked[0]
         conn.execute(
-            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources, recipient,"
-            " auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (q, _append_pos(conn, q), acc["main_canon"], nick, p.get("cls", ""), res, _json.dumps(picked), rcpt,
+            "INSERT INTO queue_entries (queue, pos, main_canon, active_canon, nick, cls, resource, resources,"
+            " recipient, auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (q, _append_pos(conn, q), acc["main_canon"], _ac, nick, ent_cls, res, _json.dumps(picked), rcpt,
              1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
              detail=("res=%s resources=%r%s%s%s" % (

@@ -982,6 +982,25 @@
     ".qs-rules-ic{height:34px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
     "@media(max-width:640px){.qs-rules-sum{font-size:12.5px;padding:10px 12px}.qs-rule{font-size:12px}.qs-rules-ic{height:28px}}" +
     /* переключатель пола своей модельки (низ страницы, всем вошедшим) */
+    // переключатель личности (мэйн/твин)
+    ".qs-ident{max-width:430px;margin:16px auto 6px;padding:13px 16px 14px;border:1px solid rgba(224,162,74,.4);" +
+      "border-radius:14px;background:linear-gradient(180deg,rgba(44,28,12,.8),rgba(22,14,7,.8));" +
+      "box-shadow:0 5px 16px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,210,130,.1)}" +
+    ".qs-id-head{display:flex;align-items:center;gap:9px;margin-bottom:10px}" +
+    ".qs-id-ic{font-size:20px}" +
+    ".qs-id-tx b{display:block;font:800 14px Georgia,serif;color:#f3d38a}" +
+    ".qs-id-sub{font-size:11px;color:#b99b6e}" +
+    ".qs-id-seg{display:flex;flex-wrap:wrap;gap:8px}" +
+    ".qs-id-opt{flex:1 1 auto;min-width:120px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;cursor:pointer;" +
+      "padding:8px 11px;border-radius:10px;border:1px solid rgba(224,162,74,.4);background:rgba(0,0,0,.3);color:#f0e2c6;font:700 12.5px system-ui}" +
+    ".qs-id-opt.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#231404;border-color:#f3d489}" +
+    ".qs-id-opt:disabled{opacity:.55;cursor:default}" +
+    ".qs-id-tag{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(224,162,74,.25);color:#e0b978}" +
+    ".qs-id-opt.on .qs-id-tag{background:rgba(0,0,0,.18);color:#3a2606}" +
+    ".qs-id-tag.main{background:rgba(243,212,137,.35);color:#8a5a10}" +
+    ".qs-id-cls{font-size:10px;color:#a58c68}" +
+    ".qs-id-opt.on .qs-id-cls{color:#4a3410}" +
+    ".qs-id-note{margin-top:9px;font-size:10.5px;line-height:1.4;color:#c9b48f}" +
     ".qs-gender{max-width:430px;margin:16px auto 6px;padding:13px 16px 15px;border:1px solid rgba(224,162,74,.34);" +
       "border-radius:14px;background:linear-gradient(180deg,rgba(40,26,12,.74),rgba(22,14,7,.74));" +
       "box-shadow:0 5px 16px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,210,130,.08)}" +
@@ -1549,7 +1568,11 @@
       "border:1px solid rgba(232,202,120,.6);text-shadow:0 1px 2px #000;letter-spacing:.3px;" +
       "box-shadow:0 2px 8px rgba(0,0,0,.7),0 0 9px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,230,160,.18)}" +
     ".qs-stage .q-char-guide-lbl{font-size:clamp(7px,1.05cqw,9.5px)}" +
-    ".qs-char-guide .qs-char-inner img{animation:qsGuideGlow 2.4s ease-in-out infinite}" +
+    // родня (мэйн+твины) под ником — только админу/офицеру
+    ".q-char-kin{white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;" +
+      "font:700 8.5px system-ui;color:#e0b978;background:rgba(20,12,4,.82);padding:1px 7px;" +
+      "border-radius:7px;border:1px solid rgba(224,162,74,.4);margin-top:1px;pointer-events:auto}" +
+    ".qs-stage .q-char-kin{font-size:clamp(6px,.9cqw,8.5px)}" +
     "@keyframes qsGuideGlow{0%,100%{filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 5px rgba(0,0,0,.95)) drop-shadow(0 0 12px rgba(0,0,0,.8))}" +
       "50%{filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 9px #000) drop-shadow(0 0 20px rgba(0,0,0,.92))}}" +
     "@media(prefers-reduced-motion:reduce){.qs-char-guide .qs-char-inner img{animation:none;filter:drop-shadow(0 5px 5px rgba(0,0,0,.45)) drop-shadow(0 0 7px #000) drop-shadow(0 0 16px rgba(0,0,0,.85))}}" +
@@ -1662,6 +1685,11 @@
       "padding:8px 12px;border:0;border-radius:9px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-rcpt-manage:hover{filter:brightness(1.06)}" +
     ".qs-rcpt-cls.req{flex:1 1 100%;color:#bfe0ff;border-color:rgba(120,180,224,.6);background:rgba(120,180,224,.16)}" +
+    ".qs-rcpt-mine{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:5px 0 2px}" +
+    ".qs-rcpt-mine-l{font:700 11px system-ui;color:#a58c68}" +
+    ".qs-rcpt-mine-b{cursor:pointer;font:700 11.5px system-ui;padding:5px 10px;border-radius:8px;" +
+      "border:1px solid rgba(120,180,224,.5);color:#bfe0ff;background:rgba(120,180,224,.14)}" +
+    ".qs-rcpt-mine-b:hover{filter:brightness(1.12)}.qs-rcpt-mine-b:active{transform:scale(.96)}" +
     // ── боковые окошки-запросы подтверждения связи (офицеру/админу) + уведомления игроку ──
     ".qlreq-host{position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px}" +
     ".qlreq{background:linear-gradient(180deg,#2c1d0c,#181005);border:1px solid rgba(240,200,120,.6);border-radius:13px;" +
@@ -2006,6 +2034,11 @@
         (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +   // жетон вне очереди — только если применён, выше «Проводника»
         (e.is_shooter ? '<div class="q-char-guide-lbl">✦ Проводник</div>' : "") +    // «Проводник» — прямо над ником
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
+        // РОДНЯ (мэйн + твины) — только админу/офицеру, чтобы видеть связь ников
+        (((_isAdmin || _role === "officer") && e.kin && e.kin.length)
+          ? '<div class="q-char-kin" title="другие ники этого игрока (мэйн + твины)">🔗 ' +
+              e.kin.map(function (k) { return esc(k.nick) + (k.is_main ? " ⭐" : ""); }).join(", ") + "</div>"
+          : "") +
       "</div>" +
       '<div class="qs-char-inner">' + body + "</div>" +
       (_isAdmin ? '<div class="q-char-mv"><button data-mv="-1" title="ближе к будке">◀</button>' +
@@ -2118,9 +2151,20 @@
       '<details class="qs-p2-more"' + (openMore ? " open" : "") + '>' +
         '<summary>⚙️ Дополнительно <span class="qs-p2-more-sub">— кому передать, повтор, план на недели (всё необязательно)</span></summary>' +
         '<div class="qs-p2-more-body">' +
-          '<div class="qs-p2-lbl">Кому передать <span style="color:#8a795a;font-weight:400">(только твин или супруг)</span>:</div>' +
+          '<div class="qs-p2-lbl">Кому передать <span style="color:#8a795a;font-weight:400">(свой мэйн/твин или супруг)</span>:</div>' +
           '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
           '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
+          // быстрые кнопки: свои аккаунты (мэйн + твины), кроме того, кем стою сейчас
+          (function () {
+            var mine = (_myIdentities || []).filter(function (i) { return canon(i.nick) !== canon(_myActiveNick); });
+            return mine.length
+              ? '<div class="qs-rcpt-mine"><span class="qs-rcpt-mine-l">Свои:</span>' +
+                  mine.map(function (i) {
+                    return '<button type="button" class="qs-rcpt-mine-b" data-n="' + esc(i.nick) + '">' +
+                      esc(i.nick) + (i.is_main ? " ⭐" : "") + "</button>";
+                  }).join("") + "</div>"
+              : "";
+          })() +
           '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
           '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
           ((_isAdmin || _role === "officer")
@@ -2248,6 +2292,10 @@
       });
     });
     rcptEl.addEventListener("input", checkRcpt); checkRcpt();
+    // быстрые кнопки «свои» (мэйн/твины) — подставить свой аккаунт в получателя
+    body.querySelectorAll(".qs-rcpt-mine-b").forEach(function (b) {
+      b.addEventListener("click", function () { rcptEl.value = b.dataset.n; checkRcpt(); });
+    });
     // план — чипы
     var planList = body.querySelector("#qs-plan-list");
     function renderPlan() {
@@ -2957,6 +3005,44 @@
   //    выбрана классовая И у класса есть модели обоих полов.
   //  • Нет персональной, класс с двумя полами → переключатель пола (муж/жен) + авто.
   //  • Нет персональной, у класса одна моделька → меню не показываем (менять нечего).
+  // Переключатель ЛИЧНОСТИ: кем игрок стоит в очереди — мэйн или один из твинов.
+  // Показывается только настоящему игроку, у которого больше одного своего ника.
+  function buildIdentityPicker() {
+    if (!_meAcc) return null;
+    var ids = _myIdentities || [];
+    if (ids.length < 2) return null;                // нет твинов — выбирать нечего
+    var active = _myActiveNick || (_meAcc && _meAcc.active_nick) || (_meAcc && _meAcc.main_nick) || "";
+    var box = document.createElement("div");
+    box.className = "qs-ident";
+    box.innerHTML =
+      '<div class="qs-id-head"><span class="qs-id-ic">🎭</span>' +
+        '<div class="qs-id-tx"><b>Кем стою в очереди</b>' +
+          '<span class="qs-id-sub">выбери свой аккаунт — мэйн или твин</span></div></div>' +
+      '<div class="qs-id-seg">' +
+        ids.map(function (i) {
+          var on = canon(i.nick) === canon(active);
+          return '<button class="qs-id-opt' + (on ? " on" : "") + '" data-nick="' + esc(i.nick) + '">' +
+            '<b>' + esc(i.nick) + "</b>" +
+            (i.is_main ? '<span class="qs-id-tag main">⭐ мэйн</span>' : '<span class="qs-id-tag">твин</span>') +
+            (i.cls ? '<span class="qs-id-cls">' + esc(i.cls) + "</span>" : "") + "</button>";
+        }).join("") +
+      "</div>" +
+      '<div class="qs-id-note">Стоять можно только ОДНИМ аккаунтом. Сменишь — во всех очередях обновятся ник и класс, место сохранится.</div>';
+    box.querySelectorAll(".qs-id-opt").forEach(function (b) {
+      b.addEventListener("click", function () {
+        if (canon(b.dataset.nick) === canon(active)) return;
+        box.querySelectorAll("button").forEach(function (x) { x.disabled = true; });
+        q("POST", "/queue/set-identity", { nick: b.dataset.nick })
+          .then(function (d) { _myActiveNick = (d && d.active_nick) || b.dataset.nick; refresh(); })
+          .catch(function (e) {
+            box.querySelectorAll("button").forEach(function (x) { x.disabled = false; });
+            alert("Не удалось сменить: " + (e.detail || e.message));
+          });
+      });
+    });
+    return box;
+  }
+
   function buildGenderPicker() {
     if (!_meAcc) return null;
     var keys = [canon(_meAcc.main_nick), canon(_meAcc.reg_nick)].filter(Boolean);
@@ -3564,6 +3650,7 @@
   }
 
   var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], []] };
+  var _myIdentities = [], _myActiveNick = "";   // свои ники (мэйн+твины) и кем стою сейчас
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -3969,6 +4056,7 @@
     if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     // переключатель пола своей модельки — внизу, для каждого вошедшего игрока
+    if (!_pathMode && !_placeMode) { var _ip = buildIdentityPicker(); if (_ip) wrap.appendChild(_ip); }
     if (!_pathMode && !_placeMode) { var _gp = buildGenderPicker(); if (_gp) wrap.appendChild(_gp); }
     if (_isAdmin) wrap.appendChild(adminPanel(state));
     else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
@@ -5913,7 +6001,7 @@
     // чтобы возврат жетона (выход из записи ТОП-3) и любые изменения были видны сразу.
     var jobs = [q("GET", "/queue/state")];
     if (_meAcc) jobs.push(q("GET", "/queue/me")
-      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; }).catch(function () {}));
+      .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; _myIdentities = (m && m.identities) || []; _myActiveNick = (m && m.active_nick) || ""; }).catch(function () {}));
     jobs.push(q("GET", "/queue/token-board")
       .then(function (d) { if (d && d.holders) _tokenBoard = d.holders; }).catch(function () {}));
     return Promise.all(jobs).then(function (r) { render(r[0]); }).catch(function (e) {
@@ -5937,7 +6025,7 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; _officerName = (m && m.name) || ""; })
           .catch(function () { _role = ""; _isAdmin = false; _officerName = ""; }),
-        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; _myVariant = ""; }),
+        q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; _myIdentities = (m && m.identities) || []; _myActiveNick = (m && m.active_nick) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; _myVariant = ""; _myIdentities = []; _myActiveNick = ""; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })
       ]).then(function () {
