@@ -1656,6 +1656,13 @@
     ".qs-links-arr{font:700 11.5px system-ui;color:#caa66a;flex:0 0 auto}" +
     ".qs-links-row button{cursor:pointer;border:0;border-radius:8px;padding:8px 13px;font:800 12px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-links-list{display:flex;flex-direction:column;gap:5px;max-height:190px;overflow:auto;margin-top:7px}" +
+    // Визуальные группы твинов (👑 мэйн → чипы твинов)
+    ".qs-tw-group{border:1px solid rgba(224,162,74,.22);border-radius:9px;padding:7px 9px;background:rgba(224,162,74,.05)}" +
+    ".qs-tw-main{font-size:12.5px;color:#f6ead2;margin-bottom:5px}.qs-tw-main b{color:#f3d489}.qs-tw-cnt{font-size:10.5px;color:#8a795a;margin-left:5px}" +
+    ".qs-tw-chips{display:flex;flex-wrap:wrap;gap:5px}" +
+    ".qs-tw-chip{display:inline-flex;align-items:center;gap:2px;font-size:11.5px;color:#e7d6b7;background:rgba(0,0,0,.28);border:1px solid rgba(224,162,74,.3);border-radius:11px;padding:2px 4px 2px 9px}" +
+    ".qs-tw-chip.auto{border-color:rgba(120,190,110,.4);color:#bfe0a6}" +
+    ".qs-tw-x{cursor:pointer;border:0;background:none;color:#caa66a;font-size:12px;line-height:1;padding:1px 3px;border-radius:6px}.qs-tw-x:hover{background:rgba(255,90,90,.2);color:#ff9a8a}" +
     ".qs-links-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#f6ead2;padding:5px 8px;border-radius:8px;border:1px solid rgba(224,162,74,.16)}" +
     ".qs-links-item.tw{border-color:rgba(120,180,224,.28)}.qs-links-item.sp{border-color:rgba(224,120,190,.28)}" +
     ".qs-links-item b{min-width:120px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
@@ -4026,6 +4033,14 @@
         '<span class="q-sec-hint">этапы КХ · проводники · отчёт · финализация · кто не забрал</span></summary>' +
         '<div class="q-sec-body" id="qsec-dist"></div></details>' +
 
+      // ── 🔗 СВЯЗИ ИГРОКОВ (твины / супруги / ручные ники) ──
+      '<details class="q-sec" open><summary>🔗 Связи игроков' +
+        '<span class="q-sec-hint">твины · супруги · ручные ники — видно всё и меняется вживую</span></summary>' +
+        '<div class="q-sec-body">' +
+          '<div style="font-size:12px;color:#c9b48f;line-height:1.5;margin:0 0 8px">Всё в одном окне: кто чей <b>ТВИН</b> (один игрок = несколько ников), кто кому <b>СУПРУГ</b> (кому передаётся ресурс) и <b>РУЧНЫЕ ники</b>. Любая правка применяется <b>сразу на всём сайте</b> и подтягивается системой.</div>' +
+          '<button id="qa-links-btn">🔗 Открыть меню связей</button>' +
+        "</div></details>" +
+
       // ── 🧪 ТЕСТИРОВАНИЕ ──
       '<details class="q-sec"><summary>🧪 Тестирование очереди' +
         '<span class="q-sec-hint">набить людьми · встать и «Взять вне очереди» как ' + esc(ADMIN_NICK) + '</span></summary>' +
@@ -4217,6 +4232,9 @@
 
     var status = box.querySelector("#qa-status");
     function st(msg, ok) { status.textContent = msg; status.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    // 🔗 Меню связей (твины/супруги/ручные ники) — открыть + после правок обновить всю сцену.
+    var linksBtn = box.querySelector("#qa-links-btn");
+    if (linksBtn) linksBtn.addEventListener("click", function () { openLinksManager(function () { refresh(); }); });
 
     box.querySelector("#qa-add").addEventListener("click", function () {
       var n = (chosen || nick.value).trim();
@@ -5148,7 +5166,7 @@
         '<div class="qs-links-row"><input id="qlk-sp-nick" placeholder="игрок…" autocomplete="off">' +
           '<span class="qs-links-arr">→ кому:</span><input id="qlk-sp-rcpt" placeholder="получатель…" autocomplete="off">' +
           '<button id="qlk-sp-save">Сохранить</button></div>' +
-        '<details class="qs-links-acc" id="qlk-sp-acc"><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
+        '<details class="qs-links-acc" id="qlk-sp-acc" open><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
           '<span class="qs-links-sum-t">📋 Показать весь список супругов</span><span class="qs-links-sum-n" id="qlk-sp-n">0</span></summary>' +
           '<div id="qlk-sp-list" class="qs-links-list"></div></details></div>' +
       // ТВИНЫ
@@ -5156,7 +5174,7 @@
         '<div class="qs-links-row"><input id="qlk-tw-nick" placeholder="ник-твин…" autocomplete="off">' +
           '<span class="qs-links-arr">→ это мэйн:</span><input id="qlk-tw-main" placeholder="ник мэйна…" autocomplete="off">' +
           '<button id="qlk-tw-save">Связать</button></div>' +
-        '<details class="qs-links-acc" id="qlk-tw-acc"><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
+        '<details class="qs-links-acc" id="qlk-tw-acc" open><summary class="qs-links-sum"><span class="qs-links-sum-arr">▸</span>' +
           '<span class="qs-links-sum-t">📋 Показать весь список твинов</span><span class="qs-links-sum-n" id="qlk-tw-n">0</span></summary>' +
           '<div class="qs-links-sublbl">✍ добавленные вручную:</div><div id="qlk-tw-list" class="qs-links-list"></div>' +
           '<div class="qs-links-sublbl">🤖 распознаны автоматически (по титулам доблести):</div><div id="qlk-tw-auto" class="qs-links-auto"></div>' +
@@ -5244,24 +5262,42 @@
       q("GET", "/queue/twins").then(function (d) {
         var man = d.manual || [], auto = d.auto || [];
         twN.textContent = man.length + auto.length;
-        twList.innerHTML = man.length ? "" : '<span class="qs-links-empty">Ручных твин-связей нет.</span>';
-        man.forEach(function (it) {
-          var row = document.createElement("div"); row.className = "qs-links-item tw";
-          row.innerHTML = "<b>" + esc(it.twin_nick) + '</b><span class="qs-links-to">= твин мэйна →</span><span class="qs-links-r">' + esc(it.main_nick) + "</span>";
-          row.appendChild(delBtn(function () { saveTw(it.twin_nick, ""); }));
-          twList.appendChild(row);
-        });
-        twAuto.innerHTML = "";
-        if (!auto.length) { twAuto.innerHTML = '<span class="qs-links-empty">Авто-твинов нет.</span>'; }
-        else auto.forEach(function (it) {
-          var row = document.createElement("div"); row.className = "qs-links-autoi";
-          row.innerHTML = "<b>" + esc(it.twin_nick) + '</b> <span>— твин мэйна</span> ' + esc(it.main_nick);
-          var fix = document.createElement("button"); fix.className = "sec qs-links-mini"; fix.textContent = "✎ исправить"; fix.title = "переназначить мэйна";
-          fix.addEventListener("click", function () { body.querySelector("#qlk-tw-nick").value = it.twin_nick; body.querySelector("#qlk-tw-main").value = ""; body.querySelector("#qlk-tw-main").focus(); });
-          var mm = document.createElement("button"); mm.className = "sec qs-links-mini"; mm.textContent = "это мэйн"; mm.title = "снять авто-твин — это отдельный мэйн";
-          mm.addEventListener("click", function () { if (confirm("Отметить «" + it.twin_nick + "» как отдельный МЭЙН (снять авто-твин)?")) saveTw(it.twin_nick, it.twin_nick); });
-          row.appendChild(fix); row.appendChild(mm);
-          twAuto.appendChild(row);
+        // ВИЗУАЛЬНО: группируем по МЭЙНУ → его твины чипами (🤖 = авто по титулу).
+        var subs = body.querySelectorAll("#qlk-tw-acc .qs-links-sublbl");
+        if (subs[0]) subs[0].textContent = "👑 Мэйн → его твины (🤖 = распознан автоматически):";
+        if (subs[1]) subs[1].style.display = "none";
+        twAuto.style.display = "none";
+        var groups = {};
+        man.forEach(function (it) { (groups[it.main_nick] = groups[it.main_nick] || []).push({ twin: it.twin_nick, auto: false }); });
+        auto.forEach(function (it) { (groups[it.main_nick] = groups[it.main_nick] || []).push({ twin: it.twin_nick, auto: true }); });
+        var mains = Object.keys(groups).sort(function (a, b) { return a.localeCompare(b, "ru"); });
+        twList.innerHTML = "";
+        if (!mains.length) { twList.innerHTML = '<span class="qs-links-empty">Твин-связей пока нет.</span>'; return; }
+        mains.forEach(function (mn) {
+          var card = document.createElement("div"); card.className = "qs-tw-group";
+          var head = document.createElement("div"); head.className = "qs-tw-main";
+          head.innerHTML = '👑 <b>' + esc(mn) + '</b> <span class="qs-tw-cnt">' + groups[mn].length + " твин.</span>";
+          card.appendChild(head);
+          var chips = document.createElement("div"); chips.className = "qs-tw-chips";
+          groups[mn].forEach(function (t) {
+            var chip = document.createElement("span"); chip.className = "qs-tw-chip" + (t.auto ? " auto" : "");
+            chip.appendChild(document.createTextNode((t.auto ? "🤖 " : "") + t.twin + " "));
+            if (t.auto) {
+              chip.title = "авто-твин (по титулу). ✎ переназначить мэйна · ⊘ это отдельный мэйн";
+              var fx = document.createElement("button"); fx.className = "qs-tw-x"; fx.textContent = "✎";
+              fx.addEventListener("click", function () { body.querySelector("#qlk-tw-nick").value = t.twin; body.querySelector("#qlk-tw-main").value = ""; body.querySelector("#qlk-tw-main").focus(); });
+              var mm = document.createElement("button"); mm.className = "qs-tw-x"; mm.textContent = "⊘";
+              mm.addEventListener("click", function () { if (confirm("Отметить «" + t.twin + "» как отдельный МЭЙН (снять авто-твин)?")) saveTw(t.twin, t.twin); });
+              chip.appendChild(fx); chip.appendChild(mm);
+            } else {
+              var x = document.createElement("button"); x.className = "qs-tw-x"; x.textContent = "✕"; x.title = "убрать твин-связь";
+              x.addEventListener("click", function () { saveTw(t.twin, ""); });
+              chip.appendChild(x);
+            }
+            chips.appendChild(chip);
+          });
+          card.appendChild(chips);
+          twList.appendChild(card);
         });
       }).catch(function (e) { status("Твины не загрузились: " + (e.detail || e.message)); });
     }
