@@ -4074,7 +4074,7 @@
         "</div></details>" +
 
       // ── 🖼 БЕЗ ЛИЧНОГО ОБЛИКА (кто в очереди ещё без своей модельки) ──
-      '<details class="q-sec"><summary>🖼 Без личного облика' +
+      '<details class="q-sec" open><summary>🖼 Без личного облика' +
         '<span class="q-sec-hint">' +
           (_noModel.length
             ? _noModel.length + " чел. в очереди без своей модельки"
