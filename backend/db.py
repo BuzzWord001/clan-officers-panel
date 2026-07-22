@@ -1644,9 +1644,13 @@ def create_acceptance(
         # миграция canon при расхождении написания. Тот же механизм, что при
         # переименовании (update_acceptance). Если в доблести его ещё нет — безвредно.
         canon = _manual_canon(conn, game_nick)   # ручной ник → раздельный canon (не сливать с двойником)
-        if canon:
+        is_manual = bool(canon) and canon != _valor_canon(game_nick)
+        if canon and not is_manual:
+            # ВАЖНО: для РУЧНОГО ника sync НЕ вызываем — иначе он свернёт game_nick в
+            # folded canon двойника и СЛИЯЕТ/переименует чужую запись (баг HARDKISS→НаRDKisS).
             _by = actor.get("name") or actor.get("role") or ""
             _sync_nick_in_conn(conn, canon, game_nick.strip(), now, _by)
+        if canon:
             # Роль «Ветеран» сразу при добавлении (твины старичков клана).
             if veteran:
                 conn.execute(
