@@ -1018,7 +1018,9 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         shared = cfg["shared_password_hash"] if cfg else ""
         p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет над ростерным
         off_ok = auth_pwd.verify_officer(payload.shared_password)     # ЖИВОЙ офицерский пароль
-        is_off_nick = _is_officer_nick(conn, payload.nick)
+        # РУЧНОЙ ник — отдельный человек, НЕ наследует офицерство своего гомоглиф-двойника
+        # (иначе HARDKISS требовала бы офиц. пароль, если НаRDKisS — офицер).
+        is_off_nick = (not _manual_by_raw(conn, payload.nick)) and _is_officer_nick(conn, payload.nick)
         # ОФИЦЕР (по офицерскому паролю ИЛИ офицерский ник) — регистрирует ЛИЧНЫЙ пароль,
         # но офицерский пароль обязателен как доказательство, что он офицер.
         role_officer = off_ok or is_off_nick
@@ -1072,7 +1074,8 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, main_canon)
         # Офицерский ник, но аккаунта ещё нет → сначала зарегистрировать личный пароль офиц. паролем.
-        if not acc and _is_officer_nick(conn, payload.nick):
+        # Ручной ник — отдельный человек, не наследует офицерство гомоглиф-двойника.
+        if not acc and not _manual_by_raw(conn, payload.nick) and _is_officer_nick(conn, payload.nick):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "need_officer_password")
         if not acc or not _check(payload.personal_password, acc["password_hash"]):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
