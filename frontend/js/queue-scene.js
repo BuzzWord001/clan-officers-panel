@@ -2034,8 +2034,8 @@
         (e.privileged ? '<div class="q-char-priv-lbl">⚡ Жетон ТОП-3</div>' : "") +   // жетон вне очереди — только если применён, выше «Проводника»
         (e.is_shooter ? '<div class="q-char-guide-lbl">✦ Проводник</div>' : "") +    // «Проводник» — прямо над ником
         '<div class="q-char-name">' + esc(e.nick) + "</div>" +
-        // РОДНЯ (мэйн + твины) — только админу/офицеру, чтобы видеть связь ников
-        (((_isAdmin || _role === "officer") && e.kin && e.kin.length)
+        // РОДНЯ (мэйн + твины) — ТОЛЬКО АДМИНУ (офицерам не засоряем взгляд)
+        ((_isAdmin && e.kin && e.kin.length)
           ? '<div class="q-char-kin" title="другие ники этого игрока (мэйн + твины)">🔗 ' +
               e.kin.map(function (k) { return esc(k.nick) + (k.is_main ? " ⭐" : ""); }).join(", ") + "</div>"
           : "") +
