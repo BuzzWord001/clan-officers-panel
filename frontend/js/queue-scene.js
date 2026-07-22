@@ -5345,6 +5345,12 @@
           '<input id="qlk-mn-title" placeholder="имя/титул (необяз.)" autocomplete="off">' +
           '<button id="qlk-mn-save">Добавить</button></div>' +
         '<div id="qlk-mn-list" class="qs-links-list" style="margin-top:6px"></div></div>' : "") +
+      (_isAdmin
+        ? '<div class="qs-links-sec"><div class="qs-links-h">🚫 Обычные игроки (не офицеры) <span>— кого система ошибочно приняла за офицера</span></div>' +
+            '<div class="qs-links-hint" style="margin:0 0 6px">Если игроку при входе просит ОФИЦЕРСКИЙ пароль, хотя он обычный (например, состоит в офицерском чате или похож ником на офицера) — добавь его сюда. Он станет обычным игроком (входит по общему паролю гильдии), с аккаунта снимется офицерский флаг. Почта и пароль сохраняются.</div>' +
+            '<div class="qs-links-row"><input id="qlk-oe-nick" placeholder="ник игрока…" autocomplete="off">' +
+              '<button id="qlk-oe-save">Пометить обычным</button></div>' +
+            '<div id="qlk-oe-list" class="qs-links-list" style="margin-top:6px"></div></div>' : "") +
       '<div id="qlk-status" class="qs-links-status"></div>';
     var stEl = body.querySelector("#qlk-status");
     function status(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
@@ -5386,6 +5392,37 @@
         }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
       });
       reloadMn();
+    }
+    // Обычные игроки (не офицеры) — исключения из авто-определения офицера (только админ)
+    if (_isAdmin && body.querySelector("#qlk-oe-save")) {
+      var oeList = body.querySelector("#qlk-oe-list");
+      var reloadOe = function () {
+        q("GET", "/queue/admin/officer-excludes").then(function (d) {
+          oeList.innerHTML = "";
+          (d.items || []).forEach(function (it) {
+            var row = document.createElement("div"); row.className = "qs-links-item";
+            var t = document.createElement("span"); t.textContent = it.nick + " — обычный игрок";
+            row.appendChild(t);
+            row.appendChild(delBtn(function () {
+              q("POST", "/queue/admin/officer-exclude-delete", { canon: it.canon })
+                .then(function () { reloadOe(); status("Убрано: " + it.nick, true); })
+                .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+            }));
+            oeList.appendChild(row);
+          });
+        }).catch(function () {});
+      };
+      body.querySelector("#qlk-oe-save").addEventListener("click", function () {
+        var nk = (body.querySelector("#qlk-oe-nick").value || "").trim();
+        if (!nk) { status("Введи ник"); return; }
+        q("POST", "/queue/admin/officer-exclude", { nick: nk }).then(function (r) {
+          body.querySelector("#qlk-oe-nick").value = "";
+          status("✓ " + r.nick + " теперь обычный игрок — войдёт по общему паролю", true);
+          reloadOe(); afterChange();
+        }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+      });
+      attachNickSuggest(body.querySelector("#qlk-oe-nick"));
+      reloadOe();
     }
     // супруги
     var spList = body.querySelector("#qlk-sp-list"), spN = body.querySelector("#qlk-sp-n");

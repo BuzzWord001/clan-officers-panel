@@ -201,6 +201,16 @@ def ensure_queue_tables() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_manual_raw ON queue_manual_nicks(raw);
 
+            -- Принудительно ОБЫЧНЫЕ игроки: канон здесь НИКОГДА не считается офицером,
+            -- даже если он есть в офиц.чате или фаззи-похож на офицера. Лечит ложные
+            -- срабатывания (напр. игрок в офиц.чате, но не офицер → просило офиц.пароль).
+            CREATE TABLE IF NOT EXISTS queue_officer_exclude (
+              canon     TEXT PRIMARY KEY,
+              nick      TEXT NOT NULL DEFAULT '',
+              added_by  TEXT NOT NULL DEFAULT '',
+              added_at  TEXT NOT NULL DEFAULT ''
+            );
+
             -- Запросы игроков на ПОДТВЕРЖДЕНИЕ связи (твин/супруг) офицерами. Игрок хочет
             -- передать ресурс тому, кого система ещё не знает как связь → создаёт запрос;
             -- офицер/админ подтверждает как твина/супруга или отклоняет.
@@ -888,7 +898,12 @@ def _officer_canons(conn) -> frozenset:
                     second = sim
             if best_c and best_r >= 0.93 and (best_r - second) >= 0.06:  # очень похоже И явный отрыв
                 officers.add(best_c)
-    res = frozenset(officers)
+    # принудительно ОБЫЧНЫЕ (админ пометил) — вычитаем из офицеров (лечит ложные срабатывания)
+    try:
+        excl = {r["canon"] for r in conn.execute("SELECT canon FROM queue_officer_exclude") if r["canon"]}
+    except Exception:
+        excl = set()
+    res = frozenset(officers - excl)
     _OFFICER_CACHE["at"] = now
     _OFFICER_CACHE["set"] = res
     return res
@@ -1025,6 +1040,52 @@ def manual_nick_delete(payload: dict, request: Request, actor: dict = Depends(re
     with db.connection() as conn:
         cur = conn.execute("DELETE FROM queue_manual_nicks WHERE canon=?", (canon,))
         _log(conn, "manual_nick_del", actor=_actor_name(actor), request=request, detail="canon=" + canon)
+    return {"ok": True, "deleted": cur.rowcount}
+
+
+@router.get("/admin/officer-excludes")
+def officer_excludes_list(_: dict = Depends(require_admin)) -> dict:
+    """Список принудительно-обычных игроков (не офицеры) — для админ-панели."""
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT canon, nick, added_by, added_at FROM queue_officer_exclude ORDER BY added_at DESC").fetchall()
+    return {"items": [dict(r) for r in rows]}
+
+
+@router.post("/admin/officer-exclude")
+def officer_exclude_add(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Пометить ник ОБЫЧНЫМ игроком: его перестанут считать офицером (даже если он в
+    офиц.чате / фаззи-похож), и с его аккаунта снимается офиц.флаг. Почта/пароль остаются."""
+    nick = (payload.get("nick") or "").strip()[:64]
+    if not nick:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    with db.connection() as conn:
+        idx = _people(conn)
+        cn = db._valor_canon(nick)
+        p = idx.get(cn)
+        disp = (p["nick"] if p else nick)
+        cns = {c for c in {cn, (p["main_canon"] if p else "")} if c}   # ник + его мэйн-канон
+        if not cns:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+        for c in cns:
+            conn.execute(
+                "INSERT OR REPLACE INTO queue_officer_exclude (canon, nick, added_by, added_at) VALUES (?,?,?,?)",
+                (c, disp, _actor_name(actor), _now()))
+            conn.execute("UPDATE queue_accounts SET is_officer=0 WHERE main_canon=?", (c,))
+        _log(conn, "officer_exclude", actor=_actor_name(actor), nick=disp, request=request,
+             detail="помечен обычным игроком (каноны: %s)" % ",".join(sorted(cns)))
+    _OFFICER_CACHE["at"] = 0.0        # сбросить кэш офицеров — эффект сразу
+    return {"ok": True, "nick": disp}
+
+
+@router.post("/admin/officer-exclude-delete")
+def officer_exclude_delete(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Убрать пометку «обычный игрок» — снова участвует в авто-определении офицера."""
+    canon = (payload.get("canon") or "").strip()
+    with db.connection() as conn:
+        cur = conn.execute("DELETE FROM queue_officer_exclude WHERE canon=?", (canon,))
+        _log(conn, "officer_exclude_del", actor=_actor_name(actor), request=request, detail="canon=" + canon)
+    _OFFICER_CACHE["at"] = 0.0
     return {"ok": True, "deleted": cur.rowcount}
 
 
