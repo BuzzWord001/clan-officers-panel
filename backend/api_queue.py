@@ -2014,6 +2014,27 @@ def _uploaded_keys() -> set:
     return out
 
 
+# Свёртка гомоглифов для КЛЮЧА МОДЕЛИ — 1:1 как на фронте (js/queue-scene.js canon()):
+# латиница/греческий → кириллица, потом lower + только буквы/цифры. ВАЖНО: это НЕ
+# db._valor_canon (тот сворачивает в латиницу). Ключи файлов person-<...> и поиск на
+# фронте должны считаться ОДИНАКОВО, иначе загруженная модель «не видна» (EvgeniY: файл
+# был person-evgeniy латиницей, а фронт искал person-еvgеniу кириллицей).
+_MODEL_FOLD = {
+    "a": "а", "b": "в", "c": "с", "e": "е", "h": "н", "k": "к", "m": "м", "o": "о",
+    "p": "р", "t": "т", "x": "х", "y": "у",
+    "α": "а", "β": "б", "γ": "г", "δ": "д", "ε": "е", "ζ": "з", "η": "н", "θ": "о",
+    "ι": "и", "κ": "к", "λ": "л", "μ": "м", "ν": "н", "ο": "о", "π": "п", "ρ": "р",
+    "σ": "с", "ς": "с", "τ": "т", "υ": "и", "φ": "ф", "χ": "х", "ω": "о",
+}
+
+
+def _model_canon(s: str) -> str:
+    """Канон ника для КЛЮЧА персональной модели — идентично фронтовому canon()."""
+    s = (s or "").lower()
+    s = "".join(ch for ch in s if ch.isalnum())
+    return "".join(_MODEL_FOLD.get(ch, ch) for ch in s)
+
+
 def _next_person_slot(canon: str, extra_taken: set | None = None) -> str:
     """Следующий свободный слот персональной модели: person-<canon>, затем --2, --3…"""
     base = "person-" + canon
@@ -2035,8 +2056,10 @@ def officer_model_upload(payload: ModelUploadIn, request: Request,
     силой: игрок сам переключится, если захочет. key = ник игрока (не сырой ключ)."""
     with db.connection() as conn:
         p = _people(conn).get(db._valor_canon(payload.key))
-        cn = p["main_canon"] if p else db._valor_canon(payload.key)
         nick = p["nick"] if p else payload.key.strip()
+        # Ключ модели считаем ФРОНТ-каноном ника МЭЙНА (как ищет переключатель),
+        # а не db-каноном — иначе загруженная модель не находится (EvgeniY-баг).
+        cn = _model_canon(p["main_nick"] if p else payload.key)
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
         slot = _next_person_slot(cn)
@@ -2134,7 +2157,9 @@ def model_request_decide(payload: LinkDecideIn, request: Request,
         img_key = row["img_key"]
         files = sorted(_UPLOAD_DIR.glob(img_key + ".*")) if (img_key and _UPLOAD_DIR.exists()) else []
         if approve and files:
-            slot = _next_person_slot(row["main_canon"])
+            # Ключ модели — ФРОНТ-каноном ника мэйна (как ищет переключатель), не db-каноном.
+            mp = _people(conn).get(db._valor_canon(row["nick"]))
+            slot = _next_person_slot(_model_canon(mp["main_nick"] if mp else row["nick"]))
             src = files[0]
             (_UPLOAD_DIR / (slot + src.suffix)).write_bytes(src.read_bytes())
             new_status = "approved"
