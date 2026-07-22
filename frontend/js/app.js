@@ -539,6 +539,20 @@
           } : null);
         nickCell.appendChild(box);
       }
+      // Предупреждение «уже был в клане» (архив/кик) + причина — ПОД ником.
+      if (r.prev_departed) {
+        const pd = r.prev_departed;
+        const w = document.createElement("div");
+        w.className = "reg-prev-warn";
+        let txt = "⚠ Уже был в клане";
+        const reason = (pd.reason || "").trim();
+        if (reason) txt += " · причина: " + reason;
+        else if (pd.kicked) txt += " · был кикнут (причина не указана)";
+        if ((pd.by || "").trim()) txt += " · " + pd.by.trim();
+        w.textContent = txt;
+        w.title = "Этот человек уже состоял в клане и попал в архив/был кикнут — проверь, стоит ли принимать снова";
+        nickCell.appendChild(w);
+      }
       tr.querySelector(".title").textContent = r.title || "—";
       fillCombatCell(tr.querySelector(".combat"), r);
       const actorCell = tr.querySelector(".actor");

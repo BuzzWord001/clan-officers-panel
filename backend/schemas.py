@@ -56,6 +56,7 @@ class AcceptanceOut(BaseModel):
     survivability: float = 0  # Выживаемость, млн
     has_shot: bool = False    # прикреплён скрин Боевых Характеристик
     by_officer: bool = False  # принят офицером (не лично админом) — для пометки/фильтра
+    prev_departed: dict | None = None  # был в клане раньше (архив/кик) + причина, или None
 
 
 class ArchiveIn(BaseModel):

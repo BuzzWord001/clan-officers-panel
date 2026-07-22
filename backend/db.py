@@ -977,6 +977,60 @@ def member_nick_by_platform_id(platform: str, user_id: str) -> str:
     return gn or (row["display_name"] or "").strip()
 
 
+def _prev_departed_map(conn, amap: dict) -> dict[str, dict]:
+    """Карта canon → {reason, by, when, kicked} «человек уже был в клане».
+    Источники: архив реестра (наши «В архив» с причиной), ушедшие из доблести
+    (valor_departed) и ручные кики (valor_force_archived — с причиной)."""
+    arow = conn.execute("SELECT admin_username FROM auth_config WHERE id = 1").fetchone()
+    admin_name = (arow["admin_username"] if arow else "") or ""
+
+    def _by(n: str) -> str:
+        return "Админ" if n and n in (admin_name, "Администратор") else (n or "")
+
+    out: dict[str, dict] = {}
+
+    def _seed(rc: str) -> dict:
+        return out.setdefault(rc, {"reason": "", "by": "", "when": "", "kicked": False})
+
+    # 1) Архив реестра — записи, отправленные «В архив» с причиной.
+    for r in conn.execute("SELECT game_nick, archived_reason, archived_by, archived_at "
+                          "FROM acceptances WHERE COALESCE(archived, 0) = 1"):
+        e = _seed(_resolve_canon(_valor_canon(r["game_nick"]), amap))
+        e["kicked"] = True
+        if r["archived_reason"] and not e["reason"]:
+            e["reason"] = r["archived_reason"]
+        if r["archived_by"] and not e["by"]:
+            e["by"] = _by(r["archived_by"])
+        if r["archived_at"] and not e["when"]:
+            e["when"] = r["archived_at"]
+    # 2) Ушедшие из доблести (авто — без причины).
+    for r in conn.execute("SELECT nick_canon, departed_at FROM valor_departed"):
+        e = _seed(_resolve_canon(r["nick_canon"], amap))
+        if r["departed_at"] and not e["when"]:
+            e["when"] = r["departed_at"]
+    # 3) Ручные кики доблести (с причиной).
+    for r in conn.execute("SELECT nick_canon, reason, archived_by, archived_at "
+                          "FROM valor_force_archived"):
+        e = _seed(_resolve_canon(r["nick_canon"], amap))
+        e["kicked"] = True
+        if r["reason"] and not e["reason"]:
+            e["reason"] = r["reason"]
+        if r["archived_by"] and not e["by"]:
+            e["by"] = _by(r["archived_by"])
+        if r["archived_at"] and not e["when"]:
+            e["when"] = r["archived_at"]
+    return out
+
+
+def prev_clan_info(game_nick: str) -> dict | None:
+    """Для одного ника: был ли человек в клане раньше (архив/кик) и причина.
+    Возвращает {reason, by, when, kicked} или None. Для предупреждения в чат-команде."""
+    with connection() as conn:
+        amap = _alias_map(conn)
+        rc = _resolve_canon(_valor_canon(game_nick), amap)
+        return _prev_departed_map(conn, amap).get(rc)
+
+
 def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
     """Активный реестр (archived=0). include_archived=True → и ушедшие тоже."""
     where = "" if include_archived else "WHERE COALESCE(archived,0) = 0"
@@ -997,6 +1051,9 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
             if _is_note_noise(r["text"]):
                 continue
             note_cnt[r["nick_canon"]] = note_cnt.get(r["nick_canon"], 0) + 1
+        # Пометка «уже был в клане» (архив реестра + ушедшие/кикнутые доблести) с причиной.
+        amap = _alias_map(conn)
+        dep_map = _prev_departed_map(conn, amap)
         out = []
         for r in rows:
             d = _row_to_acceptance(r)
@@ -1004,6 +1061,7 @@ def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
             d["veteran"] = canon in vet
             d["elite"] = canon in elite_set
             d["nick_canon"] = canon
+            d["prev_departed"] = dep_map.get(_resolve_canon(canon, amap))
             # Шум («Ветеран») в примечании не показываем — как в Доблести.
             if _is_note_noise(d.get("note")):
                 d["note"] = ""

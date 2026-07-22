@@ -84,11 +84,27 @@ def _accept(rest: str, actor: dict) -> str:
     db.create_acceptance(game_nick=nick, title=title,
                          accepted_date=date.today().isoformat(),
                          note="", role_pending=True, by_officer=True, actor=actor)
+    warn = _prev_clan_warning(nick)
     return ("✅ Готово! Внёс в список принятых в клан:\n"
             "• Ник: " + nick + "\n"
-            "• Титул: " + (title or "не указан") + "\n\n"
+            "• Титул: " + (title or "не указан") + "\n" + warn + "\n"
             "Ошиблись при вводе? Напишите /отмена — запись удалится.\n"
             "/список — кто принят в клан за эту неделю.")
+
+
+def _prev_clan_warning(nick: str) -> str:
+    """Если человек уже был в клане (архив/кик) — строка-предупреждение с причиной."""
+    try:
+        info = db.prev_clan_info(nick)
+    except Exception:
+        info = None
+    if not info:
+        return ""
+    reason = (info.get("reason") or "").strip()
+    by = (info.get("by") or "").strip()
+    tail = (" Причина: " + reason) if reason else " Причина не указана."
+    tail += (" (кикнул: " + by + ")") if by else ""
+    return "\n⚠️ ВНИМАНИЕ: этот человек УЖЕ был в клане." + tail + "\n"
 
 
 def _cancel(actor: dict) -> str:
