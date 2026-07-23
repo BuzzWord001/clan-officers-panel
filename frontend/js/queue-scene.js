@@ -1713,6 +1713,26 @@
     // модалка связей
     ".qs-links{padding:8px 16px 14px;max-width:560px}" +
     ".qs-links-hint{font:600 11.5px/1.5 system-ui;color:#8a795a;margin-bottom:10px}" +
+    // менеджер ролей (офицер/игрок)
+    ".qs-roles{max-width:560px}" +
+    ".qs-roles-hint{font-size:12px;line-height:1.5;color:#c9b48f;margin:0 0 10px;padding:8px 11px;background:rgba(224,162,74,.08);border:1px solid rgba(224,162,74,.22);border-radius:9px}" +
+    ".qs-roles-add{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px}" +
+    ".qs-roles-add input{flex:1 1 160px;padding:8px 10px;font-size:13px;color:#f5ecda;background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:8px}" +
+    ".qsr-b{cursor:pointer;border:0;border-radius:8px;padding:8px 12px;font:700 12.5px system-ui}" +
+    ".qsr-b.off{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#231404}" +
+    ".qsr-b.reg{background:rgba(120,180,224,.16);border:1px solid rgba(120,180,224,.5);color:#bfe0ff}" +
+    ".qs-roles-status{font:600 12px system-ui;min-height:16px;margin-bottom:6px;color:#9fe0a0}" +
+    ".qs-roles-list{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}" +
+    ".qs-roles-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;padding:7px 10px;border-radius:9px;background:rgba(255,240,200,.05);border:1px solid rgba(224,162,74,.2)}" +
+    ".qsr-nm{font:700 13px Georgia,serif;color:#f5ecda;display:flex;align-items:center;gap:6px;flex-wrap:wrap}" +
+    ".qsr-badge{font:700 10px system-ui;padding:1px 7px;border-radius:6px}" +
+    ".qsr-badge.off{background:rgba(243,212,137,.3);color:#f0c878}" +
+    ".qsr-badge.reg{background:rgba(120,180,224,.2);color:#bfe0ff}" +
+    ".qsr-tag{font-size:10px;color:#8a795a}" +
+    ".qsr-modes{display:flex;gap:4px;flex-wrap:wrap}" +
+    ".qsr-m{cursor:pointer;border:1px solid rgba(224,162,74,.4);background:rgba(0,0,0,.3);color:#caa66a;border-radius:7px;padding:5px 9px;font:700 11.5px system-ui}" +
+    ".qsr-m.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#231404;border-color:#f3d489}" +
+    ".qs-roles-empty{font-size:12.5px;color:#8a795a;padding:10px}" +
     ".qs-links-sec{margin-bottom:14px;padding:10px;border:1px solid rgba(224,162,74,.2);border-radius:11px;background:rgba(0,0,0,.16)}" +
     ".qs-links-h{font:800 13px Georgia,serif;color:#ffd98a;margin-bottom:7px}.qs-links-h span{font:400 11px system-ui;color:#8a795a}" +
     ".qs-links-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}" +
@@ -3792,6 +3812,12 @@
     mmBtn.textContent = "🎭 Модели классов и персональные";
     mmBtn.addEventListener("click", function () { openModelManager(); });
     bodyEl.appendChild(mmBtn);
+    // роли: кто офицер, кто игрок (с закреплением) — прямо из правой панели
+    var rolesBtn = document.createElement("button");
+    rolesBtn.className = "qs-objp-pm";
+    rolesBtn.textContent = "👮 Офицеры и игроки (роли)";
+    rolesBtn.addEventListener("click", function () { openOfficerRoles(); });
+    bodyEl.appendChild(rolesBtn);
 
     // Заменить модель: подгрузить новую картинку — старая меняется РОВНО на месте (позиция/размер
     // сохраняются). uploadKey: для встроенных — overrideKey(ключ), для ENV — их собственный ключ.
@@ -5312,6 +5338,58 @@
     inp.addEventListener("blur", function () { setTimeout(hide, 160); });
     hide();
   }
+  // Менеджер РОЛЕЙ (офицер/игрок) — только админ. Режимы: авто / закреплён офицером /
+  // закреплён игроком. Пароль и почта сохраняются всегда (меняется только флаг).
+  function openOfficerRoles() {
+    var body = document.createElement("div");
+    body.className = "qs-roles";
+    body.innerHTML = '<div class="qs-roles-empty">Загрузка…</div>';
+    sceneModal("👮 Офицеры и игроки — роли", body);
+    function setRole(nick, mode) {
+      q("POST", "/queue/admin/officer-role", { nick: nick, mode: mode })
+        .then(function () { reload(); })
+        .catch(function (e) { var s = body.querySelector("#qsr-status"); if (s) { s.textContent = "Ошибка: " + (e.detail || e.message); s.style.color = "#e0a86a"; } });
+    }
+    function reload() {
+      q("GET", "/queue/admin/officer-roles").then(function (d) {
+        var items = d.items || [];
+        body.innerHTML =
+          '<div class="qs-roles-hint">🔒 <b>Офицер</b> — закреплён (не снимется, даже если нет в чатах). 👤 <b>Игрок</b> — закреплён обычным. ⚙ <b>Авто</b> — по офицерским чатам ВК/TG. Пароль и почта всегда сохраняются.</div>' +
+          '<div class="qs-roles-add"><input id="qsr-nick" placeholder="ник игрока…" autocomplete="off">' +
+            '<button data-add="force_officer" class="qsr-b off">🔒 Сделать офицером</button>' +
+            '<button data-add="force_regular" class="qsr-b reg">👤 Сделать игроком</button></div>' +
+          '<div id="qsr-status" class="qs-roles-status"></div>' +
+          '<div class="qs-roles-list">' +
+            (items.length ? items.map(function (it) {
+              return '<div class="qs-roles-row">' +
+                '<div class="qsr-nm">' + esc(it.nick) +
+                  (it.is_officer ? ' <span class="qsr-badge off">офицер</span>' : ' <span class="qsr-badge reg">игрок</span>') +
+                  (it.in_chat ? ' <span class="qsr-tag" title="есть в офицерском чате ВК/TG">🔗 в чате</span>' : "") +
+                  (it.registered ? ' <span class="qsr-tag" title="есть аккаунт на сайте">✅ вошёл</span>' : "") + "</div>" +
+                '<div class="qsr-modes">' +
+                  '<button class="qsr-m' + (it.mode === "auto" ? " on" : "") + '" data-nick="' + esc(it.nick) + '" data-mode="auto">⚙ Авто</button>' +
+                  '<button class="qsr-m' + (it.mode === "force_officer" ? " on" : "") + '" data-nick="' + esc(it.nick) + '" data-mode="force_officer">🔒 Офицер</button>' +
+                  '<button class="qsr-m' + (it.mode === "force_regular" ? " on" : "") + '" data-nick="' + esc(it.nick) + '" data-mode="force_regular">👤 Игрок</button>' +
+                "</div></div>";
+            }).join("") : '<div class="qs-roles-empty">Пока никого — добавь по нику выше.</div>') +
+          "</div>";
+        body.querySelectorAll(".qsr-m").forEach(function (b) {
+          b.addEventListener("click", function () { setRole(b.dataset.nick, b.dataset.mode); });
+        });
+        body.querySelectorAll("[data-add]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var nk = (body.querySelector("#qsr-nick").value || "").trim();
+            if (!nk) { var s = body.querySelector("#qsr-status"); if (s) { s.textContent = "Введи ник"; s.style.color = "#e0a86a"; } return; }
+            body.querySelector("#qsr-nick").value = "";
+            setRole(nk, b.dataset.add);
+          });
+        });
+        attachNickSuggest(body.querySelector("#qsr-nick"));
+      }).catch(function (e) { body.innerHTML = '<div class="qs-roles-empty">Ошибка загрузки: ' + esc(e.detail || e.message) + "</div>"; });
+    }
+    reload();
+  }
+
   function openLinksManager(onChange) {
     var body = document.createElement("div");
     body.className = "qs-links";
@@ -5346,11 +5424,9 @@
           '<button id="qlk-mn-save">Добавить</button></div>' +
         '<div id="qlk-mn-list" class="qs-links-list" style="margin-top:6px"></div></div>' : "") +
       (_isAdmin
-        ? '<div class="qs-links-sec"><div class="qs-links-h">🚫 Обычные игроки (не офицеры) <span>— кого система ошибочно приняла за офицера</span></div>' +
-            '<div class="qs-links-hint" style="margin:0 0 6px">Если игроку при входе просит ОФИЦЕРСКИЙ пароль, хотя он обычный (например, состоит в офицерском чате или похож ником на офицера) — добавь его сюда. Он станет обычным игроком (входит по общему паролю гильдии), с аккаунта снимется офицерский флаг. Почта и пароль сохраняются.</div>' +
-            '<div class="qs-links-row"><input id="qlk-oe-nick" placeholder="ник игрока…" autocomplete="off">' +
-              '<button id="qlk-oe-save">Пометить обычным</button></div>' +
-            '<div id="qlk-oe-list" class="qs-links-list" style="margin-top:6px"></div></div>' : "") +
+        ? '<div class="qs-links-sec"><div class="qs-links-h">👮 Офицеры и игроки <span>— кто офицер, кто обычный (с закреплением)</span></div>' +
+            '<div class="qs-links-hint" style="margin:0 0 6px">Регулировка ролей: закрепить офицером (не снимется, даже если нет в чатах), закрепить обычным или оставить «авто» (по офиц.чатам). Пароль и почта всегда сохраняются.</div>' +
+            '<button id="qlk-roles-open" class="qs-rcpt-manage">👮 Открыть управление ролями</button></div>' : "") +
       '<div id="qlk-status" class="qs-links-status"></div>';
     var stEl = body.querySelector("#qlk-status");
     function status(m, ok) { stEl.textContent = m || ""; stEl.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
@@ -5393,37 +5469,9 @@
       });
       reloadMn();
     }
-    // Обычные игроки (не офицеры) — исключения из авто-определения офицера (только админ)
-    if (_isAdmin && body.querySelector("#qlk-oe-save")) {
-      var oeList = body.querySelector("#qlk-oe-list");
-      var reloadOe = function () {
-        q("GET", "/queue/admin/officer-excludes").then(function (d) {
-          oeList.innerHTML = "";
-          (d.items || []).forEach(function (it) {
-            var row = document.createElement("div"); row.className = "qs-links-item";
-            var t = document.createElement("span"); t.textContent = it.nick + " — обычный игрок";
-            row.appendChild(t);
-            row.appendChild(delBtn(function () {
-              q("POST", "/queue/admin/officer-exclude-delete", { canon: it.canon })
-                .then(function () { reloadOe(); status("Убрано: " + it.nick, true); })
-                .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-            }));
-            oeList.appendChild(row);
-          });
-        }).catch(function () {});
-      };
-      body.querySelector("#qlk-oe-save").addEventListener("click", function () {
-        var nk = (body.querySelector("#qlk-oe-nick").value || "").trim();
-        if (!nk) { status("Введи ник"); return; }
-        q("POST", "/queue/admin/officer-exclude", { nick: nk }).then(function (r) {
-          body.querySelector("#qlk-oe-nick").value = "";
-          status("✓ " + r.nick + " теперь обычный игрок — войдёт по общему паролю", true);
-          reloadOe(); afterChange();
-        }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-      });
-      attachNickSuggest(body.querySelector("#qlk-oe-nick"));
-      reloadOe();
-    }
+    // Управление ролями (офицер/игрок) — отдельный менеджер
+    var rolesBtn = body.querySelector("#qlk-roles-open");
+    if (rolesBtn) rolesBtn.addEventListener("click", function () { openOfficerRoles(); });
     // супруги
     var spList = body.querySelector("#qlk-sp-list"), spN = body.querySelector("#qlk-sp-n");
     function reloadSp() {

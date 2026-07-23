@@ -211,6 +211,22 @@ def ensure_queue_tables() -> None:
               added_at  TEXT NOT NULL DEFAULT ''
             );
 
+            -- РОЛИ (ручное регулирование офицерства). mode:
+            --   'force_officer' — ЗАКРЕПЛЁН офицером (не снимать, даже если нет в чатах);
+            --   'force_regular' — ЗАКРЕПЛЁН обычным игроком (никогда не офицер).
+            -- Нет строки → 'auto' (следует авто-определению из офиц.чатов/тегов).
+            -- Эффективные офицеры = (авто ∪ force_officer) − force_regular.
+            CREATE TABLE IF NOT EXISTS queue_officer_roles (
+              canon      TEXT PRIMARY KEY,
+              nick       TEXT NOT NULL DEFAULT '',
+              mode       TEXT NOT NULL DEFAULT '',
+              updated_by TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
+            -- миграция прежних исключений (force_regular) в единую таблицу ролей
+            INSERT OR IGNORE INTO queue_officer_roles (canon, nick, mode, updated_by, updated_at)
+              SELECT canon, nick, 'force_regular', added_by, added_at FROM queue_officer_exclude;
+
             -- Запросы игроков на ПОДТВЕРЖДЕНИЕ связи (твин/супруг) офицерами. Игрок хочет
             -- передать ресурс тому, кого система ещё не знает как связь → создаёт запрос;
             -- офицер/админ подтверждает как твина/супруга или отклоняет.
@@ -842,20 +858,19 @@ class KVIn(BaseModel):
 
 # ─────────────────────────── офицеры (для входа в очередь) ───────────────────────────
 _OFFICER_CACHE = {"at": 0.0, "set": frozenset()}
+_OFFICER_AUTO_CACHE = {"at": 0.0, "set": frozenset()}
 
 
-def _officer_canons(conn) -> frozenset:
-    """Каноны ников, которых считаем ОФИЦЕРАМИ:
+def _officer_auto_canons(conn) -> frozenset:
+    """АВТО-определение офицеров (БЕЗ ручных ролей):
       1) тег 'officer' в valor_tags (роль на сайте);
       2) участники ОФИЦЕРСКОГО чата TG/VK (chat_messages, chat_group='officers') —
-         их ники (user_display/user_username) сопоставляем с ростером: сначала точным
-         каноном, а если не совпало — фаззи-похожестью (ник в TG/VK может быть написан
-         иначе, напр. «Томат» в TG → офицер «Томат» на сайте).
-    Кэш 5 мин (иначе фаззи-цикл гоняется на каждый keystroke автоподсказки)."""
+         точным каноном, иначе фаззи-похожестью (ник в TG/VK может быть написан иначе).
+    Кэш 5 мин (фаззи-цикл дорогой)."""
     import time
     now = time.time()
-    if _OFFICER_CACHE["at"] > 0 and now - _OFFICER_CACHE["at"] < 300:
-        return _OFFICER_CACHE["set"]          # кэшируем и ПУСТОЙ набор (иначе гоняем на каждый keystroke)
+    if _OFFICER_AUTO_CACHE["at"] > 0 and now - _OFFICER_AUTO_CACHE["at"] < 300:
+        return _OFFICER_AUTO_CACHE["set"]
     officers = set()
     try:
         for r in conn.execute("SELECT nick_canon FROM valor_tags WHERE tag='officer'"):
@@ -898,12 +913,35 @@ def _officer_canons(conn) -> frozenset:
                     second = sim
             if best_c and best_r >= 0.93 and (best_r - second) >= 0.06:  # очень похоже И явный отрыв
                 officers.add(best_c)
-    # принудительно ОБЫЧНЫЕ (админ пометил) — вычитаем из офицеров (лечит ложные срабатывания)
+    res = frozenset(officers)
+    _OFFICER_AUTO_CACHE["at"] = now
+    _OFFICER_AUTO_CACHE["set"] = res
+    return res
+
+
+def _officer_roles(conn) -> dict:
+    """{canon: mode} из queue_officer_roles ('force_officer' | 'force_regular')."""
+    out = {}
     try:
-        excl = {r["canon"] for r in conn.execute("SELECT canon FROM queue_officer_exclude") if r["canon"]}
+        for r in conn.execute("SELECT canon, mode FROM queue_officer_roles"):
+            if r["canon"]:
+                out[r["canon"]] = r["mode"]
     except Exception:
-        excl = set()
-    res = frozenset(officers - excl)
+        pass
+    return out
+
+
+def _officer_canons(conn) -> frozenset:
+    """Итоговые офицеры = (авто ∪ force_officer) − force_regular. Кэш 5 мин."""
+    import time
+    now = time.time()
+    if _OFFICER_CACHE["at"] > 0 and now - _OFFICER_CACHE["at"] < 300:
+        return _OFFICER_CACHE["set"]
+    auto = set(_officer_auto_canons(conn))
+    roles = _officer_roles(conn)
+    force_off = {c for c, m in roles.items() if m == "force_officer"}
+    force_reg = {c for c, m in roles.items() if m == "force_regular"}
+    res = frozenset((auto | force_off) - force_reg)
     _OFFICER_CACHE["at"] = now
     _OFFICER_CACHE["set"] = res
     return res
@@ -1043,50 +1081,102 @@ def manual_nick_delete(payload: dict, request: Request, actor: dict = Depends(re
     return {"ok": True, "deleted": cur.rowcount}
 
 
+def _set_officer_role(conn, actor, nick: str, mode: str):
+    """Ставит роль человеку (и его мэйн-канону). mode:
+       'auto' — снять пометку (следует чатам); 'force_officer' — закрепить офицером;
+       'force_regular' — закрепить обычным. Синхронизирует is_officer на аккаунте
+       (почту/пароль НЕ трогаем). Возвращает (nick, set(канонов))."""
+    if mode not in ("auto", "force_officer", "force_regular"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_mode")
+    idx = _people(conn)
+    cn = db._valor_canon(nick)
+    p = idx.get(cn)
+    disp = (p["nick"] if p else (nick or "").strip())
+    cns = {c for c in {cn, (p["main_canon"] if p else "")} if c}   # ник + его мэйн-канон
+    if not cns:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    for c in cns:
+        if mode == "auto":
+            conn.execute("DELETE FROM queue_officer_roles WHERE canon=?", (c,))
+        else:
+            conn.execute(
+                "INSERT OR REPLACE INTO queue_officer_roles (canon, nick, mode, updated_by, updated_at)"
+                " VALUES (?,?,?,?,?)", (c, disp, mode, _actor_name(actor), _now()))
+        if mode == "force_officer":
+            conn.execute("UPDATE queue_accounts SET is_officer=1 WHERE main_canon=?", (c,))
+        elif mode == "force_regular":
+            conn.execute("UPDATE queue_accounts SET is_officer=0 WHERE main_canon=?", (c,))
+    _OFFICER_CACHE["at"] = 0.0        # сбросить кэш итоговых офицеров — эффект сразу
+    return disp, cns
+
+
+@router.get("/admin/officer-roles")
+def officer_roles_list(_: dict = Depends(require_admin)) -> dict:
+    """Управление офицерством: эффективные офицеры + все закреплённые. По каждому:
+       mode ('auto'|'force_officer'|'force_regular'), is_officer (итог), in_chat (авто), registered."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        eff = _officer_canons(conn)
+        auto = _officer_auto_canons(conn)
+        roles = _officer_roles(conn)
+        rnames = {r["canon"]: r["nick"]
+                  for r in conn.execute("SELECT canon, nick FROM queue_officer_roles")}
+        accs = {r["main_canon"] for r in conn.execute("SELECT main_canon FROM queue_accounts")}
+        canons = set(eff) | set(roles.keys())
+        items = []
+        for c in canons:
+            p = idx.get(c)
+            nick = (p["nick"] if p else (rnames.get(c) or c))
+            items.append({"canon": c, "nick": nick, "mode": roles.get(c, "auto"),
+                          "is_officer": c in eff, "in_chat": c in auto,
+                          "registered": c in accs})
+        items.sort(key=lambda x: (not x["is_officer"], (x["nick"] or "").lower()))
+    return {"items": items}
+
+
+@router.post("/admin/officer-role")
+def officer_role_set(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Установить роль: mode = 'auto' | 'force_officer' | 'force_regular'. Пароль/почта остаются."""
+    nick = (payload.get("nick") or "").strip()[:64]
+    mode = (payload.get("mode") or "").strip()
+    if not nick:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    with db.connection() as conn:
+        disp, cns = _set_officer_role(conn, actor, nick, mode)
+        _log(conn, "officer_role", actor=_actor_name(actor), nick=disp, request=request,
+             detail="mode=%s (каноны: %s)" % (mode, ",".join(sorted(cns))))
+    return {"ok": True, "nick": disp, "mode": mode}
+
+
+# back-compat (старый фронт до обновления кэша) — через единую таблицу ролей
 @router.get("/admin/officer-excludes")
 def officer_excludes_list(_: dict = Depends(require_admin)) -> dict:
-    """Список принудительно-обычных игроков (не офицеры) — для админ-панели."""
     with db.connection() as conn:
         rows = conn.execute(
-            "SELECT canon, nick, added_by, added_at FROM queue_officer_exclude ORDER BY added_at DESC").fetchall()
+            "SELECT canon, nick, updated_by AS added_by, updated_at AS added_at FROM queue_officer_roles"
+            " WHERE mode='force_regular' ORDER BY updated_at DESC").fetchall()
     return {"items": [dict(r) for r in rows]}
 
 
 @router.post("/admin/officer-exclude")
 def officer_exclude_add(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Пометить ник ОБЫЧНЫМ игроком: его перестанут считать офицером (даже если он в
-    офиц.чате / фаззи-похож), и с его аккаунта снимается офиц.флаг. Почта/пароль остаются."""
     nick = (payload.get("nick") or "").strip()[:64]
     if not nick:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
     with db.connection() as conn:
-        idx = _people(conn)
-        cn = db._valor_canon(nick)
-        p = idx.get(cn)
-        disp = (p["nick"] if p else nick)
-        cns = {c for c in {cn, (p["main_canon"] if p else "")} if c}   # ник + его мэйн-канон
-        if not cns:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
-        for c in cns:
-            conn.execute(
-                "INSERT OR REPLACE INTO queue_officer_exclude (canon, nick, added_by, added_at) VALUES (?,?,?,?)",
-                (c, disp, _actor_name(actor), _now()))
-            conn.execute("UPDATE queue_accounts SET is_officer=0 WHERE main_canon=?", (c,))
-        _log(conn, "officer_exclude", actor=_actor_name(actor), nick=disp, request=request,
-             detail="помечен обычным игроком (каноны: %s)" % ",".join(sorted(cns)))
-    _OFFICER_CACHE["at"] = 0.0        # сбросить кэш офицеров — эффект сразу
+        disp, _cns = _set_officer_role(conn, actor, nick, "force_regular")
+        _log(conn, "officer_exclude", actor=_actor_name(actor), nick=disp, request=request, detail="force_regular")
     return {"ok": True, "nick": disp}
 
 
 @router.post("/admin/officer-exclude-delete")
 def officer_exclude_delete(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Убрать пометку «обычный игрок» — снова участвует в авто-определении офицера."""
     canon = (payload.get("canon") or "").strip()
     with db.connection() as conn:
-        cur = conn.execute("DELETE FROM queue_officer_exclude WHERE canon=?", (canon,))
+        conn.execute("DELETE FROM queue_officer_roles WHERE canon=? AND mode='force_regular'", (canon,))
         _log(conn, "officer_exclude_del", actor=_actor_name(actor), request=request, detail="canon=" + canon)
     _OFFICER_CACHE["at"] = 0.0
-    return {"ok": True, "deleted": cur.rowcount}
+    return {"ok": True}
 
 
 @router.post("/register")
@@ -1163,7 +1253,10 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
         conn.execute("UPDATE queue_accounts SET last_login_at=? WHERE id=?", (_now(), acc["id"]))
         dev_token = _set_device(conn, response, acc["id"], request)
-        is_off = bool(acc["is_officer"]) if "is_officer" in acc.keys() else False
+        # ЭФФЕКТИВНЫЙ статус (авто из чатов ∪ закреплён офицером − закреплён обычным) —
+        # чтобы вход отражал текущие роли: вышел из чатов/понижен → входит обычным и наоборот.
+        is_off = acc["main_canon"] in _officer_canons(conn)
+        conn.execute("UPDATE queue_accounts SET is_officer=? WHERE id=?", (1 if is_off else 0, acc["id"]))
         # игрок вошёл конкретным ником (мэйн/твин) → это его активная личность; записи обновляем
         if not is_off:
             _apply_identity(conn, acc["id"], acc["main_canon"], payload.nick)
