@@ -16,8 +16,19 @@
   // Переход со «Скринов сбора» (двойной клик): подсветить нужный ник.
   const FOCUS_CANON = new URLSearchParams(location.search).get("focus") || "";
   let FOCUS_SCROLLED = false;
+  let FOCUS_URL_CLEARED = false;
   function applyFocus() {
     if (!FOCUS_CANON) return;
+    // Убираем ?focus= из URL СРАЗУ (значение уже сохранено в FOCUS_CANON) — иначе при
+    // КАЖДОМ обновлении страницы её снова перематывало бы к этому человеку (из поиска).
+    if (!FOCUS_URL_CLEARED) {
+      FOCUS_URL_CLEARED = true;
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete("focus");
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch (e) {}
+    }
     const tb = $("valor-tbody");
     // ВАЖНО: каждый раз ищем строку ЗАНОВО — apply() вызывается несколько раз
     // (после load() и loadMe()), и ре-рендер заменяет <tr>. Старая ссылка
