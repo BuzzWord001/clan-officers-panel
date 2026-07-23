@@ -2759,6 +2759,9 @@ video.chat-media-thumb {
   background: rgba(255, 107, 128, 0.10);
   color: var(--accent);
 }
+/* «Норматив (история)» в архиве «Ушли из клана» — кликабельная ссылка-ячейка */
+.dep-hist { white-space: nowrap; font-weight: 700; color: var(--gold, #f0c878); }
+.dep-hist:hover { text-decoration: underline; }
 
 .valor-popover {
   position: absolute;

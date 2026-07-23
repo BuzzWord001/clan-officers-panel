@@ -2703,17 +2703,10 @@
   });
   window.addEventListener("scroll", hideWtip, { capture: true, passive: true });
 
-  // History popover (по клику на ячейки с историей)
-  $("valor-tbody").addEventListener("click", async (ev) => {
-    const cell = ev.target.closest(".hist-cell");
-    if (!cell) return;
-    const tr = cell.closest("tr");
-    const nick = tr.dataset.nick;
-    // Историю тянем по КАНОНУ строки, а не по отображаемому нику: у тёзок-омонимов
-    // (одинаковый ник, разный класс — напр. INTerpris Жрец / INTеrpris Оборотень)
-    // ник сворачивается в один канон, и попап показал бы чужую историю.
-    const canon = tr.dataset.canon || tr.dataset.nick;
-    const field = cell.dataset.field;
+  // History popover — переиспользуемая функция (основная таблица + архив «Покинули клан»).
+  // Историю тянем по КАНОНУ строки, а не по отображаемому нику: у тёзок-омонимов
+  // (одинаковый ник, разный класс) ник сворачивается в один канон, и попап показал бы чужую.
+  async function openValorHistoryPopover(cell, nick, canon, field) {
     const fieldLabel = {rank:"должности", title:"титула",
                          level:"уровня", class:"класса",
                          valor:"доблести"}[field];
@@ -2878,7 +2871,15 @@
                    : e.message);
       popover.querySelector(".body").textContent = "Ошибка: " + msg;
     }
-  });
+  }
+  function _histClick(ev) {
+    const cell = ev.target.closest(".hist-cell");
+    if (!cell) return;
+    const tr = cell.closest("tr");
+    openValorHistoryPopover(cell, tr.dataset.nick, tr.dataset.canon || tr.dataset.nick, cell.dataset.field);
+  }
+  $("valor-tbody").addEventListener("click", _histClick);        // основная таблица
+  $("dep-tbody").addEventListener("click", _histClick);          // архив «Покинули клан»
 
   function closePopover() {
     const old = document.querySelector(".valor-popover");
@@ -3138,7 +3139,7 @@
       DEPARTED.length ? `(${DEPARTED.length})` : "(никого)";
     if (!DEPARTED.length) return;
     $("dep-tbody").innerHTML = DEPARTED.map(d => `
-      <tr class="m-row">
+      <tr class="m-row" data-nick="${esc(d.nick)}" data-canon="${esc(d.nick_canon)}">
         <td><b>${esc(d.nick)}</b></td>
         <td>${esc(d.true_name)}</td>
         <td>${esc(WeekFmt.range(d.last_week))}</td>
@@ -3147,6 +3148,7 @@
         <td class="m-cell-num">${d.last_level ?? ""}</td>
         <td>${esc(d.last_class)}</td>
         <td class="m-cell-num">${d.last_valor ?? ""}</td>
+        <td class="hist-cell dep-hist" data-field="valor" title="История доблести по неделям — сколько набирал(а)">📊 история</td>
         <td class="m-cell-num">
           ${(d.warning_count || 0) > 0
             ? `<span class="warn-badge">⚠ ${d.warning_count}</span>`
