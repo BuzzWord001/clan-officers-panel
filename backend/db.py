@@ -6349,6 +6349,39 @@ def valor_get_departed() -> list[dict[str, Any]]:
             nxt = [w for w in all_weeks if w > lw]   # первый сбор без него
             d["missing_week"] = nxt[0] if nxt else ""
             out.append(d)
+        # «ПОТЕРЯННЫЕ»: есть в истории Доблести, но НЕ в текущем снимке, НЕ в departed
+        # и НЕ в активном реестре → выпали из состава и нигде не показаны (глобальный
+        # поиск их находит, а на странице их нет). Показываем в архиве по ПОСЛЕДНИМ
+        # известным данным (последняя valor-строка), авто-пометка «нет в свежем снимке».
+        cur_snap = conn.execute(
+            "SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+        cur_id = cur_snap["id"] if cur_snap else None
+        in_current = ({r["nick_canon"] for r in conn.execute(
+            "SELECT nick_canon FROM valor_members WHERE snapshot_id=?", (cur_id,))}
+            if cur_id else set())
+        seen_cn = {d["nick_canon"] for d in out}
+        active_reg = {_valor_canon(r["game_nick"]) for r in conn.execute(
+            "SELECT game_nick FROM acceptances WHERE COALESCE(archived,0)=0")}
+        for r in conn.execute(
+                "SELECT vm.nick, vm.nick_canon, vm.true_name, vm.rank, vm.title, vm.level, "
+                "vm.class_ AS last_class, vm.valor, vm.warning_count, vs.week "
+                "FROM valor_members vm JOIN valor_snapshots vs ON vs.id = vm.snapshot_id "
+                "ORDER BY vs.week DESC, vm.id DESC"):
+            cn = r["nick_canon"]
+            if not cn or cn in in_current or cn in seen_cn or cn in active_reg:
+                continue
+            seen_cn.add(cn)                       # берём самую свежую строку канона
+            lw = r["week"] or ""
+            nxt = [w for w in all_weeks if w > lw]
+            out.append({
+                "nick": r["nick"], "nick_canon": cn, "true_name": r["true_name"],
+                "last_week": lw, "last_rank": r["rank"], "last_title": r["title"],
+                "last_level": r["level"], "last_class": r["last_class"],
+                "last_valor": r["valor"], "warning_count": r["warning_count"] or 0,
+                "departed_at": "", "archive_reason": None, "archive_by": None,
+                "first_week": first_seen.get(cn, lw),
+                "missing_week": (nxt[0] if nxt else ""), "auto_lost": True,
+            })
         return out
 
 

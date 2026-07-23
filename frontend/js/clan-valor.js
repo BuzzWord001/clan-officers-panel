@@ -25,7 +25,30 @@
     const findRow = () =>
       [...tb.querySelectorAll("tr.m-row")].find(x => x.dataset.canon === FOCUS_CANON);
     const tr = findRow();
-    if (!tr) return;
+    if (!tr) {
+      // Не в основной таблице? — ищем в архиве «Ушли из клана» (раскрываем секцию
+      // и докручиваем). Нужно, чтобы человек из глоб.поиска, которого нет в текущем
+      // снимке (напр. вернулся/выпал из состава), всё равно находился на странице.
+      const depTb = $("dep-tbody");
+      const findDep = () => depTb &&
+        [...depTb.querySelectorAll("tr.m-row")].find(x => x.dataset.canon === FOCUS_CANON);
+      if (findDep()) {
+        const w = $("dep-wrap");
+        if (w && w.style.display === "none") { w.style.display = "block"; $("dep-arrow").textContent = "▼"; }
+        if (!FOCUS_SCROLLED) {
+          FOCUS_SCROLLED = true;
+          const doScrollDep = () => {
+            const r = findDep();
+            if (r) { r.scrollIntoView({ behavior: "smooth", block: "center" });
+                     r.classList.add("m-row-focus", "m-row-flash");
+                     setTimeout(() => r.classList.remove("m-row-flash"), 1600); }
+          };
+          requestAnimationFrame(doScrollDep);
+          setTimeout(doScrollDep, 500);
+        }
+      }
+      return;
+    }
     tb.querySelectorAll(".m-row-focus").forEach(x => x.classList.remove("m-row-focus"));
     tr.classList.add("m-row-focus");
     if (!FOCUS_SCROLLED) {
@@ -3163,6 +3186,7 @@
           : ""}
       </tr>
     `).join("");
+    applyFocus();   // архив загрузился — если из глоб.поиска пришли к архивному, докрутить к нему
   }
 
   // Восстановление из архива (офицер/админ) с пометкой-причиной.
