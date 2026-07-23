@@ -15,6 +15,7 @@
     valor_current:     { label: "Доблесть · сейчас", cls: "gs-cur",  page: "clan-valor.html", focus: true },
     registry:          { label: "Реестр",            cls: "gs-reg",  page: "index.html", focus: true },
     chat:              { label: "Чаты",              cls: "gs-chat", page: "chat-members.html", focus: true },
+    chat_left:         { label: "Вышел из чата",     cls: "gs-dep",  page: "chat-members.html", focus: true },
     departed:          { label: "Покинул клан",      cls: "gs-dep",  page: "clan-valor.html", focus: true },
     force_archived:    { label: "Кикнут",            cls: "gs-kick", page: "clan-valor.html", focus: true },
     valor_ever:        { label: "Доблесть · был",    cls: "gs-ever", page: "clan-valor.html", focus: true },

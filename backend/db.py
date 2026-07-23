@@ -6476,23 +6476,30 @@ def global_search(q: str, limit: int = 40) -> list[dict[str, Any]]:
         for r in conn.execute("SELECT nick_canon FROM valor_force_archived"):
             sections_of[_resolve_canon(r["nick_canon"], amap)].add("force_archived")
 
-        # 4) Участники чатов (VK / Telegram).
+        # 4) Участники чатов (VK / Telegram) — И АКТИВНЫЕ, И ВЫШЕДШИЕ. Вышедших
+        #    (is_active=0) помечаем секцией 'chat_left', чтобы поиск находил и бывших
+        #    участников (напр. Рустем Бекмурзаев / Ace вышел из чата).
         for r in conn.execute(
                 "SELECT game_nick, display_name, vk_display, vk_first, vk_last, "
-                "vk_screen_name, tg_display, tg_username, tg_first_name, tg_last_name "
-                "FROM clan_members WHERE is_active=1"):
+                "vk_screen_name, tg_display, tg_username, tg_first_name, tg_last_name, "
+                "COALESCE(is_active,0) AS is_active "
+                "FROM clan_members"):
             gn = (r["game_nick"] or "").split(",")[0].strip()
             cn = (_resolve_canon(_valor_canon(gn), amap) if gn
                   else (r["display_name"] or "").lower())
             if not cn:
                 continue
-            sections_of[cn].add("chat")
+            sections_of[cn].add("chat" if r["is_active"] else "chat_left")
             _nick(cn, gn or r["display_name"] or r["vk_display"], 4)
             # Ищем и по реальным имени/фамилии из VK/Telegram, не только по нику.
             if _hit(r["game_nick"], r["display_name"], r["vk_display"],
                     r["vk_first"], r["vk_last"], r["vk_screen_name"],
                     r["tg_display"], r["tg_username"], r["tg_first_name"], r["tg_last_name"]):
                 matched.add(cn)
+        # если у канона есть и активная запись чата, и вышедшая (дубль) — активная важнее
+        for _secs in sections_of.values():
+            if "chat" in _secs:
+                _secs.discard("chat_left")
 
         # 5) Прямое совпадение по канону + по НАЗВАНИЮ роли.
         if qcanon:
@@ -6506,7 +6513,7 @@ def global_search(q: str, limit: int = 40) -> list[dict[str, Any]]:
 
         _SEC_RANK = {"valor_current": 0, "registry": 1, "chat": 2,
                      "departed": 3, "force_archived": 4, "valor_ever": 5,
-                     "registry_archived": 6}
+                     "registry_archived": 6, "chat_left": 7}
         out = []
         for cn in matched:
             secs = sections_of.get(cn, set())
