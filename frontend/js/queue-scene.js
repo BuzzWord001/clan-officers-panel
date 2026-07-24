@@ -4385,7 +4385,7 @@
           "</div>" +
           '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px">' +
             '<div style="font-size:12px;color:#caa66a">❓ Кому уточнить класс ' +
-              '<span style="color:#8a795a;font-size:11px">(в очереди БЕЗ класса — обычно только из реестра; модель зависит от класса)</span></div>' +
+              '<span style="color:#8a795a;font-size:11px">(из реестра/доблести БЕЗ класса — можно задать, даже если он ещё не в очереди и без модели)</span></div>' +
             '<div id="qa-class-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
           "</div>" +
         "</div></details>" +
@@ -4588,16 +4588,16 @@
     }
     (function buildClassList() {
       var host = box.querySelector("#qa-class-list"); if (!host) return;
+      // Берём из РОСТЕРА (реестр + доблесть), а не только из очереди — чтобы можно
+      // было задать класс реестровому, даже если он НЕ в очереди и без модели.
       var seen = {}, rows = [];
-      ((_lastState && _lastState.queues) || []).forEach(function (q2) {
-        (q2 || []).forEach(function (e) {
-          if ((e.cls || "").trim()) return;              // класс уже известен — пропускаем
-          var key = canon(e.main_nick || e.nick);
-          if (seen[key]) return; seen[key] = 1; rows.push(e);
-        });
+      (_roster || []).forEach(function (p) {
+        if ((p.cls || "").trim()) return;                // класс уже известен — пропускаем
+        var key = canon(p.nick);
+        if (seen[key]) return; seen[key] = 1; rows.push(p);
       });
       if (!rows.length) {
-        host.innerHTML = '<span style="font-size:11px;color:#8a795a">Некому — у всех в очереди класс известен.</span>'; return;
+        host.innerHTML = '<span style="font-size:11px;color:#8a795a">Некому — у всех известен класс.</span>'; return;
       }
       rows.forEach(function (e) {
         var nk = e.main_nick || e.nick;
