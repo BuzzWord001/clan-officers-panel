@@ -678,6 +678,22 @@
     ".q-banner{margin:0 0 14px;padding:10px 14px;border-radius:12px;font-size:13px;" +
       "background:rgba(224,162,74,.12);border:1px solid rgba(224,162,74,.35);color:#ecdcbe}" +
     ".q-banner b{color:#f0c878}" +
+    // красивая плашка «3 очереди одновременно»
+    ".q-3q{margin:0 0 14px;padding:12px 16px 13px;border-radius:14px;text-align:center;" +
+      "background:linear-gradient(135deg,rgba(62,44,17,.94),rgba(34,22,9,.94));" +
+      "border:1px solid rgba(240,200,120,.55);box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 26px rgba(245,200,120,.14),inset 0 1px 0 rgba(255,224,160,.14)}" +
+    ".q-3q-title{font:800 16px Georgia,serif;color:#ffd98a;letter-spacing:.3px;margin-bottom:9px;animation:q3qGlow 3s ease-in-out infinite}" +
+    "@keyframes q3qGlow{0%,100%{text-shadow:0 0 9px rgba(245,200,120,.35)}50%{text-shadow:0 0 18px rgba(245,200,120,.75)}}" +
+    ".q-3q-star{color:#ffcf5a}" +
+    ".q-3q-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}" +
+    ".q-3q-tag{font:800 13px system-ui;padding:6px 13px;border-radius:11px;border:1px solid;white-space:nowrap}" +
+    ".q-3q-tag b{font-size:14px;margin-left:2px}" +
+    ".q-3q-tag.t-com{color:#eae3d2;border-color:rgba(205,205,205,.5);background:rgba(205,205,205,.1)}" +
+    ".q-3q-tag.t-rare{color:#8fd6ff;border-color:rgba(120,180,224,.6);background:rgba(120,180,224,.14)}" +
+    ".q-3q-tag.t-leg{color:#ffcf5a;border-color:rgba(245,200,120,.65);background:rgba(245,200,120,.16)}" +
+    ".q-3q-amp{color:#caa66a;font:800 15px system-ui}" +
+    ".q-3q-sub{margin-top:9px;font-size:12px;color:#e2cfa8}" +
+    "@media(max-width:520px){.q-3q-title{font-size:14px}.q-3q-tag{font-size:11.5px;padding:5px 10px}}" +
     ".q-lane{position:relative;margin:0 0 18px;border-radius:16px;overflow:hidden;" +
       "border:1px solid rgba(224,162,74,.3);box-shadow:0 6px 22px rgba(0,0,0,.4)}" +
     ".q-lane-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;" +
@@ -2863,6 +2879,23 @@
   // Заметная плашка: до воскресенья 16:00 мск (пока не собраны данные) КАЖДЫЙ может
   // в любой момент сменить ресурс, за которым стоит — жми на свою модельку или на
   // ресурс у торговца. То же для тех, кто взял ⚡ вне очереди.
+  // Красивая заметная плашка: можно стоять сразу во всех 3 очередях.
+  function build3QueuesBanner() {
+    var d = document.createElement("div");
+    d.className = "q-3q";
+    d.innerHTML =
+      '<div class="q-3q-title"><span class="q-3q-star">✦</span> Можно стоять сразу во ВСЕХ трёх очередях! <span class="q-3q-star">✦</span></div>' +
+      '<div class="q-3q-row">' +
+        '<span class="q-3q-tag t-com">📦 Обычные</span>' +
+        '<span class="q-3q-amp">+</span>' +
+        '<span class="q-3q-tag t-rare">💎 Редкие <b>R</b></span>' +
+        '<span class="q-3q-amp">+</span>' +
+        '<span class="q-3q-tag t-leg">👑 Легендарные <b>S</b></span>' +
+      "</div>" +
+      '<div class="q-3q-sub">Вставай в каждую — не нужно выбирать что-то одно. Получай ресурсы из всех трёх сразу.</div>';
+    return d;
+  }
+
   function buildChangeBanner() {
     var el = document.createElement("div");
     el.className = "qs-change-note";
@@ -4092,8 +4125,10 @@
     if (!_pathMode && !_placeMode) wrap.appendChild(buildTokenAd());  // «реклама» жетона ТОП-3 (всем)
     if (!_pathMode && !_placeMode) { var mt = buildMyTokens(); if (mt) wrap.appendChild(mt); }  // мои жетоны (сколько их)
     var sup = renderSuperAbility(); if (sup) wrap.appendChild(sup);   // суперспособность топ-3
+    if (!_pathMode && !_placeMode) wrap.appendChild(build3QueuesBanner());   // «3 очереди сразу» — над рамкой
     wrap.appendChild(renderStage(state));
     if (!_pathMode && !_placeMode) wrap.appendChild(buildChangeBanner());   // «можно менять ресурс до вс 16:00»
+    if (!_pathMode && !_placeMode) wrap.appendChild(build3QueuesBanner());   // «3 очереди сразу» — над нижними очередями
     wrap.appendChild(renderQueueStrips(state));   // 3 полосы полных очередей (всем)
     // переключатель пола своей модельки — внизу, для каждого вошедшего игрока
     if (!_pathMode && !_placeMode) { var _ip = buildIdentityPicker(); if (_ip) wrap.appendChild(_ip); }
