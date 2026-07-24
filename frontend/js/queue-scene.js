@@ -1212,10 +1212,11 @@
     ".qs-objp-nomodel>summary b{color:#ffd98a}" +
     ".qs-nmp-hint{font-size:10px;color:#c9b48f;line-height:1.4;padding:0 9px 6px}" +
     ".qs-nmp-list{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow:auto;padding:0 6px 7px}" +
-    ".qs-nmp-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;background:rgba(255,240,200,.05)}" +
-    ".qs-nmp-nk{flex:1 1 auto;min-width:0;font:700 11px system-ui;color:#ffe0a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".qs-nmp-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:4px 6px;border-radius:7px;background:rgba(255,240,200,.05)}" +
+    ".qs-nmp-nk{flex:1 1 90px;min-width:0;font:700 11px system-ui;color:#ffe0a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".qs-nmp-tw{font-style:normal;font-size:9px;color:#e0a86a;font-weight:400}" +
     ".qs-nmp-q{flex:0 0 auto;font-size:9.5px;color:#8a795a}" +
+    ".qs-nmp-cls{flex:0 0 auto;max-width:92px;font-size:10.5px;color:#f5ecda;background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.4);border-radius:6px;padding:2px 3px}" +
     ".qs-nmp-btn{flex:0 0 auto;cursor:pointer;border:0;border-radius:6px;padding:3px 7px;font-size:12px;background:linear-gradient(180deg,#f3d489,#d09b2e)}" +
     ".qs-nmp-empty{font-size:11px;color:#8fc36a;padding:0 9px 8px}" +
     ".qs-objp-pad{display:inline-grid;grid-template-columns:repeat(3,1fr);gap:1px;justify-items:center}" +
@@ -3737,13 +3738,19 @@
         "<details" + (rows.length ? " open" : "") + ">" +
           "<summary>🖼 Без облика <b>" + rows.length + "</b></summary>" +
           (rows.length
-            ? '<div class="qs-nmp-hint">Стоят в очереди, но без своей модельки (показывается общая по классу). 🎨 — загрузить/сменить.</div>' +
+            ? '<div class="qs-nmp-hint">Стоят в очереди, но без своей модельки (общая по классу). Задай класс в выпадашке · 🎨 — загрузить/сменить облик.</div>' +
               '<div class="qs-nmp-list">' +
                 rows.map(function (r) {
                   return '<div class="qs-nmp-row">' +
-                    '<span class="qs-nmp-nk" title="' + esc(r.nick) + (r.main ? " · твин " + esc(r.main) : "") + (r.cls ? " · " + esc(r.cls) : " · без класса") + '">' +
+                    '<span class="qs-nmp-nk" title="' + esc(r.nick) + (r.main ? " · твин " + esc(r.main) : "") + (r.cls ? " · " + esc(r.cls) : " · без класса") + " · " + r.qs.map(function (qi) { return QS[qi]; }).join("·") + '">' +
                       esc(r.nick) + (r.main ? ' <i class="qs-nmp-tw">тв</i>' : "") + "</span>" +
-                    '<span class="qs-nmp-q">' + r.qs.map(function (qi) { return QS[qi]; }).join("·") + "</span>" +
+                    '<select class="qs-nmp-cls" data-nick="' + esc(r.nick) + '" title="класс игрока (для модели)">' +
+                      '<option value="">— класс —</option>' +
+                      Object.keys(CLASS_MODEL).map(function (k) {
+                        var L = k.charAt(0).toUpperCase() + k.slice(1);
+                        return '<option value="' + esc(L) + '"' + ((r.cls || "").toLowerCase() === k ? " selected" : "") + ">" + esc(L) + "</option>";
+                      }).join("") +
+                    "</select>" +
                     '<button class="qs-nmp-btn" data-eid="' + r.id + '" title="загрузить/сменить облик">🎨</button>' +
                   "</div>";
                 }).join("") +
@@ -3757,6 +3764,13 @@
           (arr || []).forEach(function (x) { if (x && x.id === eid) ent = x; });
         });
         if (ent) openModelSwitcher(ent);
+      });
+      // выбор класса прямо в списке «Без облика» — задаёт класс игроку
+      nm.addEventListener("change", function (e) {
+        var s = e.target.closest(".qs-nmp-cls"); if (!s) return;
+        q("POST", "/queue/admin/class", { nick: s.dataset.nick, cls: s.value })
+          .then(function () { refresh(); })
+          .catch(function (er) { alert("Не удалось задать класс: " + (er.detail || er.message)); });
       });
       bodyEl.appendChild(nm);
     })();
