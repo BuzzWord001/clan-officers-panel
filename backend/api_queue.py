@@ -145,6 +145,14 @@ def ensure_queue_tables() -> None:
               updated_at TEXT NOT NULL DEFAULT ''
             );
 
+            -- РУЧНОЙ КЛАСС (админ задал класс тем, кто есть только в реестре и чей
+            -- класс ещё неизвестен — доблесть его не знает). Переопределяет cls в _people.
+            CREATE TABLE IF NOT EXISTS queue_class (
+              canon      TEXT PRIMARY KEY,
+              cls        TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT ''
+            );
+
             -- Предпочтение модели: 1 = использовать ОБЩУЮ классовую модель вместо
             -- персональной (у кого есть персональная и он хочет переключиться на классовую).
             CREATE TABLE IF NOT EXISTS queue_model_pref (
@@ -566,6 +574,13 @@ def _people(conn) -> dict[str, dict]:
                 "true_name": "", "main_nick": r["nick"], "main_canon": r["canon"],
                 "is_twin": False, "sources": {"manual"},
             }
+    except Exception:
+        pass
+    # РУЧНОЙ КЛАСС (админ задал реестровым без класса) — переопределяет cls везде.
+    try:
+        for r in conn.execute("SELECT canon, cls FROM queue_class"):
+            if r["cls"] and r["canon"] in idx:
+                idx[r["canon"]]["cls"] = r["cls"].strip()
     except Exception:
         pass
     return idx
@@ -2637,6 +2652,33 @@ def set_gender(payload: GenderIn, request: Request, actor: dict = Depends(requir
         _log(conn, "gender", actor=_actor_name(actor), nick=payload.nick, request=request,
              detail="пол=" + (g or "авто"))
     return {"ok": True, "gender": g}
+
+
+class ClassIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    cls: str = Field(default="", max_length=32)
+
+
+@router.post("/admin/class")
+def set_class(payload: ClassIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Админ задаёт КЛАСС игроку, которого знает только реестр (доблесть класс не
+    знает) — чтобы моделька в очереди была по классу. Пусто = сброс."""
+    c = (payload.cls or "").strip()[:32]
+    with db.connection() as conn:
+        p = _resolve_person(conn, payload.nick)
+        cn = p["main_canon"] if p else db._valor_canon(payload.nick)
+        if not cn:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+        if not c:
+            conn.execute("DELETE FROM queue_class WHERE canon=?", (cn,))
+        else:
+            conn.execute(
+                "INSERT INTO queue_class (canon, cls, updated_at) VALUES (?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET cls=excluded.cls, updated_at=excluded.updated_at",
+                (cn, c, _now()))
+        _log(conn, "class", actor=_actor_name(actor), nick=payload.nick, request=request,
+             detail="класс=" + (c or "сброс"))
+    return {"ok": True, "cls": c}
 
 
 @router.post("/gender")

@@ -4374,6 +4374,20 @@
               '<span style="color:#8a795a;font-size:11px">(классы воин/жрец — модель зависит от пола; «авто» = угадано по имени)</span></div>' +
             '<div id="qa-gender-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
           "</div>" +
+          '<div class="q-admin-row" style="border-top:1px dashed rgba(224,162,74,.25);padding-top:8px">' +
+            '<span style="font-size:12.5px;color:#caa66a">Класс игрока (для модели):</span>' +
+            '<input id="qa-cnick" list="qa-roster-dl" placeholder="ник игрока…" autocomplete="off" style="min-width:150px">' +
+            '<select id="qa-csel">' +
+              Object.keys(CLASS_MODEL).map(function (k) { var L = k.charAt(0).toUpperCase() + k.slice(1); return '<option value="' + esc(L) + '">' + esc(L) + "</option>"; }).join("") +
+            "</select>" +
+            '<button class="sec" id="qa-cset">Задать класс</button>' +
+            '<button class="sec" id="qa-cr">Сброс</button>' +
+          "</div>" +
+          '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:4px">' +
+            '<div style="font-size:12px;color:#caa66a">❓ Кому уточнить класс ' +
+              '<span style="color:#8a795a;font-size:11px">(в очереди БЕЗ класса — обычно только из реестра; модель зависит от класса)</span></div>' +
+            '<div id="qa-class-list" style="display:flex;flex-direction:column;gap:4px;max-height:230px;overflow:auto"></div>' +
+          "</div>" +
         "</div></details>" +
 
       // ── 🌳 ОКРУЖЕНИЕ (панель догружается) ──
@@ -4550,6 +4564,51 @@
           b.addEventListener("click", function () { quickGender(nk, gv); });
           row.appendChild(b);
         });
+        host.appendChild(row);
+      });
+    })();
+    // ── КЛАСС игрока (для тех, кого знает только реестр, без класса) ──
+    function setClass(cls) {
+      var n = box.querySelector("#qa-cnick").value.trim();
+      if (!n) { st("Укажи ник, чтобы задать класс."); return; }
+      q("POST", "/queue/admin/class", { nick: n, cls: cls })
+        .then(function () { st("✓ Класс сохранён: " + n + " → " + (cls || "сброс"), true); refresh(); })
+        .catch(function (e) { st(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    box.querySelector("#qa-cset").addEventListener("click", function () { setClass(box.querySelector("#qa-csel").value); });
+    box.querySelector("#qa-cr").addEventListener("click", function () { setClass(""); });
+    function quickClass(nk, cls) {
+      q("POST", "/queue/admin/class", { nick: nk, cls: cls })
+        .then(function () { st("✓ " + nk + " → " + (cls || "сброс"), true); refresh(); })
+        .catch(function (e) { st(e.status === 404 ? "Ник не найден." : ("Ошибка: " + (e.detail || e.message))); });
+    }
+    function clsOptsHtml(withEmpty) {
+      return (withEmpty ? '<option value="">— класс —</option>' : "") +
+        Object.keys(CLASS_MODEL).map(function (k) { var L = k.charAt(0).toUpperCase() + k.slice(1); return '<option value="' + esc(L) + '">' + esc(L) + "</option>"; }).join("");
+    }
+    (function buildClassList() {
+      var host = box.querySelector("#qa-class-list"); if (!host) return;
+      var seen = {}, rows = [];
+      ((_lastState && _lastState.queues) || []).forEach(function (q2) {
+        (q2 || []).forEach(function (e) {
+          if ((e.cls || "").trim()) return;              // класс уже известен — пропускаем
+          var key = canon(e.main_nick || e.nick);
+          if (seen[key]) return; seen[key] = 1; rows.push(e);
+        });
+      });
+      if (!rows.length) {
+        host.innerHTML = '<span style="font-size:11px;color:#8a795a">Некому — у всех в очереди класс известен.</span>'; return;
+      }
+      rows.forEach(function (e) {
+        var nk = e.main_nick || e.nick;
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;color:#f6ead2;padding:3px 6px;border:1px solid rgba(224,162,74,.18);border-radius:8px";
+        row.innerHTML = '<b style="min-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nk) + "</b>" +
+          '<span style="color:#e6c48f;min-width:90px">класс не задан</span>';
+        var sel = document.createElement("select");
+        sel.innerHTML = clsOptsHtml(true);
+        sel.addEventListener("change", function () { if (sel.value) quickClass(nk, sel.value); });
+        row.appendChild(sel);
         host.appendChild(row);
       });
     })();
