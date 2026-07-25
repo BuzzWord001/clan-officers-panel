@@ -1359,6 +1359,20 @@
     ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
       "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
     ".qs-frame.place-on .qs-fwallet{pointer-events:auto;cursor:move}" +
+    // ссылки клана на РАМЕ (слева вверху): ряд маленьких круглых медальонов в стиль рамы
+    ".qs-flinks{position:absolute;display:flex;gap:9%;pointer-events:auto;line-height:0}" +
+    ".qs-fl{flex:1;position:relative;display:block;aspect-ratio:1;border-radius:50%;overflow:hidden;" +
+      "border:1.5px solid rgba(232,182,104,.85);" +
+      "box-shadow:inset 0 0 5px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.6),0 0 7px var(--g);" +
+      "background:radial-gradient(circle at 50% 34%,#48331b,#150d05);" +
+      "transition:transform .15s ease,box-shadow .15s ease}" +
+    ".qs-fl img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}" +
+    ".qs-fl::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;" +
+      "box-shadow:inset 0 1px 2px rgba(255,220,150,.35)}" +
+    ".qs-fl:hover{transform:translateY(-2px) scale(1.09);" +
+      "box-shadow:0 3px 9px rgba(0,0,0,.6),0 0 14px var(--g),0 0 6px var(--g)}" +
+    ".qs-frame.place-on .qs-flinks{cursor:move}" +
+    ".qs-frame.place-on .qs-fl{pointer-events:none}" +
     // слой всей очереди (front/back) — прозрачный, клики проходят к сцене, но люди кликабельны
     ".qs-qlayer{position:absolute;inset:0;pointer-events:none}" +
     ".qs-qlayer .qs-char{pointer-events:auto}" +
@@ -2865,6 +2879,38 @@
         var wtag = admTag(placedPos("wallet", 17, 17), "Кошелёк жетонов");
         wtag.style.zIndex = "100001";
         frame.appendChild(wtag);
+      }
+    }
+
+    // ссылки клана НА РАМЕ (слева вверху): маленькие круглые медальоны, в стиль.
+    // Перетаскиваемые/масштабируемые админом (ключ "flinks"), как кошелёк.
+    if (!isHidden("flinks")) {
+      var flPos = placedPos("flinks", 24, 11);       // дефолт — на верхней балке слева
+      var FLINKS = [
+        { img: "tg.png", g: "#2aa6e4", label: "Чат Telegram",
+          href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+        { img: "vk-chat.png", g: "#f56a24", label: "Чат ВК",
+          href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+        { img: "ts.png", g: "#ff5e1c", label: "TeamSpeak (голос)",
+          href: "ts3server://melodybum.ts3.se", ext: false }
+      ];
+      var flinks = document.createElement("div");
+      flinks.className = "qs-flinks";
+      flinks.dataset.fixedz = "1";                   // всегда поверх рамки
+      flinks.style.cssText = "left:" + flPos.x.toFixed(2) + "%;top:" + flPos.y.toFixed(2) +
+        "%;width:calc(15% * " + objSize("flinks", 1).toFixed(3) + ");z-index:100000" +
+        ";transform:translate(-50%,0)";
+      flinks.innerHTML = FLINKS.map(function (l) {
+        return '<a class="qs-fl" style="--g:' + l.g + '" href="' + l.href + '" title="' + l.label + '"' +
+          (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") +
+          '><img src="assets/social/' + l.img + '?v=1792700000" alt="' + l.label + '"></a>';
+      }).join("");
+      if (_placeMode) makeDraggable(flinks, "flinks");
+      frame.appendChild(flinks);
+      if (_isAdmin && _placeMode) {
+        var fltag = admTag(flPos, "Ссылки клана");
+        fltag.style.zIndex = "100001";
+        frame.appendChild(fltag);
       }
     }
     return frame;
