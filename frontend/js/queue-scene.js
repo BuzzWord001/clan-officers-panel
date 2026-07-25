@@ -1359,18 +1359,28 @@
     ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
       "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
     ".qs-frame.place-on .qs-fwallet{pointer-events:auto;cursor:move}" +
-    // ссылки клана на РАМЕ (слева вверху): ряд маленьких круглых медальонов в стиль рамы
-    ".qs-flinks{position:absolute;display:flex;gap:9%;pointer-events:auto;line-height:0}" +
-    ".qs-fl{flex:1;position:relative;display:block;aspect-ratio:1;border-radius:50%;overflow:hidden;" +
-      "border:1.5px solid rgba(232,182,104,.85);" +
-      "box-shadow:inset 0 0 5px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.6),0 0 7px var(--g);" +
-      "background:radial-gradient(circle at 50% 34%,#48331b,#150d05);" +
-      "transition:transform .15s ease,box-shadow .15s ease}" +
-    ".qs-fl img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}" +
-    ".qs-fl::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;" +
-      "box-shadow:inset 0 1px 2px rgba(255,220,150,.35)}" +
-    ".qs-fl:hover{transform:translateY(-2px) scale(1.09);" +
-      "box-shadow:0 3px 9px rgba(0,0,0,.6),0 0 14px var(--g),0 0 6px var(--g)}" +
+    // ссылки клана НА РАМЕ (слева, в углу): резные золотые надписи на бронзовых
+    // табличках в стиль рамы — столбик. Размер масштабируется (--fls = objSize).
+    ".qs-flinks{position:absolute;display:flex;flex-direction:column;gap:.42em;" +
+      "pointer-events:auto;align-items:stretch;" +
+      "font-size:calc(clamp(9px,1.12vw,15px) * var(--fls,1))}" +
+    ".qs-fl{display:flex;align-items:center;gap:.5em;text-decoration:none;" +
+      "padding:.32em .72em .32em .34em;border-radius:.5em;" +
+      "background:linear-gradient(180deg,rgba(60,42,21,.93),rgba(24,15,7,.95));" +
+      "border:1px solid rgba(178,124,60,.9);" +
+      "box-shadow:0 2px 5px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,224,165,.17)," +
+        "inset 0 0 .55em rgba(0,0,0,.35);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}" +
+    ".qs-fl:hover{transform:translateX(3px);border-color:var(--g);" +
+      "box-shadow:0 3px 9px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,224,165,.24),0 0 .75em var(--g)}" +
+    ".qs-fl-ic{flex:none;width:1.7em;height:1.7em;border-radius:50%;padding:.14em;box-sizing:border-box;" +
+      "background:radial-gradient(circle at 50% 34%,#2c1d0d,#0c0703);" +
+      "border:1px solid rgba(226,172,92,.75);box-shadow:0 0 .35em var(--g),inset 0 0 .2em rgba(0,0,0,.6)}" +
+    ".qs-fl-ic img{width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none}" +
+    ".qs-fl-tw{display:flex;flex-direction:column;line-height:1;min-width:0}" +
+    ".qs-fl-nm{font:800 1em/1.05 Georgia,'Times New Roman',serif;letter-spacing:.4px;white-space:nowrap;" +
+      "color:#f3ddab;text-shadow:0 1px 1px rgba(0,0,0,.85),0 -1px 0 rgba(0,0,0,.35),0 0 .3em rgba(224,170,90,.28)}" +
+    ".qs-fl-sub{font:700 .6em/1 system-ui,sans-serif;letter-spacing:.7px;text-transform:uppercase;" +
+      "color:#d6a860;opacity:.82;margin-top:.28em;white-space:nowrap}" +
     ".qs-frame.place-on .qs-flinks{cursor:move}" +
     ".qs-frame.place-on .qs-fl{pointer-events:none}" +
     // слой всей очереди (front/back) — прозрачный, клики проходят к сцене, но люди кликабельны
@@ -2885,25 +2895,28 @@
     // ссылки клана НА РАМЕ (слева вверху): маленькие круглые медальоны, в стиль.
     // Перетаскиваемые/масштабируемые админом (ключ "flinks"), как кошелёк.
     if (!isHidden("flinks")) {
-      var flPos = placedPos("flinks", 24, 11);       // дефолт — на верхней балке слева
+      var flPos = placedPos("flinks", 5, 33);         // дефолт — столбик слева в углу рамы
       var FLINKS = [
-        { img: "tg.png", g: "#2aa6e4", label: "Чат Telegram",
+        { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана",
           href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
-        { img: "vk-chat.png", g: "#f56a24", label: "Чат ВК",
+        { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана",
           href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
-        { img: "ts.png", g: "#ff5e1c", label: "TeamSpeak (голос)",
+        { img: "ts.png", g: "#ff6a24", name: "TeamSpeak", sub: "голосовой",
           href: "ts3server://melodybum.ts3.se", ext: false }
       ];
       var flinks = document.createElement("div");
       flinks.className = "qs-flinks";
       flinks.dataset.fixedz = "1";                   // всегда поверх рамки
       flinks.style.cssText = "left:" + flPos.x.toFixed(2) + "%;top:" + flPos.y.toFixed(2) +
-        "%;width:calc(15% * " + objSize("flinks", 1).toFixed(3) + ");z-index:100000" +
-        ";transform:translate(-50%,0)";
+        "%;z-index:100000;transform:none";
+      flinks.style.setProperty("--fls", objSize("flinks", 1).toFixed(3));
       flinks.innerHTML = FLINKS.map(function (l) {
-        return '<a class="qs-fl" style="--g:' + l.g + '" href="' + l.href + '" title="' + l.label + '"' +
-          (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") +
-          '><img src="assets/social/' + l.img + '?v=1792700000" alt="' + l.label + '"></a>';
+        return '<a class="qs-fl" style="--g:' + l.g + '" href="' + l.href + '" title="' +
+          l.name + " — " + l.sub + '"' +
+          (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") + ">" +
+          '<span class="qs-fl-ic"><img src="assets/social/' + l.img + '?v=1792700000" alt=""></span>' +
+          '<span class="qs-fl-tw"><span class="qs-fl-nm">' + l.name + "</span>" +
+          '<span class="qs-fl-sub">' + l.sub + "</span></span></a>";
       }).join("");
       if (_placeMode) makeDraggable(flinks, "flinks");
       frame.appendChild(flinks);
