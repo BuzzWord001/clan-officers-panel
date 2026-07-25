@@ -507,6 +507,25 @@
   function overrideKey(pkey) { return "obj-" + String(pkey).replace(/[^A-Za-z0-9_-]/g, "_"); }
   // src картинки объекта: если админ загрузил замену — она, иначе штатная (dflt)
   function objImgSrc(pkey, dflt) { return uploadedUrl(overrideKey(pkey)) || dflt; }
+  // копирование в буфер + галочка на кнопке (для ссылок клана на раме)
+  function qCopy(text, btn) {
+    function ok() {
+      var o = btn.dataset.lbl || btn.textContent;
+      btn.dataset.lbl = o; btn.textContent = "✓"; btn.classList.add("ok");
+      setTimeout(function () { btn.textContent = o; btn.classList.remove("ok"); }, 1200);
+    }
+    function fb() {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); ta.remove(); ok();
+      } catch (e) {}
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(ok, fb);
+    else fb();
+  }
   // суффикс transform с учётом зеркала (base — базовый translate объекта)
   function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
@@ -1364,14 +1383,15 @@
     ".qs-flinks{position:absolute;display:flex;flex-direction:column;gap:.42em;" +
       "pointer-events:auto;align-items:stretch;" +
       "font-size:calc(clamp(9px,1.12vw,15px) * var(--fls,1))}" +
-    ".qs-fl{display:flex;align-items:center;gap:.5em;text-decoration:none;" +
-      "padding:.32em .72em .32em .34em;border-radius:.5em;" +
+    ".qs-fl{display:flex;align-items:center;gap:.45em;" +
+      "padding:.3em .4em .3em .34em;border-radius:.5em;" +
       "background:linear-gradient(180deg,rgba(60,42,21,.93),rgba(24,15,7,.95));" +
       "border:1px solid rgba(178,124,60,.9);" +
       "box-shadow:0 2px 5px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,224,165,.17)," +
         "inset 0 0 .55em rgba(0,0,0,.35);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}" +
     ".qs-fl:hover{transform:translateX(3px);border-color:var(--g);" +
       "box-shadow:0 3px 9px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,224,165,.24),0 0 .75em var(--g)}" +
+    ".qs-fl-link{flex:1;min-width:0;display:flex;align-items:center;gap:.5em;text-decoration:none}" +
     ".qs-fl-ic{flex:none;width:1.7em;height:1.7em;border-radius:50%;padding:.14em;box-sizing:border-box;" +
       "background:radial-gradient(circle at 50% 34%,#2c1d0d,#0c0703);" +
       "border:1px solid rgba(226,172,92,.75);box-shadow:0 0 .35em var(--g),inset 0 0 .2em rgba(0,0,0,.6)}" +
@@ -1381,8 +1401,15 @@
       "color:#f3ddab;text-shadow:0 1px 1px rgba(0,0,0,.85),0 -1px 0 rgba(0,0,0,.35),0 0 .3em rgba(224,170,90,.28)}" +
     ".qs-fl-sub{font:700 .6em/1 system-ui,sans-serif;letter-spacing:.7px;text-transform:uppercase;" +
       "color:#d6a860;opacity:.82;margin-top:.28em;white-space:nowrap}" +
+    ".qs-fl-cps{display:flex;align-items:center;gap:.24em;flex:none}" +
+    ".qs-fl-cp{cursor:pointer;border:1px solid rgba(226,172,92,.55);border-radius:.34em;" +
+      "background:linear-gradient(180deg,#3a2a14,#241809);color:#f0d9a6;" +
+      "font:700 .64em/1 system-ui,sans-serif;letter-spacing:.3px;padding:.42em .46em;white-space:nowrap;" +
+      "transition:filter .15s ease,border-color .15s ease}" +
+    ".qs-fl-cp:hover{filter:brightness(1.22);border-color:var(--g)}" +
+    ".qs-fl-cp.ok{color:#c5e8a3;border-color:#6fae5a}" +
     ".qs-frame.place-on .qs-flinks{cursor:move}" +
-    ".qs-frame.place-on .qs-fl{pointer-events:none}" +
+    ".qs-frame.place-on .qs-fl>*{pointer-events:none}" +
     // слой всей очереди (front/back) — прозрачный, клики проходят к сцене, но люди кликабельны
     ".qs-qlayer{position:absolute;inset:0;pointer-events:none}" +
     ".qs-qlayer .qs-char{pointer-events:auto}" +
@@ -2898,11 +2925,15 @@
       var flPos = placedPos("flinks", 2.5, 3.5);      // дефолт — верхний ЛЕВЫЙ угол рамы, с отступом от краёв
       var FLINKS = [
         { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана",
-          href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+          href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true,
+          copies: [{ cp: "https://t.me/+6U3XCSrrZgo1YTMy", lbl: "⧉", t: "Копировать ссылку" }] },
         { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана",
-          href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+          href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true,
+          copies: [{ cp: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", lbl: "⧉", t: "Копировать ссылку" }] },
         { img: "ts.png", g: "#ff6a24", name: "TeamSpeak", sub: "голосовой",
-          href: "ts3server://melodybum.ts3.se", ext: false }
+          href: "ts3server://melodybum.ts3.se", ext: false,
+          copies: [{ cp: "melodybum.ts3.se", lbl: "адрес", t: "Копировать адрес канала" },
+                   { cp: "45.151.182.57:10440", lbl: "IP", t: "Копировать IP (если по адресу не заходит)" }] }
       ];
       var flinks = document.createElement("div");
       flinks.className = "qs-flinks";
@@ -2911,13 +2942,23 @@
         "%;z-index:100000;transform:none";
       flinks.style.setProperty("--fls", objSize("flinks", 1).toFixed(3));
       flinks.innerHTML = FLINKS.map(function (l) {
-        return '<a class="qs-fl" style="--g:' + l.g + '" href="' + l.href + '" title="' +
-          l.name + " — " + l.sub + '"' +
-          (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") + ">" +
-          '<span class="qs-fl-ic"><img src="assets/social/' + l.img + '?v=1792700000" alt=""></span>' +
-          '<span class="qs-fl-tw"><span class="qs-fl-nm">' + l.name + "</span>" +
-          '<span class="qs-fl-sub">' + l.sub + "</span></span></a>";
+        var cps = (l.copies || []).map(function (c) {
+          return '<button type="button" class="qs-fl-cp" data-copy="' + esc(c.cp) + '" title="' +
+            esc(c.t) + '">' + c.lbl + "</button>";
+        }).join("");
+        return '<div class="qs-fl" style="--g:' + l.g + '">' +
+          '<a class="qs-fl-link" href="' + l.href + '" title="' + l.name + " — " + l.sub + '"' +
+            (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") + ">" +
+            '<span class="qs-fl-ic"><img src="assets/social/' + l.img + '?v=1792700000" alt=""></span>' +
+            '<span class="qs-fl-tw"><span class="qs-fl-nm">' + l.name + "</span>" +
+            '<span class="qs-fl-sub">' + l.sub + "</span></span></a>" +
+          '<span class="qs-fl-cps">' + cps + "</span></div>";
       }).join("");
+      // копирование ссылок (кнопки ⧉ / адрес / IP)
+      flinks.addEventListener("click", function (e) {
+        var b = e.target.closest(".qs-fl-cp"); if (!b) return;
+        e.preventDefault(); e.stopPropagation(); qCopy(b.dataset.copy, b);
+      });
       if (_placeMode) makeDraggable(flinks, "flinks");
       frame.appendChild(flinks);
       if (_isAdmin && _placeMode) {
@@ -3786,6 +3827,7 @@
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
     objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true, repl: true });
     objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true, repl: true });
+    objs.push({ key: "flinks", name: "Ссылки клана · чаты и голос", dx: 2.5, dy: 3.5, sz: true, base: 1 });
     BOOTHS.forEach(function (b) { var p0 = getPath(b.q)[0] || { x: 45, y: 60 }; objs.push({ key: "btn-join:" + b.q, name: "Встать/Выйти · " + b.title, dx: p0.x - 6, dy: p0.y + 3, sz: false, flip: true }); });
     // (Отдельная кнопка «Список» убрана — объединена с табличкой-счётчиком выше.)
     // добавленные админом предметы окружения (загруженные картинки) — тоже управляемы отсюда
