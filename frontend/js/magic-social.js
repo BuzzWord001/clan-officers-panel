@@ -11,7 +11,9 @@
 (function () {
   "use strict";
 
-  // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak (Группа ВК убрана — Лир 2026-07-25)
+  // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak, (Группа ВК — СКРЫТА).
+  // Лир 2026-07-25: Группу ВК убрали, но её точку оставляем в геометрии линии
+  // (hidden:true) → кончик/длина линии остаются как было, просто без иконки.
   var LINKS = [
     { key: "tg",       label: "Чат Telegram",  glow: "#2aa6e4",
       href: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy",
@@ -29,7 +31,11 @@
         { disp: "melodybum.ts3.se", val: "melodybum.ts3.se" },
         { disp: "45.151.182.57:10440", val: "45.151.182.57:10440",
           note: "если не подключается по адресу — скопируй IP:" }
-      ] }
+      ] },
+    // СКРЫТА: иконка/подпись/попап не создаются, но точка держит форму линии
+    { key: "vk-group", label: "Группа ВК", glow: "#f57a26",
+      href: "https://vk.com/club38888207", disp: "vk.com/club38888207",
+      img: "assets/social/vk-group.png", hidden: true }
   ];
 
   var ICON = 58;            // базовый размер иконки (wide); compact уменьшает
@@ -213,7 +219,10 @@
     root._flow = flow; root._motion = motion; root._nodes = [];
 
     var icons = [];
-    LINKS.forEach(function (L) {
+    LINKS.forEach(function (L, li) {
+      // скрытые ссылки (напр. Группа ВК) НЕ рисуем — но их точка остаётся в
+      // геометрии линии (buildSpine считает по LINKS.length), кончик как было.
+      if (L.hidden) return;
       var a = document.createElement("a");
       a.className = "ms-ico";
       a.href = L.href;
@@ -259,7 +268,7 @@
       a.addEventListener("mouseenter", show); a.addEventListener("mouseleave", hide);
       pop.addEventListener("mouseenter", show); pop.addEventListener("mouseleave", hide);
 
-      icons.push({ a: a, lbl: lbl, pop: pop });
+      icons.push({ a: a, lbl: lbl, pop: pop, li: li });
     });
     root._icons = icons;
 
@@ -424,7 +433,9 @@
     var hideLbl = compact;                           // на телефоне подписи мешают → прячем
     var iconNodes = [];
     root._icons.forEach(function (it, i) {
-      var p = sp.iconPts[i] || sp.iconPts[sp.iconPts.length - 1];
+      // привязка к точке линии по ИСХОДНОМУ индексу (it.li) — скрытые ссылки
+      // сдвигают нумерацию, но каждая видимая иконка садится на свою точку.
+      var p = sp.iconPts[it.li] || sp.iconPts[sp.iconPts.length - 1];
       it.a.style.width = isz + "px"; it.a.style.height = isz + "px";
       it.a.style.left = Math.round(p.x - half) + "px";
       it.a.style.top  = Math.round(p.y - half) + "px";
@@ -445,6 +456,13 @@
         it.pop.style.transform = "translateY(-50%)";
       }
       iconNodes.push({ cx: p.x, cy: p.y });
+    });
+    // скрытые точки (Группа ВК) — без иконки, но со светящимся узлом-терминалом,
+    // чтобы кончик линии остался как было (линия доходит до прежней точки).
+    LINKS.forEach(function (L, li) {
+      if (!L.hidden) return;
+      var hp = sp.iconPts[li];
+      if (hp) iconNodes.push({ cx: hp.x, cy: hp.y, term: true });
     });
 
     // ── ДЕВОЧКА: геометрия уже посчитана в buildSpine (sp.girl), палец ровно на
