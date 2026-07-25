@@ -1653,6 +1653,26 @@ def _log(conn, kind, actor="", nick="", queue=None, request=None, detail=""):
         " VALUES (?,?,?,?,?,?,?,?)", (_now(), kind, actor, nick, queue, ip, ua, detail))
 
 
+def _parse_log_resources(detail: str):
+    """Из detail лога join/set_entry достаёт список ресурсов, которые выбрал САМ игрок.
+    Формат: 'res=<X> resources=[...]' или 'resources=None' (тогда одиночный res)."""
+    import re as _re, ast as _ast
+    if not detail:
+        return None
+    m = _re.search(r"resources=(\[[^\]]*\]|None)", detail)
+    if m and m.group(1) != "None":
+        try:
+            lst = _ast.literal_eval(m.group(1))
+            if isinstance(lst, list) and lst:
+                return [str(x) for x in lst]
+        except (ValueError, SyntaxError):
+            pass
+    m2 = _re.search(r"\bres=(\S+)", detail)          # одиночный ресурс (q2/старый выбор)
+    if m2 and m2.group(1) not in ("—", "-", "None"):
+        return [m2.group(1)]
+    return None
+
+
 def _own_nicks(idx, main_canon) -> list[dict]:
     """Все ники ОДНОГО человека (его мэйн + все твины) для главного канона main_canon.
     [{nick, canon, cls, is_main}] — мэйн первым. Твины = записи с тем же main_canon."""
@@ -2312,6 +2332,44 @@ def admin_set_entry(payload: AdminSetEntryIn, request: Request, actor: dict = De
             _log(conn, "admin_set_entry", actor=_actor_name(actor), nick=row["nick"],
                  queue=row["queue"], request=request, detail="ресурсы")
     return {"ok": True}
+
+
+@router.get("/admin/self-picks")
+def admin_self_picks(actor: dict = Depends(require_admin)) -> dict:
+    """АДМИНУ: какие ресурсы каждый игрок в очереди выбрал САМ (по логам join/set_entry),
+    а не проставил админ (join_as/admin_set_entry). Ключ ответа — id текущей записи очереди,
+    значение — список self-выбранных ресурсов (последний собственный выбор игрока для этой очереди)."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        # canon любого ника (мэйн/твин) → мэйн-канон человека
+        nick2main: dict[str, str] = {}
+        for cn, p in idx.items():
+            mc = p.get("main_canon") or cn
+            nick2main[cn] = mc
+            dn = p.get("nick") or ""
+            if dn:
+                cdn = db._valor_canon(dn)
+                if cdn:
+                    nick2main[cdn] = mc
+        # последний СОБСТВЕННЫЙ выбор игрока по (мэйн-канон, очередь)
+        selfmap: dict[tuple, list] = {}
+        for lg in conn.execute(
+                "SELECT actor, queue, detail FROM queue_log "
+                "WHERE kind IN ('join','set_entry') ORDER BY at"):
+            mc = nick2main.get(db._valor_canon(lg["actor"] or ""))
+            if not mc:
+                continue
+            res = _parse_log_resources(lg["detail"] or "")
+            if res is None:
+                continue
+            selfmap[(mc, lg["queue"])] = res     # позже по времени → перезаписывает (последний выбор)
+        out: dict[str, list] = {}
+        for r in conn.execute(
+                "SELECT id, main_canon, queue FROM queue_entries WHERE privileged=0"):
+            picks = selfmap.get((r["main_canon"], r["queue"]))
+            if picks is not None:
+                out[str(r["id"])] = picks
+    return {"picks": out}
 
 
 @router.post("/admin/clear")

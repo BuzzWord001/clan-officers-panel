@@ -374,6 +374,27 @@
   // или админ-тест как Лирия!) и обликов несколько. Кнопка кликабельна (окно становится интерактивным).
   function tipHtml(e) {
     var out = tipBody(e);
+    // АДМИН: отдельный блок — какие ресурсы игрок выбрал ИМЕННО САМ (по логам join/set_entry),
+    // а не проставил админ (join_as/admin). Помогает отличить самостоятельный выбор от дефолта/админа.
+    if (_isAdmin && e.id && _selfPicks && _selfPicks[e.id] && !e.privileged) {
+      var sp = _selfPicks[e.id];
+      var cur = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+      var selfSet = {}; sp.forEach(function (k) { selfSet[k] = 1; });
+      var extra = cur.filter(function (k) { return !selfSet[k]; });
+      var selfList = sp.length
+        ? sp.map(function (k) {
+            return '<span class="qtip-res self"><img class="qtip-ic" src="' + resImg(k) +
+              '" alt=""> ' + esc(resName(k)) + "</span>";
+          }).join("")
+        : '<span class="qtip-res none">сам ничего не выбирал</span>';
+      out += '<div class="qtip-selfbox">' +
+        tipDiv("🕵 выбрал САМ · по логам") + selfList +
+        (extra.length
+          ? '<div class="qtip-selfextra">➕ не им (админ/по умолч.): ' +
+              extra.map(function (k) { return esc(resName(k)); }).join(", ") + "</div>"
+          : "") +
+        "</div>";
+    }
     // кнопка облика: своя моделька (игрок) ИЛИ офицер/админ (на любой). Открывает окно облика,
     // где можно и переключить (если вариантов несколько), и загрузить новый.
     var mine = isMyModel(e);
@@ -1748,6 +1769,10 @@
     ".qtip.below::after{bottom:auto;top:-6px;border:0;border-left:1px solid rgba(240,200,120,.6);border-top:1px solid rgba(240,200,120,.6)}" +
     ".qtip-nick{font:800 13.5px Georgia,serif;color:#ffe08a;text-shadow:0 0 8px rgba(245,200,120,.4)}" +
     ".qtip-res{display:flex;align-items:center;gap:5px;font:600 12.5px system-ui;color:#e7d6b7}.qtip-res b{color:#ffd98a}.qtip-res.none{color:#9a8a68;font-style:italic}" +
+    // админ-блок «выбрал сам» — отделён рамкой, self-ресурсы зелёным
+    ".qtip-selfbox{margin-top:7px;padding-top:2px;border-top:1px dashed rgba(120,190,110,.4)}" +
+    ".qtip-res.self{color:#bfe6a0}.qtip-res.self b{color:#d6f2ba}" +
+    ".qtip-selfextra{margin-top:4px;font:600 10.5px/1.4 system-ui;color:#caa66a;opacity:.9}" +
     ".qtip-ic{width:20px;height:20px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}" +
     ".qtip-sub{font:600 10.5px system-ui;color:#9a8a68;letter-spacing:.3px}" +
     ".qtip-priv{font:700 11.5px/1.35 system-ui;color:#ffd24a}" +
@@ -3855,6 +3880,7 @@
 
   var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], []] };
   var _myIdentities = [], _myActiveNick = "";   // свои ники (мэйн+твины) и кем стою сейчас
+  var _selfPicks = {};     // АДМИНУ: id записи → ресурсы, что игрок выбрал САМ (по логам)
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
   var _tokenBoard = [];    // держатели жетонов ТОП-3 (для всех) — [{nick, tokens}]
   var _tboardOpen = false; // раскрыт ли свиток «Держатели жетонов»
@@ -6344,6 +6370,8 @@
     // заодно освежаем жетоны и свиток держателей (параллельно со /state, один render) —
     // чтобы возврат жетона (выход из записи ТОП-3) и любые изменения были видны сразу.
     var jobs = [q("GET", "/queue/state")];
+    if (_isAdmin) jobs.push(q("GET", "/queue/admin/self-picks")
+      .then(function (d) { _selfPicks = (d && d.picks) || {}; }).catch(function () { _selfPicks = {}; }));
     if (_meAcc) jobs.push(q("GET", "/queue/me")
       .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; _myIdentities = (m && m.identities) || []; _myActiveNick = (m && m.active_nick) || ""; }).catch(function () {}));
     jobs.push(q("GET", "/queue/token-board")
