@@ -80,7 +80,55 @@
       off.textContent = "Все версии — на офсайте TeamSpeak ↗";
       box.appendChild(off);
     }
+    // соцсети клана — прямо в блоке под карточками (заметно, в стиль панели)
+    if (!box.querySelector(".ts3-social")) {
+      socialCss();
+      var soc = document.createElement("div");
+      soc.className = "ts3-social";
+      soc.innerHTML =
+        '<div class="ts3-social-cap">✦ Наш клан на связи ✦</div>' +
+        '<div class="ts3-social-row">' +
+        SOCIAL.map(function (l) {
+          return '<a class="ts3-soc" style="--sg:' + l.g + '" href="' + l.href + '"' +
+            (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") +
+            ' title="' + l.label + '">' +
+            '<img class="ts3-soc-ic" src="assets/social/' + l.img + '?v=1792700000" alt="">' +
+            l.label + "</a>";
+        }).join("") +
+        "</div>";
+      box.appendChild(soc);
+    }
     return box;
+  }
+
+  var SOCIAL = [
+    { img: "tg.png", g: "#3aa6e8", label: "Telegram",
+      href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+    { img: "vk-chat.png", g: "#f57a30", label: "ВКонтакте",
+      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+    { img: "ts.png", g: "#ff6a24", label: "TeamSpeak",
+      href: "ts3server://melodybum.ts3.se", ext: false }
+  ];
+  function socialCss() {
+    if (document.getElementById("ts3-social-css")) return;
+    var s = document.createElement("style");
+    s.id = "ts3-social-css";
+    s.textContent =
+      ".ts3-social{margin-top:14px;padding-top:13px;border-top:1px solid rgba(224,162,74,.22)}" +
+      ".ts3-social-cap{font:700 10px/1 system-ui,sans-serif;letter-spacing:1.5px;" +
+        "text-transform:uppercase;color:#d6a860;opacity:.85;margin-bottom:10px}" +
+      ".ts3-social-row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}" +
+      ".ts3-soc{display:inline-flex;align-items:center;gap:7px;text-decoration:none;" +
+        "padding:7px 13px 7px 9px;border-radius:10px;" +
+        "background:linear-gradient(180deg,rgba(60,42,21,.85),rgba(26,16,8,.9));" +
+        "border:1px solid rgba(224,162,74,.4);color:#f2dfb2;" +
+        "font:700 13.5px/1 Georgia,'Times New Roman',serif;letter-spacing:.3px;" +
+        "transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}" +
+      ".ts3-soc:hover{transform:translateY(-2px);border-color:var(--sg);" +
+        "box-shadow:0 5px 14px rgba(0,0,0,.4),0 0 12px var(--sg)}" +
+      ".ts3-soc-ic{width:22px;height:22px;border-radius:6px;flex:none;" +
+        "filter:drop-shadow(0 0 4px var(--sg))}";
+    document.head.appendChild(s);
   }
 
   function renderDesktop(cards) {
