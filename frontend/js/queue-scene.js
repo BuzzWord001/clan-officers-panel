@@ -526,6 +526,36 @@
       navigator.clipboard.writeText(text).then(ok, fb);
     else fb();
   }
+  // всплывашка с полной ссылкой (наведение на кнопку копирования): текст выделяем вручную
+  var _flPop = null, _flPopT = null;
+  function flPopEl() {
+    if (_flPop) return _flPop;
+    var p = document.createElement("div");
+    p.className = "qs-fl-pop";
+    p.innerHTML = '<div class="qs-fl-pop-cap">выдели и скопируй (Ctrl+C)</div>' +
+      '<span class="qs-fl-pop-url"></span>';
+    p.addEventListener("mouseenter", function () { clearTimeout(_flPopT); });
+    p.addEventListener("mouseleave", flPopHide);
+    document.body.appendChild(p);
+    _flPop = p; return p;
+  }
+  function flPopShow(btn) {
+    clearTimeout(_flPopT);
+    var p = flPopEl();
+    p.querySelector(".qs-fl-pop-url").textContent = btn.dataset.copy || "";
+    p.classList.add("show");
+    var r = btn.getBoundingClientRect();
+    p.style.top = Math.round(r.bottom + 7) + "px";
+    p.style.left = Math.round(r.left + r.width / 2) + "px";
+    var pr = p.getBoundingClientRect();          // клампим по горизонтали, чтобы не вылезал
+    var half = pr.width / 2;
+    var cx = Math.max(6 + half, Math.min(window.innerWidth - 6 - half, r.left + r.width / 2));
+    p.style.left = Math.round(cx) + "px";
+  }
+  function flPopHide() {
+    clearTimeout(_flPopT);
+    _flPopT = setTimeout(function () { if (_flPop) _flPop.classList.remove("show"); }, 200);
+  }
   // суффикс transform с учётом зеркала (base — базовый translate объекта)
   function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
@@ -1408,6 +1438,17 @@
       "transition:filter .15s ease,border-color .15s ease}" +
     ".qs-fl-cp:hover{filter:brightness(1.22);border-color:var(--g)}" +
     ".qs-fl-cp.ok{color:#c5e8a3;border-color:#6fae5a}" +
+    // всплывашка с самой ссылкой при наведении — текст можно выделить и скопировать вручную
+    ".qs-fl-pop{position:fixed;z-index:100002;transform:translate(-50%,0);" +
+      "background:linear-gradient(180deg,rgba(30,20,10,.98),rgba(16,10,5,.99));" +
+      "border:1px solid rgba(226,172,92,.6);border-radius:9px;padding:7px 9px;" +
+      "box-shadow:0 8px 24px rgba(0,0,0,.6),0 0 12px rgba(224,170,90,.2);" +
+      "opacity:0;pointer-events:none;transition:opacity .14s ease;max-width:min(92vw,380px)}" +
+    ".qs-fl-pop.show{opacity:1;pointer-events:auto}" +
+    ".qs-fl-pop-cap{font:700 9px/1 system-ui,sans-serif;letter-spacing:.5px;text-transform:uppercase;" +
+      "color:#d6a860;opacity:.85;margin-bottom:4px}" +
+    ".qs-fl-pop-url{display:block;font:600 12px/1.45 ui-monospace,Consolas,monospace;color:#f2dfb2;" +
+      "word-break:break-all;-webkit-user-select:all;user-select:all;cursor:text}" +
     ".qs-frame.place-on .qs-flinks{cursor:move}" +
     ".qs-frame.place-on .qs-fl>*{pointer-events:none}" +
     // слой всей очереди (front/back) — прозрачный, клики проходят к сцене, но люди кликабельны
@@ -2943,7 +2984,7 @@
       flinks.style.setProperty("--fls", objSize("flinks", 1).toFixed(3));
       flinks.innerHTML = FLINKS.map(function (l) {
         var cps = (l.copies || []).map(function (c) {
-          return '<button type="button" class="qs-fl-cp" data-copy="' + esc(c.cp) + '" title="' +
+          return '<button type="button" class="qs-fl-cp" data-copy="' + esc(c.cp) + '" aria-label="' +
             esc(c.t) + '">' + c.lbl + "</button>";
         }).join("");
         return '<div class="qs-fl" style="--g:' + l.g + '">' +
@@ -2958,6 +2999,15 @@
       flinks.addEventListener("click", function (e) {
         var b = e.target.closest(".qs-fl-cp"); if (!b) return;
         e.preventDefault(); e.stopPropagation(); qCopy(b.dataset.copy, b);
+      });
+      // наведение на кнопку — показать полную ссылку (её можно выделить и скопировать вручную)
+      flinks.addEventListener("mouseover", function (e) {
+        var b = e.target.closest(".qs-fl-cp"); if (!b) return;
+        flPopShow(b);
+      });
+      flinks.addEventListener("mouseout", function (e) {
+        var b = e.target.closest(".qs-fl-cp"); if (!b) return;
+        flPopHide();
       });
       if (_placeMode) makeDraggable(flinks, "flinks");
       frame.appendChild(flinks);
