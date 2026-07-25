@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak, Группа ВК
+  // порядок сверху вниз: Telegram, Чат ВК, TeamSpeak (Группа ВК убрана — Лир 2026-07-25)
   var LINKS = [
     { key: "tg",       label: "Чат Telegram",  glow: "#2aa6e4",
       href: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy",
@@ -29,10 +29,7 @@
         { disp: "melodybum.ts3.se", val: "melodybum.ts3.se" },
         { disp: "45.151.182.57:10440", val: "45.151.182.57:10440",
           note: "если не подключается по адресу — скопируй IP:" }
-      ] },
-    { key: "vk-group", label: "Группа ВК", glow: "#f57a26",
-      href: "https://vk.com/club38888207", disp: "vk.com/club38888207",
-      img: "assets/social/vk-group.png" }
+      ] }
   ];
 
   var ICON = 58;            // базовый размер иконки (wide); compact уменьшает

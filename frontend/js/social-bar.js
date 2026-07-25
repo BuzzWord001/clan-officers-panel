@@ -7,9 +7,7 @@
     { img: "tg",       name: "Чат Telegram",  glow: "#39a3e6",
       href: "https://t.me/+6U3XCSrrZgo1YTMy",
       copy: "https://t.me/+6U3XCSrrZgo1YTMy" },
-    { img: "vk-group", name: "Группа ВК",  glow: "#e0903e",
-      href: "https://vk.com/club38888207",
-      copy: "https://vk.com/club38888207" },
+    // Группа ВК убрана (Лир 2026-07-25) — оставлены только чаты и TeamSpeak
     { img: "vk-chat",  name: "Чат ВК",     glow: "#e0903e",
       href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
       copy: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=" },
