@@ -51,7 +51,10 @@
     tabs.appendChild(group);
   }
 
+  // откладываем вставку на макрозадачу — чтобы сработать ПОСЛЕ других инжекторов
+  // вкладок (queue-tab КХ, chamber-door тайная) при любом порядке скриптов → в конце ряда.
+  function schedule() { setTimeout(inject, 0); }
   if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", inject);
-  else inject();
+    document.addEventListener("DOMContentLoaded", schedule);
+  else schedule();
 })();
