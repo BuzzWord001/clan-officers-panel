@@ -2895,7 +2895,7 @@
     // ссылки клана НА РАМЕ (слева вверху): маленькие круглые медальоны, в стиль.
     // Перетаскиваемые/масштабируемые админом (ключ "flinks"), как кошелёк.
     if (!isHidden("flinks")) {
-      var flPos = placedPos("flinks", 5, 33);         // дефолт — столбик слева в углу рамы
+      var flPos = placedPos("flinks", 2.5, 3.5);      // дефолт — верхний ЛЕВЫЙ угол рамы, с отступом от краёв
       var FLINKS = [
         { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана",
           href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
