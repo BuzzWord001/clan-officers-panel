@@ -88,14 +88,23 @@
       soc.innerHTML =
         '<div class="ts3-social-cap">✦ Наш клан на связи ✦</div>' +
         '<div class="ts3-social-row">' +
-        SOCIAL.map(function (l) {
+        SOCIAL.map(function (l, i) {
           return '<a class="ts3-soc" style="--sg:' + l.g + '" href="' + l.href + '"' +
             (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") +
-            ' title="' + l.label + '">' +
+            ' data-si="' + i + '" aria-label="' + l.label + '">' +
             '<img class="ts3-soc-ic" src="assets/social/' + l.img + '?v=1792700000" alt="">' +
             l.label + "</a>";
         }).join("") +
         "</div>";
+      // наведение — показать ссылку(и) с возможностью выделить/скопировать
+      soc.addEventListener("mouseover", function (e) {
+        var a = e.target.closest(".ts3-soc"); if (!a) return;
+        socPopShow(a, SOCIAL[+a.dataset.si]);
+      });
+      soc.addEventListener("mouseout", function (e) {
+        var a = e.target.closest(".ts3-soc"); if (!a) return;
+        socPopHide();
+      });
       box.appendChild(soc);
     }
     return box;
@@ -103,11 +112,16 @@
 
   var SOCIAL = [
     { img: "tg.png", g: "#3aa6e8", label: "Telegram",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+      href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true,
+      copies: [{ cp: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy" }] },
     { img: "vk-chat.png", g: "#f57a30", label: "ВКонтакте",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true,
+      copies: [{ cp: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+                 disp: "vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=" }] },
     { img: "ts.png", g: "#ff6a24", label: "TeamSpeak",
-      href: "ts3server://melodybum.ts3.se", ext: false }
+      href: "ts3server://melodybum.ts3.se", ext: false,
+      copies: [{ note: "адрес", cp: "melodybum.ts3.se", disp: "melodybum.ts3.se" },
+               { note: "IP", cp: "45.151.182.57:10440", disp: "45.151.182.57:10440" }] }
   ];
   function socialCss() {
     if (document.getElementById("ts3-social-css")) return;
@@ -127,8 +141,85 @@
       ".ts3-soc:hover{transform:translateY(-2px);border-color:var(--sg);" +
         "box-shadow:0 5px 14px rgba(0,0,0,.4),0 0 12px var(--sg)}" +
       ".ts3-soc-ic{width:22px;height:22px;border-radius:6px;flex:none;" +
-        "filter:drop-shadow(0 0 4px var(--sg))}";
+        "filter:drop-shadow(0 0 4px var(--sg))}" +
+      // всплывашка со ссылкой(ями) при наведении — текст выделяемый, есть «Копир.»
+      ".ts3-soc-pop{position:fixed;z-index:100002;transform:translate(-50%,0);" +
+        "background:linear-gradient(180deg,rgba(30,20,10,.98),rgba(16,10,5,.99));" +
+        "border:1px solid rgba(226,172,92,.6);border-radius:10px;padding:8px 9px;" +
+        "box-shadow:0 8px 24px rgba(0,0,0,.6),0 0 12px rgba(224,170,90,.2);" +
+        "opacity:0;pointer-events:none;transition:opacity .14s ease;" +
+        "max-width:min(92vw,400px);display:flex;flex-direction:column;gap:7px}" +
+      ".ts3-soc-pop.show{opacity:1;pointer-events:auto}" +
+      ".ts3-soc-pop-row{display:flex;align-items:center;gap:8px}" +
+      ".ts3-soc-pop-note{flex:none;min-width:32px;font:700 9px/1.1 system-ui,sans-serif;" +
+        "letter-spacing:.5px;text-transform:uppercase;color:#d6a860}" +
+      ".ts3-soc-pop-url{flex:1;font:600 12px/1.4 ui-monospace,Consolas,monospace;color:#f2dfb2;" +
+        "word-break:break-all;-webkit-user-select:all;user-select:all;cursor:text}" +
+      ".ts3-soc-pop-cp{flex:none;cursor:pointer;border:1px solid rgba(226,172,92,.55);" +
+        "border-radius:7px;background:linear-gradient(180deg,#3a2a14,#241809);color:#f0d9a6;" +
+        "font:700 10px/1 system-ui,sans-serif;padding:6px 8px;white-space:nowrap}" +
+      ".ts3-soc-pop-cp:hover{filter:brightness(1.2)}" +
+      ".ts3-soc-pop-cp.ok{color:#c5e8a3;border-color:#6fae5a}";
     document.head.appendChild(s);
+  }
+
+  // копирование в буфер + галочка
+  function socCopy(text, btn) {
+    function ok() {
+      var o = btn.dataset.lbl || btn.textContent;
+      btn.dataset.lbl = o; btn.textContent = "✓"; btn.classList.add("ok");
+      setTimeout(function () { btn.textContent = o; btn.classList.remove("ok"); }, 1200);
+    }
+    function fb() {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); ta.remove(); ok();
+      } catch (e) {}
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(ok, fb);
+    else fb();
+  }
+
+  // всплывашка со ссылкой(ями) соцсети (наведение на пилюлю)
+  var _socPop = null, _socPopT = null;
+  function socPopEl() {
+    if (_socPop) return _socPop;
+    var p = document.createElement("div");
+    p.className = "ts3-soc-pop";
+    p.addEventListener("mouseenter", function () { clearTimeout(_socPopT); });
+    p.addEventListener("mouseleave", socPopHide);
+    p.addEventListener("click", function (e) {
+      var b = e.target.closest(".ts3-soc-pop-cp"); if (!b) return;
+      e.preventDefault(); e.stopPropagation(); socCopy(b.dataset.copy, b);
+    });
+    document.body.appendChild(p);
+    _socPop = p; return p;
+  }
+  function socPopShow(a, l) {
+    clearTimeout(_socPopT);
+    if (!l || !l.copies) return;
+    var p = socPopEl();
+    p.innerHTML = l.copies.map(function (c) {
+      return '<div class="ts3-soc-pop-row">' +
+        (c.note ? '<span class="ts3-soc-pop-note">' + c.note + "</span>" : "") +
+        '<span class="ts3-soc-pop-url">' + c.disp + "</span>" +
+        '<button type="button" class="ts3-soc-pop-cp" data-copy="' + c.cp + '">Копир.</button>' +
+        "</div>";
+    }).join("");
+    p.classList.add("show");
+    var r = a.getBoundingClientRect();
+    p.style.top = Math.round(r.bottom + 7) + "px";
+    p.style.left = Math.round(r.left + r.width / 2) + "px";
+    var pr = p.getBoundingClientRect(), half = pr.width / 2;
+    var cx = Math.max(6 + half, Math.min(window.innerWidth - 6 - half, r.left + r.width / 2));
+    p.style.left = Math.round(cx) + "px";
+  }
+  function socPopHide() {
+    clearTimeout(_socPopT);
+    _socPopT = setTimeout(function () { if (_socPop) _socPop.classList.remove("show"); }, 200);
   }
 
   function renderDesktop(cards) {
