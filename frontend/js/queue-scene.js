@@ -1297,6 +1297,19 @@
       "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 8px #b6e2ff) drop-shadow(0 0 21px #c07be0)}" +
       "75%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px #ece0ff) drop-shadow(0 0 26px #9a6cff)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavka{animation:none}}" +
+    // Парящая подпись над лавкой: «≥N доблести» — золотая плашка со свечением под акцент будки,
+    // с указателем вниз на прилавок и лёгким покачиванием (эффект парения в воздухе).
+    ".qs-lavlbl{position:absolute;transform:translate(-50%,-100%);z-index:8200;pointer-events:none;white-space:nowrap;" +
+      "padding:2px 12px 3px;border-radius:999px;font:800 clamp(9px,1.7cqw,16px) Georgia,serif;letter-spacing:.2px;" +
+      "color:#3a2a12;text-align:center;background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);" +
+      "border:1.5px solid #6d4a18;text-shadow:0 1px 0 rgba(255,255,255,.45);" +
+      "box-shadow:0 3px 7px rgba(0,0,0,.5),0 0 12px var(--gc,#ffd77a),inset 0 1px 0 rgba(255,255,255,.65);" +
+      "animation:qLavlblFloat 3.6s ease-in-out infinite}" +
+    ".qs-lavlbl b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
+    ".qs-lavlbl::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);" +
+      "border:6px solid transparent;border-top-color:#c68f2c;filter:drop-shadow(0 1px 0 #6d4a18)}" +
+    "@keyframes qLavlblFloat{0%,100%{margin-top:0}50%{margin-top:-4px}}" +
+    "@media(prefers-reduced-motion:reduce){.qs-lavlbl{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
     ".qs-stage.place .qs-lavka,.qs-stage.place .qs-fountain{pointer-events:auto;cursor:move}" +
@@ -2784,6 +2797,24 @@
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
+      }
+      // Парящая подпись над лавкой: сколько доблести за неделю нужно для её ресурса.
+      // Порог берём из движка распределения (REWARDS_META), фолбэк — карта по очереди
+      // {0:60,1:100,2:100,3:200}. По умолчанию висит над верхом лавки; перетаскивается/прячется.
+      if (!isHidden("lavlbl:" + b.q)) {
+        var _thrM = REWARDS_META[(BOOTH_ITEMS[b.q] || [])[0]] || {};
+        var _thr = (_thrM.threshold != null) ? _thrM.threshold : ({ 0: 60, 1: 100, 2: 100, 3: 200 })[b.q];
+        var _lsc = objSize("lavka:" + b.q, getSize("lavka", 1));
+        var _ldef = lkpos.y - (30 * _lsc) - 2;               // лавка height=30%*scale, якорь снизу → над верхом
+        var lblpos = placedPos("lavlbl:" + b.q, lkpos.x, _ldef);
+        var lbl = document.createElement("div");
+        lbl.className = "qs-lavlbl";
+        lbl.style.cssText = "left:" + lblpos.x.toFixed(2) + "%;top:" + lblpos.y.toFixed(2) +
+          "%;--gc:" + (b.glow || b.accent) + (_placeMode ? ";pointer-events:auto;cursor:move" : "");
+        lbl.innerHTML = "≥<b>" + _thr + "</b> доблести";
+        if (_placeMode) makeDraggable(lbl, "lavlbl:" + b.q);
+        stage.appendChild(lbl);
+        if (_isAdmin && _placeMode) stage.appendChild(admTag(lblpos, "Подпись · " + b.title));
       }
       // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей).
       // hideMerchant: торговка нарисована прямо в лавке (мифическая) → отдельную не рисуем.
@@ -6161,7 +6192,7 @@
     var dl = _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("");
     wrap.innerHTML =
       '<div style="font-size:12px;color:#caa66a">🎁 Распределение ресурсов ' +
-        '<span style="color:#8a795a;font-size:11px">— порог: обычные ≥60, редкие/легенд ≥100 доблести; ' +
+        '<span style="color:#8a795a;font-size:11px">— порог: обычные ≥60, редкие/легенд ≥100, мифические ≥200 доблести; ' +
         'проводникам по 10% камней доблести и метеоритов; доблесть берётся из последнего сбора</span></div>' +
       '<div class="q-admin-row" style="gap:14px;align-items:flex-end;flex-wrap:wrap">' +
         '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
