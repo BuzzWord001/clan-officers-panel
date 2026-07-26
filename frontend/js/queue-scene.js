@@ -2876,7 +2876,9 @@
         '<img class="qs-board-glow" src="assets/queue/ui/board-glow.webp?v=1" alt="">' +
         '<b class="qs-board-n" style="font-size:' + cntFs + '">' + entries.length + "</b>" +
         '<span class="qs-board-tip">Посмотреть список</span>';
-      if (_placeMode) makeDraggable(cntEl, "cnt:" + b.q);
+      // fixedz: во время перетаскивания НЕ сбрасывать z (иначе makeDraggable ставит z=ly*12 и
+      // табличка ныряет ПОД лавку/объекты — казалось, что «не тащится выше»). Держим её поверх.
+      if (_placeMode) { cntEl.dataset.fixedz = "1"; makeDraggable(cntEl, "cnt:" + b.q); }
       else cntEl.addEventListener("click", function () { openFullList(b, entries); });
       stage.appendChild(cntEl);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Табличка · " + b.title));
