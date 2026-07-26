@@ -226,31 +226,40 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         ordered = list(elig)
         N = len(ordered)
         got = [dict() for _ in range(N)]           # {res: amount} на каждого
-        for res in [r for r in RES_ORDER
-                    if REWARDS[r]["q"] == q and r not in MANUAL_RESOURCES and r != "mount-cilin"]:
+        # РАЗДАЧА УВАЖАЕТ ВЫБОР: человек получает ТОЛЬКО выбранные ресурсы. Пустой/нет выбора →
+        # хочет ВСЕ ресурсы очереди (дефолт). Уже полученные ресурсы в выборе отсутствуют
+        # (их убирает пикер), поэтому повторно не выдаются.
+        def _wants(e, res):
+            sel = e.get("resources")
+            return (not sel) or (res in sel)
+        for res in [rr for rr in RES_ORDER
+                    if REWARDS[rr]["q"] == q and rr not in MANUAL_RESOURCES and rr != "mount-cilin"]:
             have = pool.get(res, 0)
             if have <= 0 or N == 0:
                 continue
+            # получатели ИМЕННО этого ресурса — кто его выбрал, СТРОГО в порядке очереди
+            recips = [i for i in range(N) if _wants(ordered[i], res)]
+            nr = len(recips)
+            if nr == 0:
+                continue
             r = REWARDS[res]
-            if r["mode"] == "pack":                # пачка целиком — первому в очереди
-                got[0][res] = have
+            if r["mode"] == "pack":                # пачка целиком — ПЕРВОМУ из хотящих (по очереди)
+                got[recips[0]][res] = have
                 pool[res] = 0
-            elif r["mode"] == "fixed":             # по `unit` шт КАЖДОМУ (грамоты/легендарки)
+            elif r["mode"] == "fixed":             # по `unit` шт каждому хотящему, пока хватает
                 unit = r["unit"]
-                k = min(have // unit, N)           # скольким хватит ровно по unit
-                for i in range(k):
-                    got[i][res] = unit
+                k = min(have // unit, nr)
+                for j in recips[:k]:
+                    got[j][res] = unit
                 pool[res] = have - k * unit         # остаток (не всем хватило) → в клан
-            else:                                  # stack: раздать ВСЕ стаки БЕЗ остатка (в идеале 0)
+            else:                                  # stack: все стаки round-robin по ХОТЯЩИМ, без остатка
                 unit = r["unit"]
-                total_stacks = have // unit         # сколько полных стаков всего
-                # ПРИОРИТЕТ 1 — минимум остатка: делим все стаки поровну (round-robin),
-                # лишние (rem) достаются первым в очереди (топ-3 приоритетны). Остаток < unit.
-                base, rem = divmod(total_stacks, N)
-                for i in range(N):
-                    cnt = base + (1 if i < rem else 0)
+                total_stacks = have // unit
+                base, rem = divmod(total_stacks, nr)
+                for idx, j in enumerate(recips):
+                    cnt = base + (1 if idx < rem else 0)
                     if cnt > 0:
-                        got[i][res] = cnt * unit
+                        got[j][res] = cnt * unit
                 pool[res] = have - total_stacks * unit   # только неполный стак (< unit) → в клан
         rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
         rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")

@@ -1569,6 +1569,11 @@
       "font:700 12px system-ui;text-align:center}" +
     ".qs-rescard:hover{border-color:#f0c878;background:rgba(224,162,74,.12);transform:translateY(-2px)}" +
     ".qs-rescard.sel{border-color:#7ec46a;background:rgba(126,196,106,.16);box-shadow:0 0 0 1px #7ec46a}" +
+    /* уже полученный ресурс — заблокирован для повторного выбора (серый, не кликается) */
+    ".qs-rescard.qs-rc-got{cursor:not-allowed;opacity:.5;filter:grayscale(.85);border-style:dashed}" +
+    ".qs-rescard.qs-rc-got:hover{border-color:rgba(224,162,74,.35);background:none;transform:none}" +
+    ".qs-rescard.qs-rc-got .qs-rc-check{display:none}" +
+    ".qs-rc-gotlbl{font:800 9.5px system-ui;color:#c0703a;background:rgba(200,110,50,.16);border-radius:6px;padding:1px 5px;margin-top:2px}" +
     // мультивыбор: галочка в углу + приглушение НЕвыбранных, чтобы было очевидно что снято
     ".qs-rescard{position:relative}" +
     ".qs-rc-check{position:absolute;top:5px;right:5px;width:19px;height:19px;border-radius:6px;" +
@@ -2088,7 +2093,7 @@
       if (canon(e.main_nick) === mc && !e.privileged) mine = e;             // моё обычное место
     });
     if (mine) openResourcePicker(b, { resource: res, resources: mine.resources, recipient: mine.recipient || "",
-      auto_repeat: mine.auto_repeat, plan: mine.auto_plan || [] });
+      received: mine.received || [], auto_repeat: mine.auto_repeat, plan: mine.auto_plan || [] });
     else openResourcePicker(b, null, res);
   }
   function loadDrops(host) {
@@ -2305,11 +2310,14 @@
     var sel = edit ? (edit.resource || "") : (presel || "");  // одиночный (q2/q3/жетон)
     // если в очереди ВСЕГО ОДИН ресурс (редкая/мифическая) — он уже выбран галочкой по умолчанию
     if (!multi && !sel && items.length === 1) sel = items[0];
+    // уже ПОЛУЧЕННЫЕ ресурсы — заблокированы для повторного выбора (сброс при перезаходе)
+    var receivedSet = {};
+    if (edit && edit.received && edit.received.length) edit.received.forEach(function (x) { receivedSet[x] = true; });
     var selSet = {};                                          // мульти-выбор (q0/q1)
     if (multi) {
       var pre = (edit && edit.resources && edit.resources.length) ? edit.resources
               : (edit && edit.resource ? [edit.resource] : items.slice());   // новый вход → все выбраны
-      pre.forEach(function (x) { if (items.indexOf(x) >= 0) selSet[x] = true; });
+      pre.forEach(function (x) { if (items.indexOf(x) >= 0 && !receivedSet[x]) selSet[x] = true; });  // полученные не отмечаем
     }
     var planArr = (edit && edit.plan ? edit.plan.slice() : []);
     // Если человек ОДНОВРЕМЕННО взял жетоном ТОП-3 (отдельная запись вне очереди) — покажем это
@@ -2373,7 +2381,8 @@
             ? '<button type="button" id="qs-rcpt-manage" class="qs-rcpt-manage">⚙ Настроить связи твинов и супругов</button>'
             : "") +
           '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
-            '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
+            '🔁 Запомнить выбор — вставать за этими ресурсами автоматически каждую неделю ' +
+            '<span style="color:#8a795a;font-weight:400">(в новом цикле встаёшь заново с конца, и уже полученные ресурсы снова можно получить)</span></label>' +
         '</div>' +
       '</details>' +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button>' +
@@ -2407,24 +2416,28 @@
       }
     }
     items.forEach(function (it) {
+      var got = !!receivedSet[it];
       var card = document.createElement("button");
-      card.className = "qs-rescard"; card.dataset.res = it; card.type = "button";
+      card.className = "qs-rescard" + (got ? " qs-rc-got" : ""); card.dataset.res = it; card.type = "button";
       var rm = REWARDS_META[it] || {};
       var stack = rm.text ? '<span class="qs-rc-stack">' + esc(rm.text) + "</span>" : "";
       var total = (rm.total != null && rm.total > 0) ? '<span class="qs-rc-total">накоплено: ' + rm.total + "</span>" : "";
+      var gotlbl = got ? '<span class="qs-rc-gotlbl">✓ уже получено</span>' : "";
       card.innerHTML = (multi ? '<span class="qs-rc-check" aria-hidden="true"></span>' : "") +
-        '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total;
+        '<img src="' + resImg(it) + '" alt="" loading="lazy"><span class="qs-rc-name">' + esc(resName(it)) + "</span>" + stack + total + gotlbl;
+      if (got) card.title = "Уже получено на этой неделе — повторно выбрать нельзя. Сброс — при перезаходе в очередь (встать заново с конца).";
       card.addEventListener("click", function () {
+        if (got) return;                        // полученное повторно не выбирается
         if (multi) { if (selSet[it]) delete selSet[it]; else selSet[it] = true; }
         else { sel = it; }
         paintCards();
       });
       grid.appendChild(card);
     });
-    // мульти: быстрые кнопки «Выбрать все / Снять все» (снял все → отметь нужные, минимум 1)
+    // мульти: быстрые кнопки «Выбрать все / Снять все» (полученные НЕ выбираем; снял все → минимум 1)
     if (multi) {
       var allBtn = body.querySelector("#qs-p2-all"), noneBtn = body.querySelector("#qs-p2-none");
-      if (allBtn) allBtn.addEventListener("click", function () { items.forEach(function (x) { selSet[x] = true; }); paintCards(); });
+      if (allBtn) allBtn.addEventListener("click", function () { items.forEach(function (x) { if (!receivedSet[x]) selSet[x] = true; }); paintCards(); });
       if (noneBtn) noneBtn.addEventListener("click", function () { selSet = {}; paintCards(); });
     }
     // получатель — живая проверка твин/супруг
@@ -2674,7 +2687,7 @@
       } else if (act === "res") {   // админ меняет ресурсы записи
         if (m) m.close();
         openResourcePicker(b, { adminEid: e.id, resource: e.resource || "", resources: e.resources,
-          recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+          received: e.received || [], recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
       } else if (act === "mine") {  // игрок меняет свои ресурсы
         if (m) m.close();
         openResourcePicker(b, { resource: e.resource || "", resources: e.resources,

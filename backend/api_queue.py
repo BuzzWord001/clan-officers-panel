@@ -372,6 +372,12 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN privileged INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: уже ПОЛУЧЕННЫЕ игроком ресурсы (JSON-список ключей). Повторно выбрать их в
+        # пикере нельзя (заблокированы). Сбрасывается при перезаходе в очередь (join).
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN received TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: сколько ПАЧЕК взято жетоном на этой записи (источник claim'а —
         # чтобы при смене ресурса пересчитать объём автоматически)
         try:
@@ -1609,6 +1615,21 @@ def _entry_resources(r):
     res = (r["resource"] or "").strip() if ("resource" in r.keys()) else ""
     return [res] if res in valid else ([res] if res else [])
 
+
+def _entry_received(r) -> list:
+    """Уже полученные игроком ресурсы (JSON-список ключей) — заблокированы в пикере."""
+    import json as _json
+    try:
+        raw = r["received"] if "received" in r.keys() else ""
+    except Exception:
+        raw = ""
+    if not raw:
+        return []
+    try:
+        return [x for x in _json.loads(raw) if x]
+    except (ValueError, TypeError):
+        return []
+
 # ── параметры движка распределения (подтверждено Лиром 2026-07-16) ──
 # Пороги доблести: обычная очередь ≥60, редкие/легендарные/мифические ≥100.
 VALOR_THRESHOLD = {0: 60, 1: 100, 2: 100, 3: 100}
@@ -1823,6 +1844,7 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
                                or db._valor_canon(disp_nick) in shooters_canon)),
             "resource": (r["resource"] if "resource" in keys else ""),
             "resources": _entry_resources(r),
+            "received": _entry_received(r),
             "recipient": rcpt,
             "recipient_ok": _recipient_ok(rcpt, mc, idx, smap),
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
@@ -3306,8 +3328,11 @@ def _shift_queues(conn, report: dict) -> dict:
                     conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
                     left_after += 1
         pos = 1
-        for i in keep_ids + requeue_ids:
+        for i in keep_ids:                          # остались впереди (не получили/не забрали) — received НЕ трогаем
             conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
+            pos += 1
+        for i in requeue_ids:                       # авто-повтор → в конец, НОВЫЙ цикл: сброс received
+            conn.execute("UPDATE queue_entries SET pos=?, received='' WHERE id=?", (float(pos), i))
             pos += 1
     return {"requeued": requeued, "left_removed": left_after, "stayed_uncollected": stayed_uncollected}
 
