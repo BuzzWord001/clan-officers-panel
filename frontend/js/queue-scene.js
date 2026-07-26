@@ -626,8 +626,9 @@
   function makeDraggable(el, pkey) {
     el.style.pointerEvents = "auto"; el.style.cursor = "grab";
     function start(moveEvt, endEvt) {
-      // объекты сцены считаем от .qs-stage; кошелёк «на рамке» живёт в .qs-frame (поверх рамки)
-      var stage = el.closest(".qs-stage") || el.closest(".qs-frame"); if (!stage) return;
+      // объекты сцены считаем от .qs-stage; таблички-счётчики — от .qs-boardlayer (тот же
+      // inset/размер, что сцена); кошелёк «на рамке» живёт в .qs-frame (поверх рамки)
+      var stage = el.closest(".qs-stage") || el.closest(".qs-boardlayer") || el.closest(".qs-frame"); if (!stage) return;
       var rect = stage.getBoundingClientRect(), lx = null, ly = null;
       function move(e) {
         var pt = e.touches ? e.touches[0] : e;
@@ -898,6 +899,10 @@
     ".qs-frame-ovl{position:absolute;inset:0;pointer-events:none;z-index:99999;" +
       "background:url('assets/queue/scene/scene-frame.webp?v=3') center/100% 100% no-repeat;" +
       "filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}" +
+    /* слой табличек-счётчиков: та же геометрия, что .qs-stage (inset задаётся инлайн),
+       но overflow:visible и ПОВЕРХ рамки (z 100000) — табличка не срезается у верха.
+       container-type — чтобы cqw ширины таблички считался от той же базы, что в сцене. */
+    ".qs-boardlayer{position:absolute;overflow:visible;pointer-events:none;z-index:100000;container-type:inline-size}" +
     ".qs-stage.place .qs-item,.qs-stage.place .qs-mount,.qs-stage.place .qs-merchant,.qs-stage.place .qs-btn-abs,.qs-stage.place .qs-env{" +
       "outline:2px dashed rgba(245,200,120,.95);outline-offset:2px;cursor:grab}" +
     /* ── ПОГОДА (лёгкие CSS-анимации, только внутри картинки) ── */
@@ -2717,6 +2722,15 @@
     }
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
 
+    // Слой ТАБЛИЧЕК-счётчиков «Список»: тот же inset/размер, что и сцена (координаты 0–100%
+    // совпадают со сценой — миграция позиций НЕ нужна), но БЕЗ overflow:hidden и ПОВЕРХ рамки.
+    // Так табличку видно ЦЕЛИКОМ у самого верха картинки и её можно тащить до края, не обрезаясь
+    // рамкой сцены (раньше .qs-stage overflow:hidden срезал верх → «выше не двигается»).
+    // container-type — чтобы cqw в ширине таблички считался от той же ширины, что и в сцене.
+    var boardLayer = document.createElement("div");
+    boardLayer.className = "qs-boardlayer";
+    boardLayer.style.inset = getSize("inset", 15) + "%";
+
     // ПОГОДА — лёгкая CSS-анимация в пределах картинки (clip внутри .qs-stage)
     var wx = currentWeather();
     if (wx && wx !== "clear") {
@@ -2876,15 +2890,12 @@
       cntEl.className = "qs-board qs-btn-abs";
       // ширина таблички: на ПК — исходные px (как было), на узкой сцене (телефон) — ужимается cqw.
       // min(px,cqw): пока сцена ≥ базовой ширины → px (ПК не меняется), уже → cqw.
-      // Масштаб по ГЛУБИНЕ: верх сцены (дальше от зрителя) — мельче, низ — крупнее.
-      // Нормировка к центру (y=50 → 1.0), диапазон 0.75×…1.25×. НИЖНИЙ ПОРОГ 0.75 —
-      // чтобы на самом верху табличка оставалась крупной и НЕ «умирала»/не сжималась в ноль.
-      // Масштаб применяется на рендере, а не во время перетаскивания — тащить всегда удобно.
-      var bdMul = 0.75 + Math.max(0, Math.min(1, cp.y / 100)) * 0.5;
+      // РАЗМЕР — только ползунком objSize (предсказуемо). Авто-масштаб по глубине убран:
+      // он путал («неверно масштабируется от перспективы») и мешал ставить табличку у верха.
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
         "%;width:min(" + (128 * csz).toFixed(1) + "px," + (13.9 * csz).toFixed(2) + "cqw);z-index:" + cnz +
         ";--gc:" + (b.glow || b.accent) +
-        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%) scale(" + bdMul.toFixed(3) + ")");
+        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
       // шрифт числа: clamp(пол, cqw, исходный_px) — ПК как было, телефон мельче (мельче для 3-значных)
       var _big3 = String(entries.length).length >= 3;
@@ -2898,8 +2909,9 @@
       // табличка ныряет ПОД лавку/объекты — казалось, что «не тащится выше»). Держим её поверх.
       if (_placeMode) { cntEl.dataset.fixedz = "1"; makeDraggable(cntEl, "cnt:" + b.q); }
       else cntEl.addEventListener("click", function () { openFullList(b, entries); });
-      stage.appendChild(cntEl);
-      if (_isAdmin && _placeMode) stage.appendChild(admTag(cp, "Табличка · " + b.title));
+      // в неклипающий слой поверх рамки (не в сцену) — чтобы не срезалась у верха
+      boardLayer.appendChild(cntEl);
+      if (_isAdmin && _placeMode) boardLayer.appendChild(admTag(cp, "Табличка · " + b.title));
       }
       // кнопка «✎ ресурс/кому» — только когда игрок стоит в этой очереди
       if (iAmIn && !_placeMode && _meAcc) {
@@ -3020,6 +3032,10 @@
     var ovl = document.createElement("div");
     ovl.className = "qs-frame-ovl";
     frame.appendChild(ovl);
+    // слой табличек-счётчиков — ПОВЕРХ рамки, чтобы табличка у самого верха была видна целиком
+    // (не пряталась под деревянную раму). Свой stacking context; таблички внутри упорядочены
+    // между собой своими z. pointer-events на слое нет — клики идут в сцену, ловят только таблички.
+    frame.appendChild(boardLayer);
     // кошелёк жетонов — ПОВЕРХ рамки (последний ребёнок frame, z-index 100000): «на рамке»
     if (frameWallet) {
       frame.appendChild(frameWallet);
