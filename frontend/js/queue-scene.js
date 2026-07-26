@@ -591,6 +591,16 @@
   }
   // суффикс transform с учётом зеркала (base — базовый translate объекта)
   function flipTf(pkey, base) { return base + (isFlipped(pkey) ? " scaleX(-1)" : ""); }
+  // разворот объекта вокруг ВЕРТИКАЛЬНОЙ оси (rot:<key> в градусах, -85..85). Псевдо-3D для 2D:
+  // объект «поворачивается» с перспективой, оставаясь на земле (у элемента transform-origin:50% 100%).
+  function objRotY(pkey) { var v = parseFloat(CONFIG["rot:" + pkey]); return (isFinite(v) ? Math.max(-85, Math.min(85, v)) : 0); }
+  // полный трансформ объекта: база + зеркало + разворот по вертикали (для лавок и т.п.)
+  function objTf(pkey, base) {
+    var t = base + (isFlipped(pkey) ? " scaleX(-1)" : "");
+    var r = objRotY(pkey);
+    if (r) t += " perspective(1500px) rotateY(" + r + "deg)";
+    return t;
+  }
   // текущая позиция+слой объекта (сохранённые или дефолтные) — для админ-панели перемещения
   function curPlace(key, dx, dy) { var p = PLACEMENTS[key]; return { x: p ? p.x : dx, y: p ? p.y : dy, z: (p && p.z) || "" }; }
   function savePlacement(key, x, y, z) {
@@ -1264,7 +1274,7 @@
       "filter:drop-shadow(0 6px 8px rgba(0,0,0,.5))}" +
     // лавки и фонтан — выравнены по основанию (translate -50%/-100%), размер через CSS-переменную
     ".qs-lavka{position:absolute;height:calc(30% * var(--qs-lavka-scale,1));width:auto;" +
-      "transform:translate(-50%,-100%);pointer-events:none;" +
+      "transform:translate(-50%,-100%);transform-origin:50% 100%;pointer-events:none;" +   // опора внизу — для разворота rotateY «на земле»
       /* базовая тень + цветное свечение цветом очереди (--gc); мягкое «дыхание» */
       "filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 7px var(--gc,transparent)) drop-shadow(0 0 20px var(--gc,transparent));" +
       "animation:qLavkaGlow 3.6s ease-in-out infinite}" +
@@ -1331,6 +1341,8 @@
     ".qs-objp button:hover{background:rgba(80,54,20,.95);color:#fff}" +
     ".qs-objp-sz{display:flex;align-items:center;gap:3px}" +
     ".qs-objp-szv{font:800 11px system-ui;color:#9fe0a0;min-width:34px;text-align:center}" +
+    ".qs-objp-rot{display:inline-flex;align-items:center;gap:2px}" +
+    ".qs-objp-rotv{font:800 11px system-ui;color:#8fd6ff;min-width:34px;text-align:center}" +
     ".qs-objp-z{display:flex;gap:2px}" +
     ".qs-objp-z button{font-size:10px;min-width:0;padding:0 6px}" +
     ".qs-objp button.on{background:linear-gradient(180deg,#f3d489,#d09b2e);color:#1b1006;border-color:#f3d489}" +
@@ -2736,7 +2748,7 @@
       lavka.style.cssText = "left:" + lkpos.x.toFixed(2) + "%;top:" + lkpos.y.toFixed(2) +
         "%;height:calc(30% * " + objSize("lavka:" + b.q, getSize("lavka", 1)).toFixed(3) +
         ");z-index:" + zOf("lavka:" + b.q, lkpos.y) +
-        ";transform:" + flipTf("lavka:" + b.q, "translate(-50%,-100%)") +
+        ";transform:" + objTf("lavka:" + b.q, "translate(-50%,-100%)") +   // + разворот по вертикали (rot:)
         ";--gc:" + (b.glow || b.accent);   // цвет свечения лавки (редкие=золото)
       if (_placeMode) makeDraggable(lavka, "lavka:" + b.q);
       stage.appendChild(lavka);
@@ -3929,7 +3941,7 @@
     var objs = [];
     // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
-    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true, rot: true }); });
     BOOTHS.forEach(function (b) { var lp = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3); objs.push({ key: "glow:" + b.q, name: "Свечение · " + b.title, dx: lp.x, dy: lp.y - 13 }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }];
     BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
@@ -4241,6 +4253,11 @@
           (o.sz ? '<span class="qs-objp-sz"><button data-a="sz-" title="меньше">−</button>' +
             '<b class="qs-objp-szv">' + szTxt + '</b><button data-a="sz+" title="больше">+</button></span>' : "") +
           (o.flip ? '<button data-a="flip" class="qs-objp-flip' + (isFlipped(o.key) ? " on" : "") + '" title="зеркалить">⇋</button>' : "") +
+          (o.rot ? '<span class="qs-objp-rot" title="Развернуть вокруг вертикальной оси (псевдо-3D, лавка остаётся на земле)">' +
+            '<button data-a="roty-" title="развернуть влево (−15°)">⟲</button>' +
+            '<b class="qs-objp-rotv">' + objRotY(o.key) + '°</b>' +
+            '<button data-a="roty+" title="развернуть вправо (+15°)">⟳</button>' +
+            '<button data-a="roty0" title="сбросить разворот (0°)">⭯</button></span>' : "") +
           (o.repl ? '<button data-a="repl" class="qs-objp-repl" title="заменить модель (новая встанет на то же место)">🖼</button>' : "") +
           (o.repl && uploadedUrl(overrideKey(o.key)) ? '<button data-a="opt" class="qs-objp-opt" title="оптимизировать загруженную картинку">🗜</button>' : "") +
           zBtns(curZ) +
@@ -4262,6 +4279,9 @@
         else if (a === "sz+") saveCfg("size:" + o.key, Math.min(3, objSize(o.key, o.base) + SStep).toFixed(2));
         else if (a === "sz-") saveCfg("size:" + o.key, Math.max(0.3, objSize(o.key, o.base) - SStep).toFixed(2));
         else if (a === "flip") saveCfg("flip:" + o.key, isFlipped(o.key) ? "0" : "1");
+        else if (a === "roty-") saveCfg("rot:" + o.key, Math.max(-85, objRotY(o.key) - 15));
+        else if (a === "roty+") saveCfg("rot:" + o.key, Math.min(85, objRotY(o.key) + 15));
+        else if (a === "roty0") saveCfg("rot:" + o.key, 0);
         else if (a === "hide") saveCfg("hide:" + o.key, "1");
         else return;
         render(_lastState);
