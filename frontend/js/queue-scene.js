@@ -6157,13 +6157,6 @@
           'Огненных цилиней (питомец): ' +
           '<input type="number" id="qd-pet" min="0" value="' + pet + '" style="width:90px"></label>' +
       "</div>" +
-      '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
-        '<b style="font-size:11px;color:#caa66a">🎯 Проводники (+10%):</b>' +
-        '<input id="qd-shnick" list="qd-dl" placeholder="ник проводника…" autocomplete="off" style="min-width:150px">' +
-        '<button class="sec" id="qd-shadd">＋ добавить</button>' +
-        '<datalist id="qd-dl">' + dl + '</datalist>' +
-        '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
-      "</div>" +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-report" class="sec" title="Показать расчёт на странице (не публикует)">📋 Показать расчёт (превью на странице)</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
@@ -6187,6 +6180,16 @@
           '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] !== "0" ? " checked" : "") + '> ' +
           '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерские каналы и НЕ двигать очередь ' +
           '<span style="color:#8a795a">(сними для боевой публикации)</span></label>' +
+        // ── ПРОВОДНИКИ (+10% камней доблести и метеоритов каждому, до раздачи остальным) ──
+        '<div style="margin:2px 0;padding:7px 9px;border:1px solid rgba(255,150,70,.4);border-radius:8px;background:rgba(255,150,70,.06)">' +
+          '<div style="font-size:11.5px;color:#ffd0b0;margin-bottom:5px">🎯 <b>Проводники</b> — каждому +10% камней доблести и метеоритов (вычтется из пула ДО раздачи остальным). Учитываются в отчёте сразу.</div>' +
+          '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<input id="qd-shnick" list="qd-dl" placeholder="ник проводника…" autocomplete="off" style="min-width:160px">' +
+            '<button class="sec" id="qd-shadd">＋ добавить</button>' +
+            '<datalist id="qd-dl">' + dl + '</datalist>' +
+            '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
+          "</div>" +
+        "</div>" +
         '<div id="qd-rep-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>' +
         '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
           'padding:7px 9px;background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px;display:none"></div>' +
