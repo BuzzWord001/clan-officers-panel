@@ -311,10 +311,10 @@
     { q: 2, title: "Легендарные (S)", accent: "#c07be0", glow: "#c07be0", lightning: true, bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
       merchant: { x: 88, y: 77 },
       path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] },
-    // Мифические (SS) — высший камень божества. Цвет розово-магента под лавку. Позиции/путь
-    // — дефолт (двор слева, очередь от ворот); админ подвинет перетаскиванием и редактором пути.
-    { q: 3, title: "Мифические (SS)", accent: "#ff5db4", glow: "#ff8fd6", bx: 30, by: 44, ui: { x: 29, y: 58 }, item: { x: 40, y: 44 },
-      merchant: { x: 27, y: 42 },
+    // Мифические (SS) — высший камень божества. Свечение белое (небесное) под лавку.
+    // mirror: модели смотрят в другую сторону. hideMerchant: торговка уже нарисована в лавке.
+    { q: 3, title: "Мифические (SS)", accent: "#f2ecff", glow: "#ffffff", mirror: true, hideMerchant: true,
+      bx: 30, by: 44, ui: { x: 29, y: 58 }, item: { x: 40, y: 44 }, merchant: { x: 27, y: 42 },
       path: [{ x: 22, y: 66 }, { x: 26, y: 58 }, { x: 29, y: 50 }, { x: 32, y: 44 }] }
   ];
   // ресурсы за каждой будкой (файлы assets/queue/scene/item/*.png)
@@ -1011,6 +1011,7 @@
       "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
     ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
+    ".qs-merch-box.merch-sm .qs-merch-img{height:38px;max-width:38px}" +   // мифическая торговка чуть меньше
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
     ".qs-merch-det{position:relative}" +
     // ВЕСЬ верх (НПЦ+строка) — одна кнопка-разворот
@@ -2170,7 +2171,7 @@
     var mine = canon(e.main_nick) === meCanon;
     // Очередь ОБЫЧНЫХ ресурсов (0) на картинке идёт справа налево → зеркалим модели,
     // чтобы они «смотрели вперёд» по ходу очереди, а не спиной.
-    var mirror = boothQ === 0 ? "scaleX(-1) " : "";
+    var mirror = (boothQ === 0 || (BOOTHS[boothQ] && BOOTHS[boothQ].mirror)) ? "scaleX(-1) " : "";
     var body = mi
       ? '<img class="q-char-img" src="' + esc(mi.url) + '" data-mkey="' + esc(mi.key) +
           '" style="transform:' + mirror + transformStr(MODEL_SETTINGS[mi.key]) + '" alt="" loading="lazy" decoding="async">'
@@ -2747,7 +2748,9 @@
       stage.appendChild(lavka);
       if (_isAdmin && _placeMode) stage.appendChild(admTag(lkpos, "Лавка · " + b.title));
       }
-      // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей)
+      // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей).
+      // hideMerchant: торговка нарисована прямо в лавке (мифическая) → отдельную не рисуем.
+      if (!b.hideMerchant) {
       var mkey = "scene/merchant-" + b.q + ".png";
       var mset = MODEL_SETTINGS[mkey] || {};
       var mp = placedPos("merchant:" + b.q, b.merchant.x, b.merchant.y);
@@ -2760,6 +2763,7 @@
         ";transform:translate(-50%,-100%) " + transformStr(mset) + ";";
       if (_placeMode) makeDraggable(merch, "merchant:" + b.q);
       stage.appendChild(merch);
+      }
       // индикатор направления очереди (к будке) — под персонажами
       var pth = getPath(b.q);
       if (!_pathMode && !_placeMode) stage.appendChild(renderFlow(b, pth));
@@ -2784,10 +2788,12 @@
         stage.appendChild(qlayer);
         charTarget = qlayer;
       }
+      // ФИКСИРОВАННЫЙ шаг между людьми: №1 (i=0) стоит РОВНО у лавки (t=1), №2 сразу за ним
+      // и т.д. — как в реальной очереди, вплотную друг за дружкой; НЕ растягиваем по всему пути.
+      // Шаг = spread / (лимит-1): при полном лимите занимают весь путь, при малом — жмутся к лавке.
+      var qStep = spread / Math.max(1, showLimit - 1);
       visible.forEach(function (e, i) {
-        // передний (i=0, дошёл до лавок) стоит РОВНО на финишном круге (t=1, как qs-endspot),
-        // в т.ч. когда в очереди всего один человек; остальные — назад по пути.
-        var t = shown <= 1 ? 1 : 1 - (i / (shown - 1)) * spread;
+        var t = Math.max(0, 1 - i * qStep);
         charTarget.appendChild(renderChar(e, pathPoint(pth, t), meCanon, b.q, i));
       });
       // UI: кнопки «Список», «Встать/Выйти» и (когда стоишь) «✎ ресурс/кому».
@@ -2858,10 +2864,13 @@
       cntEl.className = "qs-board qs-btn-abs";
       // ширина таблички: на ПК — исходные px (как было), на узкой сцене (телефон) — ужимается cqw.
       // min(px,cqw): пока сцена ≥ базовой ширины → px (ПК не меняется), уже → cqw.
+      // масштаб таблички-списка по ГЛУБИНЕ сцены (ниже=ближе=крупнее), как у кнопки/моделей.
+      // Нормируем к y=50 (фактор 0.81), чтобы существующие таблички почти не менялись.
+      var bdMul = ((0.5 + cp.y / 100 * 0.62) / 0.81).toFixed(3);
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
         "%;width:min(" + (128 * csz).toFixed(1) + "px," + (13.9 * csz).toFixed(2) + "cqw);z-index:" + cnz +
         ";--gc:" + (b.glow || b.accent) +
-        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
+        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)") + " scale(" + bdMul + ")";
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
       // шрифт числа: clamp(пол, cqw, исходный_px) — ПК как было, телефон мельче (мельче для 3-значных)
       var _big3 = String(entries.length).length >= 3;
@@ -3755,7 +3764,7 @@
       // ОТДЕЛЬНЫЙ КВАДРАТ ТОРГОВЦА: НПЦ + иконки и названия ресурсов, что он выдаёт.
       // Возле каждого ресурса — СКОЛЬКО человек за ним стоит (0 = свободно, шанс встать).
       var merchBox = document.createElement("div");
-      merchBox.className = "qs-merch-box"; merchBox.style.setProperty("--gc", b.accent);
+      merchBox.className = "qs-merch-box" + (b.q === 3 ? " merch-sm" : ""); merchBox.style.setProperty("--gc", b.accent);
       var resItems = BOOTH_ITEMS[b.q] || [];
       var resCount = {};   // считаем по ВСЕМ выбранным ресурсам записи (мультивыбор), не только по первому
       entries.forEach(function (e) {
