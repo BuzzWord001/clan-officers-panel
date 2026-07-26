@@ -3812,10 +3812,10 @@
       // запоминаем позицию прокрутки этой полосы, чтобы при перерисовке (удаление в ЛЮБОЙ
       // очереди пересобирает всё) она не «прыгала» вправо, а осталась на месте
       strip.addEventListener("scroll", function () { _stripScroll[b.q] = strip.scrollLeft; });
-      // порядок: [встать][табличка-список][◀][▶][ОЧЕРЕДЬ ЛЮДЕЙ][ТОРГОВЕЦ] — люди вплотную к торговцу,
-      // №1 у самого края справа, следующие пакуются влево (flex-end у стрипа).
-      sw.appendChild(joinCell); sw.appendChild(boardEl); sw.appendChild(lArr);
-      sw.appendChild(rArr); sw.appendChild(strip); sw.appendChild(merchBox);
+      // Порядок как БЫЛО: [встать][◀][стрип][▶][табличка][торговец]. Люди пакуются к ПРАВОМУ
+      // краю стрипа (justify-content:flex-end у .qs-lane-strip) → №1 справа, следующие вплотную влево.
+      sw.appendChild(joinCell); sw.appendChild(lArr); sw.appendChild(strip);
+      sw.appendChild(rArr); sw.appendChild(boardEl); sw.appendChild(merchBox);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
