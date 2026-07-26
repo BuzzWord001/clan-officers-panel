@@ -1030,8 +1030,11 @@
       "padding:7px 8px;border:1px solid var(--gc);border-radius:11px;" +
       "background:linear-gradient(180deg,rgba(40,26,12,.5),rgba(20,13,7,.72));box-shadow:inset 0 0 22px -10px var(--gc)}" +
     ".qs-merch-npc{display:flex;align-items:center;gap:8px}" +
-    ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
-    ".qs-merch-box.merch-sm .qs-merch-img{height:38px;max-width:38px}" +   // мифическая торговка чуть меньше
+    // фикс. слот 48px под картинку у ВСЕХ полос → заголовки и плашки «≥N доблести» выровнены
+    // (раньше width:auto давал узкий слот, а у мифической max-width:38 → её подпись съезжала левее).
+    // object-fit:contain центрирует фигуру без искажений; у мифической меньше только высота.
+    ".qs-merch-img{height:48px;width:48px;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
+    ".qs-merch-box.merch-sm .qs-merch-img{height:38px}" +   // мифическая торговка ниже, слот тот же 48px
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
     // золотая плашка «≥N доблести» в заголовке полосы — тот же стиль, что подписи над лавками,
     // со свечением под цвет очереди (--gc). Непрозрачный фон → текст чёткий.
