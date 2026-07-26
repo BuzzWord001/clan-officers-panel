@@ -3440,6 +3440,9 @@ def _restore_served_row(conn, s, actor_name: str, request) -> None:
             (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
              s["auto_repeat"], s["auto_plan"], "restore", _now()))
     conn.execute("DELETE FROM queue_served_last WHERE id=?", (s["id"],))
+    # ПЕРЕМОТКА НАЗАД: раз человека вернули в очередь — сбрасываем маркер недельного сдвига,
+    # чтобы следующая публикация снова СДВИНУЛА очередь (а не считала «уже сдвигали сегодня»).
+    _cfg_set(conn, "report_shift_week", "")
     _log(conn, "restore_uncollected", actor=actor_name, nick=s["nick"], queue=q,
          request=request, detail="возвращён (не забрал) — на прежнее место за свой ресурс")
 
@@ -3545,6 +3548,8 @@ def restore_uncollected(payload: RestoreUncollectedIn, request: Request,
                 (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
                  s["auto_repeat"], s["auto_plan"], "restore", _now()))
         conn.execute("DELETE FROM queue_served_last WHERE id=?", (payload.served_id,))
+        # перемотка назад → сбрасываем маркер, чтобы следующая публикация снова сдвинула очередь
+        _cfg_set(conn, "report_shift_week", "")
         _log(conn, "restore_uncollected", actor=_actor_name(actor), nick=s["nick"], queue=q,
              request=request, detail="возвращён в очередь (не забрал ресурс — отмечен после сдвига)")
     return {"ok": True}
