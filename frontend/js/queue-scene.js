@@ -4323,8 +4323,10 @@
       // ── строка ОБЪЕКТА: перемещение + размер + зеркало + слой + удалить(скрыть) ──
       var szTxt = o.sz ? objSize(o.key, o.base).toFixed(2) + "×" : "";
       var curZ = (PLACEMENTS[o.key] && PLACEMENTS[o.key].z) || "";
+      // подписи порога — с иконкой-ярлыком, чтобы их было легко найти в списке
+      var rowEmoji = (o.key && o.key.indexOf("lavlbl:") === 0) ? "🏷️" : "";
       row.innerHTML =
-        nameHtml(o) +
+        nameHtml(o, rowEmoji) +
         '<div class="qs-objp-ctl">' +
           '<span class="qs-objp-pad">' +
             '<button data-a="up" title="выше">▲</button>' +
