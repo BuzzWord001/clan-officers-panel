@@ -993,7 +993,7 @@
       "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
     ".qs-lane-arrow:hover{filter:brightness(1.2)}.qs-lane-arrow:active{transform:scale(.9)}" +
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;" +
-      "padding:3px 2px;scrollbar-width:thin;justify-content:space-between;align-items:stretch}" +
+      "padding:3px 2px;scrollbar-width:thin;justify-content:flex-end;align-items:stretch}" +
     /* кнопка «Встать/Выйти» в начале полосы */
     ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;min-width:60px;height:104px;" +
       "display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;transition:filter .08s}" +
@@ -2720,10 +2720,12 @@
 
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
-      // свечение будки — перетаскиваемое/скрываемое (ключ glow:<q>, дефолт bx/by).
-      // Так можно убрать «зависшую» дымку от перенесённой лавки или подвинуть под новую.
+      // позиция лавки (нужна и для свечения — свечение по умолчанию ПОД лавкой)
+      var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
+      // свечение будки — по умолчанию ПОД лавкой (следует за лавкой), т.е. на её позиции
+      // со сдвигом вверх к центру прилавка. Перетаскиваемое/скрываемое (ключ glow:<q>).
       if (!isHidden("glow:" + b.q)) {
-        var gpos = placedPos("glow:" + b.q, b.bx, b.by);
+        var gpos = placedPos("glow:" + b.q, lkpos.x, lkpos.y - 13);
         var glow = document.createElement("div");
         glow.className = "qs-glow";
         glow.style.cssText = "left:" + gpos.x + "%;top:" + gpos.y + "%;--gc:" + (b.glow || b.accent);
@@ -2734,7 +2736,6 @@
       // лавка (торговый прилавок) этой очереди — перекрывает старые будки, день и ночь.
       // Перетаскивается; размер через getSize("lavka"); слой front/back правым кликом.
       if (!isHidden("lavka:" + b.q)) {
-      var lkpos = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
       var lavka = document.createElement("img");
       lavka.className = "qs-lavka" + (b.lightning ? " lav-lightning" : "");
       lavka.alt = ""; lavka.decoding = "async"; lavka.loading = "lazy";
@@ -3811,8 +3812,10 @@
       // запоминаем позицию прокрутки этой полосы, чтобы при перерисовке (удаление в ЛЮБОЙ
       // очереди пересобирает всё) она не «прыгала» вправо, а осталась на месте
       strip.addEventListener("scroll", function () { _stripScroll[b.q] = strip.scrollLeft; });
-      sw.appendChild(joinCell); sw.appendChild(lArr); sw.appendChild(strip);
-      sw.appendChild(rArr); sw.appendChild(boardEl); sw.appendChild(merchBox);
+      // порядок: [встать][табличка-список][◀][▶][ОЧЕРЕДЬ ЛЮДЕЙ][ТОРГОВЕЦ] — люди вплотную к торговцу,
+      // №1 у самого края справа, следующие пакуются влево (flex-end у стрипа).
+      sw.appendChild(joinCell); sw.appendChild(boardEl); sw.appendChild(lArr);
+      sw.appendChild(rArr); sw.appendChild(strip); sw.appendChild(merchBox);
       lane.appendChild(head); lane.appendChild(sw);
       box.appendChild(lane);
       autoCropAll(strip, ".qs-cell-img");                  // центровка моделей
@@ -3930,7 +3933,7 @@
     // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
-    BOOTHS.forEach(function (b) { objs.push({ key: "glow:" + b.q, name: "Свечение · " + b.title, dx: b.bx, dy: b.by }); });
+    BOOTHS.forEach(function (b) { var lp = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3); objs.push({ key: "glow:" + b.q, name: "Свечение · " + b.title, dx: lp.x, dy: lp.y - 13 }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }];
     BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
