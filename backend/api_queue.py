@@ -3212,16 +3212,28 @@ async def _send_report_media(image_path, text: str, force_dm: bool = False) -> d
         except Exception as exc:
             channels["test"] = "error: %s" % exc
         return channels
+    # TG: сначала картинка, потом текст. Если картинка не вышла — текст всё равно шлём.
     try:
-        await bot_tg.send_photo(image_path)          # офиц. TG — картинка
-        await bot_tg.send_text(text)                 # затем текст под ней
-        channels["tg"] = "ok"
+        photo_ok = True
+        try:
+            await bot_tg.send_photo(image_path)
+        except Exception as ep:
+            photo_ok = False
+            _log_err("tg_photo", ep)
+        await bot_tg.send_text(text)
+        channels["tg"] = "ok" if photo_ok else "текст ok, фото не вышло"
     except Exception as exc:
         channels["tg"] = "error: %s" % exc
+    # VK: то же самое — картинка, затем текст (текст даже если фото упало).
     try:
-        await asyncio.to_thread(bot_vk.send_photo, image_path, "")   # офиц. VK — картинка
-        await asyncio.to_thread(bot_vk.send_text, text)              # затем текст
-        channels["vk"] = "ok"
+        photo_ok = True
+        try:
+            await asyncio.to_thread(bot_vk.send_photo, image_path, "")
+        except Exception as ep:
+            photo_ok = False
+            _log_err("vk_photo", ep)
+        await asyncio.to_thread(bot_vk.send_text, text)
+        channels["vk"] = "ok" if photo_ok else "текст ok, фото не вышло"
     except Exception as exc:
         channels["vk"] = "error: %s" % exc
     return channels

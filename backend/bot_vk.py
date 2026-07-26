@@ -35,9 +35,16 @@ def _peer_id() -> int:
 
 
 def _upload_photo(session, image_path: Path, peer_id: int) -> str:
-    upload = VkUpload(session)
-    photo = upload.photo_messages(photos=str(image_path), peer_id=peer_id)[0]
-    return f"photo{photo['owner_id']}_{photo['id']}"
+    # VK иногда возвращает пустой upload-ответ («photo is undefined») — ретраим до 3 раз.
+    last = None
+    for _ in range(3):
+        try:
+            upload = VkUpload(session)
+            photo = upload.photo_messages(photos=str(image_path), peer_id=peer_id)[0]
+            return f"photo{photo['owner_id']}_{photo['id']}"
+        except Exception as e:
+            last = e
+    raise last
 
 
 def send_text(text: str) -> None:
