@@ -4365,6 +4365,7 @@
 
   function render(state) {
     _lastState = state;
+    _lastStateHash = _stateHash(state);   // отметка для авто-опроса (чтобы не ре-рендерить зря)
     updatePageBg();
     var host = document.getElementById("scene");
     host.innerHTML = "";
@@ -6596,6 +6597,39 @@
     });
   }
 
+  // ── АВТО-ОБНОВЛЕНИЕ ОЧЕРЕДИ (polling) — чтобы актуальную очередь было видно БЕЗ ручного
+  // обновления страницы. Для нечастых изменений это best practice (SSE/WebSocket избыточны):
+  // лёгкий опрос /queue/state и ре-рендер ТОЛЬКО при реальном изменении. Не дёргаем скрытую
+  // вкладку, не мешаем открытому пикеру/модалу и режимам расстановки/пути. ──
+  var _statePollT = null, _lastStateHash = "";
+  function _stateHash(state) {
+    try {
+      return (state.queues || []).map(function (qq) {
+        return (qq || []).map(function (e) {
+          return [e.id, e.nick, e.pos, e.resource, (e.resources || []).join(","),
+                  (e.received || []).join(","), e.recipient, e.privileged, e.not_collected].join("|");
+        }).join(";");
+      }).join("~");
+    } catch (e) { return "e" + (state && state.ts || 0); }
+  }
+  function _pollOnce() {
+    if (document.hidden) return;                          // вкладка не активна — не тратим ресурсы
+    if (document.querySelector(".qs-modal-ov")) return;   // открыт пикер/модал — не мешаем
+    if (_placeMode || _pathMode) return;                  // админ расставляет/рисует путь
+    q("GET", "/queue/state").then(function (st) {
+      if (!st || !st.queues) return;
+      var h = _stateHash(st);
+      if (h !== _lastStateHash) { _lastStateHash = h; render(st); }   // ре-рендер ТОЛЬКО при изменении
+    }).catch(function () {});
+  }
+  function startStatePolling() {
+    if (_statePollT) return;
+    _statePollT = setInterval(_pollOnce, 20000);          // каждые 20 сек
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) _pollOnce();                  // вернулся на вкладку → сразу освежить
+    });
+  }
+
   // ── вход в сцену (вызывается из queue.js после авторизации) ──
   window.QueueScene = {
     enter: function (acc) {
@@ -6620,7 +6654,7 @@
         if (!_meAcc && _role === "officer" && _officerName) {
           _meAcc = { main_nick: _officerName, main_canon: canon(_officerName), reg_nick: _officerName };
         }
-        loadEnv(); refresh(); startLinkPolling();
+        loadEnv(); refresh(); startLinkPolling(); startStatePolling();
         fetchAutoWeather();                                  // реальная погода Москвы (для авто-режима)
         if (!_wPollT) _wPollT = setInterval(fetchAutoWeather, 15 * 60 * 1000);
       });
