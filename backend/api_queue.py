@@ -757,6 +757,21 @@ class PrivClaimIn(BaseModel):
     stacks: int = Field(default=1, ge=1, le=200)          # сколько пачек взять (= столько жетонов)
 
 
+class ReportIn(BaseModel):
+    from_stages: int = Field(ge=0, le=7)   # нижний этап (по нему считается ОСНОВНОЙ отчёт и сдвиг)
+    to_stages: int = Field(ge=0, le=7)     # верхний этап; если > from → добавляется секция «если закроем ещё»
+    commit: bool = False                   # False = превью (не двигать очередь); True = опубликовать + сдвинуть
+    force: bool = False                    # обойти защиту от повторного сдвига в тот же день
+
+
+class CilinDistributeIn(BaseModel):
+    count: int = Field(ge=0, le=200)       # сколько Огненных цилиней выпало на этой неделе
+
+
+class ReturnNicksIn(BaseModel):
+    nicks: str = Field(min_length=1, max_length=4000)   # ники «не забравших» (запятая/перенос строки)
+
+
 class GrantTokenIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)
     count: int = Field(default=1, ge=-50, le=50)          # +N дать / -N снять (для теста админом)
@@ -3008,7 +3023,7 @@ def _priv_claims(conn) -> list[dict]:
     return out
 
 
-def _build_report(conn, stages_override: int | None = None) -> dict:
+def _build_report(conn, stages_override: int | None = None, stages_from: int = 0) -> dict:
     import json
     idx = _people(conn)
     gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
@@ -3043,7 +3058,7 @@ def _build_report(conn, stages_override: int | None = None) -> dict:
     stages_use = _cfg_int(conn, "stages_closed", 0) if stages_override is None else int(stages_override)
     report = distribution.compute(
         {"queues": queues}, valor_map,
-        {"stages": stages_use,
+        {"stages": stages_use, "stages_from": stages_from,
          "pet_count": _cfg_int(conn, "pet_count", 0),
          "shooters": shooters, "claims": claims, "main_map": main_map})
     report["has_valor"] = bool(valor_map)
@@ -3145,6 +3160,231 @@ async def report_range_bot(payload: ReportRangeIn, _=Depends(require_bot_token))
         ch = await _send_report_to_chats(report, force_dm=True)
         sent.append({"stages": s, "channels": ch})
     return {"ok": True, "sent": sent}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# НОВЫЙ поток раздачи наград: ручной отчёт по диапазону этапов + цилинь/возврат
+# отдельными кнопками (панель админа справа). Заменяет связку /admin/advance.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _send_text_to_chats(text: str, force_dm: bool = False) -> dict:
+    """Отправить ГОТОВЫЙ текст: в пробном режиме (или force_dm) — в личку @pw_spamer_bot,
+    иначе — в офицерский TG + VK. Возвращает статус по каналам."""
+    channels: dict[str, str] = {}
+    if force_dm or _is_test_mode():
+        try:
+            if not (settings.test_bot_token and settings.test_chat_id):
+                raise RuntimeError("test_bot_not_configured")
+            await bot_tg.send_text(text, token=settings.test_bot_token, chat_id=settings.test_chat_id)
+            channels["test"] = "ok"
+        except Exception as exc:
+            channels["test"] = "error: %s" % exc
+        return channels
+    try:
+        await bot_tg.send_text(text); channels["tg"] = "ok"
+    except Exception as exc:
+        channels["tg"] = "error: %s" % exc
+    try:
+        await asyncio.to_thread(bot_vk.send_text, text); channels["vk"] = "ok"
+    except Exception as exc:
+        channels["vk"] = "error: %s" % exc
+    return channels
+
+
+def _repack_queue(conn, q: int) -> None:
+    """Пересчитать pos очереди по текущему порядку (после удаления строк)."""
+    rows = conn.execute("SELECT id FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
+    for i, r in enumerate(rows, 1):
+        conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(i), r["id"]))
+
+
+def _shift_queues(conn, report: dict) -> dict:
+    """Сдвиг очередей после отчёта. Получившие (status ok): с 🔁/планом → в конец, разово →
+    выходят; «не забрал» и не получившие → остаются впереди. Цилинь-ждуны в report НЕ попадают
+    (они в pet_queue) → тут автоматически остаются на месте. Пишет снимок queue_served_last
+    (для возврата «не забрал»)."""
+    import json as _json
+    served_by_q = {}
+    for Q in report["queues"]:
+        served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"] if r["status"] == "ok" and r["id"] is not None}
+    requeued = left_after = stayed_uncollected = 0
+    conn.execute("DELETE FROM queue_served_last")
+    for q in QUEUES:
+        rows = conn.execute(
+            "SELECT id, pos, main_canon, nick, cls, resource, recipient, auto_repeat, auto_plan, not_collected"
+            " FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
+        served = served_by_q.get(q, set())
+        keep_ids = []; requeue_ids = []
+        for r in rows:
+            if r["id"] not in served:
+                keep_ids.append(r["id"])
+            elif r["not_collected"]:
+                keep_ids.append(r["id"])
+                conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
+                stayed_uncollected += 1
+            else:
+                conn.execute(
+                    "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
+                    " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
+                     r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "report", _now()))
+                try:
+                    plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
+                except (ValueError, TypeError):
+                    plan = []
+                if plan:
+                    conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
+                                 (plan[0], _json.dumps(plan[1:]), r["id"]))
+                    requeue_ids.append(r["id"]); requeued += 1
+                elif r["auto_repeat"]:
+                    requeue_ids.append(r["id"]); requeued += 1
+                else:
+                    conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+                    left_after += 1
+        pos = 1
+        for i in keep_ids + requeue_ids:
+            conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
+            pos += 1
+    return {"requeued": requeued, "left_removed": left_after, "stayed_uncollected": stayed_uncollected}
+
+
+@router.post("/admin/report")
+async def admin_report(payload: ReportIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Ручной отчёт по диапазону этапов КХ.
+      • from == to → отчёт ТОЛЬКО за этот этап (без дописки про следующий);
+      • from <  to → основной отчёт за FROM + секция «если закроем ещё этап» (дельта до TO).
+    Огненный цилинь — отдельным списком (в раздачу не идёт). Грамота и остаток — не в отчёте.
+    commit=False → превью (очередь не трогаем). commit=True → опубликовать текст в офиц.чаты
+    И СДВИНУТЬ основные очереди (получившие уходят/в конец; цилинь-ждуны остаются — их двигает
+    отдельная кнопка). Защита от повторного сдвига в тот же день (обойти force=True)."""
+    import json as _json
+    lo = min(payload.from_stages, payload.to_stages)
+    hi = max(payload.from_stages, payload.to_stages)
+    with db.connection() as conn:
+        main = _build_report(conn, stages_override=lo)
+        delta = _build_report(conn, stages_override=hi, stages_from=lo) if hi > lo else None
+    text = distribution.format_report_compact(main, delta, _now_msk_str())
+    result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text,
+              "groups": len(main.get("groups") or []),
+              "pet_queue": [{"nick": p["receiver"], "status": p["status"]}
+                            for p in (main.get("pet_queue") or [])]}
+    if not payload.commit:
+        result["preview"] = True
+        return result
+    if not payload.force:
+        with db.connection() as conn:
+            last = conn.execute(
+                "SELECT at FROM queue_log WHERE kind='report_commit' ORDER BY id DESC LIMIT 1").fetchone()
+        if last and last["at"]:
+            try:
+                dt = datetime.fromisoformat(last["at"])
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() < 6 * 3600:
+                    raise HTTPException(status.HTTP_409_CONFLICT, "already_shifted_recently")
+            except (ValueError, TypeError):
+                pass
+    channels = await _send_text_to_chats(text)
+    with db.connection() as conn:
+        stats = _shift_queues(conn, main)
+        n_groups = len(main.get("groups") or [])
+        n_people = sum(len(g.get("people") or []) for g in (main.get("groups") or []))
+        conn.execute(
+            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor)"
+            " VALUES (?,?,?,?,?,?)",
+            (_now(), lo, _json.dumps(main, ensure_ascii=False),
+             _json.dumps(channels, ensure_ascii=False),
+             "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi), _actor_name(actor)))
+        conn.execute("DELETE FROM queue_entries WHERE privileged=1")
+        conn.execute("DELETE FROM queue_priv_claims")
+        _save_low_valor_notices(conn, main)
+        _log(conn, "report_commit", actor=_actor_name(actor), request=request,
+             detail="этапы %d-%d · вышли %d, в конец %d, не забрал(остались) %d · %s"
+                    % (lo, hi, stats["left_removed"], stats["requeued"], stats["stayed_uncollected"], channels))
+    result.update({"committed": True, "channels": channels, **stats})
+    return result
+
+
+@router.post("/admin/cilin-distribute")
+def cilin_distribute(payload: CilinDistributeIn, request: Request,
+                     actor: dict = Depends(require_admin)) -> dict:
+    """Раздать выпавших Огненных цилиней. count = сколько выпало → первым `count` в очереди
+    цилиня (q2, выбрали mount-cilin, доблесть ≥ порога, по порядку) выдаём питомца: они выходят
+    из очереди (пишутся в снимок «не забрал» для возможного возврата), очередь сдвигается.
+    count=0 → никто не двигается, все ждут (в т.ч. на следующей неделе)."""
+    with db.connection() as conn:
+        report = _build_report(conn)
+        pet = report.get("pet_queue") or []
+        elig = [p for p in pet if p.get("status") == "pet" and p.get("id")]
+        n = min(payload.count, len(elig))
+        given = []
+        for p in elig[:n]:
+            row = conn.execute("SELECT * FROM queue_entries WHERE id=?", (p["id"],)).fetchone()
+            if not row:
+                continue
+            conn.execute(
+                "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
+                " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (row["queue"], row["pos"], row["main_canon"], row["nick"], row["cls"],
+                 row["resource"], row["recipient"], row["auto_repeat"], row["auto_plan"] or "", "cilin", _now()))
+            conn.execute("DELETE FROM queue_entries WHERE id=?", (row["id"],))
+            given.append(p["receiver"])
+        _repack_queue(conn, 2)
+        _log(conn, "cilin_distribute", actor=_actor_name(actor), request=request,
+             detail="выпало %d · выдано %d · ждут ещё %d" % (payload.count, n, len(elig) - n))
+    return {"ok": True, "dropped": payload.count, "given": given, "given_count": n,
+            "waiting": [p["receiver"] for p in elig[n:]]}
+
+
+def _restore_served_row(conn, s, actor_name: str, request) -> None:
+    """Вернуть одного из снимка queue_served_last на прежнюю позицию за его ресурс."""
+    q, target = s["queue"], s["orig_pos"]
+    conn.execute("UPDATE queue_entries SET pos = pos + 1 WHERE queue=? AND pos >= ?", (q, target))
+    existing = conn.execute(
+        "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
+        (q, s["main_canon"])).fetchone()
+    if existing:
+        conn.execute("UPDATE queue_entries SET pos=?, not_collected=0 WHERE id=?", (target, existing["id"]))
+    else:
+        conn.execute(
+            "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
+            " auto_repeat, auto_plan, added_by, added_at, not_collected)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
+            (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
+             s["auto_repeat"], s["auto_plan"], "restore", _now()))
+    conn.execute("DELETE FROM queue_served_last WHERE id=?", (s["id"],))
+    _log(conn, "restore_uncollected", actor=actor_name, nick=s["nick"], queue=q,
+         request=request, detail="возвращён (не забрал) — на прежнее место за свой ресурс")
+
+
+@router.post("/admin/return-nicks")
+def return_nicks(payload: ReturnNicksIn, request: Request,
+                 actor: dict = Depends(require_admin)) -> dict:
+    """«Не забрал» по никам (перемотка назад): ники через запятую/перенос → вернуть каждого из
+    снимка queue_served_last на ПРЕЖНЮЮ позицию за ЕГО ресурс, в ту очередь, где он не получил.
+    Работает и после 00:00. Снимок пишется отчётом и раздачей цилиня."""
+    import re as _re
+    raw = [x.strip() for x in _re.split(r"[\n,;]+", payload.nicks) if x.strip()]
+    returned = []; not_found = []
+    with db.connection() as conn:
+        served = conn.execute("SELECT * FROM queue_served_last").fetchall()
+        for nk in raw:
+            c = db._valor_canon(nk)
+            low = nk.strip().lower()
+            match = None
+            for s in served:
+                if db._valor_canon(s["nick"] or "") == c or (s["nick"] or "").strip().lower() == low:
+                    match = s
+                    break
+            if not match:
+                not_found.append(nk)
+                continue
+            _restore_served_row(conn, match, _actor_name(actor), request)
+            served = [x for x in served if x["id"] != match["id"]]
+            returned.append(match["nick"])
+    return {"ok": True, "returned": returned, "not_found": not_found}
 
 
 @router.get("/due")

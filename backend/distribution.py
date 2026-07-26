@@ -387,3 +387,52 @@ def _person_label(p: dict) -> str:
         if not p.get("ok", True):
             s += " ⚠"
     return s
+
+
+def format_report_compact(main: dict, delta: dict | None = None, when_msk: str = "") -> str:
+    """Короткий текст под картинкой-рендером для офиц.каналов. Огненный цилинь — отдельным
+    списком; БЕЗ секции «остаток» (её раздаёт мастер вручную); дельта «если закроем ещё
+    этап» — только если задана (диапазон)."""
+    L = []
+    L.append("📋 РАСПРЕДЕЛЕНИЕ РЕСУРСОВ КХ")
+    meta = ("🗓 %s · " % when_msk) if when_msk else ""
+    L.append(meta + "закрыто этапов: %d" % main.get("stages", 0))
+    tn = main.get("top3_named") or []
+    if tn:
+        L.append("★ ТОП-3: " + " · ".join("%s(%d)" % (t["nick"], t["valor"]) for t in tn))
+    pc = main.get("priv_claims") or []
+    if pc:
+        L.append("⚡ вне очереди (топ-3, уже вычтено): "
+                 + " · ".join("%s—%s×%d" % (c["nick"], c["name"], c["amount"]) for c in pc))
+    groups = main.get("groups") or []
+    L.append(_BAR)
+    if not groups:
+        L.append("📦 некому раздавать")
+    for gi, g in enumerate(groups, 1):
+        tag = " · 🎯 проводники" if g.get("provodnik") else ""
+        L.append("📦 Группа %d%s · %d чел" % (gi, tag, len(g["people"])))
+        L.append("   " + ", ".join(_person_label(p) for p in g["people"]))
+        res = g["resources"]
+        for i, info in enumerate(res):
+            branch = "┗" if i == len(res) - 1 else "┣"
+            L.append("   %s %s — %d шт" % (branch, info["name"], info["total"]))
+    # Огненный цилинь — отдельный список (мастер раздаёт по мере выпадения)
+    pet = main.get("pet_queue") or []
+    L.append(_BAR)
+    if pet:
+        elig = [p for p in pet if p.get("status") == "pet"]
+        low = [p for p in pet if p.get("status") == "pet_low"]
+        L.append("🐲 ОГНЕННЫЙ ЦИЛИНЬ — очередь (раздаётся по мере выпадения):")
+        L.append("   " + (", ".join(_person_label(p) for p in elig) or "—"))
+        if low:
+            L.append("   ⏳ ждут доблесть: " + ", ".join(p["receiver"] for p in low))
+    else:
+        L.append("🐲 Огненный цилинь: очередь пуста")
+    # дельта: доп. раздача, если закроют ещё этап
+    if delta and (delta.get("groups") or []):
+        L.append(_BAR)
+        L.append("➕ ЕСЛИ ЗАКРОЕМ %d-й ЭТАП — дополнительно:" % delta.get("stages", 0))
+        for g in delta["groups"]:
+            L.append("• %d чел: %s" % (len(g["people"]), ", ".join(_person_label(p) for p in g["people"])))
+            L.append("   " + " · ".join("%s ×%d" % (info["name"], info["total"]) for info in g["resources"]))
+    return "\n".join(L)
