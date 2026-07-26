@@ -3310,13 +3310,17 @@ def _shift_queues(conn, report: dict) -> dict:
                 else:
                     conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
                     left_after += 1
-        pos = 1
-        for i in keep_ids:                          # остались впереди (не получили/не забрали) — received НЕ трогаем
-            conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
-            pos += 1
-        for i in requeue_ids:                       # авто-повтор → в конец, НОВЫЙ цикл: сброс received
-            conn.execute("UPDATE queue_entries SET pos=?, received='' WHERE id=?", (float(pos), i))
-            pos += 1
+        # СТАБИЛЬНЫЕ ПОЗИЦИИ: keep_ids ОСТАЮТСЯ на своих pos — НЕ перепаковываем. Ушедшие
+        # оставляют пробелы в нумерации — это нормально (порядок только по pos), зато возврат
+        # «не забрал» всегда попадает ТОЧНО на прежнее место без «съезда». Авто-повтор → в КОНЕЦ
+        # (max(pos)+1), received сброшен (новый цикл).
+        if requeue_ids:
+            base = (conn.execute("SELECT COALESCE(MAX(pos), 0) m FROM queue_entries WHERE queue=?",
+                                 (q,)).fetchone()["m"]) or 0
+            p = float(base)
+            for i in requeue_ids:
+                p += 1.0
+                conn.execute("UPDATE queue_entries SET pos=?, received='' WHERE id=?", (p, i))
     return {"requeued": requeued, "left_removed": left_after, "stayed_uncollected": stayed_uncollected}
 
 
@@ -3424,7 +3428,7 @@ def cilin_distribute(payload: CilinDistributeIn, request: Request,
                  row["resource"], row["recipient"], row["auto_repeat"], row["auto_plan"] or "", "cilin", _now()))
             conn.execute("DELETE FROM queue_entries WHERE id=?", (row["id"],))
             given.append(p["receiver"])
-        _repack_queue(conn, 2)
+        # НЕ перепаковываем q2 — остальные сохраняют свои позиции (стабильность для возврата).
         _log(conn, "cilin_distribute", actor=_actor_name(actor), request=request,
              detail="выпало %d · выдано %d · ждут ещё %d" % (payload.count, n, len(elig) - n))
     return {"ok": True, "dropped": payload.count, "given": given, "given_count": n,
@@ -3432,9 +3436,12 @@ def cilin_distribute(payload: CilinDistributeIn, request: Request,
 
 
 def _restore_served_row(conn, s, actor_name: str, request) -> None:
-    """Вернуть одного из снимка queue_served_last на прежнюю позицию за его ресурс."""
-    q, target = s["queue"], s["orig_pos"]
-    conn.execute("UPDATE queue_entries SET pos = pos + 1 WHERE queue=? AND pos >= ?", (q, target))
+    """Вернуть одного из снимка queue_served_last на прежнюю позицию за его ресурс.
+    ДРОБНАЯ позиция (orig_pos − 0.5) БЕЗ каскадного сдвига остальных: человек встаёт ровно
+    перед тем, кто сейчас на его прежнем месте, а чужие pos НЕ трогаются. Так возврат любого
+    числа людей стабилен и не «съезжает» (каскад pos+1 путал порядок при нескольких возвратах)."""
+    q = s["queue"]
+    target = float(s["orig_pos"]) - 0.5
     existing = conn.execute(
         "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
         (q, s["main_canon"])).fetchone()
@@ -3448,9 +3455,10 @@ def _restore_served_row(conn, s, actor_name: str, request) -> None:
             (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
              s["auto_repeat"], s["auto_plan"], "restore", _now()))
     conn.execute("DELETE FROM queue_served_last WHERE id=?", (s["id"],))
-    # ПЕРЕМОТКА НАЗАД: раз человека вернули в очередь — сбрасываем маркер недельного сдвига,
-    # чтобы следующая публикация снова СДВИНУЛА очередь (а не считала «уже сдвигали сегодня»).
-    _cfg_set(conn, "report_shift_week", "")
+    # ВАЖНО: возврат «не забрал» НЕ сбрасывает маркер недельного сдвига. Сдвиг очереди —
+    # РОВНО ОДИН раз за неделю; возвращённые ждут СЛЕДУЮЩЕГО цикла. Иначе повторное
+    # «Опубликовать» после возврата снова двигало бы очередь → интерливинг и путаница.
+    # Принудительный пересдвиг в ту же неделю (редкий ре-ду) — только явным force.
     _log(conn, "restore_uncollected", actor=actor_name, nick=s["nick"], queue=q,
          request=request, detail="возвращён (не забрал) — на прежнее место за свой ресурс")
 
@@ -3469,17 +3477,19 @@ def return_nicks(payload: ReturnNicksIn, request: Request,
         for nk in raw:
             c = db._valor_canon(nk)
             low = nk.strip().lower()
-            match = None
-            for s in served:
-                if db._valor_canon(s["nick"] or "") == c or (s["nick"] or "").strip().lower() == low:
-                    match = s
-                    break
-            if not match:
+            # ВСЕ записи этого человека в снимке (по ВСЕМ очередям) — возвращаем сразу везде,
+            # а не по одной. Раньше брали только первую → человек в нескольких очередях
+            # оставался частично невозвращённым.
+            matches = [s for s in served
+                       if db._valor_canon(s["nick"] or "") == c or (s["nick"] or "").strip().lower() == low]
+            if not matches:
                 not_found.append(nk)
                 continue
-            _restore_served_row(conn, match, _actor_name(actor), request)
-            served = [x for x in served if x["id"] != match["id"]]
-            returned.append(match["nick"])
+            for s in matches:
+                _restore_served_row(conn, s, _actor_name(actor), request)
+            done = {s["id"] for s in matches}
+            served = [x for x in served if x["id"] not in done]
+            returned.append("%s (очередей: %d)" % (matches[0]["nick"], len(matches)))
     return {"ok": True, "returned": returned, "not_found": not_found}
 
 
@@ -3534,32 +3544,13 @@ def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
 @router.post("/restore-uncollected")
 def restore_uncollected(payload: RestoreUncollectedIn, request: Request,
                         actor: dict = Depends(require_officer_or_admin)) -> dict:
-    """Вернуть в очередь того, кто НЕ забрал ресурс, но уже вылетел при сдвиге (отметили
-    после вс 00:00). Ставит его на ПРЕЖНЮЮ позицию (orig_pos), раздвигая остальных."""
+    """Вернуть в очередь того, кто НЕ забрал ресурс, но уже вылетел при сдвиге. Ставит на
+    прежнюю позицию (дробный orig_pos−0.5, без сдвига остальных) через единый _restore_served_row."""
     with db.connection() as conn:
         s = conn.execute("SELECT * FROM queue_served_last WHERE id=?", (payload.served_id,)).fetchone()
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
-        q, target = s["queue"], s["orig_pos"]
-        # раздвигаем очередь: всем с pos >= orig_pos сдвигаем на +1, освобождая место
-        conn.execute("UPDATE queue_entries SET pos = pos + 1 WHERE queue=? AND pos >= ?", (q, target))
-        existing = conn.execute(
-            "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
-            (q, s["main_canon"])).fetchone()
-        if existing:                                  # уже в очереди (напр. авто-повтор в конце) → на место
-            conn.execute("UPDATE queue_entries SET pos=?, not_collected=0 WHERE id=?", (target, existing["id"]))
-        else:                                         # вылетел → вставляем заново на прежнее место
-            conn.execute(
-                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
-                " auto_repeat, auto_plan, added_by, added_at, not_collected)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
-                (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
-                 s["auto_repeat"], s["auto_plan"], "restore", _now()))
-        conn.execute("DELETE FROM queue_served_last WHERE id=?", (payload.served_id,))
-        # перемотка назад → сбрасываем маркер, чтобы следующая публикация снова сдвинула очередь
-        _cfg_set(conn, "report_shift_week", "")
-        _log(conn, "restore_uncollected", actor=_actor_name(actor), nick=s["nick"], queue=q,
-             request=request, detail="возвращён в очередь (не забрал ресурс — отмечен после сдвига)")
+        _restore_served_row(conn, s, _actor_name(actor), request)
     return {"ok": True}
 
 

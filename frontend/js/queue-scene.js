@@ -6380,9 +6380,23 @@
           .then(function (d) {
             wrap.querySelector("#qd-rep-out").textContent = d.text || ""; showLow(d);
             var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
-            if (d.dry_run) status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true);
-            else if (d.resent) status("✓ Повторная публикация в офиц.каналы (" + rep + ") — очередь НЕ сдвигалась", true);
-            else status("✓ Опубликовано в офиц.каналы (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
+            if (d.dry_run) { status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true); refresh(); return; }
+            if (d.resent) {
+              status("✓ Повторная публикация (" + rep + ") — очередь НЕ сдвигалась (сдвиг раз в неделю)", true);
+              refresh();
+              // запасной выход: принудительный пересдвиг (редкий ре-ду распределения)
+              if (confirm("Отчёт переотправлен. На этой неделе очередь УЖЕ сдвигали.\n\nПРИНУДИТЕЛЬНО сдвинуть заново? Обычно НЕ нужно — только если переделываешь распределение с нуля.")) {
+                status("Принудительный пересдвиг…");
+                q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true, force: true })
+                  .then(function (d2) {
+                    var c2 = d2.channels || {}, rep2 = c2.test ? ("личка:" + c2.test) : ("TG:" + (c2.tg || "?") + " VK:" + (c2.vk || "?"));
+                    status("✓ Пересдвинуто (" + rep2 + ") · вышли: " + (d2.left_removed || 0) + " · в конец: " + (d2.requeued || 0), true);
+                    refresh();
+                  }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+              }
+              return;
+            }
+            status("✓ Опубликовано в офиц.каналы (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
               " · не забрали: " + (d.stayed_uncollected || 0), true);
             refresh();
           });
