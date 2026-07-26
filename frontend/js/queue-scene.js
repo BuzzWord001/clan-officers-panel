@@ -2733,7 +2733,10 @@
         var gpos = placedPos("glow:" + b.q, lkpos.x, lkpos.y - 13);
         var glow = document.createElement("div");
         glow.className = "qs-glow";
-        glow.style.cssText = "left:" + gpos.x + "%;top:" + gpos.y + "%;--gc:" + (b.glow || b.accent);
+        // z-index:1 — свечение ВСЕГДА позади всех моделей/лавок (фоновый ореол), не перекрывает их.
+        // fixedz — чтобы makeDraggable при перетаскивании НЕ поднимал ему z (иначе накрывало модели).
+        glow.style.cssText = "left:" + gpos.x + "%;top:" + gpos.y + "%;z-index:1;--gc:" + (b.glow || b.accent);
+        glow.dataset.fixedz = "1";
         if (_placeMode) makeDraggable(glow, "glow:" + b.q);
         stage.appendChild(glow);
         if (_isAdmin && _placeMode) stage.appendChild(admTag(gpos, "Свечение · " + b.title));
