@@ -6164,10 +6164,6 @@
         '<datalist id="qd-dl">' + dl + '</datalist>' +
         '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
       "</div>" +
-      '<label class="q-admin-row" style="gap:7px;align-items:center;cursor:pointer;font-size:12px;color:#f0dcb4">' +
-        '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] !== "0" ? " checked" : "") + '> ' +
-        '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерский чат ' +
-        '<span style="color:#8a795a">(вкл по умолчанию до запуска)</span></label>' +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-report" class="sec" title="Показать расчёт на странице (не публикует)">📋 Показать расчёт (превью на странице)</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
@@ -6186,6 +6182,11 @@
           '<button class="sec" id="qd-rep-preview">👁 Превью (мне в личку)</button>' +
           '<button id="qd-rep-commit" style="font-weight:700">📤 Опубликовать и сдвинуть очередь</button>' +
         "</div>" +
+        '<label class="q-admin-row" style="gap:7px;align-items:center;cursor:pointer;font-size:12px;color:#f0dcb4;' +
+          'margin:2px 0 2px;padding:6px 8px;border:1px solid rgba(224,162,74,.3);border-radius:8px;background:rgba(224,162,74,.05)">' +
+          '<input type="checkbox" id="qd-testmode"' + (CONFIG["queue_test_send"] !== "0" ? " checked" : "") + '> ' +
+          '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерские каналы и НЕ двигать очередь ' +
+          '<span style="color:#8a795a">(сними для боевой публикации)</span></label>' +
         '<div id="qd-rep-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>' +
         '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
           'padding:7px 9px;background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px;display:none"></div>' +
