@@ -116,17 +116,8 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     pet_queue = []                                # очередь за Огненным цилинём (q2, выбрали mount-cilin, хватает доблести)
     low_valor = []                                # кому НЕ хватило доблести за свой ресурс (остаются в очереди)
 
-    # 0) внеочередные захваты топ-3 (суперспособность) — вычитаем из пула СРАЗУ
-    claims = cfg.get("claims") or []
-    claim_rows = []
-    for c in claims:
-        res = c.get("resource"); amt = int(c.get("amount") or 0)
-        if res in pool and amt > 0:
-            pool[res] = max(0, pool[res] - amt)
-            claim_rows.append({"nick": c.get("nick", ""), "resource": res,
-                               "name": res_name(res), "amount": amt})
-
-    # 2) проводники «сверху» — по 10% камней доблести и метеоритов каждому
+    # 1) ПРОВОДНИКИ «сверху» — по 10% камней доблести и метеоритов КАЖДОМУ, ПЕРВЫМ делом
+    #    (до жетонов и до основной раздачи).
     shooter_rows = []
     shooter_totals = {r: 0 for r in SHOOTER_RES}
     for sh in shooters:
@@ -138,6 +129,19 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         shooter_rows.append({"nick": sh, "got": got})
     for res in SHOOTER_RES:                       # вычитаем из общего пула
         pool[res] = max(0, pool[res] - shooter_totals[res])
+
+    # 2) ВНЕОЧЕРЕДНЫЕ ЗАХВАТЫ ЖЕТОНОМ ТОП-3 (суперспособность) — СРАЗУ ПОСЛЕ проводников, ещё
+    #    ДО основной раздачи. Ресурсы даются ДОПОМ (вычитаются из пула); обычная моделька игрока
+    #    ОСТАЁТСЯ в очереди и получает свою обычную раздачу отдельно. Захват возможен ТОЛЬКО по
+    #    применённому жетону (privileged/claims) — само по себе место в ТОП-3 ничего не даёт.
+    claims = cfg.get("claims") or []
+    claim_rows = []
+    for c in claims:
+        res = c.get("resource"); amt = int(c.get("amount") or 0)
+        if res in pool and amt > 0:
+            pool[res] = max(0, pool[res] - amt)
+            claim_rows.append({"nick": c.get("nick", ""), "resource": res,
+                               "name": res_name(res), "amount": amt})
 
     # 3) топ-3 по доблести (привилегия — обслуживаются первыми в своей очереди).
     #    ЧЕЛОВЕК И ЕГО ТВИНЫ = ОДНА персона: сворачиваем валор по МЭЙН-аккаунту (main_canon),
@@ -173,10 +177,16 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     queues_out = []
     for q in (0, 1, 2, 3):
         raw = list((state.get("queues") or [[], [], [], []])[q])
-        # защита: один игрок в очереди учитывается ОДИН раз (в проде join это гарантирует)
+        # защита: один игрок в очереди учитывается ОДИН раз (в проде join это гарантирует).
+        # НО привилегированную модельку (жетон ТОП-3) НЕ дедупим с обычной — иначе обычная
+        # моделька игрока выпадет из очереди. По жетону ресурсы даются ДОПОМ, а обычная
+        # моделька ОСТАЁТСЯ в очереди и получает свою обычную раздачу.
         seen = set()
         dedup = []
         for e in raw:
+            if e.get("privileged"):
+                dedup.append(e)
+                continue
             mc = e.get("main_canon") or e.get("canon_nick") or id(e)
             if mc in seen:
                 continue
