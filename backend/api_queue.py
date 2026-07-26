@@ -2956,7 +2956,9 @@ def grant_top3_valor_tokens(conn, week: str | None = None,
     # доблесть за неделю: canon -> макс valor, canon -> ник
     vmap, nmap = {}, {}
     for r in conn.execute(
-            "SELECT nick_canon, nick, valor FROM valor_members WHERE snapshot_id = ?", (snap["id"],)):
+            "SELECT nick_canon, nick, valor FROM valor_members WHERE snapshot_id = ? "
+            # порядок скринов (id) → детерминированный тай-брейк при равной доблести
+            "ORDER BY COALESCE(sort_key, id), id", (snap["id"],)):
         c, v = r["nick_canon"], r["valor"]
         if c and v is not None and v > vmap.get(c, -1):
             vmap[c] = v; nmap[c] = r["nick"]

@@ -6971,9 +6971,13 @@ def valor_get_current(with_reg_notes: bool = False,
             pass
 
         rows = conn.execute(
+            # Тай-брейк при РАВНОЙ доблести — порядок скринов (COALESCE(sort_key,id),
+            # id), а НЕ nick по алфавиту. Иначе тёзки по доблести (напр. ~Шлюпка~ и
+            # N1GHTM4R3 по 410) вставали по алфавиту («N» < «~»), и место/кубки/топ-20
+            # расходились с разделом «Скрины», где порядок ровно как в игре.
             """SELECT * FROM valor_members
                WHERE snapshot_id = ?
-               ORDER BY valor DESC NULLS LAST, nick""",
+               ORDER BY valor DESC NULLS LAST, COALESCE(sort_key, id), id""",
             (cur["id"],),
         ).fetchall()
         # ── Кубки за место в ТОПе по неделям (накопительно за ВСЕ недели) ──
@@ -6988,7 +6992,8 @@ def valor_get_current(with_reg_notes: bool = False,
                 "SELECT vs.week AS wk, vm.nick_canon AS cn FROM valor_members vm "
                 "JOIN valor_snapshots vs ON vm.snapshot_id = vs.id "
                 "WHERE vm.valor IS NOT NULL "
-                "ORDER BY vs.week, vm.valor DESC, vm.nick"):
+                # Тай-брейк при равной доблести — порядок скринов (id), не nick.
+                "ORDER BY vs.week, vm.valor DESC, COALESCE(vm.sort_key, vm.id), vm.id"):
             _cw.setdefault(cr["wk"], []).append(cr["cn"])
         for _wk in sorted(_cw):
             _seen = set(); _rank = 0
