@@ -897,58 +897,41 @@ _OFFICER_CACHE = {"at": 0.0, "set": frozenset()}
 _OFFICER_AUTO_CACHE = {"at": 0.0, "set": frozenset()}
 
 
+# Офицерские РАНГИ в клане (доблесть). Всё, что НЕ в этом наборе (Рядовой, рекрут и т.п.) —
+# обычный игрок. Источник истины для авто-офицеров = ранг в последнем снимке доблести.
+_OFFICER_RANKS = frozenset({
+    "лейтенант", "капитан", "майор", "подполковник", "полковник", "генерал",
+    "мастер", "маршал", "глава", "заместитель", "офицер", "командир",
+})
+
+
 def _officer_auto_canons(conn) -> frozenset:
-    """АВТО-определение офицеров (БЕЗ ручных ролей):
-      1) тег 'officer' в valor_tags (роль на сайте);
-      2) участники ОФИЦЕРСКОГО чата TG/VK (chat_messages, chat_group='officers') —
-         точным каноном, иначе фаззи-похожестью (ник в TG/VK может быть написан иначе).
-    Кэш 5 мин (фаззи-цикл дорогой)."""
+    """АВТО-определение офицеров ПО РАНГУ в доблести (список офицеров виден в таблице
+    Доблести): все, у кого в ПОСЛЕДНЕМ снимке офицерский ранг (Капитан/Майор/Мастер/Маршал
+    и т.п. — см. _OFFICER_RANKS). Плюс ручной тег 'officer' в valor_tags. БОЛЬШЕ НЕ по
+    офицерскому чату/фаззи (давало и ложные срабатывания, и пропуски). Кэш 5 мин."""
     import time
     now = time.time()
     if _OFFICER_AUTO_CACHE["at"] > 0 and now - _OFFICER_AUTO_CACHE["at"] < 300:
         return _OFFICER_AUTO_CACHE["set"]
     officers = set()
+    # 1) ручной тег officer (пометка на сайте) — приоритетно
     try:
         for r in conn.execute("SELECT nick_canon FROM valor_tags WHERE tag='officer'"):
             if r["nick_canon"]:
                 officers.add(r["nick_canon"])
     except Exception:
         pass
-    names = set()
+    # 2) офицерский РАНГ в последнем снимке доблести
     try:
-        for r in conn.execute(
-            "SELECT DISTINCT user_display, user_username FROM chat_messages WHERE chat_group='officers'"):
-            for nm in (r["user_display"], r["user_username"]):
-                if nm and nm.strip():
-                    names.add(nm.strip())
+        snap = conn.execute("SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+        if snap:
+            for r in conn.execute(
+                    "SELECT nick_canon, rank FROM valor_members WHERE snapshot_id=?", (snap["id"],)):
+                if r["nick_canon"] and (r["rank"] or "").strip().lower() in _OFFICER_RANKS:
+                    officers.add(r["nick_canon"])
     except Exception:
         pass
-    if names:
-        idx = _people(conn)
-        roster = list(idx.keys())
-        for nm in names:
-            cn = db._valor_canon(nm)
-            if not cn:
-                continue
-            if cn in idx:                       # точное совпадение канона
-                officers.add(cn)
-                continue
-            # Фаззи — ТОЛЬКО для достаточно длинных ников и с ЖЁСТКИМИ условиями,
-            # чтобы случайно не пометить офицером обычного игрока (это заблокировало бы
-            # ему вход). Офицеры и так покрыты тегом officer + точным совпадением.
-            if len(cn) < 6:
-                continue
-            best_c, best_r, second = None, 0.0, 0.0
-            for c in roster:
-                if abs(len(c) - len(cn)) > 2:   # сильно разной длины — точно не он
-                    continue
-                sim = db._valor_similar(cn, c)
-                if sim > best_r:
-                    second = best_r; best_r, best_c = sim, c
-                elif sim > second:
-                    second = sim
-            if best_c and best_r >= 0.93 and (best_r - second) >= 0.06:  # очень похоже И явный отрыв
-                officers.add(best_c)
     res = frozenset(officers)
     _OFFICER_AUTO_CACHE["at"] = now
     _OFFICER_AUTO_CACHE["set"] = res
