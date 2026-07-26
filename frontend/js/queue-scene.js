@@ -312,8 +312,8 @@
       merchant: { x: 88, y: 77 },
       path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] },
     // Мифические (SS) — высший камень божества. Свечение белое (небесное) под лавку.
-    // mirror: модели смотрят в другую сторону. hideMerchant: торговка уже нарисована в лавке.
-    { q: 3, title: "Мифические (SS)", accent: "#f2ecff", glow: "#ffffff", mirror: true, hideMerchant: true,
+    // mirror: модели смотрят в другую сторону. Торговец на сцене — отдельная моделька (можно поставить у лавки).
+    { q: 3, title: "Мифические (SS)", accent: "#f2ecff", glow: "#ffffff", mirror: true,
       bx: 30, by: 44, ui: { x: 29, y: 58 }, item: { x: 40, y: 44 }, merchant: { x: 27, y: 42 },
       path: [{ x: 22, y: 66 }, { x: 26, y: 58 }, { x: 29, y: 50 }, { x: 32, y: 44 }] }
   ];
@@ -2763,7 +2763,7 @@
       var merch = document.createElement("img");
       merch.className = "qs-merchant"; merch.alt = ""; merch.decoding = "async"; merch.loading = "lazy";
       merch.dataset.mkey = mkey;
-      merch.src = "assets/queue/scene/merchant-" + b.q + ".webp";
+      merch.src = "assets/queue/scene/merchant-" + b.q + ".webp?v=3";
       merch.style.cssText = "left:" + mp.x.toFixed(2) + "%;top:" + mp.y.toFixed(2) +
         "%;--qs-mscale:" + ((+mset.scale) || 1) + ";z-index:" + zOf("merchant:" + b.q, mp.y) +
         ";transform:translate(-50%,-100%) " + transformStr(mset) + ";";
@@ -3799,7 +3799,7 @@
       merchBox.innerHTML =
         '<details class="qs-merch-det"><summary>' +
           '<div class="qs-merch-npc">' +
-            '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp?v=2" alt="">' +
+            '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp?v=3" alt="">' +
             '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
           '<div class="qs-merch-sumline">📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
             (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</div>" +
