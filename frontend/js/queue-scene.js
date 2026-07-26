@@ -278,6 +278,7 @@
     { key: "scene/merchant-0.png", label: "Торговец: обычные" },
     { key: "scene/merchant-1.png", label: "Торговец: редкие" },
     { key: "scene/merchant-2.png", label: "Торговец: легендарные" },
+    { key: "scene/merchant-3.png", label: "Торговец: мифические" },
     { key: "class/_placeholder.png", label: "Заглушка «нет модели»" }
   ];
   var MODEL_SETTINGS = {};   // key -> {flip, rotate}
@@ -2875,13 +2876,12 @@
       cntEl.className = "qs-board qs-btn-abs";
       // ширина таблички: на ПК — исходные px (как было), на узкой сцене (телефон) — ужимается cqw.
       // min(px,cqw): пока сцена ≥ базовой ширины → px (ПК не меняется), уже → cqw.
-      // масштаб таблички-списка по ГЛУБИНЕ сцены (ниже=ближе=крупнее), как у кнопки/моделей.
-      // Нормируем к y=50 (фактор 0.81), чтобы существующие таблички почти не менялись.
-      var bdMul = ((0.5 + cp.y / 100 * 0.62) / 0.81).toFixed(3);
+      // РАЗМЕР фиксированный (без масштаба по глубине) — раньше scale по y уменьшал табличку при
+      // отдалении вверх, из-за чего казалось, что её нельзя двигать выше. Размер меняется ползунком objSize.
       cntEl.style.cssText = "left:" + cp.x.toFixed(2) + "%;top:" + cp.y.toFixed(2) +
         "%;width:min(" + (128 * csz).toFixed(1) + "px," + (13.9 * csz).toFixed(2) + "cqw);z-index:" + cnz +
         ";--gc:" + (b.glow || b.accent) +
-        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)") + " scale(" + bdMul + ")";
+        ";transform:" + flipTf("cnt:" + b.q, "translate(-50%,-50%)");
       cntEl.title = entries.length + " чел в очереди «" + b.title + "» — открыть список";
       // шрифт числа: clamp(пол, cqw, исходный_px) — ПК как было, телефон мельче (мельче для 3-значных)
       var _big3 = String(entries.length).length >= 3;
