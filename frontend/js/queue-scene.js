@@ -1033,6 +1033,13 @@
     ".qs-merch-img{height:48px;width:auto;max-width:48px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5))}" +
     ".qs-merch-box.merch-sm .qs-merch-img{height:38px;max-width:38px}" +   // мифическая торговка чуть меньше
     ".qs-merch-title{font:800 10.5px system-ui;color:var(--gc);line-height:1.2;text-shadow:0 1px 2px #000}" +
+    // золотая плашка «≥N доблести» в заголовке полосы — тот же стиль, что подписи над лавками,
+    // со свечением под цвет очереди (--gc). Непрозрачный фон → текст чёткий.
+    ".qs-merch-thr{display:inline-block;margin-left:7px;padding:1px 9px 2px;border-radius:999px;vertical-align:middle;" +
+      "font:800 10.5px Georgia,serif;letter-spacing:.2px;color:#3a2a12;white-space:nowrap;" +
+      "background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);border:1px solid #6d4a18;" +
+      "text-shadow:0 1px 0 rgba(255,255,255,.4);box-shadow:0 1px 3px rgba(0,0,0,.45),0 0 7px var(--gc,#ffd77a),inset 0 1px 0 rgba(255,255,255,.6)}" +
+    ".qs-merch-thr b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
     ".qs-merch-det{position:relative}" +
     // ВЕСЬ верх (НПЦ+строка) — одна кнопка-разворот
     ".qs-merch-det>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:5px;padding:0;border-radius:9px;transition:background .12s}" +
@@ -3873,12 +3880,17 @@
           '<span class="qs-mres-nm">' + esc(resName(it)) + "</span>" +
           '<span class="qs-mres-st">' + esc(st) + "</span>" + cntHtml + "</span>";
       }).join("");
+      // порог доблести очереди (из движка распределения; фолбэк — карта по очереди)
+      var _thrM = REWARDS_META[resItems[0]] || {};
+      var _thr = (_thrM.threshold != null) ? _thrM.threshold : ({ 0: 60, 1: 100, 2: 100, 3: 200 })[b.q];
       // ВЕСЬ бокс торговца — одна кнопка: клик по НПЦ ИЛИ по строке разворачивает список
       merchBox.innerHTML =
         '<details class="qs-merch-det"><summary>' +
           '<div class="qs-merch-npc">' +
             '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp?v=3" alt="">' +
-            '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
+            '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) +
+              '<span class="qs-merch-thr" title="Порог доблести за неделю для этой очереди">≥<b>' + _thr + "</b> доблести</span>" +
+            "</div></div>" +
           '<div class="qs-merch-sumline">📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
             (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</div>" +
         "</summary>" +
