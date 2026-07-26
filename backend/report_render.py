@@ -144,24 +144,25 @@ def render_report_png(report: dict, delta: dict | None, when: str, out_path) -> 
         d.line([(x, y[0]), (x + innerw, y[0])], fill=(120, 92, 52), width=1)
         y[0] += 12
 
-    # ── Огненный цилинь (по порядку) ──
+    # ── Огненный цилинь (по порядку; мало доблести — ярко помечен, из списка НЕ убираем) ──
     hr()
     line("ОГНЕННЫЙ ЦИЛИНЬ — очередь по порядку", f_sec, ORANGE)
     line("раздаётся мастером по мере выпадения", f_small, DIM, gap=6)
     pet = report.get("pet_queue") or []
     if pet:
-        wrap("    ".join("%d) %s" % (i, _plabel(p)) for i, p in enumerate(pet, 1)), f_body, TAN, dx=6)
+        for i, p in enumerate(pet, 1):
+            base = "%d) %s" % (i, _plabel(p))
+            if p.get("status") == "pet_low":
+                d.text((x + 6, y[0]), base, font=f_body, fill=DIM)
+                off = 6 + d.textlength(base + "   ", font=f_body)
+                d.text((x + off, y[0]), "!! мало доблести: %d — не получит" % (p.get("valor") or 0),
+                       font=f_body, fill=RED)
+            else:
+                d.text((x + 6, y[0]), base, font=f_body, fill=TAN)
+            y[0] += f_body.size + 6
     else:
         line("очередь пуста", f_body, DIM, dx=6)
-
-    # ── не хватило доблести ──
-    lv = report.get("low_valor") or []
-    if lv:
-        hr()
-        line("НЕ ХВАТИЛО ДОБЛЕСТИ (остаются в очереди)", f_sec, RED)
-        for dl in lv:
-            qn = ("  ·  не хватило: " + ", ".join(dl.get("queue_names") or [])) if dl.get("queue_names") else ""
-            wrap("%s — %d доблести%s" % (dl.get("receiver", ""), dl.get("valor") or 0, qn), f_small, TAN, dx=6, gap=4)
+    # (группа «не хватило доблести» за ресурсы — только в админ-панели, в картинку НЕ рисуем)
 
     # ── дельта «если закроем ещё этап» ──
     if delta and (delta.get("groups") or []):

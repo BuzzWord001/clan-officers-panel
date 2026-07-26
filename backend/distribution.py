@@ -194,19 +194,18 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                     "main_canon": e.get("main_canon") or e.get("canon_nick") or ""}
 
         # Огненный цилинь — ОТДЕЛЬНАЯ очередь (q2): выбравших mount-cilin вынимаем ДО раздачи
-        # легендарки и СТРОГО в порядке очереди (pos, БЕЗ топ-3-приоритета). Хватает доблести
-        # (≥ порога) → очередь цилиня (pet); не хватает → общий список «не хватило».
+        # легендарки и СТРОГО в порядке очереди (pos, БЕЗ топ-3-приоритета). ВСЕ остаются в
+        # списке цилиня; у кого мало доблести — помечаем pet_low (в отчёте ярко «не хватает»).
         if q == 2:
             cil_all = [e for e in rest_raw if e.get("resource") == "mount-cilin"]
             rest_raw = [e for e in rest_raw if e.get("resource") != "mount-cilin"]
             if stages_from == 0:
                 for e in cil_all:
                     v = entry_valor(e)
-                    (pet_queue.append(_row(e, v, top3, shooter_lc, {}, "pet"))
-                     if v >= thr else low_valor.append(_lowrow(e, v)))
+                    pet_queue.append(_row(e, v, top3, shooter_lc, {}, "pet" if v >= thr else "pet_low"))
         elig = [e for e in rest_raw if entry_valor(e) >= thr]
         low = [e for e in rest_raw if entry_valor(e) < thr]
-        # кому не хватило доблести за свой ресурс — в общий список (остаются в очереди)
+        # кому не хватило доблести за РЕСУРС (не цилинь) — в отдельный АДМИН-список (в отчёт НЕ идёт)
         if stages_from == 0:
             for e in low:
                 low_valor.append(_lowrow(e, entry_valor(e)))
@@ -451,22 +450,22 @@ def format_report_compact(main: dict, delta: dict | None = None, when_msk: str =
         for i, info in enumerate(res):
             branch = "┗" if i == len(res) - 1 else "┣"
             L.append("   %s %s — %d шт" % (branch, info["name"], info["total"]))
-    # Огненный цилинь — отдельный список СТРОГО В ПОРЯДКЕ ОЧЕРЕДИ (кто раньше — тот первым)
+    # Огненный цилинь — список СТРОГО В ПОРЯДКЕ ОЧЕРЕДИ (кто раньше — тот первым). У кого мало
+    # доблести — ОСТАЮТСЯ в списке, ярко помечены «(мало доблести — не получит)».
     pet = main.get("pet_queue") or []
     L.append(_BAR)
     if pet:
         L.append("🐲 ОГНЕННЫЙ ЦИЛИНЬ — очередь по порядку (раздаётся по мере выпадения):")
-        L.append("   " + ", ".join("%d) %s" % (i, _person_label(p)) for i, p in enumerate(pet, 1)))
+
+        def _petlbl(p, i):
+            s = "%d) %s" % (i, _person_label(p))
+            if p.get("status") == "pet_low":
+                s += " ⚠(мало доблести: %d — не получит)" % (p.get("valor") or 0)
+            return s
+        L.append("   " + ", ".join(_petlbl(p, i) for i, p in enumerate(pet, 1)))
     else:
         L.append("🐲 Огненный цилинь: очередь пуста")
-    # Не хватило доблести — отдельная группа с суммами (остаются в очереди, в раздачу не идут)
-    lv = main.get("low_valor") or []
-    if lv:
-        L.append(_BAR)
-        L.append("⚠ НЕ ХВАТИЛО ДОБЛЕСТИ (остаются в очереди):")
-        for d in lv:
-            qn = (" · не хватило: " + ", ".join(d.get("queue_names") or [])) if d.get("queue_names") else ""
-            L.append("   • %s — %d доблести%s" % (d.get("receiver", ""), d.get("valor") or 0, qn))
+    # (группа «не хватило доблести» за ресурсы — только в АДМИН-панели, в отчёт НЕ пишется)
     # дельта: доп. раздача, если закроют ещё этап
     if delta and (delta.get("groups") or []):
         L.append(_BAR)

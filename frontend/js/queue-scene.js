@@ -6187,6 +6187,8 @@
           '<button id="qd-rep-commit" style="font-weight:700">📤 Опубликовать и сдвинуть очередь</button>' +
         "</div>" +
         '<div id="qd-rep-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>' +
+        '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
+          'padding:7px 9px;background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px;display:none"></div>' +
       "</div>" +
       // ── ОГНЕННЫЙ ЦИЛИНЬ — раздать выпавших и сдвинуть их очередь ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
@@ -6311,11 +6313,22 @@
       var t = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-rep-to").value, 10) || 0));
       return { from_stages: Math.min(f, t), to_stages: Math.max(f, t) };
     }
+    function showLow(d) {
+      var lowEl = wrap.querySelector("#qd-rep-low");
+      var lv = d.low_valor || [];
+      if (!lv.length) { lowEl.style.display = "none"; lowEl.textContent = ""; return; }
+      lowEl.style.display = "block";
+      lowEl.textContent = "⚠ НЕ ХВАТИЛО ДОБЛЕСТИ ЗА РЕСУРСЫ (только тебе, в отчёт НЕ идёт — остаются в очереди):\n" +
+        lv.map(function (p) {
+          var qn = (p.queue_names && p.queue_names.length) ? " · не хватило: " + p.queue_names.join(", ") : "";
+          return "• " + p.receiver + " — " + (p.valor || 0) + " доблести" + qn;
+        }).join("\n");
+    }
     wrap.querySelector("#qd-rep-preview").addEventListener("click", function () {
       var r = repRange(), out = wrap.querySelector("#qd-rep-out");
       out.textContent = "Считаю…"; status("Считаю превью…");
       q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: false })
-        .then(function (d) { out.textContent = d.text || "(пусто)"; status("✓ Превью (не опубликовано, очередь не тронута)", true); })
+        .then(function (d) { out.textContent = d.text || "(пусто)"; showLow(d); status("✓ Превью ушло тебе в личку (очередь НЕ тронута)", true); })
         .catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-rep-commit").addEventListener("click", function () {
@@ -6323,27 +6336,24 @@
       var rng = r.to_stages > r.from_stages
         ? (r.from_stages + "→" + r.to_stages + " (с секцией «если закроем " + r.to_stages + "-й»)")
         : (r.from_stages + " (только этот этап)");
-      if (!confirm("Опубликовать отчёт и СДВИНУТЬ основные очереди?\n\n• этапы КХ: " + rng +
-        "\n• отчёт: " + (testOn ? "мне в личку (пробный режим)" : "в офицерские чаты TG+VK") +
-        "\n\nПолучившие уходят/в конец. Огненный цилинь НЕ двигается (отдельная кнопка ниже). Грамота и остаток — вручную мастером.")) return;
-      status("Публикую и двигаю очередь…");
-      function done(d) {
-        wrap.querySelector("#qd-rep-out").textContent = d.text || "";
-        var c = d.channels || {}, rep = c.test ? ("проба: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
-        status("✓ Опубликовано (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
-          " · не забрали(остались): " + (d.stayed_uncollected || 0), true);
-        refresh();
-      }
-      function err(e) { status("Ошибка: " + (e.detail || e.message)); }
-      function send(force) {
-        return q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true, force: !!force });
-      }
-      send(false).then(done).catch(function (e) {
-        if (e.status === 409) {
-          if (confirm("Очередь уже двигали за последние 6 часов. Сдвинуть ЕЩЁ РАЗ? (обычно не нужно)")) { status("Повторный сдвиг…"); send(true).then(done).catch(err); }
-          else status("Отменено.");
-        } else err(e);
-      });
+      var msg = testOn
+        ? ("ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ, очередь НЕ сдвинется (сухой прогон).\n\n• этапы КХ: " + rng +
+           "\n\nЧтобы публиковать в офицерские TG+VK и двигать очередь — сними галочку «Пробный режим».")
+        : ("БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG+VK и очередь СДВИНЕТСЯ.\n\n• этапы КХ: " + rng +
+           "\n\nПолучившие уходят/в конец. Огненный цилинь НЕ двигается (отдельная кнопка). Грамота и остаток — вручную.\n\n" +
+           "Если на этой неделе уже двигали — отчёт просто отправится повторно, БЕЗ второго сдвига.");
+      if (!confirm(msg)) return;
+      status(testOn ? "Пробный прогон…" : "Публикую…");
+      q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true })
+        .then(function (d) {
+          wrap.querySelector("#qd-rep-out").textContent = d.text || ""; showLow(d);
+          var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
+          if (d.dry_run) status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true);
+          else if (d.resent) status("✓ Повторная отправка за эту неделю (" + rep + ") — очередь НЕ сдвигалась", true);
+          else status("✓ Опубликовано (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
+            " · не забрали: " + (d.stayed_uncollected || 0), true);
+          refresh();
+        }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     // ── Огненный цилинь: раздать выпавших ──
     wrap.querySelector("#qd-cil-go").addEventListener("click", function () {

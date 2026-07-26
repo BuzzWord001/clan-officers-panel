@@ -2909,6 +2909,13 @@ def _cfg_int(conn, key, dflt=0):
         return dflt
 
 
+def _cfg_set(conn, key, val) -> None:
+    conn.execute(
+        "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?)"
+        " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
+        (key, str(val), _now()))
+
+
 def _valor_map(conn) -> tuple[dict, dict]:
     """(canon->доблесть, canon->ник) из последнего снапшота (для порогов, топ-3, имён)."""
     snap = conn.execute("SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
@@ -3313,28 +3320,43 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text, "image": bool(img),
               "groups": len(main.get("groups") or []),
               "pet_queue": [{"nick": p["receiver"], "status": p["status"]}
-                            for p in (main.get("pet_queue") or [])]}
+                            for p in (main.get("pet_queue") or [])],
+              # список «не хватило доблести за ресурс» — ТОЛЬКО для админ-панели, в отчёт не идёт
+              "low_valor": main.get("low_valor") or []}
     if not payload.commit:
         # ПРЕВЬЮ — картинка + текст ТОЛЬКО мне в личку (@pw_spamer_bot), очередь НЕ трогаем
         ch = await (_send_report_media(img, text, force_dm=True) if img
                     else _send_text_to_chats(text, force_dm=True))
-        result["preview"] = True
-        result["channels"] = ch
+        result.update({"preview": True, "channels": ch})
         return result
-    if not payload.force:
+    # ПРОБНЫЙ РЕЖИМ: commit НЕ двигает очередь — сухой прогон целиком в личку. Так «пробный
+    # отчёт» безопасен: жми сколько угодно, очередь не сдвинется.
+    if _is_test_mode():
+        ch = await (_send_report_media(img, text, force_dm=True) if img
+                    else _send_text_to_chats(text, force_dm=True))
+        result.update({"committed": False, "dry_run": True, "channels": ch,
+                       "note": "пробный режим: отчёт ушёл в личку, очередь НЕ сдвинута"})
+        return result
+    # БОЕВОЙ РЕЖИМ (пробный выключен): сдвиг ОДИН раз за неделю. Повторное нажатие в то же
+    # воскресенье — ПРОСТО ПОВТОРНАЯ отправка того же отчёта, БЕЗ второго сдвига и не за след.
+    # неделю. Ключ недели = неделя последнего снапшота доблести.
+    week = db.valor_latest_week() or ""
+    with db.connection() as conn:
+        done_week = _cfg_val(conn, "report_shift_week", "")
+    if week and done_week == week and not payload.force:
         with db.connection() as conn:
-            last = conn.execute(
-                "SELECT at FROM queue_log WHERE kind='report_commit' ORDER BY id DESC LIMIT 1").fetchone()
-        if last and last["at"]:
-            try:
-                dt = datetime.fromisoformat(last["at"])
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                if (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() < 6 * 3600:
-                    raise HTTPException(status.HTTP_409_CONFLICT, "already_shifted_recently")
-            except (ValueError, TypeError):
-                pass
-    # публикация: картинка ПЕРВОЙ, текст под ней; в офиц.каналы (или в личку в пробном режиме)
+            row = conn.execute("SELECT report FROM queue_reports ORDER BY id DESC LIMIT 1").fetchone()
+        try:
+            saved = _json.loads(row["report"]) if row and row["report"] else main
+        except (ValueError, TypeError):
+            saved = main
+        text2 = distribution.format_report_compact(saved, None, _now_msk_str())
+        img2 = _render_report_image(saved, None)
+        ch = await (_send_report_media(img2, text2) if img2 else _send_text_to_chats(text2))
+        result.update({"committed": True, "resent": True, "channels": ch, "text": text2,
+                       "note": "повторная отправка отчёта за эту неделю — очередь НЕ сдвигалась"})
+        return result
+    # первый БОЕВОЙ сдвиг за эту неделю: публикуем (картинка→текст) и сдвигаем очередь
     channels = await (_send_report_media(img, text) if img else _send_text_to_chats(text))
     with db.connection() as conn:
         stats = _shift_queues(conn, main)
@@ -3349,6 +3371,7 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
         conn.execute("DELETE FROM queue_entries WHERE privileged=1")
         conn.execute("DELETE FROM queue_priv_claims")
         _save_low_valor_notices(conn, main)
+        _cfg_set(conn, "report_shift_week", week)     # маркер: на этой неделе уже сдвигали
         _log(conn, "report_commit", actor=_actor_name(actor), request=request,
              detail="этапы %d-%d · вышли %d, в конец %d, не забрал(остались) %d · %s"
                     % (lo, hi, stats["left_removed"], stats["requeued"], stats["stayed_uncollected"], channels))
