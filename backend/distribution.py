@@ -99,13 +99,21 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     Возвращает структуру для рендера на фронте.
     """
     stages = max(0, min(MAX_STAGES, int(cfg.get("stages") or 0)))
+    # ДЕЛЬТА-режим (для секции «если закроем ещё этап»): считаем ТОЛЬКО прирост
+    # этапов stages_from+1..stages. 0 = обычный полный отчёт за stages этапов.
+    stages_from = max(0, min(MAX_STAGES, int(cfg.get("stages_from") or 0)))
+    if stages_from >= stages:
+        stages_from = 0
     pet_count = max(0, int(cfg.get("pet_count") or 0))
     shooters = [s for s in (cfg.get("shooters") or []) if s]
 
-    # 1) накопленные объёмы
-    pool = {res: _total(res, stages) for res in REWARDS}
-    pool["mount-cilin"] = pet_count               # питомец: объём из pet_count, не из этапов
+    # 1) накопленные объёмы (в дельта-режиме — только ПРИРОСТ этапов)
+    pool = {res: _total(res, stages) - _total(res, stages_from) for res in REWARDS}
+    # Огненный цилинь вынесен ОТДЕЛЬНО (отдельная кнопка/панель) — в отчёте НЕ раздаётся,
+    # только показывается список стоящих за ним. Пул питомца тут держим пустым.
+    pool["mount-cilin"] = 0
     shooter_lc = {s.strip().lower() for s in shooters}
+    pet_queue = []                                # список стоящих за Огненным цилинём (q2, выбрали mount-cilin)
 
     # 0) внеочередные захваты топ-3 (суперспособность) — вычитаем из пула СРАЗУ
     claims = cfg.get("claims") or []
@@ -184,9 +192,25 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         top_here = [e for e in elig if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
         top_here.sort(key=entry_valor, reverse=True)
         ordered = top_here + [e for e in elig if e not in top_here]
+        # Огненный цилинь — ОТДЕЛЬНАЯ очередь: кто выбрал mount-cilin, убираем из раздачи
+        # легендарки (они ждут питомца) и кладём в pet_queue для отдельной секции отчёта.
+        # Список цилиня строим только в ПОЛНОМ отчёте (stages_from==0), не в дельте.
+        if q == 2 and stages_from == 0:
+            cil = [e for e in ordered if e.get("resource") == "mount-cilin"]
+            ordered = [e for e in ordered if e.get("resource") != "mount-cilin"]
+            for e in cil:
+                pet_queue.append(_row(e, entry_valor(e), top3, shooter_lc, {}, "pet"))
+            low_cil = [e for e in low if e.get("resource") == "mount-cilin"]
+            low = [e for e in low if e.get("resource") != "mount-cilin"]
+            for e in low_cil:
+                pet_queue.append(_row(e, entry_valor(e), top3, shooter_lc, {}, "pet_low"))
+        elif q == 2:
+            ordered = [e for e in ordered if e.get("resource") != "mount-cilin"]
+            low = [e for e in low if e.get("resource") != "mount-cilin"]
         N = len(ordered)
         got = [dict() for _ in range(N)]           # {res: amount} на каждого
-        for res in [r for r in RES_ORDER if REWARDS[r]["q"] == q and r not in MANUAL_RESOURCES]:
+        for res in [r for r in RES_ORDER
+                    if REWARDS[r]["q"] == q and r not in MANUAL_RESOURCES and r != "mount-cilin"]:
             have = pool.get(res, 0)
             if have <= 0 or N == 0:
                 continue
@@ -244,7 +268,9 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "priv_claims": claim_rows,          # взято вне очереди (суперспособность топ-3)
         "queues": queues_out,
         "groups": groups,
-        "leftovers": leftovers,
+        "pet_queue": pet_queue,             # СПИСОК стоящих за Огненным цилинём (раздаётся отдельно)
+        "stages_from": stages_from,         # >0 → это ДЕЛЬТА-отчёт (доп. за этап stages_from+1..stages)
+        "leftovers": leftovers,             # оставляем в данных, но в отчёт/рендер НЕ выводим
         "totals": {res: _total(res, stages) for res in REWARDS},
     }
 
