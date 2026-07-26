@@ -1307,13 +1307,16 @@
       // размер плашки регулируется из админ-панели: --sc = objSize('lavlbl:<q>'); паддинги в em → масштабируется целиком
       "font-size:calc(clamp(9px,1.7cqw,16px) * var(--sc,1));" +
       "text-align:center;background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);border:1.5px solid #6d4a18;" +
-      "text-shadow:0 1px 0 rgba(255,255,255,.45);will-change:transform;" +
+      "text-shadow:0 1px 0 rgba(255,255,255,.45);" +
+      // БЕЗ will-change: он выносил текст на GPU-слой и отключал субпиксельное сглаживание →
+      // при парении текст «замыливался». Фон плашки непрозрачный, поэтому без will-change
+      // Chrome сохраняет чёткое сглаживание, а translate3d держит анимацию плавной (без reflow).
       "box-shadow:0 3px 7px rgba(0,0,0,.5),0 0 12px var(--gc,#ffd77a),inset 0 1px 0 rgba(255,255,255,.65);" +
       "animation:qLavlblFloat 3.6s ease-in-out infinite}" +
     ".qs-lavlbl-in b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
     ".qs-lavlbl-in::after{content:'';position:absolute;left:50%;bottom:-.38em;transform:translateX(-50%);" +
       "border:.4em solid transparent;border-top-color:#c68f2c;filter:drop-shadow(0 1px 0 #6d4a18)}" +
-    "@keyframes qLavlblFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}" +
+    "@keyframes qLavlblFloat{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-4px,0)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavlbl-in{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
