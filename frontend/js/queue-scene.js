@@ -6332,28 +6332,37 @@
         .catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-rep-commit").addEventListener("click", function () {
-      var r = repRange(), testOn = wrap.querySelector("#qd-testmode").checked;
-      var rng = r.to_stages > r.from_stages
-        ? (r.from_stages + "→" + r.to_stages + " (с секцией «если закроем " + r.to_stages + "-й»)")
-        : (r.from_stages + " (только этот этап)");
-      var msg = testOn
-        ? ("ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ, очередь НЕ сдвинется (сухой прогон).\n\n• этапы КХ: " + rng +
-           "\n\nЧтобы публиковать в офицерские TG+VK и двигать очередь — сними галочку «Пробный режим».")
-        : ("БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG+VK и очередь СДВИНЕТСЯ.\n\n• этапы КХ: " + rng +
-           "\n\nПолучившие уходят/в конец. Огненный цилинь НЕ двигается (отдельная кнопка). Грамота и остаток — вручную.\n\n" +
-           "Если на этой неделе уже двигали — отчёт просто отправится повторно, БЕЗ второго сдвига.");
-      if (!confirm(msg)) return;
-      status(testOn ? "Пробный прогон…" : "Публикую…");
-      q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true })
-        .then(function (d) {
-          wrap.querySelector("#qd-rep-out").textContent = d.text || ""; showLow(d);
-          var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
-          if (d.dry_run) status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true);
-          else if (d.resent) status("✓ Повторная отправка за эту неделю (" + rep + ") — очередь НЕ сдвигалась", true);
-          else status("✓ Опубликовано (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
-            " · не забрали: " + (d.stayed_uncollected || 0), true);
-          refresh();
-        }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+      var r = repRange();
+      status("Проверяю режим…");
+      // АКТУАЛЬНЫЙ режим берём с сервера — галочка на странице могла устареть (её мог
+      // переключить я или другой Claude/вкладка). Синхронизируем и показываем верный текст.
+      q("GET", "/queue/config").then(function (cd) {
+        var cfg = (cd && cd.config) || {};
+        var testOn = (cfg["queue_test_send"] !== "0");
+        var cb = wrap.querySelector("#qd-testmode"); if (cb) cb.checked = testOn;
+        CONFIG["queue_test_send"] = testOn ? "1" : "0";
+        var rng = r.to_stages > r.from_stages
+          ? (r.from_stages + "→" + r.to_stages + " (с секцией «если закроем " + r.to_stages + "-й»)")
+          : (r.from_stages + " (только этот этап)");
+        var msg = testOn
+          ? ("🧪 ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ, очередь НЕ сдвинется (сухой прогон).\n\n• этапы КХ: " + rng +
+             "\n\nЧтобы публиковать в офицерские TG+VK и двигать очередь — сними галочку «Пробный режим».")
+          : ("⚠ БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG + VK и очередь СДВИНЕТСЯ.\n\n• этапы КХ: " + rng +
+             "\n\nПолучившие уходят/в конец. Огненный цилинь НЕ двигается (отдельная кнопка). Грамота и остаток — вручную.\n\n" +
+             "Если на этой неделе уже двигали — отчёт просто отправится повторно, БЕЗ второго сдвига.");
+        if (!confirm(msg)) { status(""); return; }
+        status(testOn ? "Пробный прогон…" : "Публикую в офицерские каналы…");
+        return q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true })
+          .then(function (d) {
+            wrap.querySelector("#qd-rep-out").textContent = d.text || ""; showLow(d);
+            var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
+            if (d.dry_run) status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true);
+            else if (d.resent) status("✓ Повторная публикация в офиц.каналы (" + rep + ") — очередь НЕ сдвигалась", true);
+            else status("✓ Опубликовано в офиц.каналы (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
+              " · не забрали: " + (d.stayed_uncollected || 0), true);
+            refresh();
+          });
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     // ── Огненный цилинь: раздать выпавших ──
     wrap.querySelector("#qd-cil-go").addEventListener("click", function () {
