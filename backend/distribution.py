@@ -209,10 +209,11 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         if stages_from == 0:
             for e in low:
                 low_valor.append(_lowrow(e, entry_valor(e)))
-        # приоритет: топ-3 вперёд (по доблести), остальные — в порядке очереди
-        top_here = [e for e in elig if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
-        top_here.sort(key=entry_valor, reverse=True)
-        ordered = top_here + [e for e in elig if e not in top_here]
+        # СТРОГО по позиции очереди (кто раньше встал — тот раньше получает). Топ-3 БОЛЬШЕ
+        # НЕ прыгают автоматически в начало: их привилегия — только жетоны «взять вне очереди»
+        # (privileged, обслужены выше). Так пачечные ресурсы (mode=pack) идут ПЕРВОМУ в очереди,
+        # а не топ-3, стоящему последним.
+        ordered = list(elig)
         N = len(ordered)
         got = [dict() for _ in range(N)]           # {res: amount} на каждого
         for res in [r for r in RES_ORDER
