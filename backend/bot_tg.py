@@ -70,6 +70,26 @@ async def _edit_photo(message_id: int, image_path: Path, caption: str) -> bool:
     return bool(data.get("ok"))
 
 
+async def send_photo(image_path, caption: str = "", token: str = "", chat_id: str = "") -> None:
+    """Отправить фото с подписью в TG-чат (по умолчанию офицерский; можно задать токен/чат —
+    напр. пробный @pw_spamer_bot в личку). Подпись TG ограничена ~1024 символами."""
+    token = token or settings.tg_bot_token
+    chat_id = chat_id or settings.tg_officer_chat_id
+    if not (token and chat_id):
+        raise RuntimeError("tg_not_configured")
+    url = _BASE.format(token=token, method="sendPhoto")
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        with open(image_path, "rb") as f:
+            r = await client.post(
+                url,
+                data={"chat_id": chat_id, "caption": (caption or "")[:1000]},
+                files={"photo": ("report.png", f, "image/png")},
+            )
+    data = r.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"telegram.sendPhoto failed: {data}")
+
+
 def _chunks(text: str, size: int = 4000):
     for i in range(0, len(text), size):
         yield text[i:i + size]

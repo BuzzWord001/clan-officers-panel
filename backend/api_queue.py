@@ -3191,6 +3191,50 @@ async def _send_text_to_chats(text: str, force_dm: bool = False) -> dict:
     return channels
 
 
+async def _send_report_media(image_path, text: str, force_dm: bool = False) -> dict:
+    """Отправить отчёт: СНАЧАЛА картинку-рендер, ПОД ней текстовый вариант. В пробном режиме
+    (или force_dm/превью) — в личку @pw_spamer_bot (только TG); иначе — в офицерский TG + VK."""
+    channels: dict[str, str] = {}
+    if force_dm or _is_test_mode():
+        try:
+            if not (settings.test_bot_token and settings.test_chat_id):
+                raise RuntimeError("test_bot_not_configured")
+            await bot_tg.send_photo(image_path, token=settings.test_bot_token, chat_id=settings.test_chat_id)
+            await bot_tg.send_text(text, token=settings.test_bot_token, chat_id=settings.test_chat_id)
+            channels["test"] = "ok"
+        except Exception as exc:
+            channels["test"] = "error: %s" % exc
+        return channels
+    try:
+        await bot_tg.send_photo(image_path)          # офиц. TG — картинка
+        await bot_tg.send_text(text)                 # затем текст под ней
+        channels["tg"] = "ok"
+    except Exception as exc:
+        channels["tg"] = "error: %s" % exc
+    try:
+        await asyncio.to_thread(bot_vk.send_photo, image_path, "")   # офиц. VK — картинка
+        await asyncio.to_thread(bot_vk.send_text, text)              # затем текст
+        channels["vk"] = "ok"
+    except Exception as exc:
+        channels["vk"] = "error: %s" % exc
+    return channels
+
+
+def _render_report_image(main: dict, delta: dict | None):
+    """Отрисовать картинку отчёта (Pillow). None при ошибке — тогда шлём текстом."""
+    try:
+        import report_render
+        return report_render.render_report_png(main, delta, _now_msk_str(), "/tmp/qreport.png")
+    except Exception as exc:
+        _log_err("report_render", exc)
+        return None
+
+
+def _log_err(where: str, exc) -> None:
+    import logging
+    logging.getLogger("officers.queue").warning("%s failed: %s", where, exc)
+
+
 def _repack_queue(conn, q: int) -> None:
     """Пересчитать pos очереди по текущему порядку (после удаления строк)."""
     rows = conn.execute("SELECT id FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
@@ -3265,12 +3309,17 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
         main = _build_report(conn, stages_override=lo)
         delta = _build_report(conn, stages_override=hi, stages_from=lo) if hi > lo else None
     text = distribution.format_report_compact(main, delta, _now_msk_str())
-    result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text,
+    img = _render_report_image(main, delta)     # картинка-рендер (None → шлём текстом)
+    result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text, "image": bool(img),
               "groups": len(main.get("groups") or []),
               "pet_queue": [{"nick": p["receiver"], "status": p["status"]}
                             for p in (main.get("pet_queue") or [])]}
     if not payload.commit:
+        # ПРЕВЬЮ — картинка + текст ТОЛЬКО мне в личку (@pw_spamer_bot), очередь НЕ трогаем
+        ch = await (_send_report_media(img, text, force_dm=True) if img
+                    else _send_text_to_chats(text, force_dm=True))
         result["preview"] = True
+        result["channels"] = ch
         return result
     if not payload.force:
         with db.connection() as conn:
@@ -3285,7 +3334,8 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
                     raise HTTPException(status.HTTP_409_CONFLICT, "already_shifted_recently")
             except (ValueError, TypeError):
                 pass
-    channels = await _send_text_to_chats(text)
+    # публикация: картинка ПЕРВОЙ, текст под ней; в офиц.каналы (или в личку в пробном режиме)
+    channels = await (_send_report_media(img, text) if img else _send_text_to_chats(text))
     with db.connection() as conn:
         stats = _shift_queues(conn, main)
         n_groups = len(main.get("groups") or [])

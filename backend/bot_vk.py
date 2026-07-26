@@ -50,6 +50,17 @@ def send_text(text: str) -> None:
         api.messages.send(peer_id=peer_id, message=text[i:i + 4000], random_id=0)
 
 
+def send_photo(image_path: Path, caption: str = "") -> None:
+    """Отправить фото с подписью в офицерский VK-чат (без закрепа)."""
+    if not (settings.vk_group_token and settings.vk_officer_peer_id):
+        raise RuntimeError("vk_not_configured")
+    session, api = _api()
+    peer_id = _peer_id()
+    attachment = _upload_photo(session, image_path, peer_id)
+    api.messages.send(peer_id=peer_id, message=(caption or "")[:4000],
+                      attachment=attachment, random_id=0)
+
+
 def delete_message_safe(cm_id: int) -> None:
     """Удаляет conversation_message в офицерском VK-чате, не падает если уже нет."""
     if not (settings.vk_group_token and settings.vk_officer_peer_id):
