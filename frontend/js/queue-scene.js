@@ -3796,7 +3796,7 @@
       merchBox.innerHTML =
         '<details class="qs-merch-det"><summary>' +
           '<div class="qs-merch-npc">' +
-            '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp" alt="">' +
+            '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + b.q + '.webp?v=2" alt="">' +
             '<div class="qs-merch-title">🏪 Награды: ' + esc(MERCH_LABEL[b.q]) + "</div></div>" +
           '<div class="qs-merch-sumline">📋 что выдаёт · сколько стоят — нажми, чтобы встать (' + resItems.length + ")" +
             (anyFree ? '<span class="qs-merch-free">✦ есть свободные</span>' : "") + "</div>" +
