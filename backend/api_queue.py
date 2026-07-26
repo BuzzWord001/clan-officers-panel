@@ -1564,7 +1564,7 @@ QUEUES = (0, 1, 2, 3)  # 0 обычные · 1 редкие(R) · 2 легенд
 # пустой resources у записи → показываем/раздаём ВСЕ ресурсы очереди (по стаку).
 _QUEUE_ITEMS = [
     ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
-    ["gramota", "prikaz-feniksa"],
+    ["prikaz-feniksa"],   # грамоту убрали из очереди — мастер раздаёт её вручную
     ["drakonya-cheshuya", "sushchnost-karty", "mount-cilin"],   # высший камень перенесён в мифическую (SS)
     ["vysshiy-kamen"],                                          # 3 — Мифические (SS)
 ]

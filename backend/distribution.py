@@ -36,6 +36,9 @@ REWARDS: dict[str, dict] = {
 }
 
 QUEUE_THRESHOLD = {0: 60, 1: 100, 2: 100, 3: 100}
+# Ресурсы, которые НЕ раздаются автоматически по очереди — их мастер клана раздаёт ВРУЧНУЮ.
+# Такой ресурс не участвует в авто-распределении, его пул целиком уходит в «остаток клана».
+MANUAL_RESOURCES = {"gramota"}
 SHOOTER_PCT = 10                       # % камней доблести и метеоритов каждому проводнику
 SHOOTER_RES = ("kamen-doblesti", "meteorit")
 MAX_STAGES = 7
@@ -183,7 +186,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         ordered = top_here + [e for e in elig if e not in top_here]
         N = len(ordered)
         got = [dict() for _ in range(N)]           # {res: amount} на каждого
-        for res in [r for r in RES_ORDER if REWARDS[r]["q"] == q]:
+        for res in [r for r in RES_ORDER if REWARDS[r]["q"] == q and r not in MANUAL_RESOURCES]:
             have = pool.get(res, 0)
             if have <= 0 or N == 0:
                 continue

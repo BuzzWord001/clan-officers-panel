@@ -320,7 +320,7 @@
   // ресурсы за каждой будкой (файлы assets/queue/scene/item/*.png)
   var BOOTH_ITEMS = [
     ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
-    ["gramota", "prikaz-feniksa"],
+    ["prikaz-feniksa"],   // грамоту убрали — мастер раздаёт вручную
     ["drakonya-cheshuya", "sushchnost-karty", "mount-cilin"],   // высший камень → мифическая (SS)
     ["vysshiy-kamen"]                                           // 3 — Мифические (SS)
   ];
@@ -417,9 +417,8 @@
   // Предупреждения по «капризным» ресурсам (падают не всегда). Смысл: встал — не потеряешь
   // очередь, получишь ПЕРВЫМ, как только предмет появится, и стоишь пока не заберёшь.
   var RES_WARN = {
-    "gramota": "Может быть выдана ВНЕ очереди — проводникам на КХ или тем, у кого не осталось " +
-      "пропусков на КХ, даже если подойдёт твоя очередь. Ты не теряешь место: как только грамота " +
-      "освободится — получишь её по очереди.",
+    "gramota": "В очереди не участвует — мастер клана раздаёт грамоту ВРУЧНУЮ тем, кто нуждается " +
+      "больше всего (проводникам на КХ или тем, у кого не осталось пропусков на КХ). Выбрать нельзя.",
     "vysshiy-kamen": "Падает только начиная с 6 этапа КХ — в конце недели его может не быть в наличии. " +
       "Ничего страшного: ты займёшь очередь и станешь ПЕРВЫМ претендентом. Как только предмет выпадет на " +
       "следующих неделях — получишь его первым и останешься в очереди, пока не заберёшь.",
@@ -2020,6 +2019,7 @@
     ".qsc-item.qsc-clk{cursor:pointer;border-radius:7px;margin:0 -6px;padding:2px 6px;transition:background .1s,transform .1s}" +
     ".qsc-item.qsc-clk:hover{background:rgba(150,100,40,.22)}.qsc-item.qsc-clk:hover .qname{color:#7a3a10}" +
     ".qsc-item.qsc-clk:active{transform:scale(.98)}" +
+    ".qsc-item.qsc-manual{cursor:default;opacity:.9}.qsc-item.qsc-manual .qsc-mode{color:#b06a2a;font-style:italic;font-weight:700}" +
     ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}.qsc-item.q3 .qname{color:#a8256f;font-weight:800}" +
     ".qsc-item.qcilin .qname{color:#8a2a6a;font-weight:800}.qsc-item.qcilin .qn{color:#8a2a6a}" +
     ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
@@ -2090,6 +2090,14 @@
       if ((!s.items || !s.items.length) && !s.cilin) return;
       h += '<div class="qsc-stage"><div class="qsc-stage-h">Этап ' + s.stage + "</div>";
       (s.items || []).forEach(function (it) {
+        if (it.res === "gramota") {   // грамота — НЕ выбирается: мастер раздаёт вручную
+          h += '<div class="qsc-item qsc-manual q' + it.q + '" title="Грамоту не нужно выбирать — мастер клана раздаёт её вручную тем, кто нуждается больше всего.">' +
+            '<img class="qsc-ic" src="' + resImg(it.res) + '" alt="">' +
+            '<span class="qname">' + esc(it.name) +
+            ' <span class="qsc-mode">(раздаёт мастер вручную)</span></span>' +
+            '<span class="qn">×' + it.qty + "</span></div>";
+          return;
+        }
         h += '<div class="qsc-item qsc-clk q' + it.q + '" data-res="' + esc(it.res) + '" data-q="' + it.q +
           '" title="Встать в очередь за: ' + esc(it.name) + '">' +
           '<img class="qsc-ic" src="' + resImg(it.res) + '" alt="">' +
@@ -2273,10 +2281,12 @@
     var items = (BOOTH_ITEMS[b.q] || []).filter(function (it) {
       return !isPriv || (REWARDS_META[it] || {}).mode !== "pack";   // жетон — только обычные стаковые
     });
-    // Обычная (0) и редкая (1) очередь — МУЛЬТИвыбор (каждый ресурс по стаку). Легендарная (2)
-    // и жетон ТОП-3 — один ресурс (как раньше).
-    var multi = (b.q === 0 || b.q === 1) && !isPriv;
-    var sel = edit ? (edit.resource || "") : (presel || "");  // одиночный (q2/жетон)
+    // Обычная (0) — МУЛЬТИвыбор (каждый ресурс по стаку). Редкая (1)/Легендарная (2)/Мифическая (3)
+    // и жетон ТОП-3 — один ресурс. Редкая теперь одиночная (в ней остался только приказ феникса).
+    var multi = (b.q === 0) && !isPriv;
+    var sel = edit ? (edit.resource || "") : (presel || "");  // одиночный (q2/q3/жетон)
+    // если в очереди ВСЕГО ОДИН ресурс (редкая/мифическая) — он уже выбран галочкой по умолчанию
+    if (!multi && !sel && items.length === 1) sel = items[0];
     var selSet = {};                                          // мульти-выбор (q0/q1)
     if (multi) {
       var pre = (edit && edit.resources && edit.resources.length) ? edit.resources
@@ -2323,7 +2333,7 @@
       '<div id="qs-res-warn" class="qs-res-warn"></div>' +
       // всё необязательное — в сворачиваемый блок, чтобы не путать с обязательным выбором ресурса
       '<details class="qs-p2-more"' + (openMore ? " open" : "") + '>' +
-        '<summary>⚙️ Дополнительно <span class="qs-p2-more-sub">— кому передать, повтор, план на недели (всё необязательно)</span></summary>' +
+        '<summary>⚙️ Дополнительно <span class="qs-p2-more-sub">— кому передать, повтор (всё необязательно)</span></summary>' +
         '<div class="qs-p2-more-body">' +
           '<div class="qs-p2-lbl">Кому передать <span style="color:#8a795a;font-weight:400">(свой мэйн/твин или супруг)</span>:</div>' +
           '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
@@ -2346,10 +2356,6 @@
             : "") +
           '<label class="qs-p2-chk"><input type="checkbox" id="qs-repeat"' + (edit && edit.auto_repeat ? " checked" : "") + '> ' +
             '🔁 Запомнить выбор — вставать за этим ресурсом автоматически каждую неделю</label>' +
-          '<div class="qs-p2-lbl">📅 План на будущие недели <span style="color:#8a795a;font-weight:400">(до 8 — как дойдёт очередь, ресурс сменится по порядку)</span>:</div>' +
-          '<div class="qs-p2-planrow"><select id="qs-plan-sel">' + planOpts + '</select>' +
-            '<button class="sec" id="qs-plan-add" type="button">＋ в план</button></div>' +
-          '<div id="qs-plan-list" class="qs-p2-plan"></div>' +
         '</div>' +
       '</details>' +
       '<div class="qs-pick2-foot"><button class="qs-join" id="qs-p2-go"></button>' +
@@ -2470,25 +2476,7 @@
     body.querySelectorAll(".qs-rcpt-mine-b").forEach(function (b) {
       b.addEventListener("click", function () { rcptEl.value = b.dataset.n; checkRcpt(); });
     });
-    // план — чипы
-    var planList = body.querySelector("#qs-plan-list");
-    function renderPlan() {
-      planList.innerHTML = "";
-      planArr.forEach(function (it, i) {
-        var chip = document.createElement("span"); chip.className = "qs-plan-chip";
-        chip.innerHTML = (i + 1) + ". " + esc(resName(it));
-        var x = document.createElement("button"); x.type = "button"; x.className = "sec"; x.textContent = "✕";
-        x.style.cssText = "padding:0 6px;font-size:11px;margin-left:4px";
-        x.addEventListener("click", function () { planArr.splice(i, 1); renderPlan(); });
-        chip.appendChild(x); planList.appendChild(chip);
-      });
-    }
-    renderPlan();
-    body.querySelector("#qs-plan-add").addEventListener("click", function () {
-      if (planArr.length >= 8) { return; }
-      var v = body.querySelector("#qs-plan-sel").value;
-      if (v) { planArr.push(v); renderPlan(); }
-    });
+    // (функция «план/последовательность на недели» убрана — не используется)
     var m = sceneModal(((edit && edit.adminEid) ? "Сменить ресурсы игрока — очередь «" : isPriv ? "⚡ Жетон ТОП-3 — сменить ресурс или вернуть — «" : edit ? "Изменить ресурсы или выйти — очередь «" : "Встать в очередь — «") + b.title + "»", body);
     paintCards();
     // Блок «активный жетон ТОП-3»: сменить ресурс жетона / вернуть жетон (отдельно от места в очереди)
@@ -3144,13 +3132,13 @@
         '<b>Как работает очередь и жетоны ТОП-3 — правила</b><span class="qs-rules-arr">▸</span></summary>' +
       '<div class="qs-rules-body">' +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#7ec46a">🟢 Обычные:</span> выбирай <b>любые</b> ресурсы — каждый выдаётся <b>своим стаком</b> (размер стака указан на карточке ресурса, когда выбираешь его по клику на табличку). Все выбранные выдадутся, как подойдёт очередь. <span style="color:#caa66a">Отдельные ресурсы выдаются иначе — <b>всё накопленное за неделю разом</b> первому в очереди; у таких это указано отдельно на карточке.</span><div class="qs-rules-row">' + ic("kamen-doblesti") + ic("meteorit") + ic("zhemchuzhina") + ic("znak-edinstva") + ic("koloda-kart") + ic("kamen-bessmertnyh") + ic("pilyulya") + "</div></div>" +
-        '<div class="qs-rule"><span class="qs-rule-b" style="color:#ffd24a">🟠 Редкие (R):</span> так же — можешь выбрать <b>оба</b> ресурса по стаку, выдадутся вместе.<div class="qs-rules-row">' + ic("gramota") + ic("prikaz-feniksa") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#ffd24a">🟠 Редкие (R):</span> стоишь за <b>Приказом Феникса</b> (в очереди только он, выбирать ничего не нужно — он уже отмечен).<div class="qs-rules-row">' + ic("prikaz-feniksa") + "</div></div>" +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#c07be0">🟣 Легендарные (S):</span> выбираешь <b>1 ресурс</b> и стоишь за ним. Получил — сразу в конец очереди, если стоит галочка «вставать автоматически»; без неё — встань снова.<div class="qs-rules-row">' + ic("drakonya-cheshuya") + ic("sushchnost-karty") + ic("mount-cilin") + "</div></div>" +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#f0eaff">⚪ Мифические (SS):</span> отдельная очередь за <b>Высшим камнем божества</b> — стоишь за ним, получаешь по мере поступления (падает с 6 этапа КХ).<div class="qs-rules-row">' + ic("vysshiy-kamen") + "</div></div>" +
         '<div class="qs-rule"><b>Не всё досталось?</b> Если каких-то ресурсов не хватило — <b>остаёшься в очереди</b> за ними и получишь, как только появятся. Можно и выйти, встать заново и выбрать всё сразу новой пачкой.</div>' +
         '<div class="qs-rule"><b>🔥 Огненный цилинь и Высший камень</b> падают с шансом/с 6 этапа — на этой неделе их может не быть. Не страшно: ты <b>первый претендент</b> и стоишь в очереди, пока не получишь.</div>' +
         '<div class="qs-rule"><b>✏️ Менять выбор</b> можно в любой момент — нажми на свою модельку в очереди или на нужный ресурс у торговца.</div>' +
-        '<div class="qs-rule"><span class="qs-rule-b">📜 Запечатанная грамота Лиги</span> может быть выдана <b>вне очереди</b> проводникам на КХ или тем, у кого не осталось пропусков на КХ — даже если подойдёт твоя очередь. Место при этом не теряешь.</div>' +
+        '<div class="qs-rule"><span class="qs-rule-b">📜 Запечатанная грамота Лиги</span> — <b>в очереди не участвует</b>. <b>Мастер клана раздаёт её вручную</b> тем, кто нуждается больше всего (проводникам на КХ или тем, у кого не осталось пропусков). Выбрать её нельзя.</div>' +
         '<div class="qs-rule qs-rule-tok"><b>⚡ Жетон ТОП-3 (вне очереди):</b> работает только на <b>обычные</b> ресурсы — берёшь <b>1 стак одного</b> ресурса. Появляется твой <b>светящийся клон</b>, который берёт ресурс вне очереди, а твоя <b>основная моделька остаётся в очереди</b> и не теряет место. Жетон даётся за попадание в <b>ТОП-3 недели по доблести</b>, копится по 1 и не сгорает.</div>' +
       "</div>";
     return el;
