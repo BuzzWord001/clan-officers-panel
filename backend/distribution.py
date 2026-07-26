@@ -113,7 +113,8 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     # только показывается список стоящих за ним. Пул питомца тут держим пустым.
     pool["mount-cilin"] = 0
     shooter_lc = {s.strip().lower() for s in shooters}
-    pet_queue = []                                # список стоящих за Огненным цилинём (q2, выбрали mount-cilin)
+    pet_queue = []                                # очередь за Огненным цилинём (q2, выбрали mount-cilin, хватает доблести)
+    low_valor = []                                # кому НЕ хватило доблести за свой ресурс (остаются в очереди)
 
     # 0) внеочередные захваты топ-3 (суперспособность) — вычитаем из пула СРАЗУ
     claims = cfg.get("claims") or []
@@ -186,27 +187,33 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         # привилегированные (взяли вне очереди жетоном) — ПЕРВЫЕ, БЕЗ выдачи из пула
         priv = [e for e in raw if e.get("privileged")]
         rest_raw = [e for e in raw if not e.get("privileged")]
+
+        def _lowrow(e, v):
+            return {"nick": e.get("nick", ""), "receiver": (e.get("recipient") or e.get("nick", "")),
+                    "valor": v, "queue": q, "threshold": thr,
+                    "main_canon": e.get("main_canon") or e.get("canon_nick") or ""}
+
+        # Огненный цилинь — ОТДЕЛЬНАЯ очередь (q2): выбравших mount-cilin вынимаем ДО раздачи
+        # легендарки и СТРОГО в порядке очереди (pos, БЕЗ топ-3-приоритета). Хватает доблести
+        # (≥ порога) → очередь цилиня (pet); не хватает → общий список «не хватило».
+        if q == 2:
+            cil_all = [e for e in rest_raw if e.get("resource") == "mount-cilin"]
+            rest_raw = [e for e in rest_raw if e.get("resource") != "mount-cilin"]
+            if stages_from == 0:
+                for e in cil_all:
+                    v = entry_valor(e)
+                    (pet_queue.append(_row(e, v, top3, shooter_lc, {}, "pet"))
+                     if v >= thr else low_valor.append(_lowrow(e, v)))
         elig = [e for e in rest_raw if entry_valor(e) >= thr]
         low = [e for e in rest_raw if entry_valor(e) < thr]
+        # кому не хватило доблести за свой ресурс — в общий список (остаются в очереди)
+        if stages_from == 0:
+            for e in low:
+                low_valor.append(_lowrow(e, entry_valor(e)))
         # приоритет: топ-3 вперёд (по доблести), остальные — в порядке очереди
         top_here = [e for e in elig if e.get("main_canon") in top3 or e.get("canon_nick") in top3]
         top_here.sort(key=entry_valor, reverse=True)
         ordered = top_here + [e for e in elig if e not in top_here]
-        # Огненный цилинь — ОТДЕЛЬНАЯ очередь: кто выбрал mount-cilin, убираем из раздачи
-        # легендарки (они ждут питомца) и кладём в pet_queue для отдельной секции отчёта.
-        # Список цилиня строим только в ПОЛНОМ отчёте (stages_from==0), не в дельте.
-        if q == 2 and stages_from == 0:
-            cil = [e for e in ordered if e.get("resource") == "mount-cilin"]
-            ordered = [e for e in ordered if e.get("resource") != "mount-cilin"]
-            for e in cil:
-                pet_queue.append(_row(e, entry_valor(e), top3, shooter_lc, {}, "pet"))
-            low_cil = [e for e in low if e.get("resource") == "mount-cilin"]
-            low = [e for e in low if e.get("resource") != "mount-cilin"]
-            for e in low_cil:
-                pet_queue.append(_row(e, entry_valor(e), top3, shooter_lc, {}, "pet_low"))
-        elif q == 2:
-            ordered = [e for e in ordered if e.get("resource") != "mount-cilin"]
-            low = [e for e in low if e.get("resource") != "mount-cilin"]
         N = len(ordered)
         got = [dict() for _ in range(N)]           # {res: amount} на каждого
         for res in [r for r in RES_ORDER
@@ -269,6 +276,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         "queues": queues_out,
         "groups": groups,
         "pet_queue": pet_queue,             # СПИСОК стоящих за Огненным цилинём (раздаётся отдельно)
+        "low_valor": _dedup_low(low_valor), # кому не хватило доблести за свой ресурс (с суммами)
         "stages_from": stages_from,         # >0 → это ДЕЛЬТА-отчёт (доп. за этап stages_from+1..stages)
         "leftovers": leftovers,             # оставляем в данных, но в отчёт/рендер НЕ выводим
         "totals": {res: _total(res, stages) for res in REWARDS},
@@ -379,6 +387,33 @@ def format_report_text(report: dict, when_msk: str = "") -> str:
     return "\n".join(L)
 
 
+_LOW_QN = {0: "обычные", 1: "редкие (R)", 2: "легендарные/цилинь (S)", 3: "мифические (SS)"}
+
+
+def _dedup_low(rows: list) -> list:
+    """Схлопнуть «не хватило доблести» по человеку (валор один): у каждого — его доблесть и
+    множество очередей, где не хватило. Сортировка по убыванию доблести."""
+    by: dict = {}
+    order: list = []
+    for r in rows:
+        key = (r.get("main_canon") or r.get("receiver", "")).strip().lower()
+        if not key:
+            continue
+        if key not in by:
+            by[key] = {"receiver": r.get("receiver", ""), "valor": r.get("valor", 0), "queues": set()}
+            order.append(key)
+        by[key]["valor"] = r.get("valor", 0)
+        by[key]["queues"].add(r.get("queue"))
+    out = []
+    for k in order:
+        d = by[k]
+        d["queue_names"] = [_LOW_QN.get(q, str(q)) for q in sorted(x for x in d["queues"] if x is not None)]
+        d["queues"] = sorted(x for x in d["queues"] if x is not None)
+        out.append(d)
+    out.sort(key=lambda d: -(d.get("valor") or 0))
+    return out
+
+
 def _person_label(p: dict) -> str:
     """Имя получателя в группе; если ресурс переадресован — «Получатель (за Ник)», ⚠ если не твин/супруг."""
     s = p["receiver"]
@@ -416,18 +451,22 @@ def format_report_compact(main: dict, delta: dict | None = None, when_msk: str =
         for i, info in enumerate(res):
             branch = "┗" if i == len(res) - 1 else "┣"
             L.append("   %s %s — %d шт" % (branch, info["name"], info["total"]))
-    # Огненный цилинь — отдельный список (мастер раздаёт по мере выпадения)
+    # Огненный цилинь — отдельный список СТРОГО В ПОРЯДКЕ ОЧЕРЕДИ (кто раньше — тот первым)
     pet = main.get("pet_queue") or []
     L.append(_BAR)
     if pet:
-        elig = [p for p in pet if p.get("status") == "pet"]
-        low = [p for p in pet if p.get("status") == "pet_low"]
-        L.append("🐲 ОГНЕННЫЙ ЦИЛИНЬ — очередь (раздаётся по мере выпадения):")
-        L.append("   " + (", ".join(_person_label(p) for p in elig) or "—"))
-        if low:
-            L.append("   ⏳ ждут доблесть: " + ", ".join(p["receiver"] for p in low))
+        L.append("🐲 ОГНЕННЫЙ ЦИЛИНЬ — очередь по порядку (раздаётся по мере выпадения):")
+        L.append("   " + ", ".join("%d) %s" % (i, _person_label(p)) for i, p in enumerate(pet, 1)))
     else:
         L.append("🐲 Огненный цилинь: очередь пуста")
+    # Не хватило доблести — отдельная группа с суммами (остаются в очереди, в раздачу не идут)
+    lv = main.get("low_valor") or []
+    if lv:
+        L.append(_BAR)
+        L.append("⚠ НЕ ХВАТИЛО ДОБЛЕСТИ (остаются в очереди):")
+        for d in lv:
+            qn = (" · не хватило: " + ", ".join(d.get("queue_names") or [])) if d.get("queue_names") else ""
+            L.append("   • %s — %d доблести%s" % (d.get("receiver", ""), d.get("valor") or 0, qn))
     # дельта: доп. раздача, если закроют ещё этап
     if delta and (delta.get("groups") or []):
         L.append(_BAR)
