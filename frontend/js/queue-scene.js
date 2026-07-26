@@ -1302,15 +1302,17 @@
     // через translateY (GPU-композит, БЕЗ reflow → не дёргается, в отличие от margin-top).
     // Живёт в .qs-boardlayer (поверх моделей, не клипается рамкой).
     ".qs-lavlbl{position:absolute;transform:translate(-50%,-100%);pointer-events:none;z-index:9300}" +
-    ".qs-lavlbl-in{position:relative;display:inline-block;white-space:nowrap;padding:2px 12px 3px;" +
-      "border-radius:999px;font:800 clamp(9px,1.7cqw,16px) Georgia,serif;letter-spacing:.2px;color:#3a2a12;" +
+    ".qs-lavlbl-in{position:relative;display:inline-block;white-space:nowrap;padding:.18em .85em .28em;" +
+      "border-radius:999px;font-family:Georgia,serif;font-weight:800;line-height:1.05;letter-spacing:.2px;color:#3a2a12;" +
+      // размер плашки регулируется из админ-панели: --sc = objSize('lavlbl:<q>'); паддинги в em → масштабируется целиком
+      "font-size:calc(clamp(9px,1.7cqw,16px) * var(--sc,1));" +
       "text-align:center;background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);border:1.5px solid #6d4a18;" +
       "text-shadow:0 1px 0 rgba(255,255,255,.45);will-change:transform;" +
       "box-shadow:0 3px 7px rgba(0,0,0,.5),0 0 12px var(--gc,#ffd77a),inset 0 1px 0 rgba(255,255,255,.65);" +
       "animation:qLavlblFloat 3.6s ease-in-out infinite}" +
     ".qs-lavlbl-in b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
-    ".qs-lavlbl-in::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);" +
-      "border:6px solid transparent;border-top-color:#c68f2c;filter:drop-shadow(0 1px 0 #6d4a18)}" +
+    ".qs-lavlbl-in::after{content:'';position:absolute;left:50%;bottom:-.38em;transform:translateX(-50%);" +
+      "border:.4em solid transparent;border-top-color:#c68f2c;filter:drop-shadow(0 1px 0 #6d4a18)}" +
     "@keyframes qLavlblFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavlbl-in{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
@@ -2815,7 +2817,8 @@
         var lbl = document.createElement("div");
         lbl.className = "qs-lavlbl";
         lbl.style.cssText = "left:" + lblpos.x.toFixed(2) + "%;top:" + lblpos.y.toFixed(2) +
-          "%;--gc:" + (b.glow || b.accent) + (_placeMode ? ";pointer-events:auto;cursor:move" : "");
+          "%;--gc:" + (b.glow || b.accent) + ";--sc:" + objSize("lavlbl:" + b.q, 1).toFixed(2) +
+          (_placeMode ? ";pointer-events:auto;cursor:move" : "");
         // внутренний элемент несёт визуал+анимацию (translateY, GPU) — внешний только позиционирует
         lbl.innerHTML = '<div class="qs-lavlbl-in">≥<b>' + _thr + "</b> доблести</div>";
         if (_placeMode) makeDraggable(lbl, "lavlbl:" + b.q);
@@ -4017,6 +4020,14 @@
     BOOTHS.forEach(function (b) { var lp = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3); objs.push({ key: "glow:" + b.q, name: "Свечение · " + b.title, dx: lp.x, dy: lp.y - 13 }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }];
     BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
+    // Подписи порога над лавками — ▲▼◀▶ (выше/ниже/влево/вправо) и −/+ (больше/меньше), как прочие объекты.
+    // Дефолт-позиция ровно как в рендере: над крышей соответствующей лавки.
+    BOOTHS.forEach(function (b) {
+      var lp2 = placedPos("lavka:" + b.q, b.merchant.x, b.merchant.y + 3);
+      var lsc2 = objSize("lavka:" + b.q, getSize("lavka", 1));
+      objs.push({ key: "lavlbl:" + b.q, name: "Подпись порога · " + b.title,
+                  dx: lp2.x, dy: Math.max(3, lp2.y - (16 * lsc2) - 1), sz: true, base: 1 });
+    });
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
     objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true, repl: true });
     objs.push({ key: "wallet", name: "Кошелёк жетонов", dx: 17, dy: 17, sz: true, base: 1, flip: true, repl: true });
