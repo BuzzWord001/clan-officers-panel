@@ -993,7 +993,11 @@
       "color:#e0a24a;border-radius:8px;cursor:pointer;font-size:12px;transition:filter .1s,transform .08s}" +
     ".qs-lane-arrow:hover{filter:brightness(1.2)}.qs-lane-arrow:active{transform:scale(.9)}" +
     ".qs-lane-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;" +
-      "padding:3px 2px;scrollbar-width:thin;justify-content:flex-end;align-items:stretch}" +
+      "padding:3px 2px;scrollbar-width:thin;justify-content:flex-start;align-items:stretch}" +
+    // прижать очередь ВПРАВО к торговцу (№1 у края), но НЕ ломать прокрутку: margin-left:auto
+    // на 1-м элементе — мало людей прижаты вправо, много — авто-margin схлопывается и полоса
+    // нормально прокручивается стрелками (flex-end ломал прокрутку левого переполнения).
+    ".qs-lane-strip>*:first-child{margin-left:auto}" +
     /* кнопка «Встать/Выйти» в начале полосы */
     ".qs-lane-join{flex:0 0 auto;align-self:center;cursor:pointer;border:0;background:none;padding:2px;min-width:60px;height:104px;" +
       "display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;transition:filter .08s}" +
@@ -2860,7 +2864,9 @@
       var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }][b.q] || { x: 50, y: 50 };
       var cp = placedPos("cnt:" + b.q, cnDef.x, cnDef.y);
       var csz = objSize("cnt:" + b.q, 1);
-      var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
+      // В режиме расстановки табличку держим ПОВЕРХ всего (99990, ниже рамки), чтобы её не
+      // перекрывал прозрачный прямоугольник большой лавки и её можно было тащить куда угодно.
+      var cnz = _placeMode ? 99990 : ((PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000);
       var cntEl = document.createElement(_placeMode ? "div" : "button");
       cntEl.className = "qs-board qs-btn-abs";
       // ширина таблички: на ПК — исходные px (как было), на узкой сцене (телефон) — ужимается cqw.
