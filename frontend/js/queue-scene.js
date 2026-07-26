@@ -6618,7 +6618,9 @@
         "justify-content:center;background:linear-gradient(180deg,rgba(190,224,234,.14),rgba(143,195,106,.16));" +
         "border:1px solid rgba(224,162,74,.2);border-radius:8px;overflow:hidden";
       var img = document.createElement("img");
-      img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.src = webpUrl(m.key);
+      // ?v=3 — как в сцене/полосе. Без версии галерея брала СТАРУЮ кэш-версию (напр. женская
+      // торговка мифической до замены на осьминога-парня); с версией берётся свежий файл.
+      img.alt = ""; img.decoding = "async"; img.loading = "lazy"; img.src = webpUrl(m.key) + "?v=3";
       img.style.cssText = "width:auto;max-width:100%;object-fit:contain;transform:" + transformStr(s);
       function applyPreview() { img.style.transform = transformStr(s); img.style.height = Math.round(BASE * s.scale) + "px"; }
       applyPreview(); pit.appendChild(img);
