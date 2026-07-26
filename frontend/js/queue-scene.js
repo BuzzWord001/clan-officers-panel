@@ -1297,19 +1297,22 @@
       "50%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 8px #b6e2ff) drop-shadow(0 0 21px #c07be0)}" +
       "75%{filter:drop-shadow(0 5px 8px rgba(0,0,0,.5)) drop-shadow(0 0 10px #ece0ff) drop-shadow(0 0 26px #9a6cff)}}" +
     "@media(prefers-reduced-motion:reduce){.qs-lavka{animation:none}}" +
-    // Парящая подпись над лавкой: «≥N доблести» — золотая плашка со свечением под акцент будки,
-    // с указателем вниз на прилавок и лёгким покачиванием (эффект парения в воздухе).
-    ".qs-lavlbl{position:absolute;transform:translate(-50%,-100%);z-index:8200;pointer-events:none;white-space:nowrap;" +
-      "padding:2px 12px 3px;border-radius:999px;font:800 clamp(9px,1.7cqw,16px) Georgia,serif;letter-spacing:.2px;" +
-      "color:#3a2a12;text-align:center;background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);" +
-      "border:1.5px solid #6d4a18;text-shadow:0 1px 0 rgba(255,255,255,.45);" +
+    // Парящая подпись над лавкой «≥N доблести». Внешний слой .qs-lavlbl — ТОЛЬКО позиция
+    // (translate центрирования, статичный). Внутренний .qs-lavlbl-in — визуал + покачивание
+    // через translateY (GPU-композит, БЕЗ reflow → не дёргается, в отличие от margin-top).
+    // Живёт в .qs-boardlayer (поверх моделей, не клипается рамкой).
+    ".qs-lavlbl{position:absolute;transform:translate(-50%,-100%);pointer-events:none;z-index:9300}" +
+    ".qs-lavlbl-in{position:relative;display:inline-block;white-space:nowrap;padding:2px 12px 3px;" +
+      "border-radius:999px;font:800 clamp(9px,1.7cqw,16px) Georgia,serif;letter-spacing:.2px;color:#3a2a12;" +
+      "text-align:center;background:linear-gradient(180deg,#fff2c4,#f2c964 52%,#c68f2c);border:1.5px solid #6d4a18;" +
+      "text-shadow:0 1px 0 rgba(255,255,255,.45);will-change:transform;" +
       "box-shadow:0 3px 7px rgba(0,0,0,.5),0 0 12px var(--gc,#ffd77a),inset 0 1px 0 rgba(255,255,255,.65);" +
       "animation:qLavlblFloat 3.6s ease-in-out infinite}" +
-    ".qs-lavlbl b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
-    ".qs-lavlbl::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);" +
+    ".qs-lavlbl-in b{color:#6a1f0c;font-size:1.12em;margin:0 1px}" +
+    ".qs-lavlbl-in::after{content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);" +
       "border:6px solid transparent;border-top-color:#c68f2c;filter:drop-shadow(0 1px 0 #6d4a18)}" +
-    "@keyframes qLavlblFloat{0%,100%{margin-top:0}50%{margin-top:-4px}}" +
-    "@media(prefers-reduced-motion:reduce){.qs-lavlbl{animation:none}}" +
+    "@keyframes qLavlblFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}" +
+    "@media(prefers-reduced-motion:reduce){.qs-lavlbl-in{animation:none}}" +
     ".qs-fountain{position:absolute;height:calc(24% * var(--qs-fountain-scale,1));width:auto;" +
       "transform:translate(-50%,-100%);pointer-events:none;filter:drop-shadow(0 5px 9px rgba(0,0,0,.5))}" +
     ".qs-stage.place .qs-lavka,.qs-stage.place .qs-fountain{pointer-events:auto;cursor:move}" +
@@ -2805,16 +2808,19 @@
         var _thrM = REWARDS_META[(BOOTH_ITEMS[b.q] || [])[0]] || {};
         var _thr = (_thrM.threshold != null) ? _thrM.threshold : ({ 0: 60, 1: 100, 2: 100, 3: 200 })[b.q];
         var _lsc = objSize("lavka:" + b.q, getSize("lavka", 1));
-        var _ldef = lkpos.y - (30 * _lsc) - 2;               // лавка height=30%*scale, якорь снизу → над верхом
+        // Дефолт — невысоко над крышей лавки (лавка height=30%*scale, якорь снизу; берём ~половину,
+        // чтобы подпись сидела у крыши, а не парила высоко). Клампим сверху, чтобы не уйти за рамку.
+        var _ldef = Math.max(3, lkpos.y - (16 * _lsc) - 1);
         var lblpos = placedPos("lavlbl:" + b.q, lkpos.x, _ldef);
         var lbl = document.createElement("div");
         lbl.className = "qs-lavlbl";
         lbl.style.cssText = "left:" + lblpos.x.toFixed(2) + "%;top:" + lblpos.y.toFixed(2) +
           "%;--gc:" + (b.glow || b.accent) + (_placeMode ? ";pointer-events:auto;cursor:move" : "");
-        lbl.innerHTML = "≥<b>" + _thr + "</b> доблести";
+        // внутренний элемент несёт визуал+анимацию (translateY, GPU) — внешний только позиционирует
+        lbl.innerHTML = '<div class="qs-lavlbl-in">≥<b>' + _thr + "</b> доблести</div>";
         if (_placeMode) makeDraggable(lbl, "lavlbl:" + b.q);
-        stage.appendChild(lbl);
-        if (_isAdmin && _placeMode) stage.appendChild(admTag(lblpos, "Подпись · " + b.title));
+        boardLayer.appendChild(lbl);                          // верхний незажимаемый слой (поверх моделей, не клипается)
+        if (_isAdmin && _placeMode) boardLayer.appendChild(admTag(lblpos, "Подпись · " + b.title));
       }
       // торговец у будки (перетаскивается; поворот/зеркало/размер — как у моделей).
       // hideMerchant: торговка нарисована прямо в лавке (мифическая) → отдельную не рисуем.
