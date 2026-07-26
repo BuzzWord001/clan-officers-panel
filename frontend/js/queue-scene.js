@@ -2719,11 +2719,17 @@
 
     BOOTHS.forEach(function (b) {
       var entries = state.queues[b.q] || [];
-      // свечение будки
-      var glow = document.createElement("div");
-      glow.className = "qs-glow";
-      glow.style.cssText = "left:" + b.bx + "%;top:" + b.by + "%;--gc:" + b.accent;
-      stage.appendChild(glow);
+      // свечение будки — перетаскиваемое/скрываемое (ключ glow:<q>, дефолт bx/by).
+      // Так можно убрать «зависшую» дымку от перенесённой лавки или подвинуть под новую.
+      if (!isHidden("glow:" + b.q)) {
+        var gpos = placedPos("glow:" + b.q, b.bx, b.by);
+        var glow = document.createElement("div");
+        glow.className = "qs-glow";
+        glow.style.cssText = "left:" + gpos.x + "%;top:" + gpos.y + "%;--gc:" + (b.glow || b.accent);
+        if (_placeMode) makeDraggable(glow, "glow:" + b.q);
+        stage.appendChild(glow);
+        if (_isAdmin && _placeMode) stage.appendChild(admTag(gpos, "Свечение · " + b.title));
+      }
       // лавка (торговый прилавок) этой очереди — перекрывает старые будки, день и ночь.
       // Перетаскивается; размер через getSize("lavka"); слой front/back правым кликом.
       if (!isHidden("lavka:" + b.q)) {
@@ -3915,6 +3921,7 @@
     // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
+    BOOTHS.forEach(function (b) { objs.push({ key: "glow:" + b.q, name: "Свечение · " + b.title, dx: b.bx, dy: b.by }); });
     var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }];
     BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
