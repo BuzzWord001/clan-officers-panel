@@ -771,10 +771,11 @@
     ".q-3q-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}" +
     ".q-3q-tag{font:800 13px system-ui;padding:6px 13px;border-radius:11px;border:1px solid;white-space:nowrap}" +
     ".q-3q-tag b{font-size:14px;margin-left:2px}" +
-    ".q-3q-tag.t-com{color:#eae3d2;border-color:rgba(205,205,205,.5);background:rgba(205,205,205,.1)}" +
-    ".q-3q-tag.t-rare{color:#8fd6ff;border-color:rgba(120,180,224,.6);background:rgba(120,180,224,.14)}" +
-    ".q-3q-tag.t-leg{color:#ffcf5a;border-color:rgba(245,200,120,.65);background:rgba(245,200,120,.16)}" +
-    ".q-3q-tag.t-myth{color:#ff8fd6;border-color:rgba(255,110,199,.7);background:rgba(255,110,199,.16)}" +
+    // цвета тегов = цвета очередей: обычные зелёные, редкие золото, легенд. фиолет, мифич. белые
+    ".q-3q-tag.t-com{color:#8fd882;border-color:rgba(126,196,106,.6);background:rgba(126,196,106,.14)}" +
+    ".q-3q-tag.t-rare{color:#ffd24a;border-color:rgba(255,210,74,.6);background:rgba(255,210,74,.15)}" +
+    ".q-3q-tag.t-leg{color:#d29bf0;border-color:rgba(192,123,224,.65);background:rgba(192,123,224,.16)}" +
+    ".q-3q-tag.t-myth{color:#f0eaff;border-color:rgba(226,220,255,.6);background:rgba(226,220,255,.12)}" +
     ".q-3q-amp{color:#caa66a;font:800 15px system-ui}" +
     ".q-3q-sub{margin-top:9px;font-size:12px;color:#e2cfa8}" +
     "@media(max-width:520px){.q-3q-title{font-size:14px}.q-3q-tag{font-size:11.5px;padding:5px 10px}}" +
@@ -3145,7 +3146,7 @@
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#7ec46a">🟢 Обычные:</span> выбирай <b>любые</b> ресурсы — каждый выдаётся <b>своим стаком</b> (размер стака указан на карточке ресурса, когда выбираешь его по клику на табличку). Все выбранные выдадутся, как подойдёт очередь. <span style="color:#caa66a">Отдельные ресурсы выдаются иначе — <b>всё накопленное за неделю разом</b> первому в очереди; у таких это указано отдельно на карточке.</span><div class="qs-rules-row">' + ic("kamen-doblesti") + ic("meteorit") + ic("zhemchuzhina") + ic("znak-edinstva") + ic("koloda-kart") + ic("kamen-bessmertnyh") + ic("pilyulya") + "</div></div>" +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#ffd24a">🟠 Редкие (R):</span> так же — можешь выбрать <b>оба</b> ресурса по стаку, выдадутся вместе.<div class="qs-rules-row">' + ic("gramota") + ic("prikaz-feniksa") + "</div></div>" +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#c07be0">🟣 Легендарные (S):</span> выбираешь <b>1 ресурс</b> и стоишь за ним. Получил — сразу в конец очереди, если стоит галочка «вставать автоматически»; без неё — встань снова.<div class="qs-rules-row">' + ic("drakonya-cheshuya") + ic("sushchnost-karty") + ic("mount-cilin") + "</div></div>" +
-        '<div class="qs-rule"><span class="qs-rule-b" style="color:#ff8fd6">🔮 Мифические (SS):</span> отдельная очередь за <b>Высшим камнем божества</b> — стоишь за ним, получаешь по мере поступления (падает с 6 этапа КХ).<div class="qs-rules-row">' + ic("vysshiy-kamen") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#f0eaff">⚪ Мифические (SS):</span> отдельная очередь за <b>Высшим камнем божества</b> — стоишь за ним, получаешь по мере поступления (падает с 6 этапа КХ).<div class="qs-rules-row">' + ic("vysshiy-kamen") + "</div></div>" +
         '<div class="qs-rule"><b>Не всё досталось?</b> Если каких-то ресурсов не хватило — <b>остаёшься в очереди</b> за ними и получишь, как только появятся. Можно и выйти, встать заново и выбрать всё сразу новой пачкой.</div>' +
         '<div class="qs-rule"><b>🔥 Огненный цилинь и Высший камень</b> падают с шансом/с 6 этапа — на этой неделе их может не быть. Не страшно: ты <b>первый претендент</b> и стоишь в очереди, пока не получишь.</div>' +
         '<div class="qs-rule"><b>✏️ Менять выбор</b> можно в любой момент — нажми на свою модельку в очереди или на нужный ресурс у торговца.</div>' +
