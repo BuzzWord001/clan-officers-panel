@@ -1559,13 +1559,14 @@ def set_shared_pw(payload: SharedPwIn, _: dict = Depends(require_admin)) -> dict
 
 
 # ─────────────────── состояние очередей + лог (Фаза 2) ───────────────────
-QUEUES = (0, 1, 2)  # 0 обычные · 1 редкие(R) · 2 легендарные(S)
+QUEUES = (0, 1, 2, 3)  # 0 обычные · 1 редкие(R) · 2 легендарные(S) · 3 мифические(SS)
 # Ресурсы каждой очереди (порядок = как на витрине). Для обычной/редкой мультивыбор:
 # пустой resources у записи → показываем/раздаём ВСЕ ресурсы очереди (по стаку).
 _QUEUE_ITEMS = [
     ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
     ["gramota", "prikaz-feniksa"],
-    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"],
+    ["drakonya-cheshuya", "sushchnost-karty", "mount-cilin"],   # высший камень перенесён в мифическую (SS)
+    ["vysshiy-kamen"],                                          # 3 — Мифические (SS)
 ]
 
 
@@ -1594,8 +1595,8 @@ def _entry_resources(r):
     return [res] if res in valid else ([res] if res else [])
 
 # ── параметры движка распределения (подтверждено Лиром 2026-07-16) ──
-# Пороги доблести: обычная очередь ≥60, редкие/легендарные ≥100.
-VALOR_THRESHOLD = {0: 60, 1: 100, 2: 100}
+# Пороги доблести: обычная очередь ≥60, редкие/легендарные/мифические ≥100.
+VALOR_THRESHOLD = {0: 60, 1: 100, 2: 100, 3: 100}
 # Привилегия проводников: по умолчанию +10% к метеоритам и камням доблести.
 SHOOTER_DEFAULT_PCT = 10
 # Расписание (МСК): сбор доблести вс 16:00 → авто-сдвиг очереди вс 00:00 СЛЕДУЮЩЕЙ недели.
@@ -1852,7 +1853,7 @@ def _spouse_map(conn) -> dict:
 
 @router.get("/state")
 def state() -> dict:
-    qs = [[], [], []]
+    qs = [[], [], [], []]
     with db.connection() as conn:
         try:
             _migrate_recipients(conn)      # разово: прежние получатели → супруги (идемпотентно)
@@ -2991,7 +2992,7 @@ def drops() -> dict:
             "cilin_res": "mount-cilin",
             "cilin_name": distribution.res_name("mount-cilin"),
             "cilin_note": "падает С ШАНСОМ (может не выпасть на неделе), по 1 шт — с этапов 4–7",
-            "queues": ["Обычные", "Редкие (R)", "Легендарные (S)"]}
+            "queues": ["Обычные", "Редкие (R)", "Легендарные (S)", "Мифические (SS)"]}
 
 
 def _priv_claims(conn) -> list[dict]:
@@ -3012,7 +3013,7 @@ def _build_report(conn, stages_override: int | None = None) -> dict:
     idx = _people(conn)
     gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
     smap = _spouse_map(conn)
-    queues = [[], [], []]
+    queues = [[], [], [], []]
     for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
         if r["queue"] in QUEUES:
             e = _entry_public(r, idx, gmap, smap)

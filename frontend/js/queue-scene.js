@@ -310,13 +310,19 @@
       path: [{ x: 37, y: 80 }, { x: 45, y: 76 }, { x: 53, y: 72 }, { x: 60, y: 69 }] },
     { q: 2, title: "Легендарные (S)", accent: "#c07be0", glow: "#c07be0", lightning: true, bx: 80, by: 74, ui: { x: 78, y: 88 }, item: { x: 89, y: 80 },
       merchant: { x: 88, y: 77 },
-      path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] }
+      path: [{ x: 53, y: 88 }, { x: 61, y: 85 }, { x: 68, y: 83 }, { x: 74, y: 81 }] },
+    // Мифические (SS) — высший камень божества. Цвет розово-магента под лавку. Позиции/путь
+    // — дефолт (двор слева, очередь от ворот); админ подвинет перетаскиванием и редактором пути.
+    { q: 3, title: "Мифические (SS)", accent: "#ff5db4", glow: "#ff8fd6", bx: 30, by: 44, ui: { x: 29, y: 58 }, item: { x: 40, y: 44 },
+      merchant: { x: 27, y: 42 },
+      path: [{ x: 22, y: 66 }, { x: 26, y: 58 }, { x: 29, y: 50 }, { x: 32, y: 44 }] }
   ];
   // ресурсы за каждой будкой (файлы assets/queue/scene/item/*.png)
   var BOOTH_ITEMS = [
     ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart", "kamen-bessmertnyh", "pilyulya"],
     ["gramota", "prikaz-feniksa"],
-    ["drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"]
+    ["drakonya-cheshuya", "sushchnost-karty", "mount-cilin"],   // высший камень → мифическая (SS)
+    ["vysshiy-kamen"]                                           // 3 — Мифические (SS)
   ];
   var RES_NAME = {
     "kamen-doblesti": "Камень доблести", "meteorit": "Метеорит", "zhemchuzhina": "Жемчужина Фу Си",
@@ -496,6 +502,13 @@
     return BOOTHS[qi].path;
   }
   function getSize(key, dflt) { var v = parseFloat(CONFIG["size:" + key]); return (isFinite(v) && v > 0) ? v : dflt; }
+  // сколько человек показывать на КАРТИНКЕ для очереди q — отдельно на каждую очередь
+  // (size:limit:<q>); откат на общий size:limit, затем 6.
+  function qLimit(q) {
+    var v = parseFloat(CONFIG["size:limit:" + q]);
+    if (!(isFinite(v) && v > 0)) v = getSize("limit", 6);
+    return Math.max(1, Math.round(v));
+  }
   function saveCfg(key, val) {
     CONFIG[key] = String(val);
     q("POST", "/queue/admin/config", { key: key, val: String(val) }).catch(function () {});
@@ -761,6 +774,7 @@
     ".q-3q-tag.t-com{color:#eae3d2;border-color:rgba(205,205,205,.5);background:rgba(205,205,205,.1)}" +
     ".q-3q-tag.t-rare{color:#8fd6ff;border-color:rgba(120,180,224,.6);background:rgba(120,180,224,.14)}" +
     ".q-3q-tag.t-leg{color:#ffcf5a;border-color:rgba(245,200,120,.65);background:rgba(245,200,120,.16)}" +
+    ".q-3q-tag.t-myth{color:#ff8fd6;border-color:rgba(255,110,199,.7);background:rgba(255,110,199,.16)}" +
     ".q-3q-amp{color:#caa66a;font:800 15px system-ui}" +
     ".q-3q-sub{margin-top:9px;font-size:12px;color:#e2cfa8}" +
     "@media(max-width:520px){.q-3q-title{font-size:14px}.q-3q-tag{font-size:11.5px;padding:5px 10px}}" +
@@ -2000,7 +2014,7 @@
     ".qsc-item.qsc-clk{cursor:pointer;border-radius:7px;margin:0 -6px;padding:2px 6px;transition:background .1s,transform .1s}" +
     ".qsc-item.qsc-clk:hover{background:rgba(150,100,40,.22)}.qsc-item.qsc-clk:hover .qname{color:#7a3a10}" +
     ".qsc-item.qsc-clk:active{transform:scale(.98)}" +
-    ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}" +
+    ".qsc-item.q1 .qname{color:#8a4a10}.qsc-item.q2 .qname{color:#6a2a8a}.qsc-item.q3 .qname{color:#a8256f;font-weight:800}" +
     ".qsc-item.qcilin .qname{color:#8a2a6a;font-weight:800}.qsc-item.qcilin .qn{color:#8a2a6a}" +
     ".qsc-mode{font-size:10px;color:#8a6a3a;font-style:italic}" +
     ".qsc-chance{margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(150,60,30,.14);border:1px solid rgba(150,80,30,.4)}" +
@@ -2061,7 +2075,7 @@
   }
   function dropsHtml(d) {
     var MODE = { stack: "по очереди, стаками", pack: "всё за неделю разом — первому в очереди", fixed: "каждому" };
-    var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)"];
+    var qn = d.queues || ["Обычные", "Редкие (R)", "Легендарные (S)", "Мифические (SS)"];
     var cilinName = d.cilin_name || "Огненный цилинь";
     var h = '<div class="qsc-title">📜 Награды по этапам КХ</div>' +
       '<div class="qsc-sub">что и сколько падает с каждого этапа. 👆 <b>Нажми на любой ресурс — встанешь за ним в очередь</b></div>';
@@ -2586,7 +2600,7 @@
     body.className = "qs-fulllist";
     if (!entries.length) {
       body.innerHTML = '<div style="padding:22px;text-align:center;color:#c9b48f">Очередь пуста.</div>';
-    } else { var flLimit = Math.max(1, Math.round(getSize("limit", 6)));
+    } else { var flLimit = qLimit(b.q);
       entries.forEach(function (e, i) {
       var mi = modelInfo(e), waiting = i >= flLimit;   // за лимитом показа = ждёт (не на сцене)
       var isMine = !!(meCanon && canon(e.main_nick) === meCanon && !e.privileged);
@@ -2750,7 +2764,7 @@
       var spread = getSize("spread", 1);            // 0.4–1: какую долю пути занимает очередь
       // ЛИМИТ показа: на сцене рисуем только первых N (у будки) по админ-настройке,
       // даже если в очереди сотни. Остальные — в очереди (счётчик/список), но не на картинке.
-      var showLimit = Math.max(1, Math.round(getSize("limit", 6)));
+      var showLimit = qLimit(b.q);
       var visible = entries.slice(0, showLimit);    // передняя часть очереди
       var shown = visible.length;                   // на сцене — не больше лимита
       // слой всей очереди: front/back переносит ВСЕХ людей очереди (с предметами над головами)
@@ -2830,7 +2844,7 @@
       // (клик открывает список) + свечение сферы по наведению. Заменяет прежние отдельные шар
       // и кнопку «Список». Ключ cnt: сохранён — наследует прежнюю (центральную) позицию.
       if (!isHidden("cnt:" + b.q)) {
-      var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }][b.q] || { x: 50, y: 50 };
+      var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }][b.q] || { x: 50, y: 50 };
       var cp = placedPos("cnt:" + b.q, cnDef.x, cnDef.y);
       var csz = objSize("cnt:" + b.q, 1);
       var cnz = (PLACEMENTS["cnt:" + b.q] && PLACEMENTS["cnt:" + b.q].z) ? zOf("cnt:" + b.q, cp.y) : 9000;
@@ -3049,7 +3063,7 @@
 
   // ── 3 ПОЛОСЫ полных очередей под сценой (всем): кнопка «встать» в начале,
   //    получатели равномерно растянуты, НПЦ-торговец наград в конце, прокрутка ◀▶ ──
-  var MERCH_LABEL = ["обычные ресурсы", "редкие ресурсы (R)", "легендарные (S)"];
+  var MERCH_LABEL = ["обычные ресурсы", "редкие ресурсы (R)", "легендарные (S)", "мифические (SS)"];
 
   // Заметная плашка: до воскресенья 16:00 мск (пока не собраны данные) КАЖДЫЙ может
   // в любой момент сменить ресурс, за которым стоит — жми на свою модельку или на
@@ -3059,15 +3073,17 @@
     var d = document.createElement("div");
     d.className = "q-3q";
     d.innerHTML =
-      '<div class="q-3q-title"><span class="q-3q-star">✦</span> Можно стоять сразу во ВСЕХ трёх очередях! <span class="q-3q-star">✦</span></div>' +
+      '<div class="q-3q-title"><span class="q-3q-star">✦</span> Можно стоять сразу во ВСЕХ ЧЕТЫРЁХ очередях! <span class="q-3q-star">✦</span></div>' +
       '<div class="q-3q-row">' +
         '<span class="q-3q-tag t-com">📦 Обычные</span>' +
         '<span class="q-3q-amp">+</span>' +
         '<span class="q-3q-tag t-rare">💎 Редкие <b>R</b></span>' +
         '<span class="q-3q-amp">+</span>' +
         '<span class="q-3q-tag t-leg">👑 Легендарные <b>S</b></span>' +
+        '<span class="q-3q-amp">+</span>' +
+        '<span class="q-3q-tag t-myth">🔮 Мифические <b>SS</b></span>' +
       "</div>" +
-      '<div class="q-3q-sub">Вставай в каждую — не нужно выбирать что-то одно. Получай ресурсы из всех трёх сразу.</div>';
+      '<div class="q-3q-sub">Вставай в каждую — не нужно выбирать что-то одно. Получай ресурсы из всех четырёх сразу.</div>';
     return d;
   }
 
@@ -3106,7 +3122,8 @@
       '<div class="qs-rules-body">' +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#7ec46a">🟢 Обычные:</span> выбирай <b>любые</b> ресурсы — каждый выдаётся <b>своим стаком</b> (размер стака указан на карточке ресурса, когда выбираешь его по клику на табличку). Все выбранные выдадутся, как подойдёт очередь. <span style="color:#caa66a">Отдельные ресурсы выдаются иначе — <b>всё накопленное за неделю разом</b> первому в очереди; у таких это указано отдельно на карточке.</span><div class="qs-rules-row">' + ic("kamen-doblesti") + ic("meteorit") + ic("zhemchuzhina") + ic("znak-edinstva") + ic("koloda-kart") + ic("kamen-bessmertnyh") + ic("pilyulya") + "</div></div>" +
         '<div class="qs-rule"><span class="qs-rule-b" style="color:#ffd24a">🟠 Редкие (R):</span> так же — можешь выбрать <b>оба</b> ресурса по стаку, выдадутся вместе.<div class="qs-rules-row">' + ic("gramota") + ic("prikaz-feniksa") + "</div></div>" +
-        '<div class="qs-rule"><span class="qs-rule-b" style="color:#c07be0">🟣 Легендарные (S):</span> выбираешь <b>1 ресурс</b> и стоишь за ним. Получил — сразу в конец очереди, если стоит галочка «вставать автоматически»; без неё — встань снова.<div class="qs-rules-row">' + ic("drakonya-cheshuya") + ic("sushchnost-karty") + ic("vysshiy-kamen") + ic("mount-cilin") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#c07be0">🟣 Легендарные (S):</span> выбираешь <b>1 ресурс</b> и стоишь за ним. Получил — сразу в конец очереди, если стоит галочка «вставать автоматически»; без неё — встань снова.<div class="qs-rules-row">' + ic("drakonya-cheshuya") + ic("sushchnost-karty") + ic("mount-cilin") + "</div></div>" +
+        '<div class="qs-rule"><span class="qs-rule-b" style="color:#ff8fd6">🔮 Мифические (SS):</span> отдельная очередь за <b>Высшим камнем божества</b> — стоишь за ним, получаешь по мере поступления (падает с 6 этапа КХ).<div class="qs-rules-row">' + ic("vysshiy-kamen") + "</div></div>" +
         '<div class="qs-rule"><b>Не всё досталось?</b> Если каких-то ресурсов не хватило — <b>остаёшься в очереди</b> за ними и получишь, как только появятся. Можно и выйти, встать заново и выбрать всё сразу новой пачкой.</div>' +
         '<div class="qs-rule"><b>🔥 Огненный цилинь и Высший камень</b> падают с шансом/с 6 этапа — на этой неделе их может не быть. Не страшно: ты <b>первый претендент</b> и стоишь в очереди, пока не получишь.</div>' +
         '<div class="qs-rule"><b>✏️ Менять выбор</b> можно в любой момент — нажми на свою модельку в очереди или на нужный ресурс у торговца.</div>' +
@@ -3878,7 +3895,7 @@
     });
   }
 
-  var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], []] };
+  var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], [], []] };
   var _myIdentities = [], _myActiveNick = "";   // свои ники (мэйн+твины) и кем стою сейчас
   var _selfPicks = {};     // АДМИНУ: id записи → ресурсы, что игрок выбрал САМ (по логам)
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
@@ -3898,7 +3915,7 @@
     // очереди целиком (все люди с предметами над головами) — только слой перёд/зад/авто
     BOOTHS.forEach(function (b) { objs.push({ queue: b.q, name: "Очередь · " + b.title + " (все люди)" }); });
     BOOTHS.forEach(function (b) { objs.push({ key: "lavka:" + b.q, name: "Лавка · " + b.title, dx: b.merchant.x, dy: b.merchant.y + 3, sz: true, base: getSize("lavka", 1), flip: true, repl: true }); });
-    var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }];
+    var cnDef = [{ x: 44, y: 44 }, { x: 50, y: 50 }, { x: 56, y: 56 }, { x: 36, y: 52 }];
     BOOTHS.forEach(function (b) { objs.push({ key: "cnt:" + b.q, name: "Табличка · " + b.title, dx: cnDef[b.q].x, dy: cnDef[b.q].y, sz: true, base: 1, flip: true }); });
     objs.push({ key: "mount", name: "Огненный цилинь", dx: 85, dy: 70, sz: true, base: getSize("mount", 1), flip: true, repl: true });
     objs.push({ key: "fountain", name: "Фонтан (день/ночь)", dx: 50, dy: 62, sz: true, base: getSize("fountain", 1), flip: true, repl: true });
@@ -4385,7 +4402,7 @@
     // ВСТАЛ НА КАРТИНКЕ (касается ТОЛЬКО этой очереди): если моделька в пределах лимита
     // показа — просто нарисовать её с анимацией появления; если за лимитом (её не видно) —
     // открыть список ИМЕННО этой очереди и промотать вниз к своей строке с анимацией.
-    var limit = Math.max(1, Math.round(getSize("limit", 6)));
+    var limit = qLimit(jj.q);
     var meChar = document.querySelector('.qs-char.q-char-me[data-q="' + jj.q + '"]');
     if (myIdx < limit && meChar) {
       playAppear(meChar.querySelector(".qs-char-inner") || meChar);   // видна на картинке → просто анимация
@@ -4471,7 +4488,7 @@
             '<div style="font-size:12.5px;color:#f0c878;font-weight:700;margin:0 0 7px">➕ Добавить в очередь с выбором ресурсов</div>' +
             '<div class="q-admin-row" style="align-items:center">' +
               '<span style="font-size:12.5px;color:#caa66a">Очередь:</span>' +
-              '<select id="qa-ma-queue"><option value="0">Обычные</option><option value="1">Редкие (R)</option><option value="2">Легендарные (S)</option></select>' +
+              '<select id="qa-ma-queue"><option value="0">Обычные</option><option value="1">Редкие (R)</option><option value="2">Легендарные (S)</option><option value="3">Мифические (SS)</option></select>' +
             "</div>" +
             '<div id="qa-ma-rows"></div>' +
             '<div class="q-admin-row" style="align-items:center;margin-top:2px">' +
@@ -4511,7 +4528,7 @@
             '<input id="qa-nick" placeholder="ник игрока…" autocomplete="off" style="min-width:170px">' +
             '<div class="q-adm-list" id="qa-list"></div>' +
             '<select id="qa-queue"><option value="0">Очередь 1 (обычные)</option>' +
-              '<option value="1">Очередь 2 (редкие R)</option><option value="2">Очередь 3 (легенд. S)</option></select>' +
+              '<option value="1">Очередь 2 (редкие R)</option><option value="2">Очередь 3 (легенд. S)</option><option value="3">Очередь 4 (мифич. SS)</option></select>' +
             '<input id="qa-pos" type="number" min="0" placeholder="место (пусто = в конец)" style="width:170px">' +
             '<button id="qa-add">Добавить в очередь</button>' +
           "</div>" +
@@ -4519,12 +4536,21 @@
             '<button class="sec" data-clear="0">Очистить оч.1</button>' +
             '<button class="sec" data-clear="1">Очистить оч.2</button>' +
             '<button class="sec" data-clear="2">Очистить оч.3</button>' +
+            '<button class="sec" data-clear="3">Очистить оч.4</button>' +
             '<button class="danger" data-clear="all">Очистить ВСЕ</button>' +
           "</div>" +
           '<div class="q-admin-row" style="gap:20px;align-items:flex-end">' +
-            '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
-              'Показывать в очереди (лимит): <b id="qa-limit-v">' + Math.round(getSize("limit", 6)) + '</b>' +
-              '<input type="range" id="qa-limit" min="1" max="20" step="1" value="' + Math.round(getSize("limit", 6)) + '" style="width:240px"></label>' +
+            '<div style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#caa66a">' +
+              '<span style="opacity:.85">Показывать на картинке (лимит по каждой очереди):</span>' +
+              BOOTHS.map(function (b) {
+                return '<label style="display:flex;align-items:center;gap:8px" ' +
+                  'title="Сколько человек показывать на картинке в очереди «' + esc(b.title) + '»">' +
+                  '<b style="min-width:120px;color:' + (b.glow || b.accent) + '">' + esc(b.title) + '</b>' +
+                  '<input type="range" class="qa-qlimit" data-q="' + b.q + '" min="1" max="30" step="1" value="' +
+                    qLimit(b.q) + '" style="width:190px">' +
+                  '<b id="qa-limit-v-' + b.q + '" style="min-width:20px">' + qLimit(b.q) + '</b></label>';
+              }).join("") +
+            "</div>" +
             '<label style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#caa66a">' +
               'Растянутость очереди: <b id="qa-spread-v">' + getSize("spread", 1).toFixed(2) + '</b>' +
               '<input type="range" id="qa-spread" min="0.4" max="1" step="0.05" value="' + getSize("spread", 1) + '" style="width:240px"></label>' +
@@ -4954,11 +4980,13 @@
       spEl.addEventListener("input", function () { spV.textContent = (+spEl.value).toFixed(2); });
       spEl.addEventListener("change", function () { saveCfg("size:spread", +spEl.value); render(_lastState); });
     }
-    var lEl = box.querySelector("#qa-limit"), lV = box.querySelector("#qa-limit-v");
-    if (lEl) {
-      lEl.addEventListener("input", function () { lV.textContent = lEl.value; });
-      lEl.addEventListener("change", function () { saveCfg("size:limit", +lEl.value); render(_lastState); });
-    }
+    // лимит показа НА КАЖДУЮ очередь отдельно (size:limit:<q>)
+    box.querySelectorAll(".qa-qlimit").forEach(function (el) {
+      var qi = el.getAttribute("data-q");
+      var vEl = box.querySelector("#qa-limit-v-" + qi);
+      el.addEventListener("input", function () { if (vEl) vEl.textContent = el.value; });
+      el.addEventListener("change", function () { saveCfg("size:limit:" + qi, +el.value); render(_lastState); });
+    });
     // глобальный размер моделей на СЦЕНЕ (× перспектива). Полосу внизу не трогает.
     var mEl = box.querySelector("#qa-models"), mV = box.querySelector("#qa-models-v");
     if (mEl) {
@@ -5848,7 +5876,7 @@
   // ── офицер/админ: кто «дошёл» на этой неделе — отметить, кто НЕ забрал ресурс ──
   // По умолчанию все они проходят дальше; отмеченные «не забрал» остаются в очереди.
   function buildDuePanel(standalone) {
-    var QN = ["Обычные", "Редкие R", "Легендарные S"];
+    var QN = ["Обычные", "Редкие R", "Легендарные S", "Мифические SS"];
     var wrap = document.createElement("div");
     if (standalone) wrap.className = "q-admin";
     wrap.innerHTML =

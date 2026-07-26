@@ -29,13 +29,13 @@ REWARDS: dict[str, dict] = {
     # ── легендарные (очередь 2), порог 100 ──
     "drakonya-cheshuya": {"q": 2, "st": [0, 0, 0, 1, 1, 1, 1],           "mode": "fixed", "unit": 1},
     "sushchnost-karty":  {"q": 2, "st": [0, 0, 0, 1, 1, 1, 1],           "mode": "fixed", "unit": 1},
-    "vysshiy-kamen":     {"q": 2, "st": [0, 0, 0, 0, 0, 1, 1],           "mode": "fixed", "unit": 1},
+    "vysshiy-kamen":     {"q": 3, "st": [0, 0, 0, 0, 0, 1, 1],           "mode": "fixed", "unit": 1},
     # Огненный цилинь (питомец) — падает с шансом; объём НЕ из этапов, а из
     # админского pet_count (переопределяется в compute). По 1 шт каждому.
     "mount-cilin":       {"q": 2, "st": [0, 0, 0, 0, 0, 0, 0],           "mode": "fixed", "unit": 1},
 }
 
-QUEUE_THRESHOLD = {0: 60, 1: 100, 2: 100}
+QUEUE_THRESHOLD = {0: 60, 1: 100, 2: 100, 3: 100}
 SHOOTER_PCT = 10                       # % камней доблести и метеоритов каждому проводнику
 SHOOTER_RES = ("kamen-doblesti", "meteorit")
 MAX_STAGES = 7
@@ -159,8 +159,8 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     #    Приоритет 2 (минимум групп): люди, получившие ОДИНАКОВЫЙ набор ресурсов, идут в
     #      одну группу («полосы» вместимости) → максимум эффективности при раздаче.
     queues_out = []
-    for q in (0, 1, 2):
-        raw = list((state.get("queues") or [[], [], []])[q])
+    for q in (0, 1, 2, 3):
+        raw = list((state.get("queues") or [[], [], [], []])[q])
         # защита: один игрок в очереди учитывается ОДИН раз (в проде join это гарантирует)
         seen = set()
         dedup = []
