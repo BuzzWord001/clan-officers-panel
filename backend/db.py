@@ -1095,6 +1095,20 @@ def member_dossier(nick_or_canon: str) -> dict | None:
             r = conn.execute("SELECT nick FROM valor_nick_override WHERE nick_canon=?", (cn,)).fetchone()
             return r["nick"] if r else None
 
+        # «в клане сейчас» = есть в ПОСЛЕДНЕМ снимке доблести (актуальный ростер) и не кикнут вручную.
+        latest_snap = conn.execute("SELECT MAX(id) m FROM valor_snapshots").fetchone()["m"]
+        try:
+            force_arch = {r["nick_canon"] for r in conn.execute("SELECT nick_canon FROM valor_force_archived")}
+        except sqlite3.OperationalError:
+            force_arch = set()
+
+        def _in_clan(cn):
+            if not latest_snap or cn in force_arch:
+                return False
+            return conn.execute(
+                "SELECT 1 FROM valor_members WHERE snapshot_id=? AND nick_canon=? LIMIT 1",
+                (latest_snap, cn)).fetchone() is not None
+
         cur = _latest(main)
         if not cur:
             for cn in tcanons:
@@ -1158,13 +1172,13 @@ def member_dossier(nick_or_canon: str) -> dict | None:
                        "tg_id": r["tg_id"], "tg_username": r["tg_username"], "tg_display": r["tg_display"]}
                 break
 
-        # твины с полной инфой
+        # твины с полной инфой + метка «в клане сейчас или нет»
         twins = []
         for tnick, tvc in twin_rows:
             lr = _latest(tvc)
             twins.append({"nick": _override(tvc) or (lr["nick"] if lr else tnick),
                           "class": (lr["class_"] if lr else ""), "level": (lr["level"] if lr else None),
-                          "valor": (lr["valor"] if lr else None)})
+                          "valor": (lr["valor"] if lr else None), "in_clan": _in_clan(tvc)})
 
         prev = _prev_departed_map(conn, amap).get(main)
 
@@ -1181,6 +1195,7 @@ def member_dossier(nick_or_canon: str) -> dict | None:
             "active_warnings": active_w_all.get(main, []),
             "manual_warnings": manual_w_all.get(main, []),
             "departed": prev,
+            "in_clan": _in_clan(main),
             "found": bool(cur or acc or soc),
         }
 

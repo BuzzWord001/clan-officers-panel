@@ -200,6 +200,8 @@ def _fmt_dossier(d: dict) -> str:
     if d.get("last_week"):
         line += " (" + d["last_week"] + ")"
     L.append(line)
+    if not d.get("in_clan"):
+        L.append("🚪 СЕЙЧАС НЕ В КЛАНЕ (нет в последнем сборе доблести)")
     acc = d.get("acceptance")
     if acc:
         L.append("📅 В клане с " + (acc.get("accepted_date") or "?")
@@ -227,7 +229,8 @@ def _fmt_dossier(d: dict) -> str:
                 extra.append("ур." + str(t["level"]))
             if t.get("valor") is not None:
                 extra.append("добл." + str(t["valor"]))
-            L.append("  • " + t["nick"] + (" — " + ", ".join(extra) if extra else ""))
+            status = "✅ в клане" if t.get("in_clan") else "🚪 не в клане"
+            L.append("  • " + t["nick"] + (" — " + ", ".join(extra) if extra else "") + " · " + status)
     soc = d.get("socials")
     if soc:
         sp = []
