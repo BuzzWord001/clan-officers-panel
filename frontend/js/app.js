@@ -307,6 +307,7 @@
     const elite = $("f-elite") ? $("f-elite").checked : false;
     const combat_power = $("f-cp") ? Math.max(0, parseFloat($("f-cp").value) || 0) : 0;
     const survivability = $("f-sv") ? Math.max(0, parseFloat($("f-sv").value) || 0) : 0;
+    const spouse = $("f-spouse") ? $("f-spouse").value.trim() : "";
 
     const iso = DateRu.parseRus(rusDate);
     if (!nick) return;
@@ -319,8 +320,21 @@
     try {
       await API.create({ game_nick: nick, title, accepted_date: iso, note, veteran, elite,
         combat_power, survivability, combat_shot: shotDataUrl || "" });
+      // Супруг(а): связываем ОБЕ стороны (передача ресурса работает в обе стороны). Ошибку
+      // тут не превращаем в отказ приёма — сам приём уже прошёл.
+      let spouseMsg = "";
+      if (spouse) {
+        try {
+          await API.setSpouse(nick, spouse);
+          await API.setSpouse(spouse, nick);
+          spouseMsg = ` 💍 супруг: ${spouse}`;
+        } catch (e) {
+          spouseMsg = ` (⚠ супруга «${spouse}» не удалось связать: ${e.detail || e.message})`;
+        }
+      }
       $("f-nick").value = "";
       $("f-title").value = "";
+      if ($("f-spouse")) $("f-spouse").value = "";
       $("f-note").value = "";
       $("f-date").value = DateRu.today();
       if ($("f-cp")) $("f-cp").value = "";
@@ -332,7 +346,7 @@
       if ($("nick-kicked-note")) { $("nick-kicked-note").hidden = true; $("nick-kicked-note").innerHTML = ""; }
       const cc = (combat_power || survivability) ? ` (БК ${combat_power} · Выж ${survivability})`
                : (shotDataUrl ? " (📎 скрин)" : "");
-      setStatus(`✓ Принят: ${nick}${veteran ? " (★ Ветеран)" : ""}${elite ? " (⚔ Элита)" : ""}${cc}`);
+      setStatus(`✓ Принят: ${nick}${veteran ? " (★ Ветеран)" : ""}${elite ? " (⚔ Элита)" : ""}${cc}${spouseMsg}`);
       await reload();
       // Раскрываем список и показываем свежую запись (она вверху) — без прокрутки вручную.
       setRegListOpen(true, true);
@@ -689,9 +703,18 @@
       applyFilter();
       renderRolePendingPanel();
       updateRegCount();
+      fillSpouseDatalist();
     } catch (e) {
       setStatus(`✗ Не удалось загрузить: ${e.message}`);
     }
+  }
+
+  // Подсказки ников для поля «Муж / жена» — все ники клана (доблесть + реестр).
+  function fillSpouseDatalist() {
+    const dl = $("f-spouse-dl");
+    if (!dl) return;
+    dl.innerHTML = clanNicksAll().map((n) =>
+      `<option value="${esc(n)}"></option>`).join("");
   }
 
   // Счётчик в свёрнутом заголовке списка.
