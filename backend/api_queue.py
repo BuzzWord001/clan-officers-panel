@@ -411,6 +411,11 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_models ADD COLUMN aura TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: РОЛЬ супруга-получателя — 'husband'|'wife'|'' (кто он игроку: муж или жена)
+        try:
+            conn.execute("ALTER TABLE queue_spouses ADD COLUMN role TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: аккаунт офицера (личный пароль + офицерская роль по нику)
         try:
             conn.execute("ALTER TABLE queue_accounts ADD COLUMN is_officer INTEGER NOT NULL DEFAULT 0")
@@ -745,6 +750,7 @@ class SetEntryIn(BaseModel):
 class SpouseIn(BaseModel):
     nick: str = Field(min_length=1, max_length=64)               # кому задаём получателя
     recipient: str = Field(default="", max_length=64)            # ник получателя; пусто = удалить связь
+    role: str = Field(default="", max_length=8)                  # кто получатель игроку: 'husband'|'wife'|''
 
 
 class TwinIn(BaseModel):
@@ -2093,14 +2099,22 @@ def spouses() -> dict:
     """Связки канон→получатель. links — карта (для префилла), items — с никами (для панели)."""
     with db.connection() as conn:
         idx = _people(conn)
-        rows = conn.execute(
-            "SELECT canon, recipient FROM queue_spouses WHERE recipient!=''").fetchall()
+        try:
+            rows = conn.execute(
+                "SELECT canon, recipient, role FROM queue_spouses WHERE recipient!=''").fetchall()
+        except Exception:
+            rows = conn.execute(
+                "SELECT canon, recipient FROM queue_spouses WHERE recipient!=''").fetchall()
     canon2nick = {p["main_canon"]: p["main_nick"] for p in idx.values()}
+    def _role(r):
+        try: return r["role"] or ""
+        except Exception: return ""
     links = {r["canon"]: r["recipient"] for r in rows}
+    roles = {r["canon"]: _role(r) for r in rows}
     items = [{"canon": r["canon"], "nick": canon2nick.get(r["canon"], r["canon"]),
-              "recipient": r["recipient"]} for r in rows]
+              "recipient": r["recipient"], "role": _role(r)} for r in rows]
     items.sort(key=lambda e: (e["nick"] or "").lower())
-    return {"links": links, "items": items}
+    return {"links": links, "roles": roles, "items": items}
 
 
 @router.post("/spouse")
@@ -2113,17 +2127,19 @@ def set_spouse(payload: SpouseIn, request: Request,
         if not cn:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
         rcpt = (payload.recipient or "").strip()[:64]
+        role = payload.role if payload.role in ("husband", "wife") else ""
         if rcpt:
             conn.execute(
-                "INSERT INTO queue_spouses (canon, recipient, updated_by, updated_at) VALUES (?,?,?,?)"
-                " ON CONFLICT(canon) DO UPDATE SET recipient=excluded.recipient,"
+                "INSERT INTO queue_spouses (canon, recipient, role, updated_by, updated_at) VALUES (?,?,?,?,?)"
+                " ON CONFLICT(canon) DO UPDATE SET recipient=excluded.recipient, role=excluded.role,"
                 " updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                (cn, rcpt, _actor_name(actor), _now()))
+                (cn, rcpt, role, _actor_name(actor), _now()))
         else:
             conn.execute("DELETE FROM queue_spouses WHERE canon=?", (cn,))
+        _rl = {"husband": " (муж)", "wife": " (жена)"}.get(role, "")
         _log(conn, "spouse", actor=_actor_name(actor), nick=payload.nick,
-             request=request, detail="→" + (rcpt or "(удалено)"))
-    return {"ok": True, "recipient": rcpt}
+             request=request, detail="→" + (rcpt + _rl if rcpt else "(удалено)"))
+    return {"ok": True, "recipient": rcpt, "role": role}
 
 
 @router.get("/twins")

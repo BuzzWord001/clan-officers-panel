@@ -129,7 +129,7 @@
 
     list:          () => request("GET",  "/acceptances"),
     create:        (payload) => request("POST",  "/acceptances", payload),
-    setSpouse:     (nick, recipient) => request("POST", "/queue/spouse", { nick, recipient: recipient || "" }),
+    setSpouse:     (nick, recipient, role) => request("POST", "/queue/spouse", { nick, recipient: recipient || "", role: role || "" }),
     spouses:       () => request("GET", "/queue/spouses"),
     update:        (id, payload) => request("PATCH", `/acceptances/${id}`, payload),
     remove:        (id) => request("DELETE", `/acceptances/${id}`),

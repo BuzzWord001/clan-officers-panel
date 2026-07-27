@@ -12,6 +12,7 @@
   let IS_GUEST = false;   // гость — только просмотр, без правок
   let IS_ADMIN = false;   // админ — правка ников и данных в таблице
   let SPOUSES = {};       // canon→ник супруга (для кнопки 💍 в строке доблести)
+  let SPOUSE_ROLES = {};  // canon→роль супруга ('husband'|'wife'|'')
   let IS_OFFICER = false; // офицер ИЛИ админ — предупреждения и статус АФК
 
   // Переход со «Скринов сбора» (двойной клик): подсветить нужный ник.
@@ -196,8 +197,10 @@
     $("valor-empty").hidden = true;
     // карта супругов canon→ник (для кнопки 💍 в строке) — офицеру/админу
     if (IS_OFFICER) {
-      try { const sp = await adminCall("GET", "/queue/spouses"); SPOUSES = (sp && sp.links) || {}; }
-      catch (_) {}
+      try {
+        const sp = await adminCall("GET", "/queue/spouses");
+        SPOUSES = (sp && sp.links) || {}; SPOUSE_ROLES = (sp && sp.roles) || {};
+      } catch (_) {}
     }
     renderSummary();
     apply();
@@ -1541,7 +1544,12 @@
           + immuneBtn(m)         // 🛡 ручной иммунитет на неделю
           + veteranBtn(m)        // ★ роль Ветеран
           + eliteBtn(m)          // ⚔ роль Элита (Топ по урону)
-          + `<button class="radm${SPOUSES[m.nick_canon] ? " has-spouse" : ""}" data-act="spouse" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" data-cur="${esc(SPOUSES[m.nick_canon] || "")}" title="💍 Супруг (муж/жена). ${SPOUSES[m.nick_canon] ? "Сейчас: " + esc(SPOUSES[m.nick_canon]) : "Не указан"}. Укажешь ник — у него/неё автоматически проставится этот игрок.">💍</button>`
+          + (() => {
+              const sn = SPOUSES[m.nick_canon] || "", sr = SPOUSE_ROLES[m.nick_canon] || "";
+              const rlab = sr === "husband" ? " ♂муж" : sr === "wife" ? " ♀жена" : "";
+              const cur = sn ? "Сейчас: " + esc(sn) + rlab : "Не указан";
+              return `<button class="radm${sn ? " has-spouse" : ""}" data-act="spouse" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" data-cur="${esc(sn)}" data-role="${esc(sr)}" title="💍 Супруг (муж/жена). ${cur}. Укажешь ник и кто он (муж/жена) — у супруга автоматически проставится обратная роль.">💍</button>`;
+            })()
           + archiveBtnHtml
           + (IS_ADMIN
             ? `<button class="radm" data-act="edit" data-id="${m.id}" title="✎ Редактировать строку — изменить ник и любые данные игрока. Исправленное написание ника держится из недели в неделю.">✎</button>`
@@ -1917,17 +1925,24 @@
         await adminCall("POST", "/valor/merge", { source_canon: canon, target_nick: target });
         await load(); await loadDeparted();
       } else if (act === "spouse") {
-        const nick = b.dataset.nick, cur = b.dataset.cur || "";
+        const nick = b.dataset.nick, cur = b.dataset.cur || "", curRole = b.dataset.role || "";
         const val = prompt(`💍 Супруг(а) для «${nick}» — ник мужа/жены.\n` +
           `Если укажешь ник, который есть на сайте, у него/неё АВТОМАТИЧЕСКИ проставится этот игрок как супруг.\n` +
           `Пусто — убрать связь.`, cur);
         if (val === null) return;                       // отмена
         const nv = val.trim();
-        if (nv.toLowerCase() === cur.toLowerCase()) return;
-        // разорвать старую пару с обеих сторон, задать новую двусторонне
-        if (cur) { try { await adminCall("POST", "/queue/spouse", { nick: cur, recipient: "" }); } catch (_) {} }
-        await adminCall("POST", "/queue/spouse", { nick, recipient: nv });     // ""=очистить
-        if (nv) await adminCall("POST", "/queue/spouse", { nick: nv, recipient: nick });
+        let role = "";
+        if (nv) {
+          const rp = (prompt(`«${nv}» — это МУЖ или ЖЕНА игрока «${nick}»?\nВпиши: муж / жена (или оставь пусто).`,
+            curRole === "husband" ? "муж" : curRole === "wife" ? "жена" : "") || "").trim().toLowerCase();
+          role = rp.startsWith("муж") || rp === "m" ? "husband" : (rp.startsWith("жен") || rp === "f" ? "wife" : "");
+        }
+        const opp = role === "husband" ? "wife" : role === "wife" ? "husband" : "";
+        if (nv.toLowerCase() === cur.toLowerCase() && role === curRole) return;
+        // разорвать старую пару, задать новую двусторонне (супругу — обратная роль)
+        if (cur && cur.toLowerCase() !== nv.toLowerCase()) { try { await adminCall("POST", "/queue/spouse", { nick: cur, recipient: "" }); } catch (_) {} }
+        await adminCall("POST", "/queue/spouse", { nick, recipient: nv, role });     // ""=очистить
+        if (nv) await adminCall("POST", "/queue/spouse", { nick: nv, recipient: nick, role: opp });
         await load();
       }
     } catch (_) { /* adminCall уже показал alert */ }

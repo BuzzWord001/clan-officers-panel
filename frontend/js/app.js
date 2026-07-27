@@ -308,6 +308,7 @@
     const combat_power = $("f-cp") ? Math.max(0, parseFloat($("f-cp").value) || 0) : 0;
     const survivability = $("f-sv") ? Math.max(0, parseFloat($("f-sv").value) || 0) : 0;
     const spouse = $("f-spouse") ? $("f-spouse").value.trim() : "";
+    const spouseRole = $("f-spouse-role") ? $("f-spouse-role").value : "";
 
     const iso = DateRu.parseRus(rusDate);
     if (!nick) return;
@@ -324,12 +325,16 @@
       // тут не превращаем в отказ приёма — сам приём уже прошёл.
       let spouseMsg = "";
       if (spouse) {
-        try { await spouseApply(nick, "", spouse); spouseMsg = ` 💍 супруг: ${spouse}`; }
-        catch (e) { spouseMsg = ` (⚠ супруга «${spouse}» не удалось связать: ${e.detail || e.message})`; }
+        try {
+          await spouseApply(nick, "", spouse, spouseRole);
+          const rl = spouseRole === "husband" ? " (муж)" : spouseRole === "wife" ? " (жена)" : "";
+          spouseMsg = ` 💍 супруг: ${spouse}${rl}`;
+        } catch (e) { spouseMsg = ` (⚠ супруга «${spouse}» не удалось связать: ${e.detail || e.message})`; }
       }
       $("f-nick").value = "";
       $("f-title").value = "";
       if ($("f-spouse")) $("f-spouse").value = "";
+      if ($("f-spouse-role")) $("f-spouse-role").value = "";
       $("f-note").value = "";
       $("f-date").value = DateRu.today();
       if ($("f-cp")) $("f-cp").value = "";
@@ -713,24 +718,31 @@
       `<option value="${esc(n)}"></option>`).join("");
   }
 
-  // Карта супругов canon→ник (для префилла редактора). Обновляется в reload().
-  let spouseLinks = {};
+  // Карты супругов canon→ник и canon→роль (для префилла редактора). Обновляются в reload().
+  let spouseLinks = {}, spouseRoles = {};
   async function loadSpouseLinks() {
-    try { const sp = await API.spouses(); spouseLinks = (sp && sp.links) || {}; } catch (_) {}
+    try {
+      const sp = await API.spouses();
+      spouseLinks = (sp && sp.links) || {};
+      spouseRoles = (sp && sp.roles) || {};
+    } catch (_) {}
   }
-  // Текущий супруг записи реестра (по её canon).
-  function spouseOf(r) {
-    const cn = r.nick_canon || (typeof regCanon === "function" ? regCanon(r.game_nick) : "");
-    return (cn && spouseLinks[cn]) || "";
-  }
-  // Двусторонняя простановка: если указываешь ник жены — у жены автоматически ставится муж.
-  // Смена/очистка разрывает старую пару с обеих сторон. Возвращает новый ник супруга.
-  async function spouseApply(nick, oldSp, newSp) {
+  function _canonOf(r) { return r.nick_canon || (typeof regCanon === "function" ? regCanon(r.game_nick) : ""); }
+  function spouseOf(r) { const cn = _canonOf(r); return (cn && spouseLinks[cn]) || ""; }
+  function spouseRoleOf(r) { const cn = _canonOf(r); return (cn && spouseRoles[cn]) || ""; }   // 'husband'|'wife'|''
+  const _opp = (role) => (role === "husband" ? "wife" : role === "wife" ? "husband" : "");
+  // Двусторонняя простановка: указываешь ник супруга + роль (муж/жена) — у него автоматически
+  // ставится этот игрок с ПРОТИВОПОЛОЖНОЙ ролью. Смена/очистка разрывает старую пару.
+  async function spouseApply(nick, oldSp, newSp, role) {
     oldSp = (oldSp || "").trim(); newSp = (newSp || "").trim();
-    if (normNick(oldSp) === normNick(newSp)) return newSp;
+    role = (role === "husband" || role === "wife") ? role : "";
+    if (normNick(oldSp) === normNick(newSp)) {                            // ник тот же — обновить только роль
+      if (newSp) { await API.setSpouse(nick, newSp, role); if (role) await API.setSpouse(newSp, nick, _opp(role)); }
+      return newSp;
+    }
     if (oldSp) { try { await API.setSpouse(oldSp, ""); } catch (_) {} }   // разорвать старую пару
-    await API.setSpouse(nick, newSp);                                     // ""=очистить
-    if (newSp) await API.setSpouse(newSp, nick);                          // авто-обратная связь
+    await API.setSpouse(nick, newSp, role);                              // ""=очистить
+    if (newSp) await API.setSpouse(newSp, nick, _opp(role));             // авто-обратная связь
     return newSp;
   }
 
@@ -838,8 +850,13 @@
 
     dateCell.innerHTML  = `<input type="text" value="${DateRu.fmtRus(r.accepted_date)}" placeholder="ДД.ММ.ГГГГ" style="width:100%">`;
     const curSpouse = spouseOf(r);
+    const curRole = spouseRoleOf(r);
     noteCell.innerHTML  = `<input type="text" class="ed-note" value="${esc(r.note || "")}" placeholder="примечание" style="width:100%">`
-      + `<input type="text" class="ed-spouse" value="${esc(curSpouse)}" placeholder="💍 муж / жена (ник)" list="f-spouse-dl" autocomplete="off" style="width:100%;margin-top:4px">`;
+      + `<input type="text" class="ed-spouse" value="${esc(curSpouse)}" placeholder="💍 муж / жена (ник)" list="f-spouse-dl" autocomplete="off" style="width:100%;margin-top:4px">`
+      + `<select class="ed-spouse-role" style="width:100%;margin-top:3px">`
+      + `<option value="">— он муж или она жена? —</option>`
+      + `<option value="husband"${curRole === "husband" ? " selected" : ""}>♂ это муж</option>`
+      + `<option value="wife"${curRole === "wife" ? " selected" : ""}>♀ это жена</option></select>`;
     actions.innerHTML =
       `<label class="ed-vet-lbl" title="Роль Ветеран в Доблести">`
       + `<input type="checkbox" class="ed-vet" ${r.veteran ? "checked" : ""}> ★Вет</label>`
@@ -899,12 +916,14 @@
       };
       if (editShot !== undefined) payload.combat_shot = editShot;   // ""=удалить, dataURL=заменить
       const spBox = noteCell.querySelector(".ed-spouse");
+      const roleBox = noteCell.querySelector(".ed-spouse-role");
       const newSpouse = spBox ? spBox.value.trim() : curSpouse;
+      const newRole = roleBox ? roleBox.value : curRole;
       try {
         await API.update(r.id, payload);
-        // Супруг — двусторонне (жене автоматически проставится муж). Ошибку не превращаем в отказ.
-        if (normNick(newSpouse) !== normNick(curSpouse)) {
-          try { await spouseApply(newNick || r.game_nick, curSpouse, newSpouse); }
+        // Супруг + роль (муж/жена) — двусторонне: супругу проставится ОБРАТНАЯ роль автоматически.
+        if (normNick(newSpouse) !== normNick(curSpouse) || newRole !== curRole) {
+          try { await spouseApply(newNick || r.game_nick, curSpouse, newSpouse, newRole); }
           catch (e2) { alert("Запись сохранена, но супруга связать не удалось: " + (e2.detail || e2.message)); }
         }
         await finish();
