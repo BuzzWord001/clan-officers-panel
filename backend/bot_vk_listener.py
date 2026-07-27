@@ -38,16 +38,13 @@ def _vk_name(session, uid: int) -> str:
     return "VK " + str(uid)
 
 
-def _handle_command(session, raw: dict, target_peer: int) -> None:
-    """Офицерская команда (/принять …) из VK-чата → выполнить и ответить."""
-    msg = (raw.get("object") or {}).get("message") or {}
-    text = (msg.get("text") or "").strip()
+def _process_message(session, m: dict, target_peer: int) -> None:
+    """Одно сообщение офиц.чата (из messages.getHistory) → если это команда, выполнить и ответить."""
+    text = (m.get("text") or "").strip()
     if not text.startswith("/"):
         return
-    if msg.get("peer_id") != target_peer:
-        return
-    from_id = msg.get("from_id") or 0
-    if from_id <= 0:                       # сообщение от группы/бота — игнор
+    from_id = m.get("from_id") or 0
+    if from_id <= 0:                       # сообщение сообщества/бота — игнор
         return
     actor = {"platform": "vk", "id": str(from_id),
              "name": _vk_name(session, from_id), "ip": "", "user_agent": "vk-command"}
@@ -66,26 +63,23 @@ _REPOST_COOLDOWN_SEC = 60
 _RECONNECT_BACKOFF_INITIAL = 2.0
 _RECONNECT_BACKOFF_MAX = 60.0
 
-# Persist позиции Long Poll (ts) на томе — чтобы после рестарта/деплоя ВОЗОБНОВИТЬ с
-# последней позиции и переиграть события за время простоя. VK Bot Long Poll иначе берёт
-# свежий ts на реконнекте → команды (/принять и т.п.), присланные в окно рестарта, теряются.
-_TS_FILE = "/data/vk_officer_lp_ts.txt"
+# Маркер последнего обработанного сообщения офиц.чата (conversation_message_id) на томе —
+# чтобы после рестарта продолжить с того же места (как TG offset) и не переиграть старое.
+_CMID_FILE = "/data/vk_officer_last_cmid.txt"
 
 
-def _load_saved_ts():
+def _load_last_cmid():
     try:
-        with open(_TS_FILE, encoding="utf-8") as f:
-            return (f.read().strip() or None)
+        with open(_CMID_FILE, encoding="utf-8") as f:
+            return int(f.read().strip() or "0")
     except Exception:
-        return None
+        return None                        # None → первый запуск (стартуем с текущего максимума)
 
 
-def _save_ts(ts):
-    if ts is None:
-        return
+def _save_last_cmid(cmid):
     try:
-        with open(_TS_FILE, "w", encoding="utf-8") as f:
-            f.write(str(ts))
+        with open(_CMID_FILE, "w", encoding="utf-8") as f:
+            f.write(str(int(cmid)))
     except Exception:
         pass
 
@@ -138,84 +132,54 @@ def _event_peer_id(event_type: Any, raw: dict) -> int | None:
 
 
 def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> None:
-    """Главный sync-цикл — крутится в отдельном thread."""
+    """Опрос истории офицерского VK-чата (messages.getHistory) и выполнение команд.
+    НЕ используем Bot Long Poll: его на этом сообществе уже держит clan-reg-bot, а два
+    Long Poll на одну группу КОНКУРИРУЮТ за события — officers-panel терял часть команд
+    (в TG такого нет: у ботов разные токены + offset переигрывает). getHistory + маркер
+    cmid — независимый источник, и переигрывает пропущенное при рестарте (как TG offset)."""
     if not (settings.vk_group_token and settings.vk_officer_peer_id):
         log.warning("VK listener disabled: vk_group_token or vk_officer_peer_id missing")
         return
 
     target_peer = _peer_id()
-    last_repost = 0.0
+    session = vk_api.VkApi(token=settings.vk_group_token, api_version="5.199")
+    api = session.get_api()
+
+    last_cmid = _load_last_cmid()
+    if last_cmid is None:                       # первый запуск — стартуем с текущего максимума
+        try:
+            h0 = api.messages.getHistory(peer_id=target_peer, count=1)
+            its = h0.get("items") or []
+            last_cmid = (its[0].get("conversation_message_id") or 0) if its else 0
+        except Exception as e:
+            log.warning("VK poller init getHistory failed: %s", e)
+            last_cmid = 0
+        _save_last_cmid(last_cmid)
+    log.info("VK officer poller started, peer=%s, from cmid=%s", target_peer, last_cmid)
+
     backoff = _RECONNECT_BACKOFF_INITIAL
-
-    # Фоновый сейвер позиции Long Poll: сохраняет longpoll.ts каждые ~4с — даже БЕЗ событий
-    # (check() продвигает ts на каждом опросе). После рестарта/деплоя возобновляемся с этой
-    # позиции — как TG offset — и НЕ теряем VK-команды, присланные в окно простоя. Раньше ts
-    # сохранялся только на событии, поэтому в окно рестарта команды терялись безвозвратно.
-    _lp_ref = {"lp": None}
-
-    def _ts_saver():
-        while not stop.is_set():
-            stop.wait(4)
-            lp = _lp_ref.get("lp")
-            if lp is not None:
-                _save_ts(getattr(lp, "ts", None))
-
-    threading.Thread(target=_ts_saver, daemon=True, name="vk-ts-saver").start()
-
     while not stop.is_set():
         try:
-            session = vk_api.VkApi(token=settings.vk_group_token, api_version="5.199")
-            group_id = _group_id_from_token()
-            if not group_id:
-                log.error("VK listener: cannot determine group_id, retry in %ss", backoff)
-                stop.wait(backoff)
-                backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX)
-                continue
-
-            longpoll = VkBotLongPoll(session, group_id, wait=25)
-            _lp_ref["lp"] = longpoll                # фоновому сейверу — актуальный longpoll
-            saved_ts = _load_saved_ts()
-            if saved_ts:
-                # возобновляем с сохранённой позиции → VK переигрывает события за простой
-                # (деплой/рестарт). Если ts устарел — библиотека сама возьмёт свежий (graceful).
-                longpoll.ts = saved_ts
-                log.info("VK listener connected (resume ts=%s), group_id=%s peer=%s",
-                         saved_ts, group_id, target_peer)
-            else:
-                log.info("VK listener connected, group_id=%s peer=%s", group_id, target_peer)
-            backoff = _RECONNECT_BACKOFF_INITIAL
-
-            for event in longpoll.listen():
-                if stop.is_set():
-                    return
+            h = api.messages.getHistory(peer_id=target_peer, count=30)
+            items = h.get("items") or []
+            new = sorted(
+                [m for m in items if (m.get("conversation_message_id") or 0) > last_cmid],
+                key=lambda m: m.get("conversation_message_id") or 0)
+            for m in new:
+                cmid = m.get("conversation_message_id") or 0
                 try:
-                    raw = event.raw if hasattr(event, "raw") else {}
-                    etype = event.type
-                    # Офицерская команда приёма (/принять, /удалить, /список, /помощь)
-                    if etype == VkBotEventType.MESSAGE_NEW:
-                        try:
-                            _handle_command(session, raw, target_peer)
-                        except Exception:
-                            log.exception("VK command handling failed")
-                    if not _is_invite_event(etype, raw):
-                        continue
-                    peer = _event_peer_id(etype, raw)
-                    if peer != target_peer:
-                        continue
-                    # Раньше тут пересоздавали закреп со списком новичков для
-                    # нового участника. По требованию Лира список новых
-                    # пользователей больше не рендерим — в закрепе просто скрин
-                    # сайта, на join его не трогаем.
-                    log.info("VK invite event — repost disabled (pin is a static site shot)")
+                    _process_message(session, m, target_peer)
                 finally:
-                    # позицию сохраняем ПОСЛЕ обработки события (даже при continue). Если процесс
-                    # убьют во время обработки — ts не продвинется → событие переиграется на рестарте.
-                    _save_ts(getattr(longpoll, "ts", None))
-
+                    if cmid > last_cmid:
+                        last_cmid = cmid
+                        _save_last_cmid(last_cmid)
+            backoff = _RECONNECT_BACKOFF_INITIAL
         except Exception as exc:
-            log.warning("VK longpoll error: %s; reconnect in %ss", exc, backoff)
+            log.warning("VK poller error: %s; retry in %ss", exc, backoff)
             stop.wait(backoff)
             backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX)
+            continue
+        stop.wait(3)                            # опрос офиц.чата каждые 3с (низкочастотный)
 
 
 async def run() -> None:
