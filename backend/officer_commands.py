@@ -135,7 +135,11 @@ def _cancel(actor: dict) -> str:
 
 
 def _remove(rest: str, actor: dict) -> str:
-    nick, _ = _split_nick_title(rest)
+    # У /удалить титула нет — ВЕСЬ текст это ник (иначе многословный ник обрезался бы до
+    # первого слова). Пайп поддерживаем на случай, если писали как в /принять.
+    nick = (rest or "").strip()
+    if "|" in nick:
+        nick = nick.split("|", 1)[0].strip()
     if not nick:
         return "Укажи ник: /удалить Ник"
     row = _find_active(nick)

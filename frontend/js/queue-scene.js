@@ -3156,7 +3156,7 @@
         // регистрации в чате по времени захода). Переходу не мешаем (ссылка открывается в новой вкладке).
         var a = e.target.closest(".qs-fl-link[data-plat]");
         if (a && _meAcc) {
-          try { q("POST", "/queue/chat-link-click", { platform: a.getAttribute("data-plat") }); } catch (e2) {}
+          try { var _p = q("POST", "/queue/chat-link-click", { platform: a.getAttribute("data-plat") }); if (_p && _p.catch) _p.catch(function () {}); } catch (e2) {}
         }
       });
       // наведение на кнопку — показать полную ссылку (её можно выделить и скопировать вручную)
