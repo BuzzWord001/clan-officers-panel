@@ -4024,8 +4024,16 @@
         if (!admin) _myTokens = d.tokens; if (m) m.close(); refresh();
       }).catch(function (e) {
         goBtn.disabled = false;
-        alert(e.status === 409 ? "Не хватает жетонов." : e.status === 400 ? "Только обычные ресурсы (не пачечные)." :
-              e.status === 401 ? "Войди как игрок." : ("Ошибка: " + (e.detail || e.message)));
+        var det = (e.detail || "") + "";
+        if (e.status === 409 && det.indexOf("low_valor") === 0) {
+          var pp = det.split(":");   // low_valor:<доблесть>:<порог>
+          alert("Недостаточно доблести для этого ресурса: у тебя " + (pp[1] || "?") +
+                ", нужно ≥ " + (pp[2] || "60") + ".\n" +
+                "Жетон НЕ потрачен — стой в обычной очереди и получишь по мере поступления.");
+        } else {
+          alert(e.status === 409 ? "Не хватает жетонов." : e.status === 400 ? "Только обычные ресурсы (не пачечные)." :
+                e.status === 401 ? "Войди как игрок." : ("Ошибка: " + (e.detail || e.message)));
+        }
       });
     });
   }

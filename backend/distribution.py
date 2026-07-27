@@ -194,8 +194,12 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             dedup.append(e)
         raw = dedup
         thr = QUEUE_THRESHOLD[q]
-        # привилегированные (взяли вне очереди жетоном) — ПЕРВЫЕ, БЕЗ выдачи из пула
-        priv = [e for e in raw if e.get("privileged")]
+        # привилегированные (взяли вне очереди жетоном) — ПЕРВЫЕ, БЕЗ выдачи из пула. НО доблесть
+        # проверяется как у всех: у кого её мало (< порога) — ресурс НЕ получает (жетон это не
+        # отменяет). В норме это отсекается ещё при применении жетона (priv_claim), тут — страховка.
+        priv_all = [e for e in raw if e.get("privileged")]
+        priv = [e for e in priv_all if entry_valor(e) >= thr]        # доблести хватает → получают
+        priv_low = [e for e in priv_all if entry_valor(e) < thr]     # мало доблести → НЕ получают
         rest_raw = [e for e in raw if not e.get("privileged")]
 
         def _lowrow(e, v):
@@ -262,6 +266,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                         got[j][res] = cnt * unit
                 pool[res] = have - total_stacks * unit   # только неполный стак (< unit) → в клан
         rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
+        rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in priv_low]  # жетон, но мало доблести
         rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
                  for i, e in enumerate(ordered)]
         rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in low]

@@ -3702,6 +3702,16 @@ def priv_claim(payload: PrivClaimIn, request: Request) -> dict:
         acc = _player_ctx(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        # ДОБЛЕСТЬ проверяется как в обычной очереди (q0 ≥ 60): жетон ТОП-3 даёт взять ресурс
+        # ВНЕ очереди, но НЕ отменяет порог. Если доблести мало — жетон НЕ тратим (проверка ДО
+        # списания), человек просто остаётся в очереди и НЕ получает ресурс.
+        vmap, _vn = _valor_map(conn)
+        pv = vmap.get(acc["main_canon"])
+        if pv is None:
+            pv = vmap.get(db._valor_canon(acc.get("main_nick") or acc.get("reg_nick") or "")) or 0
+        thr = VALOR_THRESHOLD.get(0, 60)
+        if pv < thr:
+            raise HTTPException(status.HTTP_409_CONFLICT, "low_valor:%d:%d" % (pv, thr))
         row = conn.execute("SELECT tokens FROM queue_privileges WHERE canon=?",
                            (acc["main_canon"],)).fetchone()
         have = row["tokens"] if row else 0
