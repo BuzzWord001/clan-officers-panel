@@ -1597,6 +1597,16 @@ def _entry_resources(r):
     import json as _json
     q = r["queue"]
     valid = _QUEUE_ITEMS[q] if 0 <= q < len(_QUEUE_ITEMS) else []
+    # Привилегированная (жетон ТОП-3, вне очереди) запись берёт РОВНО ОДИН ресурс
+    # (r["resource"]), НЕ мультивыбор. Иначе при пустом resources подставились бы ВСЕ
+    # ресурсы очереди → над головой клона показывало «ресурс +6», хотя он берёт 1.
+    try:
+        is_priv = ("privileged" in r.keys()) and r["privileged"]
+    except Exception:
+        is_priv = False
+    if is_priv:
+        pres = (r["resource"] or "").strip() if ("resource" in r.keys()) else ""
+        return [pres] if pres in valid else ([pres] if pres else [])
     raw = ""
     try:
         raw = r["resources"] if "resources" in r.keys() else ""

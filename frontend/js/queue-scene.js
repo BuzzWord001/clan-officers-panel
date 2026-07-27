@@ -2256,7 +2256,11 @@
     el.setAttribute("data-tip", tipHtml(e));
     // над головой (сверху вниз): ресурс(ы) → метка ТОП-3 → ник. Обычная/редкая — мультивыбор:
     // показываем первый ресурс + «+N», полный список — в подсказке (tipHtml).
-    var resList = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    // Жетон ТОП-3 (привилегия, вне очереди) берёт РОВНО ОДИН ресурс — показываем только его,
+    // без мультивыбора обычной очереди (иначе было бы «ресурс +6»). Обычная/редкая — мультивыбор.
+    var resList = e.privileged
+      ? (e.resource ? [e.resource] : [])
+      : ((e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []));
     var resIcon = resList.length
       ? '<span class="qs-char-resw">' +
           '<img class="qs-char-res' + (resList[0] === "mount-cilin" ? " big" : "") + '" src="' + resImg(resList[0]) + '" alt="" title="">' +
