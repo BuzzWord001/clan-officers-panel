@@ -26,6 +26,7 @@ _ACCEPT = {"принять", "прием", "приём", "accept", "add"}
 _CANCEL = {"отмена", "отменить", "отмени", "cancel", "undo"}
 _REMOVE = {"удалить", "убрать", "delete", "del", "remove"}
 _LIST = {"список", "list", "кто"}
+_HISTORY = {"история", "досье", "history", "dossier"}
 # Только /help — чтобы не пересекаться с /помощь другого бота в этом чате.
 _HELP = {"help"}
 
@@ -168,6 +169,120 @@ def _list() -> str:
 _HR = "━━━━━━━━━━━━━━━━━━"
 
 
+def _history(rest: str, actor: dict) -> str:
+    """/история Ник — полное досье игрока (компактно). Ник = весь текст (может быть с пробелом)."""
+    nick = (rest or "").strip()
+    if "|" in nick:
+        nick = nick.split("|", 1)[0].strip()
+    if not nick:
+        return "Укажи ник: /история Ник"
+    try:
+        d = db.member_dossier(nick)
+    except Exception:
+        log.exception("dossier failed")
+        return "⚠ Не удалось собрать досье. Попробуй ещё раз или посмотри на сайте."
+    if not d or not d.get("found"):
+        return ("Не нашёл информации по нику «" + nick + "».\n"
+                "Проверь написание (как в Доблести/реестре).")
+    return _fmt_dossier(d)
+
+
+def _fmt_dossier(d: dict) -> str:
+    L = ["📜 ДОСЬЕ · " + (d.get("nick") or "?"), _HR]
+    if d.get("true_name"):
+        L.append("👤 Имя: " + d["true_name"])
+    L.append("🎖 " + (d.get("rank") or "Рядовой") + " · титул: " + (d.get("title") or "—"))
+    line = "⚔ " + (d.get("class") or "—")
+    if d.get("level"):
+        line += " · ур." + str(d["level"])
+    if d.get("valor") is not None:
+        line += " · доблесть " + str(d["valor"])
+    if d.get("last_week"):
+        line += " (" + d["last_week"] + ")"
+    L.append(line)
+    acc = d.get("acceptance")
+    if acc:
+        L.append("📅 В клане с " + (acc.get("accepted_date") or "?")
+                 + (" · принял: " + acc["created_by_name"] if acc.get("created_by_name") else ""))
+        tags = [t for t, k in (("Ветеран", "veteran"), ("Элита", "elite")) if acc.get(k)]
+        if tags:
+            L.append("🏅 " + ", ".join(tags))
+    elif d.get("first_seen"):
+        L.append("📅 В чате с " + str(d["first_seen"])[:10])
+    if len(d.get("classes", [])) > 1:
+        L.append("↻ Классы: " + ", ".join(d["classes"]))
+    if len(d.get("ranks", [])) > 1:
+        L.append("↻ Звания: " + " → ".join(d["ranks"]))
+    if len(d.get("titles", [])) > 1:
+        L.append("↻ Титулы: " + ", ".join(d["titles"][:6]))
+    tw = d.get("twins") or []
+    if tw:
+        L.append(_HR)
+        L.append("👥 Твины (" + str(len(tw)) + "):")
+        for t in tw:
+            extra = []
+            if t.get("class"):
+                extra.append(t["class"])
+            if t.get("level"):
+                extra.append("ур." + str(t["level"]))
+            if t.get("valor") is not None:
+                extra.append("добл." + str(t["valor"]))
+            L.append("  • " + t["nick"] + (" — " + ", ".join(extra) if extra else ""))
+    soc = d.get("socials")
+    if soc:
+        sp = []
+        vk = (soc.get("vk_display") or "")
+        if soc.get("vk_screen_name"):
+            vk = (vk + " (@" + soc["vk_screen_name"] + ")").strip()
+        elif soc.get("vk_id"):
+            vk = (vk + " (id" + str(soc["vk_id"]) + ")").strip()
+        if vk.strip():
+            sp.append("VK: " + vk)
+        tgs = (soc.get("tg_display") or "")
+        if soc.get("tg_username"):
+            tgs = (tgs + " (@" + soc["tg_username"] + ")").strip()
+        if tgs.strip():
+            sp.append("TG: " + tgs)
+        if sp:
+            L.append(_HR)
+            L.append("🔗 " + " · ".join(sp))
+    hist = d.get("history") or []
+    if hist:
+        L.append(_HR)
+        L.append("📈 Доблесть по неделям:")
+        for h in hist:
+            wk = (h.get("week") or "").replace("2026-", "")
+            met = h.get("met")
+            mark = "✅" if met else ("❌" if met is not None else "•")
+            afk = " 💤" if h.get("afk") else ""
+            v = h.get("valor")
+            L.append("  " + wk + ": " + (str(v) if v is not None else "?")
+                     + "/" + str(h.get("norm") or "?") + " " + mark + afk)
+    aw = d.get("active_warnings") or []
+    mw = d.get("manual_warnings") or []
+    wc = d.get("warning_count") or 0
+    if aw or mw or wc:
+        L.append(_HR)
+        L.append("⚠ Предупреждения: серия подряд " + str(wc)
+                 + " · невыполнено нормы " + str(len(aw)) + " нед."
+                 + (" · ручных " + str(len(mw)) if mw else ""))
+        if aw:
+            L.append("  недели без нормы: "
+                     + ", ".join((w.get("week") or "").replace("2026-", "") for w in aw[:14]))
+        for w in mw[:5]:
+            txt = w.get("text") or w.get("reason") or w.get("kind") or "предупреждение"
+            L.append("  ручное: " + str(txt)[:70])
+    dep = d.get("departed")
+    if dep:
+        L.append(_HR)
+        verb = "🚪 Кикали из клана" if dep.get("kicked") else "🚪 Уходил сам"
+        by = dep.get("by") or ""
+        when = (dep.get("when") or "")[:10]
+        L.append(verb + ": " + (dep.get("reason") or "причина не указана")
+                 + (" (" + by + ")" if by else "") + (" · " + when if when else ""))
+    return "\n".join(L)
+
+
 def _help() -> str:
     return (
         "📋 ПРИЁМ НОВИЧКОВ В КЛАН\n" + _HR + "\n"
@@ -177,7 +292,10 @@ def _help() -> str:
         "↩ /отмена\n"
         "     отменить последний приём (если ошиблись)\n\n"
         "📆 /список\n"
-        "     кого приняли на этой неделе\n" + _HR + "\n"
+        "     кого приняли на этой неделе\n\n"
+        "📜 /история Ник\n"
+        "     полное досье игрока (звания, классы, твины,\n"
+        "     соцсети, доблесть по неделям, предупреждения)\n" + _HR + "\n"
         "ℹ️ Ник — одно слово, дальше титул (имя или ~мэйн~).\n"
         "Дата ставится сама. Повторный /принять тем же ником — меняет титул.\n"
         "🌐 Всё видно на сайте: santdevil.com → «Приём в клан»"
@@ -193,7 +311,8 @@ def handle(text: str, actor: dict) -> str | None:
     head, _, rest = t.partition(" ")
     cmd = head[1:].split("@", 1)[0].lower()   # убрать ведущий / и суффикс @botname (в группах TG)
     rest = rest.strip()
-    known = cmd in _ACCEPT or cmd in _CANCEL or cmd in _REMOVE or cmd in _LIST or cmd in _HELP
+    known = (cmd in _ACCEPT or cmd in _CANCEL or cmd in _REMOVE or cmd in _LIST
+             or cmd in _HELP or cmd in _HISTORY)
     reply = None
     try:
         if cmd in _ACCEPT:
@@ -204,6 +323,8 @@ def handle(text: str, actor: dict) -> str | None:
             reply = _remove(rest, actor)
         elif cmd in _LIST:
             reply = _list()
+        elif cmd in _HISTORY:
+            reply = _history(rest, actor)
         elif cmd in _HELP:
             reply = _help()
     except Exception:

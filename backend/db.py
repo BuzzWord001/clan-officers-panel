@@ -1047,6 +1047,144 @@ def prev_clan_info(game_nick: str) -> dict | None:
         return _prev_departed_map(conn, amap).get(rc)
 
 
+def member_dossier(nick_or_canon: str) -> dict | None:
+    """Полное досье игрока для чат-команды /история: идентичность, первый приём в клан,
+    титулы/ранги/классы (история), все твины, соцсети, история доблести по неделям,
+    предупреждения, кики/уходы. Возвращает структурированный dict или None."""
+    active_w_all = valor_active_warnings()               # {canon: [warn,...]} — свои connection'ы
+    manual_w_all = valor_manual_warnings_by_canon()
+    with connection() as conn:
+        amap = _alias_map(conn)
+        base = _valor_canon(nick_or_canon)
+        main = _resolve_canon(base, amap) or base
+        if not main:
+            return None
+
+        # твины (ручные связи queue_twins). ВАЖНО: каноны queue-системы (напр. hardkiss~2) и
+        # valor (hardkissann) различаются, поэтому матчим по canon НИКОВ через _valor_canon.
+        try:
+            all_tw = conn.execute(
+                "SELECT canon, main_canon, main_nick, twin_nick FROM queue_twins").fetchall()
+        except sqlite3.OperationalError:
+            all_tw = []
+        # если ввели ТВИНА — переключаемся на его мэйна
+        for r in all_tw:
+            if _valor_canon(r["twin_nick"] or "") == main or r["canon"] == base:
+                main = _valor_canon(r["main_nick"] or "") or main
+                break
+        # собираем твинов этого мэйна: (отображаемый ник, valor-canon)
+        twin_rows = []
+        seen_tw = set()
+        for r in all_tw:
+            if _valor_canon(r["main_nick"] or "") == main or r["main_canon"] == main:
+                tnick = r["twin_nick"] or r["canon"]
+                tvc = _valor_canon(tnick)
+                if tvc and tvc != main and tvc not in seen_tw:
+                    seen_tw.add(tvc)
+                    twin_rows.append((tnick, tvc))
+        person_canons = {main} | {vc for _, vc in twin_rows}
+
+        def _latest(cn):
+            return conn.execute(
+                "SELECT vm.nick, vm.true_name, vm.rank, vm.title, vm.class_, vm.level, vm.valor, "
+                "vm.warning_count, vs.week FROM valor_members vm "
+                "JOIN valor_snapshots vs ON vm.snapshot_id=vs.id "
+                "WHERE vm.nick_canon=? ORDER BY vm.snapshot_id DESC LIMIT 1", (cn,)).fetchone()
+
+        def _override(cn):
+            r = conn.execute("SELECT nick FROM valor_nick_override WHERE nick_canon=?", (cn,)).fetchone()
+            return r["nick"] if r else None
+
+        cur = _latest(main)
+        if not cur:
+            for cn in tcanons:
+                cur = _latest(cn)
+                if cur:
+                    main = cn
+                    break
+        disp_nick = _override(main) or (cur["nick"] if cur else nick_or_canon)
+
+        # история доблести по неделям (мэйн)
+        history = []
+        for r in conn.execute(
+                "SELECT vs.week, vm.valor, vm.norm_met, vm.rank, vm.title, vm.class_, vm.level, "
+                "vs.valor_norm, vm.is_afk FROM valor_members vm "
+                "JOIN valor_snapshots vs ON vm.snapshot_id=vs.id "
+                "WHERE vm.nick_canon=? ORDER BY vs.week", (main,)):
+            history.append({"week": r["week"], "valor": r["valor"], "norm": r["valor_norm"],
+                            "met": r["norm_met"], "rank": r["rank"], "title": r["title"],
+                            "class": r["class_"], "level": r["level"], "afk": r["is_afk"]})
+
+        def _uniq(key):
+            out = []
+            for h in history:
+                v = (h.get(key) or "")
+                v = v.strip() if isinstance(v, str) else v
+                if v and v not in out:
+                    out.append(v)
+            return out
+
+        # первый приём в клан (в acceptances НЕТ колонки nick_canon — матчим по canon в Python)
+        ph = ",".join("?" * len(person_canons))
+        acc = None
+        for r in conn.execute(
+                "SELECT game_nick, title, accepted_date, created_at, created_by_name, "
+                "created_by_platform FROM acceptances WHERE COALESCE(archived,0)=0 "
+                "ORDER BY accepted_date ASC, id ASC"):
+            if _valor_canon(r["game_nick"] or "") in person_canons:
+                acc = dict(r)
+                break
+        # Ветеран/Элита — это ТЕГИ доблести (valor_tags), в acceptances их нет.
+        tags = set()
+        try:
+            for r in conn.execute(
+                    "SELECT tag FROM valor_tags WHERE nick_canon IN (%s) "
+                    "AND tag IN ('veteran','elite')" % ph, tuple(person_canons)):
+                tags.add(r["tag"])
+        except sqlite3.OperationalError:
+            pass
+        if acc is not None:
+            acc["veteran"] = "veteran" in tags
+            acc["elite"] = "elite" in tags
+
+        # соцсети — по любому канону
+        soc, first_seen = None, None
+        for r in conn.execute(
+                "SELECT vk_id, vk_screen_name, vk_display, tg_id, tg_username, tg_display, "
+                "game_nick FROM clan_members WHERE is_active=1"):
+            hit = any(_valor_canon(nk) in person_canons for nk in (r["game_nick"] or "").split(","))
+            if hit:
+                soc = {"vk_id": r["vk_id"], "vk_screen_name": r["vk_screen_name"], "vk_display": r["vk_display"],
+                       "tg_id": r["tg_id"], "tg_username": r["tg_username"], "tg_display": r["tg_display"]}
+                break
+
+        # твины с полной инфой
+        twins = []
+        for tnick, tvc in twin_rows:
+            lr = _latest(tvc)
+            twins.append({"nick": _override(tvc) or (lr["nick"] if lr else tnick),
+                          "class": (lr["class_"] if lr else ""), "level": (lr["level"] if lr else None),
+                          "valor": (lr["valor"] if lr else None)})
+
+        prev = _prev_departed_map(conn, amap).get(main)
+
+        return {
+            "nick": disp_nick, "canon": main,
+            "true_name": (cur["true_name"] if cur else ""), "rank": (cur["rank"] if cur else ""),
+            "title": (cur["title"] if cur else ""), "class": (cur["class_"] if cur else ""),
+            "level": (cur["level"] if cur else None), "valor": (cur["valor"] if cur else None),
+            "last_week": (cur["week"] if cur else ""),
+            "classes": _uniq("class"), "ranks": _uniq("rank"), "titles": _uniq("title"),
+            "history": history, "twins": twins, "socials": soc, "first_seen": first_seen,
+            "acceptance": (dict(acc) if acc else None),
+            "warning_count": (cur["warning_count"] if cur else 0),
+            "active_warnings": active_w_all.get(main, []),
+            "manual_warnings": manual_w_all.get(main, []),
+            "departed": prev,
+            "found": bool(cur or acc or soc),
+        }
+
+
 def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
     """Активный реестр (archived=0). include_archived=True → и ушедшие тоже."""
     where = "" if include_archived else "WHERE COALESCE(archived,0) = 0"
