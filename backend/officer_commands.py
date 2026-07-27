@@ -75,12 +75,21 @@ def _accept(rest: str, actor: dict) -> str:
         return _help()
     actor = _actor_for_create(actor)
     existing = _find_active(nick)
-    if existing:   # уже в списке → обновляем титул (правка опечатки, без дублей)
-        db.update_acceptance(existing["id"], game_nick=None, title=title,
-                             accepted_date=None, note=None, actor=actor)
-        return ("✏ Обновил запись в списке принятых:\n"
+    if existing:   # уже в списке → дополняем/обновляем титул, БЕЗ дублей и без стирания
+        old_title = (existing.get("title") or "").strip()
+        if title:
+            # титул указан → дополняем запись (или меняем прежний). Ник и дату не трогаем.
+            db.update_acceptance(existing["id"], game_nick=None, title=title,
+                                 accepted_date=None, note=None, actor=actor)
+            head = "✏ Дополнил запись титулом:" if not old_title else "✏ Обновил титул:"
+            shown = title
+        else:
+            # повторный /принять без титула — существующий титул НЕ стираем, ничего не меняем
+            head = "✔ Этот ник уже в списке принятых:"
+            shown = old_title
+        return (head + "\n"
                 "• Ник: " + existing["game_nick"] + "\n"
-                "• Титул: " + (title or "не указан"))
+                "• Титул: " + (shown or "не указан"))
     db.create_acceptance(game_nick=nick, title=title,
                          accepted_date=date.today().isoformat(),
                          note="", role_pending=True, by_officer=True, actor=actor)
