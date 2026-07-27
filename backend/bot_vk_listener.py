@@ -66,6 +66,29 @@ _REPOST_COOLDOWN_SEC = 60
 _RECONNECT_BACKOFF_INITIAL = 2.0
 _RECONNECT_BACKOFF_MAX = 60.0
 
+# Persist позиции Long Poll (ts) на томе — чтобы после рестарта/деплоя ВОЗОБНОВИТЬ с
+# последней позиции и переиграть события за время простоя. VK Bot Long Poll иначе берёт
+# свежий ts на реконнекте → команды (/принять и т.п.), присланные в окно рестарта, теряются.
+_TS_FILE = "/data/vk_officer_lp_ts.txt"
+
+
+def _load_saved_ts():
+    try:
+        with open(_TS_FILE, encoding="utf-8") as f:
+            return (f.read().strip() or None)
+    except Exception:
+        return None
+
+
+def _save_ts(ts):
+    if ts is None:
+        return
+    try:
+        with open(_TS_FILE, "w", encoding="utf-8") as f:
+            f.write(str(ts))
+    except Exception:
+        pass
+
 
 def _group_id_from_token() -> int | None:
     """VK BotsLongPoll требует group_id. Достаём через groups.getById с токеном
@@ -135,30 +158,43 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
                 continue
 
             longpoll = VkBotLongPoll(session, group_id, wait=25)
-            log.info("VK listener connected, group_id=%s peer=%s", group_id, target_peer)
+            saved_ts = _load_saved_ts()
+            if saved_ts:
+                # возобновляем с сохранённой позиции → VK переигрывает события за простой
+                # (деплой/рестарт). Если ts устарел — библиотека сама возьмёт свежий (graceful).
+                longpoll.ts = saved_ts
+                log.info("VK listener connected (resume ts=%s), group_id=%s peer=%s",
+                         saved_ts, group_id, target_peer)
+            else:
+                log.info("VK listener connected, group_id=%s peer=%s", group_id, target_peer)
             backoff = _RECONNECT_BACKOFF_INITIAL
 
             for event in longpoll.listen():
                 if stop.is_set():
                     return
-                raw = event.raw if hasattr(event, "raw") else {}
-                etype = event.type
-                # Офицерская команда приёма (/принять, /удалить, /список, /помощь)
-                if etype == VkBotEventType.MESSAGE_NEW:
-                    try:
-                        _handle_command(session, raw, target_peer)
-                    except Exception:
-                        log.exception("VK command handling failed")
-                if not _is_invite_event(etype, raw):
-                    continue
-                peer = _event_peer_id(etype, raw)
-                if peer != target_peer:
-                    continue
-                # Раньше тут пересоздавали закреп со списком новичков для
-                # нового участника. По требованию Лира список новых
-                # пользователей больше не рендерим — в закрепе просто скрин
-                # сайта, на join его не трогаем.
-                log.info("VK invite event — repost disabled (pin is a static site shot)")
+                try:
+                    raw = event.raw if hasattr(event, "raw") else {}
+                    etype = event.type
+                    # Офицерская команда приёма (/принять, /удалить, /список, /помощь)
+                    if etype == VkBotEventType.MESSAGE_NEW:
+                        try:
+                            _handle_command(session, raw, target_peer)
+                        except Exception:
+                            log.exception("VK command handling failed")
+                    if not _is_invite_event(etype, raw):
+                        continue
+                    peer = _event_peer_id(etype, raw)
+                    if peer != target_peer:
+                        continue
+                    # Раньше тут пересоздавали закреп со списком новичков для
+                    # нового участника. По требованию Лира список новых
+                    # пользователей больше не рендерим — в закрепе просто скрин
+                    # сайта, на join его не трогаем.
+                    log.info("VK invite event — repost disabled (pin is a static site shot)")
+                finally:
+                    # позицию сохраняем ПОСЛЕ обработки события (даже при continue). Если процесс
+                    # убьют во время обработки — ts не продвинется → событие переиграется на рестарте.
+                    _save_ts(getattr(longpoll, "ts", None))
 
         except Exception as exc:
             log.warning("VK longpoll error: %s; reconnect in %ss", exc, backoff)
