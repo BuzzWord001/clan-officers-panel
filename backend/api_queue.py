@@ -3655,13 +3655,25 @@ def _make_privileged(conn, main_canon, nick, cls, res, add_stacks, added_by):
     его обычная моделька остаётся на месте и движется дальше, а жетон добавляет ВТОРУЮ,
     привилегированную, у самого торговца. Повторное применение копит priv_stacks на ней.
     priv_stacks — единый источник объёма (стаки × размер пачки, пересчёт при смене ресурса)."""
-    front = (conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0").fetchone()["m"] or 1.0) - 1.0
     ex = conn.execute("SELECT id, priv_stacks FROM queue_entries WHERE queue=0 AND main_canon=? AND privileged=1",
                       (main_canon,)).fetchone()
     if ex:
-        conn.execute("UPDATE queue_entries SET pos=?, resource=?, priv_stacks=? WHERE id=?",
-                     (front, res, ex["priv_stacks"] + add_stacks, ex["id"]))
+        # ПОВТОРНОЕ применение — позицию НЕ меняем (сохраняем порядок применения жетонов, FIFO),
+        # только копим стаки и, при желании, меняем ресурс.
+        conn.execute("UPDATE queue_entries SET resource=?, priv_stacks=? WHERE id=?",
+                     (res, ex["priv_stacks"] + add_stacks, ex["id"]))
     else:
+        # НОВЫЙ жетонщик встаёт ПОСЛЕ уже применивших жетон, но ПЕРЕД обычной очередью — так среди
+        # жетонщиков работает нормальный порядок (кто первый применил — первый получает, FIFO).
+        # (Раньше front = MIN(pos)−1 давал каждому НОВОМУ меньшую позицию → LIFO, неверно.)
+        min_reg = conn.execute("SELECT MIN(pos) m FROM queue_entries WHERE queue=0 AND privileged=0").fetchone()["m"]
+        max_priv = conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=0 AND privileged=1").fetchone()["m"]
+        if min_reg is None:
+            min_reg = 1.0
+        if max_priv is None:
+            front = min_reg - 1.0                      # первый жетонщик — прямо перед очередью
+        else:
+            front = max_priv + (min_reg - max_priv) / 2.0   # между последним жетонщиком и очередью
         conn.execute(
             "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, privileged, priv_stacks, added_by, added_at)"
             " VALUES (0,?,?,?,?,?,1,?,?,?)",
