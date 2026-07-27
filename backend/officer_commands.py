@@ -203,14 +203,13 @@ def _fmt_dossier(d: dict) -> str:
     if not d.get("in_clan"):
         L.append("🚪 СЕЙЧАС НЕ В КЛАНЕ (нет в последнем сборе доблести)")
     acc = d.get("acceptance")
+    if d.get("first_join"):
+        L.append("📅 Впервые в клане: " + d["first_join"]
+                 + (" · принял: " + acc["created_by_name"] if (acc and acc.get("created_by_name")) else ""))
     if acc:
-        L.append("📅 В клане с " + (acc.get("accepted_date") or "?")
-                 + (" · принял: " + acc["created_by_name"] if acc.get("created_by_name") else ""))
         tags = [t for t, k in (("Ветеран", "veteran"), ("Элита", "elite")) if acc.get(k)]
         if tags:
             L.append("🏅 " + ", ".join(tags))
-    elif d.get("first_seen"):
-        L.append("📅 В чате с " + str(d["first_seen"])[:10])
     if len(d.get("classes", [])) > 1:
         L.append("↻ Классы: " + ", ".join(d["classes"]))
     if len(d.get("ranks", [])) > 1:
@@ -254,12 +253,12 @@ def _fmt_dossier(d: dict) -> str:
         L.append(_HR)
         L.append("📈 Доблесть по неделям:")
         for h in hist:
-            wk = (h.get("week") or "").replace("2026-", "")
+            dt = h.get("dates") or (h.get("week") or "")
             met = h.get("met")
             mark = "✅" if met else ("❌" if met is not None else "•")
-            afk = " 💤" if h.get("afk") else ""
+            afk = " 💤АФК" if h.get("afk") else ""
             v = h.get("valor")
-            L.append("  " + wk + ": " + (str(v) if v is not None else "?")
+            L.append("  " + dt + ": " + (str(v) if v is not None else "?")
                      + "/" + str(h.get("norm") or "?") + " " + mark + afk)
     aw = d.get("active_warnings") or []
     mw = d.get("manual_warnings") or []
@@ -271,7 +270,7 @@ def _fmt_dossier(d: dict) -> str:
                  + (" · ручных " + str(len(mw)) if mw else ""))
         if aw:
             L.append("  недели без нормы: "
-                     + ", ".join((w.get("week") or "").replace("2026-", "") for w in aw[:14]))
+                     + "; ".join((w.get("dates") or w.get("week") or "") for w in aw[:12]))
         for w in mw[:5]:
             txt = w.get("text") or w.get("reason") or w.get("kind") or "предупреждение"
             L.append("  ручное: " + str(txt)[:70])

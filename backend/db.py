@@ -1047,6 +1047,29 @@ def prev_clan_info(game_nick: str) -> dict | None:
         return _prev_departed_map(conn, amap).get(rc)
 
 
+_RU_MON = ["", "янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+
+
+def _week_dates_ru(week: str) -> str:
+    """«2026-W23» → «1–7 июн» (человекочитаемо, без непонятных номеров недель)."""
+    try:
+        mon, sun = _iso_week_range(week)
+        if mon.month == sun.month:
+            return "%d–%d %s" % (mon.day, sun.day, _RU_MON[mon.month])
+        return "%d %s – %d %s" % (mon.day, _RU_MON[mon.month], sun.day, _RU_MON[sun.month])
+    except Exception:
+        return week or ""
+
+
+def _date_ru(iso: str) -> str:
+    """«2026-06-09» → «9 июн 2026»."""
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+        return "%d %s %d" % (d.day, _RU_MON[d.month], d.year)
+    except Exception:
+        return str(iso or "")
+
+
 def member_dossier(nick_or_canon: str) -> dict | None:
     """Полное досье игрока для чат-команды /история: идентичность, первый приём в клан,
     титулы/ранги/классы (история), все твины, соцсети, история доблести по неделям,
@@ -1125,7 +1148,8 @@ def member_dossier(nick_or_canon: str) -> dict | None:
                 "vs.valor_norm, vm.is_afk FROM valor_members vm "
                 "JOIN valor_snapshots vs ON vm.snapshot_id=vs.id "
                 "WHERE vm.nick_canon=? ORDER BY vs.week", (main,)):
-            history.append({"week": r["week"], "valor": r["valor"], "norm": r["valor_norm"],
+            history.append({"week": r["week"], "dates": _week_dates_ru(r["week"]),
+                            "valor": r["valor"], "norm": r["valor_norm"],
                             "met": r["norm_met"], "rank": r["rank"], "title": r["title"],
                             "class": r["class_"], "level": r["level"], "afk": r["is_afk"]})
 
@@ -1138,16 +1162,26 @@ def member_dossier(nick_or_canon: str) -> dict | None:
                     out.append(v)
             return out
 
-        # первый приём в клан (в acceptances НЕТ колонки nick_canon — матчим по canon в Python)
+        # ПЕРВОЕ вступление в клан = САМАЯ ранняя запись приёма (в т.ч. архивная — если человек
+        # уходил и возвращался, важна ПЕРВАЯ). В acceptances нет nick_canon → матчим по canon.
         ph = ",".join("?" * len(person_canons))
         acc = None
         for r in conn.execute(
                 "SELECT game_nick, title, accepted_date, created_at, created_by_name, "
-                "created_by_platform FROM acceptances WHERE COALESCE(archived,0)=0 "
-                "ORDER BY accepted_date ASC, id ASC"):
+                "created_by_platform, archived FROM acceptances ORDER BY accepted_date ASC, id ASC"):
             if _valor_canon(r["game_nick"] or "") in person_canons:
                 acc = dict(r)
                 break
+        # дата первого вступления: приём ИЛИ, если приёма нет, самая ранняя неделя доблести
+        if acc and acc.get("accepted_date"):
+            first_join = _date_ru(acc["accepted_date"])
+        elif history:
+            try:
+                first_join = _date_ru(_iso_week_range(history[0]["week"])[0].isoformat())
+            except Exception:
+                first_join = ""
+        else:
+            first_join = ""
         # Ветеран/Элита — это ТЕГИ доблести (valor_tags), в acceptances их нет.
         tags = set()
         try:
@@ -1191,8 +1225,10 @@ def member_dossier(nick_or_canon: str) -> dict | None:
             "classes": _uniq("class"), "ranks": _uniq("rank"), "titles": _uniq("title"),
             "history": history, "twins": twins, "socials": soc, "first_seen": first_seen,
             "acceptance": (dict(acc) if acc else None),
+            "first_join": first_join,
             "warning_count": (cur["warning_count"] if cur else 0),
-            "active_warnings": active_w_all.get(main, []),
+            "active_warnings": [dict(w, dates=_week_dates_ru(w.get("week", "")))
+                                for w in active_w_all.get(main, [])],
             "manual_warnings": manual_w_all.get(main, []),
             "departed": prev,
             "in_clan": _in_clan(main),
