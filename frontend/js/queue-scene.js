@@ -3117,10 +3117,10 @@
     if (!isHidden("flinks")) {
       var flPos = placedPos("flinks", 2.5, 3.5);      // дефолт — верхний ЛЕВЫЙ угол рамы, с отступом от краёв
       var FLINKS = [
-        { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана",
+        { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана", plat: "tg",
           href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true,
           copies: [{ cp: "https://t.me/+6U3XCSrrZgo1YTMy", lbl: "⧉", t: "Копировать ссылку" }] },
-        { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана",
+        { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана", plat: "vk",
           href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true,
           copies: [{ cp: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", lbl: "⧉", t: "Копировать ссылку" }] },
         { img: "ts.png", g: "#ff6a24", name: "TeamSpeak", sub: "голосовой",
@@ -3141,6 +3141,7 @@
         }).join("");
         return '<div class="qs-fl" style="--g:' + l.g + '">' +
           '<a class="qs-fl-link" href="' + l.href + '" title="' + l.name + " — " + l.sub + '"' +
+            (l.plat ? ' data-plat="' + l.plat + '"' : "") +
             (l.ext ? ' target="_blank" rel="noopener noreferrer"' : "") + ">" +
             '<span class="qs-fl-ic"><img src="assets/social/' + l.img + '?v=1792700000" alt=""></span>' +
             '<span class="qs-fl-tw"><span class="qs-fl-nm">' + l.name + "</span>" +
@@ -3149,8 +3150,14 @@
       }).join("");
       // копирование ссылок (кнопки ⧉ / адрес / IP)
       flinks.addEventListener("click", function (e) {
-        var b = e.target.closest(".qs-fl-cp"); if (!b) return;
-        e.preventDefault(); e.stopPropagation(); qCopy(b.dataset.copy, b);
+        var b = e.target.closest(".qs-fl-cp");
+        if (b) { e.preventDefault(); e.stopPropagation(); qCopy(b.dataset.copy, b); return; }
+        // Клик по самой ссылке чата залогиненным игроком → фиксируем намерение (для авто-
+        // регистрации в чате по времени захода). Переходу не мешаем (ссылка открывается в новой вкладке).
+        var a = e.target.closest(".qs-fl-link[data-plat]");
+        if (a && _meAcc) {
+          try { q("POST", "/queue/chat-link-click", { platform: a.getAttribute("data-plat") }); } catch (e2) {}
+        }
       });
       // наведение на кнопку — показать полную ссылку (её можно выделить и скопировать вручную)
       flinks.addEventListener("mouseover", function (e) {

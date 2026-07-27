@@ -250,6 +250,23 @@ def ensure_queue_tables() -> None:
               created_at   TEXT NOT NULL DEFAULT ''
             );
 
+            -- Клики залогиненного игрока по ссылке чата клана (VK/TG) на сайте — для
+            -- авто-регистрации в чате: бот на заходе новичка спрашивает сайт, кто ЖДАЛ
+            -- захода (кликал ссылку в последние N секунд), и регистрирует его под игровым ником.
+            CREATE TABLE IF NOT EXISTS queue_chat_link_click (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              canon       TEXT NOT NULL DEFAULT '',   -- канон мэйна игрока (кто кликнул)
+              nick        TEXT NOT NULL DEFAULT '',   -- игровой ник игрока
+              platform    TEXT NOT NULL DEFAULT '',   -- 'vk' | 'tg'
+              clicked_at  TEXT NOT NULL DEFAULT '',   -- ISO UTC момента клика
+              ip          TEXT NOT NULL DEFAULT '',
+              matched     INTEGER NOT NULL DEFAULT 0, -- 1 когда сопоставлен с заходом
+              matched_at  TEXT NOT NULL DEFAULT '',
+              match_pid   TEXT NOT NULL DEFAULT '',   -- platform-id зашедшего
+              match_name  TEXT NOT NULL DEFAULT ''    -- отображаемое имя зашедшего
+            );
+            CREATE INDEX IF NOT EXISTS idx_clkclick ON queue_chat_link_click(platform, matched, clicked_at);
+
             -- Запросы игроков на ПОДТВЕРЖДЕНИЕ новой ПЕРСОНАЛЬНОЙ модельки офицером/админом.
             -- Картинка складывается на том как 'mreq-<id>', при одобрении переносится в слот игрока.
             CREATE TABLE IF NOT EXISTS queue_model_requests (
@@ -2989,6 +3006,82 @@ def grant_top3_valor_tokens(conn, week: str | None = None,
         _log(conn, "priv_grant", actor=actor_name,
              detail="жетон ТОП-3 доблести (неделя %s): %s" % (wk, ", ".join(granted)))
     return {"ok": True, "week": wk, "granted": granted, "already": False}
+
+
+# ───── авто-регистрация в чате по клику ссылки на сайте (тайм-корреляция) ─────
+class ChatLinkClickIn(BaseModel):
+    platform: str = Field(min_length=2, max_length=4)          # 'vk' | 'tg'
+
+
+@router.post("/chat-link-click")
+def chat_link_click(payload: ChatLinkClickIn, request: Request) -> dict:
+    """Залогиненный игрок кликнул ссылку чата клана (VK/TG) на сайте. Пишем НАМЕРЕНИЕ с
+    точным временем: бот на заходе новичка сопоставит по времени и зарегистрирует его под
+    игровым ником. Гость (не залогинен) не пишется — некого регистрировать."""
+    plat = (payload.platform or "").strip().lower()
+    if plat not in ("vk", "tg"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_platform")
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if not acc:
+            return {"ok": False, "anon": True}                 # не залогинен — молча не пишем
+        nick = acc.get("main_nick") or acc.get("reg_nick") or ""
+        ip = (request.client.host if request.client else "") or ""
+        conn.execute(
+            "INSERT INTO queue_chat_link_click (canon, nick, platform, clicked_at, ip) VALUES (?,?,?,?,?)",
+            (acc.get("main_canon") or "", nick, plat, _now(), ip))
+        _log(conn, "chat_link_click", actor=nick, nick=nick, request=request,
+             detail="клик ссылки чата " + plat.upper())
+    return {"ok": True}
+
+
+class ChatJoinMatchIn(BaseModel):
+    platform:    str = Field(min_length=2, max_length=4)
+    platform_id: str = Field(default="", max_length=64)        # id зашедшего в чате
+    name:        str = Field(default="", max_length=200)       # отображаемое имя зашедшего
+    window:      int | None = None                             # окно секунд (деф. из конфига/120)
+
+
+@router.post("/chat-join-match")
+def chat_join_match(payload: ChatJoinMatchIn, _=Depends(require_bot_token)) -> dict:
+    """Бот: в чат (VK/TG) только что зашёл человек. Ищем НЕсопоставленный клик ссылки этой
+    площадки за окно (деф. 120с). РОВНО ОДИН уникальный игрок → сопоставляем, возвращаем его
+    игровой ник (бот зарегистрирует под ним). Несколько → ambiguous (бот не гадает — ручной
+    приём). Ноль → matched:false. Идемпотентно помечает клик matched, чтоб не сработал дважды."""
+    plat = (payload.platform or "").strip().lower()
+    if plat not in ("vk", "tg"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_platform")
+    with db.connection() as conn:
+        win = payload.window if (isinstance(payload.window, int) and payload.window > 0) else None
+        if win is None:
+            try:
+                win = int(_cfg_val(conn, "chat_match_window", "600") or "600")
+            except Exception:
+                win = 600
+        win = max(20, min(1800, win))   # до 30 мин: VK ловит вход по ссылке 3-мин поллом
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=win)).isoformat(timespec="seconds")
+        rows = conn.execute(
+            "SELECT id, canon, nick, clicked_at FROM queue_chat_link_click"
+            " WHERE platform=? AND matched=0 AND clicked_at>=? ORDER BY clicked_at DESC",
+            (plat, cutoff)).fetchall()
+        if not rows:
+            return {"matched": False, "reason": "no_click", "window": win}
+        uniq: dict = {}
+        for r in rows:
+            uniq.setdefault(r["canon"], r)
+        if len(uniq) > 1:                                      # неоднозначно — не гадаем
+            _log(conn, "chat_join_ambiguous", actor="reg-bot",
+                 detail="заход %s: %d кандидатов за %dс — ручной приём" % (plat, len(uniq), win))
+            return {"matched": False, "ambiguous": True, "window": win,
+                    "candidates": [{"nick": v["nick"], "canon": v["canon"]} for v in list(uniq.values())[:6]]}
+        r = rows[0]
+        conn.execute(
+            "UPDATE queue_chat_link_click SET matched=1, matched_at=?, match_pid=?, match_name=? WHERE id=?",
+            (_now(), str(payload.platform_id or ""), (payload.name or "")[:200], r["id"]))
+        _log(conn, "chat_join_matched", actor="reg-bot", nick=r["nick"],
+             detail="заход %s «%s» (id %s) → %s" % (plat, (payload.name or "?")[:40], payload.platform_id, r["nick"]))
+        return {"matched": True, "nick": r["nick"], "canon": r["canon"],
+                "clicked_at": r["clicked_at"], "window": win}
 
 
 @router.get("/rewards")
