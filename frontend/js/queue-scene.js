@@ -1418,6 +1418,17 @@
     ".qs-mm-card{display:flex;flex-direction:column;gap:6px;padding:9px;border-radius:11px;" +
       "background:rgba(255,220,150,.05);border:1px solid rgba(224,162,74,.25)}" +
     ".qs-mm-th{width:100%;height:110px;object-fit:contain;background:rgba(0,0,0,.25);border-radius:8px}" +
+    // Превью «как встанет в полосе очереди»: модель (с её зеркалом) слева, продавец справа —
+    // видно, смотрит ли моделька В СТОРОНУ продавца или отвернулась. 🏪 всегда справа (в полосе
+    // №1 стоит у продавца справа). Обновляется при переключении зеркала (rebuild).
+    ".qs-mm-prev{margin-top:2px}" +
+    ".qs-mm-prev-lbl{font:700 9.5px system-ui;color:#a58c68;margin:0 0 2px}" +
+    ".qs-mm-prev-stage{display:flex;align-items:flex-end;justify-content:space-between;gap:6px;height:62px;" +
+      "padding:4px 8px;border-radius:8px;background:linear-gradient(180deg,rgba(120,90,50,.18),rgba(60,45,25,.28));" +
+      "border:1px solid rgba(224,162,74,.22)}" +
+    ".qs-mm-prev-mdl{height:56px;width:auto;max-width:46px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}" +
+    ".qs-mm-prev-no{font-size:10px;color:#8a795a;align-self:center}" +
+    ".qs-mm-prev-merch{font-size:30px;line-height:1;align-self:flex-end}" +
     ".qs-mm-noimg{display:flex;align-items:center;justify-content:center;color:#8a795a;font-size:12px;font-style:italic}" +
     ".qs-mm-name{font:800 12.5px system-ui;color:#f6ead2}" +
     ".qs-mm-sub{font-size:10.5px;color:#a58c68}" +
@@ -5296,6 +5307,13 @@
       el.innerHTML =
         (thumb ? '<img class="qs-mm-th" src="' + esc(thumb) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
                : '<div class="qs-mm-th qs-mm-noimg">нет модели</div>') +
+        // Превью «как в очереди»: моделька (с её зеркалом) смотрит в сторону продавца (🏪 справа) или нет.
+        (thumb ? '<div class="qs-mm-prev" title="Так моделька встанет в полосе очереди. Она должна смотреть В СТОРОНУ продавца (🏪 справа). Если отвернулась — нажми ⇋ зеркалить.">' +
+            '<div class="qs-mm-prev-lbl">👁 В очереди — лицом к продавцу?</div>' +
+            '<div class="qs-mm-prev-stage">' +
+              '<img class="qs-mm-prev-mdl" src="' + esc(thumb) + '" style="transform:' + (ms.flip ? "scaleX(-1)" : "") + '" alt="">' +
+              '<span class="qs-mm-prev-merch">🏪</span>' +
+            "</div></div>" : "") +
         '<div class="qs-mm-info"><div class="qs-mm-name">' + esc(o.title) + "</div>" +
           (o.sub ? '<div class="qs-mm-sub">' + esc(o.sub) + "</div>" : "") + rateHtml + "</div>" +
         '<div class="qs-mm-btns">' +
