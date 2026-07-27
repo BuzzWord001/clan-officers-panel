@@ -1168,8 +1168,12 @@
     ".qs-cell.priv .qs-cell-img{filter:drop-shadow(0 0 8px #ffd24a) drop-shadow(0 0 14px rgba(255,210,74,.6));animation:qsCellPriv 1.6s ease-in-out infinite}" +
     "@keyframes qsCellPriv{0%,100%{filter:drop-shadow(0 0 6px #ffd24a) drop-shadow(0 2px 3px rgba(0,0,0,.5))}50%{filter:drop-shadow(0 0 15px #ffd24a) drop-shadow(0 0 22px rgba(255,210,74,.7))}}" +
     // облачко над головой — только картинка ресурса (без названия)
-    ".qs-cell-toplbl{font:800 8.5px system-ui;color:#1b1006;white-space:nowrap;background:linear-gradient(180deg,#ffe486,#eab531);" +
-      "padding:1px 7px;border-radius:7px;box-shadow:0 1px 4px rgba(255,200,80,.6);margin-bottom:1px}" +
+    // Метка ТОП-3 с ФИКС-высотой — и в ОБЫЧНЫХ ячейках рендерим пустую (невидимую) той же
+    // высоты. Так верхний слот одинаков у всех → жетонная модель НЕ уезжает вниз (ноги совпадают).
+    ".qs-cell-toplbl{display:inline-flex;align-items:center;height:13px;box-sizing:border-box;" +
+      "font:800 8.5px system-ui;color:#1b1006;white-space:nowrap;background:linear-gradient(180deg,#ffe486,#eab531);" +
+      "padding:0 7px;border-radius:7px;box-shadow:0 1px 4px rgba(255,200,80,.6);margin-bottom:1px}" +
+    ".qs-cell-toplbl:empty{background:none;box-shadow:none}" +   // пустая (обычная ячейка) — невидима, но держит высоту
     ".qs-bubble{display:inline-flex;align-items:center;justify-content:center;margin-bottom:9px;padding:4px;border-radius:12px;position:relative;" +
       "background:linear-gradient(180deg,#fffdf6,#ffedc4);border:1px solid rgba(205,150,60,.55);" +
       "box-shadow:0 2px 7px rgba(0,0,0,.32);z-index:2}" +
@@ -3852,7 +3856,7 @@
         // Лирия!, Стрелок…) в полосе смотрят назад
         var cflip = (mi && MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].flip) ? ' style="transform:scaleX(-1)"' : "";
         cell.innerHTML =
-          (e.privileged ? '<span class="qs-cell-toplbl">⚡ ТОП-3</span>' : "") +   // метка ТОП-3 НАД облачком
+          '<span class="qs-cell-toplbl">' + (e.privileged ? "⚡ ТОП-3" : "") + "</span>" +   // слот метки ТОП-3 (пустой у обычных — держит высоту)
           bubble +
           '<div class="qs-cell-mdl">' +
             (mi ? '<img class="qs-cell-img" src="' + esc(mi.url) + '"' + cflip + ' alt="" loading="lazy">' : '<span class="qs-cell-img ph">?</span>') +
