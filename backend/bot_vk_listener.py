@@ -147,6 +147,21 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
     last_repost = 0.0
     backoff = _RECONNECT_BACKOFF_INITIAL
 
+    # Фоновый сейвер позиции Long Poll: сохраняет longpoll.ts каждые ~4с — даже БЕЗ событий
+    # (check() продвигает ts на каждом опросе). После рестарта/деплоя возобновляемся с этой
+    # позиции — как TG offset — и НЕ теряем VK-команды, присланные в окно простоя. Раньше ts
+    # сохранялся только на событии, поэтому в окно рестарта команды терялись безвозвратно.
+    _lp_ref = {"lp": None}
+
+    def _ts_saver():
+        while not stop.is_set():
+            stop.wait(4)
+            lp = _lp_ref.get("lp")
+            if lp is not None:
+                _save_ts(getattr(lp, "ts", None))
+
+    threading.Thread(target=_ts_saver, daemon=True, name="vk-ts-saver").start()
+
     while not stop.is_set():
         try:
             session = vk_api.VkApi(token=settings.vk_group_token, api_version="5.199")
@@ -158,6 +173,7 @@ def _blocking_loop(loop: asyncio.AbstractEventLoop, stop: threading.Event) -> No
                 continue
 
             longpoll = VkBotLongPoll(session, group_id, wait=25)
+            _lp_ref["lp"] = longpoll                # фоновому сейверу — актуальный longpoll
             saved_ts = _load_saved_ts()
             if saved_ts:
                 # возобновляем с сохранённой позиции → VK переигрывает события за простой
