@@ -7,16 +7,17 @@
   "use strict";
 
   var LINKS = [
+    // TG и ВК — ТОЛЬКО через гейт-эндпоинт /queue/chat-invite (переход по клику для
+    // залогиненного, настоящая ссылка скрыта, клик логируется). Кнопки «Копир.» у них
+    // НЕТ — иначе можно скопировать и переслать настоящее приглашение мимо сайта.
     { key: "tg", name: "Чат Telegram", glow: "#2aa6e4",
       img: "assets/social/tg.png",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy",
-      disp: "t.me/+6U3XCSrrZgo1YTMy",
-      copy: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+      href: "/queue/chat-invite?p=tg",
+      disp: "Войти в чат →", gated: true },
     { key: "vk-chat", name: "Чат ВКонтакте", glow: "#f56a24",
       img: "assets/social/vk-chat.png",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
-      disp: "vk.me/join/…",
-      copy: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+      href: "/queue/chat-invite?p=vk",
+      disp: "Войти в чат →", gated: true },
     { key: "ts", name: "TeamSpeak (голос)", glow: "#ff5e1c",
       img: "assets/social/ts.png",
       href: "ts3server://melodybum.ts3.se",
@@ -119,15 +120,19 @@
         '<span class="lcol-go" aria-hidden="true">›</span>';
       item.appendChild(a);
 
-      var copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "lcol-copy";
-      copy.textContent = "Копир.";
-      copy.setAttribute("aria-label", "Скопировать: " + l.copy);
-      copy.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation(); copyText(l.copy, copy);
-      });
-      item.appendChild(copy);
+      // Кнопка «Копир.» — ТОЛЬКО у не-гейтовых ссылок (TeamSpeak). У TG/ВК её нет:
+      // переход строго по клику через гейт, копировать настоящее приглашение нельзя.
+      if (!l.gated && l.copy) {
+        var copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "lcol-copy";
+        copy.textContent = "Копир.";
+        copy.setAttribute("aria-label", "Скопировать: " + l.copy);
+        copy.addEventListener("click", function (e) {
+          e.preventDefault(); e.stopPropagation(); copyText(l.copy, copy);
+        });
+        item.appendChild(copy);
+      }
 
       list.appendChild(item);
 

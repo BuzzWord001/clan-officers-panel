@@ -19,10 +19,10 @@
     // настоящая ссылка не показывается.
     { key: "tg",       label: "Чат Telegram",  glow: "#2aa6e4",
       href: "/queue/chat-invite?p=tg", disp: "Войти в чат →",
-      img: "assets/social/tg.png" },
+      img: "assets/social/tg.png", noCopy: true },
     { key: "vk-chat",  label: "Чат ВК",    glow: "#f56a24",
       href: "/queue/chat-invite?p=vk", disp: "Войти в чат →",
-      img: "assets/social/vk-chat.png" },
+      img: "assets/social/vk-chat.png", noCopy: true },
     { key: "ts",       label: "TeamSpeak", glow: "#ff5e1c",
       href: "ts3server://melodybum.ts3.se", disp: "melodybum.ts3.se",
       img: "assets/social/ts.png",
@@ -253,12 +253,17 @@
         row.className = "ms-pop-row";
         var url = document.createElement("span");
         url.className = "ms-pop-url"; url.textContent = rw.disp;
-        var btn = document.createElement("button");
-        btn.className = "ms-pop-copy"; btn.type = "button"; btn.textContent = "Копировать";
-        btn.addEventListener("click", function (ev) {
-          ev.preventDefault(); ev.stopPropagation(); copyToClipboard(rw.val, btn);
-        });
-        row.appendChild(url); row.appendChild(btn);
+        row.appendChild(url);
+        // TG/VK (noCopy) — кнопки «Копировать» НЕТ: переход только по клику через гейт,
+        // настоящую ссылку скопировать нельзя. Копирование — только для TeamSpeak.
+        if (!L.noCopy) {
+          var btn = document.createElement("button");
+          btn.className = "ms-pop-copy"; btn.type = "button"; btn.textContent = "Копировать";
+          btn.addEventListener("click", function (ev) {
+            ev.preventDefault(); ev.stopPropagation(); copyToClipboard(rw.val, btn);
+          });
+          row.appendChild(btn);
+        }
         pop.appendChild(row);
       });
       root.appendChild(pop);
