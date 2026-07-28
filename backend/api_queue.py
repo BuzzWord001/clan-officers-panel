@@ -24,7 +24,7 @@ from pathlib import Path
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 import db
@@ -1042,6 +1042,48 @@ def _resolve_person(conn, typed: str):
     return _people(conn).get(db._valor_canon(typed))
 
 
+def _current_login_canons(conn) -> set:
+    """Кому РАЗРЕШЁН вход на сайт: кто был в ПОСЛЕДНЕМ снимке Доблести (последнее нажатие
+    «Готово — обновить доблесть») + принятые в реестр ПОСЛЕ этого снимка (новые люди, ещё
+    не попавшие в снимок). Прочим (ушедшие/старьё) — вход закрыт.
+    Возвращает набор ВСЕХ канонов разрешённых людей (мэйн + твины) — вход по любому их нику."""
+    idx = _people(conn)
+    snap = conn.execute(
+        "SELECT id, captured_at FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+    if not snap:
+        return set(idx.keys())                      # снимков нет — не блокируем (fail-open)
+    cut = (snap["captured_at"] or "")[:10]
+    allowed_main = set()
+    for r in conn.execute("SELECT nick FROM valor_members WHERE snapshot_id=?", (snap["id"],)):
+        p = idx.get(db._valor_canon(r["nick"]))
+        if p:
+            allowed_main.add(p["main_canon"])
+    try:
+        for r in conn.execute(
+                "SELECT game_nick, created_at, accepted_date FROM acceptances "
+                "WHERE COALESCE(archived,0)=0"):
+            when = ((r["created_at"] or r["accepted_date"] or "")[:10])
+            if cut and when and when >= cut:        # принят в тот день Готово или позже
+                first = (r["game_nick"] or "").split(",")[0]
+                p = idx.get(db._valor_canon(first))
+                if p:
+                    allowed_main.add(p["main_canon"])
+    except Exception:
+        pass
+    return {cn for cn, p in idx.items() if p["main_canon"] in allowed_main}
+
+
+def _nick_allowed(conn, nick, allowed=None) -> bool:
+    """Разрешён ли вход этому нику по правилу текущего ростера (см. _current_login_canons)."""
+    if allowed is None:
+        allowed = _current_login_canons(conn)
+    p = _resolve_person(conn, nick)
+    cans = {db._valor_canon(nick)}
+    if p:
+        cans.add(p["main_canon"])
+    return bool(cans & allowed)
+
+
 @router.get("/nick-suggest")
 def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
     ql = q.strip().lower()
@@ -1051,7 +1093,10 @@ def nick_suggest(q: str = Query(..., min_length=1, max_length=64)) -> dict:
     out = []
     with db.connection() as conn:
         offs = _officer_canons(conn)
+        allowed = _current_login_canons(conn)      # только текущий состав клана
         for cn, p in _people(conn).items():
+            if cn not in allowed and p["main_canon"] not in allowed:
+                continue
             if ql in p["nick"].lower() or (qcanon and qcanon in cn):
                 out.append({
                     "nick": p["nick"], "cls": p["cls"], "title": p["title"],
@@ -1069,12 +1114,17 @@ def check_nick(payload: CheckIn) -> dict:
         p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         if not p:
             return {"ok": False, "reason": "not_found"}
-        acc = _account_by_main(conn, p["main_canon"])
         offs = _officer_canons(conn)
         cn = p["main_canon"]
+        is_off = cn in offs or db._valor_canon(payload.nick) in offs
+        # ПРАВИЛО РОСТЕРА: пускаем только текущий состав (последний снимок + новые в реестре).
+        # Офицеров пускаем всегда (у них отдельный сильный пароль).
+        if not is_off and not _nick_allowed(conn, payload.nick):
+            return {"ok": False, "reason": "not_in_clan"}
+        acc = _account_by_main(conn, p["main_canon"])
         return {"ok": True, "nick": p["nick"], "main_nick": p["main_nick"],
                 "is_twin": p["is_twin"], "registered": bool(acc),
-                "officer": (cn in offs or p["main_canon"] in offs)}
+                "officer": is_off}
 
 
 # ── ЕДИНЫЙ ДОСТУП: массовая генерация личных паролей участников ─────────────
@@ -1329,6 +1379,9 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_shared_password")
             if not p:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "nick_not_found")
+            # ПРАВИЛО РОСТЕРА: регистрация только текущему составу клана
+            if not _nick_allowed(conn, payload.nick):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_clan")
 
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         main_nick = (p["main_nick"] if p else payload.nick.strip()) or payload.nick.strip()
@@ -1373,6 +1426,10 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, main_canon)
+        # ПРАВИЛО РОСТЕРА: вход только текущему составу (последний снимок + новые в реестре).
+        # Офицеров не блокируем (у них отдельный сильный пароль).
+        if not _is_officer_nick(conn, payload.nick) and not _nick_allowed(conn, payload.nick):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_clan")
         # Офицерский ник, но аккаунта ещё нет → сначала зарегистрировать личный пароль офиц. паролем.
         # Ручной ник — отдельный человек, не наследует офицерство гомоглиф-двойника.
         if not acc and not _manual_by_raw(conn, payload.nick) and _is_officer_nick(conn, payload.nick):
@@ -3176,6 +3233,40 @@ def chat_link_click(payload: ChatLinkClickIn, request: Request) -> dict:
         _log(conn, "chat_link_click", actor=nick, nick=nick, request=request,
              detail="клик ссылки чата " + plat.upper())
     return {"ok": True}
+
+
+_DEFAULT_CHAT_INVITE = {
+    "tg": "https://t.me/+6U3XCSrrZgo1YTMy",
+    "vk": "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+}
+
+
+@router.get("/chat-invite")
+def chat_invite(request: Request, p: str = Query(..., min_length=2, max_length=4)):
+    """Переход в чат клана (VK/TG) ТОЛЬКО для залогиненных. Настоящая ссылка скрыта (в браузере
+    видно /queue/chat-invite, а не t.me/vk.me), переход логируется под ником игрока (для авто-
+    регистрации по тайм-корреляции) и делается 302 на приглашение. Не залогинен → на вход."""
+    plat = (p or "").strip().lower()
+    if plat not in ("vk", "tg"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_platform")
+    with db.connection() as conn:
+        acc = _player_ctx(conn, request)
+        if not acc:
+            return RedirectResponse("/login.html", status_code=302)
+        nick = acc.get("main_nick") or acc.get("reg_nick") or ""
+        ip = (request.client.host if request.client else "") or ""
+        try:
+            conn.execute(
+                "INSERT INTO queue_chat_link_click (canon, nick, platform, clicked_at, ip) VALUES (?,?,?,?,?)",
+                (acc.get("main_canon") or "", nick, plat, _now(), ip))
+            _log(conn, "chat_link_click", actor=nick, nick=nick, request=request,
+                 detail="переход в чат " + plat.upper())
+        except Exception:
+            pass
+        row = conn.execute("SELECT val FROM queue_kv WHERE key=?",
+                           ("chat_invite_" + plat,)).fetchone()
+        url = (row["val"] if row and row["val"] else "") or _DEFAULT_CHAT_INVITE[plat]
+    return RedirectResponse(url, status_code=302)
 
 
 class ChatJoinMatchIn(BaseModel):

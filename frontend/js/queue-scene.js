@@ -3136,12 +3136,11 @@
     if (!isHidden("flinks")) {
       var flPos = placedPos("flinks", 2.5, 3.5);      // дефолт — верхний ЛЕВЫЙ угол рамы, с отступом от краёв
       var FLINKS = [
+        // TG/VK — через персональный вход (авторизация + лог под ником, ссылка скрыта)
         { img: "tg.png", g: "#3aa6e8", name: "Telegram", sub: "чат клана", plat: "tg",
-          href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true,
-          copies: [{ cp: "https://t.me/+6U3XCSrrZgo1YTMy", lbl: "⧉", t: "Копировать ссылку" }] },
+          href: "/queue/chat-invite?p=tg", ext: true },
         { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана", plat: "vk",
-          href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true,
-          copies: [{ cp: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", lbl: "⧉", t: "Копировать ссылку" }] },
+          href: "/queue/chat-invite?p=vk", ext: true },
         { img: "ts.png", g: "#ff6a24", name: "TeamSpeak", sub: "голосовой",
           href: "ts3server://melodybum.ts3.se", ext: false,
           copies: [{ cp: "melodybum.ts3.se", lbl: "адрес", t: "Копировать адрес канала" },

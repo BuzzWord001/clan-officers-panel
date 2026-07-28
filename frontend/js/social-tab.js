@@ -5,10 +5,11 @@
 (function () {
   "use strict";
   var LINKS = [
+    // TG/VK — через персональный вход (авторизация + лог под ником, ссылка скрыта)
     { img: "tg.png", label: "Telegram",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true },
+      href: "/queue/chat-invite?p=tg", ext: true },
     { img: "vk-chat.png", label: "ВКонтакте",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true },
+      href: "/queue/chat-invite?p=vk", ext: true },
     { img: "ts.png", label: "TeamSpeak",
       href: "ts3server://melodybum.ts3.se", ext: false }
   ];

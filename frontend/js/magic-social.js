@@ -15,12 +15,13 @@
   // Лир 2026-07-25: Группу ВК убрали, но её точку оставляем в геометрии линии
   // (hidden:true) → кончик/длина линии остаются как было, просто без иконки.
   var LINKS = [
+    // TG/VK — через персональный вход (/queue/chat-invite): авторизация + лог под ником,
+    // настоящая ссылка не показывается.
     { key: "tg",       label: "Чат Telegram",  glow: "#2aa6e4",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy",
+      href: "/queue/chat-invite?p=tg", disp: "Войти в чат →",
       img: "assets/social/tg.png" },
     { key: "vk-chat",  label: "Чат ВК",    glow: "#f56a24",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
-      disp: "vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
+      href: "/queue/chat-invite?p=vk", disp: "Войти в чат →",
       img: "assets/social/vk-chat.png" },
     { key: "ts",       label: "TeamSpeak", glow: "#ff5e1c",
       href: "ts3server://melodybum.ts3.se", disp: "melodybum.ts3.se",

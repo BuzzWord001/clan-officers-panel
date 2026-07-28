@@ -43,7 +43,8 @@
   }
 
   // куда отправляем после входа
-  function landing(role) { return (role === "officer" || role === "admin") ? "index.html" : "clan-valor.html"; }
+  // ВСЕ роли (участник/офицер/админ) после входа попадают на Таблицу доблести.
+  function landing(role) { return "clan-valor.html"; }
   function go(url) { location.href = url; }
 
   function reveal() { document.documentElement.classList.remove("booting"); }
@@ -139,7 +140,10 @@
       .then(function (d) {
         btn.disabled = false;
         if (!d.ok) {
-          err("Такой ник не найден в реестре и таблице клана. Проверь написание. Если ты админ — разверни «⚙ Вход для администратора» внизу.");
+          if (d.reason === "not_in_clan")
+            err("Этого ника нет в текущем составе клана (последний сбор доблести). Доступ на сайт — только у актуальных участников. Если это ошибка — напиши офицеру.");
+          else
+            err("Такой ник не найден в реестре и таблице клана. Проверь написание. Если ты админ — разверни «⚙ Вход для администратора» внизу.");
           var ad = $("q-admin-login"); if (ad && canonLike(nick, "Лирия!")) ad.open = true;
           return;
         }
@@ -164,7 +168,7 @@
       email: $("q-email").value.trim(), personal_password: $("q-newpass").value,
     }).then(function (d) {
       if (d.device_token) setDev(d.device_token);
-      if (d.role === "officer") { setToken(d.token); go("index.html"); return; }
+      if (d.role === "officer") { setToken(d.token); go("clan-valor.html"); return; }
       finishMember(d);
     }).catch(function (e) {
       btn.disabled = false;
@@ -184,7 +188,7 @@
     api("POST", "/queue/login", { nick: selectedNick, personal_password: $("q-pass").value })
       .then(function (d) {
         if (d.device_token) setDev(d.device_token);
-        if (d.role === "officer") { setToken(d.token); go("index.html"); return; }
+        if (d.role === "officer") { setToken(d.token); go("clan-valor.html"); return; }
         finishMember(d);
       })
       .catch(function (e) {
@@ -198,7 +202,7 @@
   function doOfficerLogin() {
     var btn = $("btn-officer"); btn.disabled = true; err("");
     api("POST", "/queue/officer-login", { nick: selectedNick, password: $("q-off-pass").value })
-      .then(function (d) { setToken(d && d.token); go("index.html"); })
+      .then(function (d) { setToken(d && d.token); go("clan-valor.html"); })
       .catch(function (e) {
         btn.disabled = false;
         err(e.status === 401 ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : ("Ошибка входа: " + (e.detail || e.message)));
@@ -226,7 +230,7 @@
     api("POST", "/queue/recover", { nick: selectedNick, email: $("q-rec-email").value.trim(), new_password: $("q-rec-newpass").value })
       .then(function (d) {
         if (d.device_token) setDev(d.device_token);
-        if (d.role === "officer") { setToken(d.token); go("index.html"); return; }
+        if (d.role === "officer") { setToken(d.token); go("clan-valor.html"); return; }
         finishMember(d);
       }).catch(function (e) {
         btn.disabled = false;
@@ -247,7 +251,7 @@
   function doOfficerSetup() {
     var btn = $("btn-osetup"); btn.disabled = true; err("");
     api("POST", "/queue/officer-setup", { personal_password: $("q-osetup-pass").value, email: $("q-osetup-email").value.trim() })
-      .then(function () { go("index.html"); })
+      .then(function () { go("clan-valor.html"); })
       .catch(function (e) {
         btn.disabled = false;
         if (e.detail === "personal_password_too_short") err("Пароль — минимум 4 символа.");
@@ -274,7 +278,7 @@
     if (!u || !p) { e.textContent = "Введи логин и пароль администратора."; return; }
     var btn = $("btn-adm-login"); btn.disabled = true;
     api("POST", "/auth/admin/login", { username: u, password: p })
-      .then(function () { go("index.html"); })
+      .then(function () { go("clan-valor.html"); })
       .catch(function (er) { btn.disabled = false; e.textContent = er.status === 401 ? "Неверный логин или пароль." : ("Ошибка: " + (er.detail || er.message)); });
   }
 
@@ -315,7 +319,7 @@
       if (q && q.session_token) setToken(q.session_token);
       if (me && (me.role === "admin" || me.role === "officer")) {
         if (q && q.officer_needs_setup) { showOfficerSetup(me.name); return; }
-        go("index.html"); return;
+        go("clan-valor.html"); return;
       }
       if (me && me.role === "member") { go(landing("member")); return; }
       if (q && q.account) { go(landing("member")); return; }

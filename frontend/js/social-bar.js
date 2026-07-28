@@ -4,13 +4,11 @@
 // Логотипы: frontend/assets/social/*.png. Ссылки — из бота @SanTDeviL_bot.
 (function () {
   var LINKS = [
-    { img: "tg",       name: "Чат Telegram",  glow: "#39a3e6",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy",
-      copy: "https://t.me/+6U3XCSrrZgo1YTMy" },
+    // TG/VK чаты — через персональный вход (/queue/chat-invite): требует авторизации,
+    // логирует переход под ником игрока, настоящая ссылка (t.me/vk.me) НЕ показывается.
+    { img: "tg",       name: "Чат Telegram",  glow: "#39a3e6", authed: true, p: "tg" },
     // Группа ВК убрана (Лир 2026-07-25) — оставлены только чаты и TeamSpeak
-    { img: "vk-chat",  name: "Чат ВК",     glow: "#e0903e",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
-      copy: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=" },
+    { img: "vk-chat",  name: "Чат ВК",     glow: "#e0903e", authed: true, p: "vk" },
     { img: "ts",       name: "TeamSpeak",  glow: "#e0903e",
       href: "ts3server://melodybum.ts3.se",
       copy: "melodybum.ts3.se", proto: true,
@@ -58,7 +56,7 @@
 
       var a = document.createElement("a");
       a.className = "soc2-ic";
-      a.href = l.href;
+      a.href = l.authed ? ("/queue/chat-invite?p=" + l.p) : l.href;
       if (!l.proto) a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.title = l.name;
@@ -72,12 +70,17 @@
       var url = document.createElement("button");
       url.type = "button";
       url.className = "soc2-url";
-      url.textContent = l.copy;
-      // Полная ссылка показывается всплывающей подсказкой при наведении
-      // (data-full → CSS ::after), а клик копирует её в буфер.
-      url.setAttribute("data-full", l.copy);
-      url.setAttribute("aria-label", "Скопировать ссылку: " + l.copy);
-      url.addEventListener("click", function () { copyText(l.copy, url); });
+      if (l.authed) {
+        // Настоящую ссылку НЕ показываем — только кнопка входа в чат (через авторизацию).
+        url.textContent = "Войти в чат →";
+        url.setAttribute("aria-label", "Войти в " + l.name);
+        url.addEventListener("click", function () { a.click(); });
+      } else {
+        url.textContent = l.copy;
+        url.setAttribute("data-full", l.copy);
+        url.setAttribute("aria-label", "Скопировать ссылку: " + l.copy);
+        url.addEventListener("click", function () { copyText(l.copy, url); });
+      }
 
       card.appendChild(a);
       card.appendChild(nm);
