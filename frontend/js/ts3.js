@@ -111,13 +111,12 @@
   }
 
   var SOCIAL = [
+    // TG/VK — через персональный вход (/queue/chat-invite): авторизация + лог под ником,
+    // настоящая ссылка не показывается (без copies → нет попапа с URL).
     { img: "tg.png", g: "#3aa6e8", label: "Telegram",
-      href: "https://t.me/+6U3XCSrrZgo1YTMy", ext: true,
-      copies: [{ cp: "https://t.me/+6U3XCSrrZgo1YTMy", disp: "t.me/+6U3XCSrrZgo1YTMy" }] },
+      href: "/queue/chat-invite?p=tg", ext: true },
     { img: "vk-chat.png", g: "#f57a30", label: "ВКонтакте",
-      href: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=", ext: true,
-      copies: [{ cp: "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
-                 disp: "vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=" }] },
+      href: "/queue/chat-invite?p=vk", ext: true },
     { img: "ts.png", g: "#ff6a24", label: "TeamSpeak",
       href: "ts3server://melodybum.ts3.se", ext: false,
       copies: [{ note: "адрес", cp: "melodybum.ts3.se", disp: "melodybum.ts3.se" },
