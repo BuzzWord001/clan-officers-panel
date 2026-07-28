@@ -223,6 +223,22 @@ def _fmt_dossier(d: dict) -> str:
         L.append("↻ Звания: " + " → ".join(d["ranks"]))
     if len(d.get("titles", [])) > 1:
         L.append("↻ Титулы: " + ", ".join(d["titles"][:6]))
+    notes = d.get("notes") or []
+    if notes:
+        L.append("📝 Свиток (" + str(len(notes)) + "):")
+        for n in notes[-6:]:
+            who = (" — " + n["author"]) if n.get("author") else ""
+            dt = (", " + n["date"]) if n.get("date") else ""
+            L.append("  • " + str(n.get("text") or "")[:90] + who + dt)
+    imm = d.get("immunities") or []
+    if imm:
+        L.append("🛡 Иммунитеты (" + str(len(imm)) + "):")
+        for m in imm[:5]:
+            L.append("  • " + (m.get("week") or "") + ": " + str(m.get("reason") or "")[:70])
+    afkn = d.get("afk_notes") or []
+    for a in afkn[:3]:
+        until = (" до " + a["until"]) if a.get("until") else ""
+        L.append("💤 АФК" + until + ": " + str(a.get("note") or "")[:80])
     tw = d.get("twins") or []
     if tw:
         L.append(_HR)
@@ -252,10 +268,34 @@ def _fmt_dossier(d: dict) -> str:
             tgs = (tgs + " (@" + soc["tg_username"] + ")").strip()
         if tgs.strip():
             sp.append("TG: " + tgs)
+        av = []
+        if soc.get("vk_avatar"): av.append("VK-фото")
+        if soc.get("tg_avatar"): av.append("TG-фото")
+        L.append(_HR)
+        L.append("👤 ЛИЧНОСТЬ · КОНТАКТЫ")
         if sp:
+            L.append("🔗 " + " · ".join(sp))
+        if av:
+            L.append("🖼 Аватар: " + ", ".join(av))
+        if soc.get("last_seen_at") or soc.get("last_active_day"):
+            L.append("🕒 Последняя активность: "
+                     + (soc.get("last_active_day") or (soc.get("last_seen_at") or "")[:10]))
+    spouses = d.get("spouses") or []
+    if spouses:
+        if not soc:
             L.append(_HR)
             L.append("👤 ЛИЧНОСТЬ · КОНТАКТЫ")
-            L.append("🔗 " + " · ".join(sp))
+        for s in spouses:
+            role = s.get("role") or ""
+            tag = (" (" + role + ")") if role in ("муж", "жена") else ""
+            L.append("💍 Супруг(а): " + s["nick"] + tag)
+    ca = d.get("chat_activity") or []
+    if ca:
+        for c in ca:
+            plat = "VK" if c["platform"] == "vk" else "TG"
+            L.append("💬 Чат " + plat + ": сообщений " + str(c.get("msgs") or 0)
+                     + " · последнее " + (c.get("last") or "")[:10]
+                     + " · с " + (c.get("first") or "")[:10])
     hist = d.get("history") or []
     if hist:
         L.append(_HR)
@@ -291,12 +331,34 @@ def _fmt_dossier(d: dict) -> str:
         L.append(verb + ": " + (dep.get("reason") or "причина не указана")
                  + (" (" + by + ")" if by else "") + (" · " + when if when else ""))
 
+    # ── ОЧЕРЕДЬ ЗА РЕСУРСАМИ ──
+    q = d.get("queue") or []
+    jet = d.get("jetons") or 0
+    if q or jet:
+        L.append(_HR)
+        L.append("📦 ОЧЕРЕДЬ ЗА РЕСУРСАМИ")
+        for e in q[:8]:
+            pos = e.get("pos")
+            posn = ("#" + str(int(pos)) if isinstance(pos, (int, float)) else "")
+            L.append("  • " + (e.get("queue") or "") + ": " + str(e.get("resource") or "")
+                     + (" · место " + posn if posn else ""))
+        if jet:
+            L.append("  🎟 Жетон ТОП-3: " + str(jet))
+
     # ── ТЕХНИЧЕСКОЕ: IP / устройства / входы — визуально ОТДЕЛЬНО от игры ──
     site = d.get("site")
+    clicks = d.get("link_clicks") or []
     L.append("")
     L.append("═════════ 🌐 IP · УСТРОЙСТВА ═════════")
+    if clicks:
+        L.append("🔗 Брал ссылку на чат с сайта (" + str(len(clicks)) + "):")
+        for c in clicks[:5]:
+            m = (" → вступил: " + c["match_name"]) if c.get("matched") and c.get("match_name") else ""
+            L.append("  • " + (c.get("at") or "")[:16] + " " + (c.get("platform") or "")
+                     + " " + (c.get("ip") or "") + m)
     if not site or not (site.get("ips") or site.get("logins")):
-        L.append("нет данных: на сайт под этим ником не заходил")
+        if not clicks:
+            L.append("нет данных: на сайт под этим ником не заходил")
         return "\n".join(L)
     ips = site.get("ips") or []
     if ips:
@@ -309,11 +371,21 @@ def _fmt_dossier(d: dict) -> str:
                      + (", " + (i.get("last") or "")[:10] if i.get("last") else "") + "]")
     devs = site.get("devices") or []
     if devs:
-        L.append("📱 Устройства / отпечатки:")
+        L.append("📱 Устройства / отпечатки (" + str(len(devs)) + "):")
         for dv in devs[:5]:
-            bits = " · ".join(x for x in (dv.get("platform"), dv.get("screen"),
+            head = " · ".join(x for x in (dv.get("platform"), dv.get("screen"),
                                           dv.get("utc"), dv.get("tz")) if x)
-            L.append("  • " + (bits or "?"))
+            L.append("  • " + (head or "?"))
+            det = []
+            if dv.get("lang"): det.append("язык " + dv["lang"])
+            if dv.get("dev_mem"): det.append("память " + str(dv["dev_mem"]) + "ГБ")
+            if dv.get("hw_cores"): det.append("ядер " + str(dv["hw_cores"]))
+            det.append("сенсор ✅" if dv.get("touch") else "сенсор ✖")
+            if det:
+                L.append("     " + " · ".join(det))
+            ua = (dv.get("ua") or "")
+            if ua:
+                L.append("     UA: " + ua[:80])
     aa = site.get("admin_attempts") or []
     if aa:
         L.append("🔐 Попытки АДМИН-входа: " + str(len(aa)))

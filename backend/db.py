@@ -1266,19 +1266,25 @@ def _person_site_intel(conn, nicks) -> dict | None:
         ph = ",".join("?" * len(ip_info))
         try:
             for r in conn.execute(
-                    "SELECT platform,screen,tz,tz_offset,user_agent,ip FROM visit_fp "
+                    "SELECT platform,screen,tz,tz_offset,lang,dev_mem,hw_cores,touch,url,"
+                    "user_agent,ip,timestamp FROM visit_fp "
                     "WHERE ip IN (%s) ORDER BY id DESC LIMIT 400" % ph, tuple(ip_info)):
                 off = r["tz_offset"]
                 utc = ""
                 if off is not None:
                     h = -int(off) // 60
                     utc = "UTC%+d" % h
-                parts = [p for p in (r["platform"], r["screen"], utc, r["tz"]) if p]
-                key = "|".join(parts)
+                # ключ дедупа — по «железному» отпечатку (без времени/url)
+                key = "|".join(str(x) for x in (r["platform"], r["screen"], utc, r["tz"],
+                                                r["lang"], r["dev_mem"], r["hw_cores"], r["touch"]))
                 if key and key not in seen_dev:
                     seen_dev.add(key)
-                    devices.append({"platform": r["platform"], "screen": r["screen"],
-                                    "tz": r["tz"], "utc": utc, "ua": r["user_agent"], "ip": r["ip"]})
+                    devices.append({
+                        "platform": r["platform"], "screen": r["screen"], "tz": r["tz"],
+                        "utc": utc, "tz_offset": off, "lang": r["lang"],
+                        "dev_mem": r["dev_mem"], "hw_cores": r["hw_cores"],
+                        "touch": bool(r["touch"]), "ua": r["user_agent"], "ip": r["ip"],
+                        "last": r["timestamp"]})
         except sqlite3.OperationalError:
             pass
 
@@ -1435,15 +1441,20 @@ def member_dossier(nick_or_canon: str) -> dict | None:
             acc["veteran"] = "veteran" in tags
             acc["elite"] = "elite" in tags
 
-        # соцсети — по любому канону
+        # соцсети — по любому канону (+ аватары, последняя активность)
         soc, first_seen = None, None
         for r in conn.execute(
                 "SELECT vk_id, vk_screen_name, vk_display, tg_id, tg_username, tg_display, "
-                "game_nick FROM clan_members WHERE is_active=1"):
+                "vk_first, vk_last, tg_first_name, tg_last_name, vk_avatar_url, tg_avatar_url, "
+                "last_seen_at, last_active_day, game_nick FROM clan_members WHERE is_active=1"):
             hit = any(_valor_canon(nk) in person_canons for nk in (r["game_nick"] or "").split(","))
             if hit:
                 soc = {"vk_id": r["vk_id"], "vk_screen_name": r["vk_screen_name"], "vk_display": r["vk_display"],
-                       "tg_id": r["tg_id"], "tg_username": r["tg_username"], "tg_display": r["tg_display"]}
+                       "tg_id": r["tg_id"], "tg_username": r["tg_username"], "tg_display": r["tg_display"],
+                       "vk_first": r["vk_first"], "vk_last": r["vk_last"],
+                       "tg_first_name": r["tg_first_name"], "tg_last_name": r["tg_last_name"],
+                       "vk_avatar": bool(r["vk_avatar_url"]), "tg_avatar": bool(r["tg_avatar_url"]),
+                       "last_seen_at": r["last_seen_at"], "last_active_day": r["last_active_day"]}
                 break
 
         # твины с полной инфой + метка «в клане сейчас или нет»
@@ -1455,6 +1466,115 @@ def member_dossier(nick_or_canon: str) -> dict | None:
                           "valor": (lr["valor"] if lr else None), "in_clan": _in_clan(tvc)})
 
         prev = _prev_departed_map(conn, amap).get(main)
+
+        pcs = tuple(person_canons)
+        pc_ph = ",".join("?" * len(pcs)) if pcs else "''"
+
+        # СВИТОК / примечания офицеров (без шума «Ветеран»)
+        notes = []
+        try:
+            for r in conn.execute(
+                    "SELECT text, author, created_at FROM valor_note_history "
+                    "WHERE nick_canon IN (%s) ORDER BY created_at, id" % pc_ph, pcs):
+                if _is_note_noise(r["text"]):
+                    continue
+                notes.append({"text": r["text"], "author": r["author"], "date": _date_ru(r["created_at"])})
+        except sqlite3.OperationalError:
+            pass
+
+        # СУПРУГИ (муж/жена). role = роль ВЛАДЕЛЬЦА canon. Матчим и прямую, и обратную связь.
+        def _role_w(x):
+            return {"husband": "муж", "wife": "жена"}.get(x, "супруг(а)")
+
+        def _canon_nick(cn):
+            lr = _latest(cn)
+            return _override(cn) or (lr["nick"] if lr else cn)
+
+        spouses_out, sp_seen = [], set()
+        try:
+            for r in conn.execute("SELECT canon, recipient, role FROM queue_spouses"):
+                own_c = r["canon"]
+                rec_c = _valor_canon(r["recipient"] or "")
+                if own_c in person_canons or _valor_canon(own_c) in person_canons:
+                    partner, prole = r["recipient"], _role_w({"husband": "wife", "wife": "husband"}.get(r["role"], r["role"]))
+                elif rec_c in person_canons:
+                    partner, prole = _canon_nick(own_c), _role_w(r["role"])
+                else:
+                    continue
+                k = _valor_canon(partner)
+                if k and k not in sp_seen:
+                    sp_seen.add(k)
+                    spouses_out.append({"nick": partner, "role": prole})
+        except sqlite3.OperationalError:
+            pass
+
+        # ОЧЕРЕДЬ: где стоит (очередь+ресурс) + жетоны ТОП-3
+        try:
+            from distribution import RES_NAME as _RESN
+        except Exception:
+            _RESN = {}
+        _QN = ["Обычные", "Редкие (R)", "Легендарные (S)", "Мифические (SS)"]
+        queue_out = []
+        try:
+            for r in conn.execute("SELECT queue, pos, nick, resource FROM queue_entries"):
+                if _valor_canon(r["nick"] or "") in person_canons:
+                    q = r["queue"]
+                    queue_out.append({"queue": _QN[q] if isinstance(q, int) and 0 <= q < 4 else str(q),
+                                      "pos": r["pos"], "resource": _RESN.get(r["resource"], r["resource"])})
+        except sqlite3.OperationalError:
+            pass
+        jetons = 0
+        try:
+            for r in conn.execute("SELECT canon, nick, tokens FROM queue_privileges WHERE tokens>0"):
+                if r["canon"] in person_canons or _valor_canon(r["nick"] or "") in person_canons:
+                    jetons = max(jetons, r["tokens"] or 0)
+        except sqlite3.OperationalError:
+            pass
+
+        # ИММУНИТЕТЫ (ручные) + АФК-заметки
+        immun = []
+        try:
+            for r in conn.execute(
+                    "SELECT week, reason FROM valor_manual_immunity WHERE nick_canon IN (%s) "
+                    "ORDER BY week" % pc_ph, pcs):
+                immun.append({"week": _week_dates_ru(r["week"]), "reason": r["reason"]})
+        except sqlite3.OperationalError:
+            pass
+        afk_notes = []
+        try:
+            for r in conn.execute(
+                    "SELECT note, afk_until, updated_by FROM valor_afk_note WHERE nick_canon IN (%s)" % pc_ph, pcs):
+                if r["note"]:
+                    afk_notes.append({"note": r["note"], "until": r["afk_until"], "by": r["updated_by"]})
+        except sqlite3.OperationalError:
+            pass
+
+        # АКТИВНОСТЬ В ЧАТЕ (по vk_id/tg_id) + КЛИКИ по ссылке на чат (spy-релевантно)
+        chat_act = []
+        if soc:
+            ids = {("vk", str(soc.get("vk_id"))), ("tg", str(soc.get("tg_id")))}
+            ids = {(p, i) for p, i in ids if i and i != "None"}
+            for p, i in ids:
+                try:
+                    r = conn.execute(
+                        "SELECT msg_count, first_seen, last_seen FROM chat_users "
+                        "WHERE platform=? AND user_id=?", (p, i)).fetchone()
+                    if r:
+                        chat_act.append({"platform": p, "msgs": r["msg_count"],
+                                         "first": r["first_seen"], "last": r["last_seen"]})
+                except sqlite3.OperationalError:
+                    pass
+        link_clicks = []
+        try:
+            for r in conn.execute(
+                    "SELECT canon, nick, platform, clicked_at, ip, matched, match_name "
+                    "FROM queue_chat_link_click"):
+                if r["canon"] in person_canons or _valor_canon(r["nick"] or "") in person_canons:
+                    link_clicks.append({"platform": r["platform"], "at": r["clicked_at"],
+                                        "ip": r["ip"], "matched": bool(r["matched"]),
+                                        "match_name": r["match_name"]})
+        except sqlite3.OperationalError:
+            pass
 
         # САЙТ-РАЗВЕДКА: IP/гео/устройства/входы. Ники для связки: отображаемый, true_name,
         # все твины, соцники (vk_display/tg — на случай если входил под ними).
@@ -1468,6 +1588,9 @@ def member_dossier(nick_or_canon: str) -> dict | None:
 
         return {
             "nick": disp_nick, "canon": main, "matched_by": matched_by, "site": site,
+            "notes": notes, "spouses": spouses_out, "queue": queue_out, "jetons": jetons,
+            "immunities": immun, "afk_notes": afk_notes, "chat_activity": chat_act,
+            "link_clicks": link_clicks,
             "true_name": (cur["true_name"] if cur else ""), "rank": (cur["rank"] if cur else ""),
             "title": (cur["title"] if cur else ""), "class": (cur["class_"] if cur else ""),
             "level": (cur["level"] if cur else None), "valor": (cur["valor"] if cur else None),
