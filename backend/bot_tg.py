@@ -177,23 +177,21 @@ async def publish_manifest(image_path: Path, caption: str, prev_message_id: int 
     return new_id
 
 
-async def publish_officer_pw(text: str, prev_id):
-    """Закреплённое офицерское сообщение с текущим офиц. паролём. Редактирует по prev_id
-    (editMessageText) либо постит новое + пинит. Возвращает message_id."""
+async def publish_officer_pw(caption: str, image_path, prev_id):
+    """Закреплённое офицерское сообщение = баннер (фото) + подпись с текущим офиц. паролём.
+    Редактирует подпись по prev_id (editMessageCaption, фото остаётся) либо постит новое
+    фото + пинит + убирает старое. Возвращает message_id."""
     chat = settings.tg_officer_chat_id
     if prev_id:
         try:
-            await _call("editMessageText", chat_id=chat, message_id=int(prev_id), text=text,
-                        parse_mode="HTML", disable_web_page_preview=True)
+            await _call("editMessageCaption", chat_id=chat, message_id=int(prev_id),
+                        caption=caption, parse_mode="HTML")
             return int(prev_id)
         except Exception as exc:
-            # «message is not modified» — текст тот же → уже актуально, не плодим новое.
             if "not modified" in str(exc).lower():
                 return int(prev_id)
-            log.info("TG officer-pw edit failed (%s), posting new", exc)
-    res = await _call("sendMessage", chat_id=chat, text=text, parse_mode="HTML",
-                      disable_web_page_preview=True)
-    new_id = int(res["message_id"])
+            log.info("TG officer-pw editCaption failed (%s), posting new photo", exc)
+    new_id = await _send_photo(Path(image_path), caption)
     try:
         await _call("pinChatMessage", chat_id=chat, message_id=new_id, disable_notification=True)
     except Exception as exc:

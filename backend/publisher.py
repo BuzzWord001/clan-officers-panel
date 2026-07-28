@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -91,12 +92,13 @@ async def publish_officer_password() -> dict:
     """Обновляет ЗАКРЕПЛЁННОЕ офицерское сообщение с АКТУАЛЬНЫМ офиц. паролём в TG+VK
     офиц. чатах. Вызывается при смене офиц. пароля: редактирует существующее (по сохранённому
     id) или постит новое + пинит. Так в офицерских каналах всегда актуальный пароль."""
+    banner = os.path.join(os.path.dirname(__file__), "assets", "officer_pass_banner.jpg")
     result: dict = {}
     if settings.tg_bot_token and settings.tg_officer_chat_id:
         try:
             prev = db.kv_get("off_pw_tg_msg")
             new_id = await bot_tg.publish_officer_pw(
-                _officer_pw_text_tg(), int(prev) if prev.isdigit() else None)
+                _officer_pw_text_tg(), banner, int(prev) if prev.isdigit() else None)
             db.kv_set("off_pw_tg_msg", str(new_id))
             result["tg"] = new_id
         except Exception as exc:
@@ -106,7 +108,7 @@ async def publish_officer_password() -> dict:
         try:
             prev = db.kv_get("off_pw_vk_msg")
             new_id = await asyncio.to_thread(
-                bot_vk.publish_officer_pw, _officer_pw_text_vk(),
+                bot_vk.publish_officer_pw, _officer_pw_text_vk(), banner,
                 int(prev) if prev.isdigit() else None)
             db.kv_set("off_pw_vk_msg", str(new_id))
             result["vk"] = new_id
