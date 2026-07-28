@@ -170,14 +170,40 @@ def telemetry_fp(payload: FpIn, request: Request) -> None:
         url=payload.url, user_agent=client_user_agent(request))
 
 
+_DC_ISP = ("hosting", "datacenter", "data center", "ovh", "hetzner", "digitalocean",
+           "amazon", "aws", "google", "cloud", "vpn", "m247", "vultr", "contabo",
+           "proton", "mullvad", "choopa", "leaseweb", "g-core", "highlight")
+
+
 @router.get("/visit-fp")
-def get_visit_fp(limit: int = 300, _: dict = Depends(require_admin)) -> list[dict]:
-    """Админу: отпечатки визитёров (для расследований). С гео по IP."""
+def get_visit_fp(limit: int = 300, suspicious_only: bool = False,
+                 _: dict = Depends(require_admin)) -> list[dict]:
+    """Админу: отпечатки визитёров (для расследований) с гео по IP и авто-пометкой
+    подозрительных: UTC+4 (пояс шпиона), экран 1080x2400 (как у утечки), VPN/датацентр."""
     with db.connection() as conn:
         rows = [dict(r) for r in conn.execute(
             "SELECT * FROM visit_fp ORDER BY id DESC LIMIT ?", (min(limit, 1000),))]
         geo = {r["ip"]: dict(r) for r in conn.execute("SELECT * FROM geoip_cache")}
+    out = []
     for r in rows:
         g = geo.get(r["ip"]) or {}
-        r["geo"] = "%s/%s [%s]" % (g.get("country_code", "?"), g.get("city", "?"), (g.get("isp") or "")[:24])
-    return rows
+        isp = (g.get("isp") or "")
+        r["geo"] = "%s/%s [%s]" % (g.get("country_code", "?"), g.get("city", "?"), isp[:24])
+        flags = []
+        if r.get("tz_offset") == -240:                         # UTC+4 — пояс шпиона
+            flags.append("★UTC+4")
+        if (r.get("tz") or "").split("/")[0] in ("Asia", "Europe") and r.get("tz_offset") == -240:
+            pass
+        if r.get("screen") == "1080x2400":                     # экран как у скрина-утечки
+            flags.append("★экран-утечки")
+        if any(d in isp.lower() for d in _DC_ISP):
+            flags.append("★VPN")
+        ua = (r.get("user_agent") or "").lower()
+        if "sm-" in ua or "samsung" in ua:
+            flags.append("Samsung")
+        r["flags"] = flags
+        r["suspicious"] = bool([f for f in flags if f.startswith("★")])
+        if suspicious_only and not r["suspicious"]:
+            continue
+        out.append(r)
+    return out
