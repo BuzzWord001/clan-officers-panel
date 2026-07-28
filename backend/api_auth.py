@@ -138,13 +138,10 @@ def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> 
 
 @router.post("/guest")
 def guest_login(request: Request, response: Response) -> dict:
-    """Гостевой вход без пароля. Роль «guest» — только просмотр таблицы
-    Доблести и графиков, без права на правки (write-роуты require_officer)."""
-    ip = client_ip(request)
-    ua = client_user_agent(request)
-    db.write_login(role="guest", name="Гость", success=True, ip=ip, user_agent=ua)
-    token = set_session(response, role="guest", name="Гость")
-    return {"role": "guest", "name": "Гость", "login_at": "now", "token": token}
+    """ОТКЛЮЧЕНО 2026-07-20: гостевого входа больше нет — весь сайт только после
+    личного входа (ник + личный пароль). Фронт больше сюда не ходит; на всякий
+    случай отвечаем 403, чтобы никакой анонимный доступ не проходил."""
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "guest_disabled")
 
 
 @router.get("/me", response_model=MeOut)

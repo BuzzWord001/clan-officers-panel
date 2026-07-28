@@ -12,16 +12,13 @@
   try {
     me = await API.me();
   } catch (e) {
-    // Нет сессии (или сеть недоступна) → становимся гостем и уходим на Доблесть.
-    // Страница остаётся скрытой (booting) и тут же сменится — офицерский DOM не
-    // покажется. Отдельного окна логина в основном потоке нет; офицер/админ
-    // входят через дверцу «Офицерский вход» на Доблести.
-    try { await API.loginGuest(); } catch (_) {}
-    window.location.replace("clan-valor.html");
+    // Единый гейт: нет сессии → на страницу входа (ник + личный пароль). Гостевого
+    // доступа больше нет — весь сайт только после входа.
+    window.location.replace("login.html?_=" + Date.now());
     return;
   }
-  // Гость допущен только к таблице Доблести. На офицерских страницах данные
-  // вернут 403 и страница будет битой — отправляем гостя на его раздел.
+  // Рядовой участник (member) допущен только к просмотру Доблести. Офицерский реестр
+  // не для него — уводим на его раздел.
   if (me.role !== "officer" && me.role !== "admin") {
     window.location.replace("clan-valor.html");
     return;
@@ -38,8 +35,7 @@
   document.body.setAttribute("data-role", me.role);
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    // После выхода — обратно на Доблесть гостем (авто-гость там сработает).
-    window.location.href = "clan-valor.html";
+    window.location.href = "login.html?_=" + Date.now();
   });
 
   // ── Date input ──

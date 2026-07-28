@@ -154,6 +154,36 @@
       </div>
 
       <div class="panel">
+        <h2>Личные пароли участников (единый доступ)</h2>
+        <p class="hint" style="margin-bottom: 12px;">
+          Генерирует по одному личному паролю на человека (по мэйну, твины входят под ним же).
+          Плейнтекст показывается <b>один раз</b> — скопируй/скачай и разошли каждому лично
+          (в ЛС или на почту). В БД хранится только хэш.
+          <br><b>«Недостающие»</b> — только тем, у кого пароля ещё нет. Кто уже придумал
+          <b>свой пароль на сайте — остаётся с ним</b>, ему слать ничего не надо.
+          <br>⚠️ <b>«Всем»</b> — сбрасывает пароли у ВСЕХ, включая самодельные (жать только
+          если делаешь единую рассылку с нуля).
+          <br>Статус: <b id="acc-state">…</b>
+        </p>
+        <div class="form-actions" style="flex-wrap:wrap;gap:8px;">
+          <button type="button" id="acc-refresh" class="secondary">Обновить статус</button>
+          <button type="button" id="acc-gen-missing">Сгенерировать недостающие</button>
+          <button type="button" id="acc-gen-all" class="secondary">Перегенерировать ВСЕМ</button>
+        </div>
+        <div class="status-line" id="acc-status"></div>
+        <div id="acc-result" style="display:none;margin-top:12px;">
+          <div class="form-actions" style="gap:8px;">
+            <button type="button" id="acc-copy" class="secondary">📋 Скопировать всё</button>
+            <button type="button" id="acc-csv" class="secondary">⬇ Скачать .csv</button>
+            <span id="acc-count" style="align-self:center;font-size:13px;opacity:.8;"></span>
+          </div>
+          <textarea id="acc-list" readonly rows="12"
+            style="width:100%;margin-top:8px;font-family:monospace;font-size:13px;
+                   white-space:pre;overflow:auto;"></textarea>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>Учётные данные администратора</h2>
         <p class="hint" style="margin-bottom: 12px;">
           Этот логин и пароль — только твои. Для подтверждения изменений
@@ -349,14 +379,14 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1816500000"></script>
-  <script src="js/view-as.js?v=1815100000"></script>
+  <script src="js/api.js?v=1896100000"></script>
+  <script src="js/view-as.js?v=1896400000"></script>
   <script src="js/global-search.js?v=1888600000"></script>
   <script src="js/queue-tab.js?v=1811000000"></script>
-  <script src="js/settings.js?v=1816500000"></script>
+  <script src="js/settings.js?v=1896200000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1889200000"></script>
-  <script src="js/chamber-door.js?v=1800300000"></script>
+  <script src="js/chamber-door.js?v=1896400000"></script>
   <script src="js/magic-social.js?v=1889300000"></script>
   <script src="js/ts3.js?v=1890200000"></script>
 </body>

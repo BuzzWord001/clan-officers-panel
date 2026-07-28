@@ -13,9 +13,9 @@
   "use strict";
   var KEY = "santdevil_view_as";                 // sessionStorage: guest|officer|admin
   var VIEWS = [
-    { role: "guest",   label: "Игрок",   icon: "👤", hint: "как видит обычный игрок / гость" },
-    { role: "officer", label: "Офицер",  icon: "✦",  hint: "как видит офицер" },
-    { role: "admin",   label: "Админ",   icon: "👑", hint: "полный доступ (ты)" }
+    { role: "member",  label: "Участник", icon: "👤", hint: "как видит рядовой участник (только просмотр)" },
+    { role: "officer", label: "Офицер",   icon: "✦",  hint: "как видит офицер" },
+    { role: "admin",   label: "Админ",    icon: "👑", hint: "полный доступ (ты)" }
   ];
   var realRole = null;                            // истинная роль сессии (узнаём из первого /auth/me)
   var barBuilt = false;

@@ -7,7 +7,7 @@
 
   let me, IS_ADMIN = false, IS_OFFICER = false;
   try { me = await API.me(); } catch (_) { location.href = "login.html?_=" + Date.now(); return; }
-  if (!me || me.role === "guest") { location.href = "clan-valor.html"; return; }
+  if (!me || (me.role !== "officer" && me.role !== "admin")) { location.href = "clan-valor.html"; return; }
   document.documentElement.classList.remove("booting");   // роль ок — показать (анти-вспышка)
   IS_ADMIN = me.role === "admin";
   IS_OFFICER = (me.role === "officer" || me.role === "admin");  // архив доступен и офицеру

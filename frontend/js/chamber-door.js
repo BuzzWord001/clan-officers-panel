@@ -311,35 +311,11 @@
   }
 
   // ── Инициализация ────────────────────────────────────────────────────
+  // Дверца «Офицерский вход» УБРАНА 2026-07-20: вход теперь единый — на login.html
+  // (ник + личный пароль, офицеры/админ там же). Оставляем только инъекцию
+  // admin-вкладки «Курсы волшебства» в панель вкладок.
   function init() {
     injectTabs();
-    if (document.querySelector(".cos-door")) return;
-    var style = document.createElement("style");
-    style.textContent = CSS;
-    document.head.appendChild(style);
-
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "cos-door";
-    btn.hidden = true;              // покажем только гостю (см. getRole ниже)
-    btn.setAttribute("aria-label", "Офицерский вход");
-    btn.innerHTML = doorSVG();
-    btn.addEventListener("click", showLoginPanel);
-
-    var label = document.createElement("div");
-    label.className = "cos-label";
-    label.hidden = true;
-    label.textContent = "Офицерский вход";
-
-    document.body.appendChild(btn);
-    document.body.appendChild(label);
-
-    // Дверца — только для гостя (или когда роль ещё не офицер/админ).
-    getRole().then(function (role) {
-      var show = (role !== "officer" && role !== "admin");
-      btn.hidden = !show;
-      label.hidden = !show;
-    });
   }
 
   if (document.readyState === "loading")

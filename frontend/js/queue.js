@@ -310,10 +310,11 @@
 
   function doLogout() {
     setToken(""); setDev("");   // чистим и офицерский токен, и device-токен игрока, и сессию
+    var toLogin = function () { location.href = "login.html?_=" + Date.now(); };
     Promise.all([
       api("POST", "/queue/logout").catch(function () {}),
       api("POST", "/auth/logout").catch(function () {})
-    ]).then(showAuth, showAuth);
+    ]).then(toLogin, toLogin);
   }
 
   function init() {
@@ -379,8 +380,8 @@
           $("auth").hidden = true; $("dev").hidden = true; $("section").hidden = false;
           $("who").textContent = (m && m.name || "предпросмотр") + " · как игрок" + (open ? "" : " (раздел закрыт)");
           if (window.QueueScene) window.QueueScene.enter(null);
-        } else { showAuth(); setTimeout(function () { $("q-nick").focus(); }, 40); }
-      }).catch(function () { showAuth(); });
+        } else { location.href = "login.html?_=" + Date.now(); }   // единый вход
+      }).catch(function () { location.href = "login.html?_=" + Date.now(); });
     });
   }
 

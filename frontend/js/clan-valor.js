@@ -114,42 +114,24 @@
       showNetBanner(false);
     } catch (e) {
       if (e && e.status === 0) {
-        // Сервер недоступен (не «не авторизован»). Уводить на login.html
-        // бессмысленно — там тот же недоступный сервер, плюс потеряли бы
-        // гостевую сессию из localStorage. Показываем баннер, даём повторить.
+        // Сервер недоступен (не «не авторизован») — баннер, даём повторить.
         showNetBanner(true);
         return;
       }
-      // Нет сессии (401/403) → АВТОМАТИЧЕСКИ входим гостем и проверяем НА МЕСТЕ
-      // (БЕЗ location.reload() и БЕЗ sessionStorage — это убирает лишнюю
-      // перезагрузку и риск петли в встроенных браузерах TG/VK, где
-      // sessionStorage не переживает reload). Если сессия так и не встала
-      // (браузер режет и cookie, и localStorage) — фолбэк на login.html.
-      try {
-        await API.loginGuest();
-        me = await API.me();          // подтверждаем сессию в этом же загрузе
-        showNetBanner(false);
-      } catch (_) {
-        location.href = "login.html?_=" + Date.now();
-        return;
-      }
-      if (!me || !me.role) { location.href = "login.html?_=" + Date.now(); return; }
+      // Единый гейт: нет сессии → на страницу входа. Гостевого входа больше нет.
+      location.href = "login.html?_=" + Date.now();
+      return;
     }
-    // роль известна — снимаем booting (синхронно, ДО скрытия .tabs у гостя ниже,
-    // без перерисовки между). Анти-вспышка офицерских вкладок у гостя.
+    // роль известна — снимаем booting (синхронно, ДО скрытия .tabs ниже).
     document.documentElement.classList.remove("booting");
-    if (me?.role === "guest") {
+    // Рядовой участник (member) — и на всякий случай старая гостевая сессия — только просмотр.
+    if (me?.role === "member" || me?.role === "guest") {
       IS_GUEST = true;
       document.body.classList.add("guest-mode");
-      $("who").textContent = "Гость · только просмотр";
-      // Красный «Только для офицеров» → зелёный «Гостевой просмотр».
+      $("who").textContent = esc(me.name || "участник") + " · только просмотр";
       const badge = document.querySelector(".classified-badge");
-      if (badge) { badge.textContent = "Гостевой просмотр"; badge.classList.add("guest"); }
-      // У гостя кнопка «Выйти» бессмысленна (выход → снова гость) — прячем.
-      // Войти офицером/админом гость может через дверцу «Офицерский вход».
-      const lo = $("logout-btn");
-      if (lo) lo.style.display = "none";
-      // Гостю недоступны другие разделы — прячем навигацию целиком.
+      if (badge) { badge.textContent = "Только просмотр"; badge.classList.add("guest"); }
+      // Участнику недоступны офицерские разделы — прячем навигацию.
       document.querySelectorAll(".tabs, .admin-only").forEach(el =>
         el.style.display = "none");
       return;
@@ -169,9 +151,7 @@
 
   $("logout-btn").addEventListener("click", async () => {
     try { await API.logout(); } catch (_) {}
-    // После выхода офицер/админ снова становится гостем на Доблести.
-    try { sessionStorage.removeItem("__autoguest"); } catch (_) {}
-    location.reload();
+    location.href = "login.html?_=" + Date.now();
   });
 
   async function load() {
