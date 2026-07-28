@@ -17,6 +17,24 @@ log = logging.getLogger("officers.bot.tg")
 _BASE = "https://api.telegram.org/bot{token}/{method}"
 
 
+def send_admin_alert(text: str) -> bool:
+    """СИНХРОННО шлёт алерт владельцу в личный TG (через @pw_spamer_bot = test_bot_token/
+    test_chat_id — Лир им пользуется). Фолбэк — офицерский бот/чат. Для уведомлений о
+    попытках админ-входа. Ошибку глотаем (не ломаем логин)."""
+    token = settings.test_bot_token or settings.tg_bot_token
+    chat = settings.test_chat_id or settings.tg_officer_chat_id
+    if not (token and chat):
+        return False
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.post(_BASE.format(token=token, method="sendMessage"),
+                            json={"chat_id": chat, "text": text, "disable_web_page_preview": True})
+        return bool(r.json().get("ok"))
+    except Exception as e:
+        log.warning("admin alert failed: %s", e)
+        return False
+
+
 async def _call(method: str, **kwargs) -> dict:
     url = _BASE.format(token=settings.tg_bot_token, method=method)
     async with httpx.AsyncClient(timeout=30.0) as client:

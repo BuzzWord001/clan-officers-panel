@@ -55,15 +55,81 @@ def login(payload: OfficerLoginIn, request: Request, response: Response) -> dict
     return {"role": "officer", "name": name, "login_at": "now", "token": token}
 
 
+ADMIN_DEV_COOKIE = "admin_dev"
+
+
+def _geo_str(ip: str) -> str:
+    try:
+        with db.connection() as conn:
+            r = conn.execute("SELECT country, city, isp FROM geoip_cache WHERE ip=?", (ip,)).fetchone()
+        if r:
+            return "%s, %s [%s]" % (r["country"] or "?", r["city"] or "?", (r["isp"] or "")[:30])
+    except Exception:
+        pass
+    return ""
+
+
 @router.post("/admin/login")
 def admin_login(payload: AdminLoginIn, request: Request, response: Response) -> dict:
+    import secrets
+    import bot_tg
     ip = client_ip(request)
     ua = client_user_agent(request)
+    try:
+        db.admin_seed_home_nets()   # разово: занести сети, откуда владелец входил ДО защиты
+    except Exception:
+        pass
 
+    # 1) неверный пароль → алерт + отказ
     if not auth_pwd.verify_admin(payload.username, payload.password):
         db.write_login(role="admin", name=payload.username, success=False,
                        reason="wrong_credentials", ip=ip, user_agent=ua)
+        try:
+            bot_tg.send_admin_alert(
+                "⚠️ ПОПЫТКА АДМИН-ВХОДА (неверный пароль)\n"
+                "IP: %s\n%s\nУстройство: %s\nЛогин: %s" % (ip, _geo_str(ip), ua[:120], payload.username))
+        except Exception:
+            pass
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong_credentials")
+
+    # 2) пароль верный — проверяем УСТРОЙСТВО
+    dev = request.cookies.get(ADMIN_DEV_COOKIE) or ""
+    trusted = db.admin_device_trusted(dev)
+
+    if not trusted:
+        # Предохранитель от само-блокировки: если система пуста (нет ни сетей, ни устройств —
+        # первый запуск/сбой сидирования) — НЕ блокируем, а заносим текущее как доверенное.
+        try:
+            with db.connection() as conn:
+                empty = (conn.execute("SELECT COUNT(*) n FROM admin_home_net").fetchone()["n"] == 0
+                         and conn.execute("SELECT COUNT(*) n FROM admin_device").fetchone()["n"] == 0)
+        except Exception:
+            empty = True
+        if db.admin_is_home_ip(ip) or empty:
+            # свой (домашняя сеть) — добавляем устройство в доверенные, пускаем, уведомляем
+            dev = secrets.token_urlsafe(24)
+            db.admin_enroll_device(dev, ip, ua)
+            response.set_cookie(ADMIN_DEV_COOKIE, dev, max_age=400 * 86400,
+                                httponly=True, secure=True, samesite="lax", path="/")
+            try:
+                bot_tg.send_admin_alert(
+                    "✅ Новое доверенное устройство добавлено для админ-входа\n"
+                    "IP: %s\n%s\nУстройство: %s\n\nЕсли это НЕ ты — смени пароль и напиши мне «отозвать устройства»."
+                    % (ip, _geo_str(ip), ua[:120]))
+            except Exception:
+                pass
+        else:
+            # чужое устройство + чужая сеть → БЛОК + алерт
+            db.write_login(role="admin", name=payload.username, success=False,
+                           reason="untrusted_device", ip=ip, user_agent=ua)
+            try:
+                bot_tg.send_admin_alert(
+                    "🚨 ЗАБЛОКИРОВАН ЧУЖОЙ АДМИН-ВХОД (пароль ВЕРНЫЙ, но устройство/сеть незнакомы!)\n"
+                    "IP: %s\n%s\nУстройство: %s\n\n⚠️ Кто-то знает админ-пароль. Срочно смени его."
+                    % (ip, _geo_str(ip), ua[:120]))
+            except Exception:
+                pass
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "untrusted_device")
 
     db.write_login(role="admin", name=payload.username, success=True, ip=ip, user_agent=ua)
     token = set_session(response, role="admin", name=payload.username)
@@ -93,6 +159,35 @@ def logout(response: Response) -> dict:
 
 
 # --- admin-only ----------------------------------------------------------
+
+@router.get("/admin/devices")
+def admin_devices(_: dict = Depends(require_admin)) -> dict:
+    """Список доверенных админ-устройств + домашние сети (для управления)."""
+    with db.connection() as conn:
+        nets = [r["net"] for r in conn.execute("SELECT net FROM admin_home_net ORDER BY net")]
+    return {"devices": db.admin_list_devices(), "home_nets": nets}
+
+
+@router.post("/admin/devices/revoke")
+def admin_devices_revoke(payload: dict, _: dict = Depends(require_admin)) -> dict:
+    """Отозвать доверенное устройство (token) — или ВСЕ (all:true). После отзыва с
+    этого устройства снова потребуется вход из домашней сети."""
+    if payload.get("all"):
+        with db.connection() as conn:
+            n = conn.execute("DELETE FROM admin_device").rowcount
+        return {"ok": True, "revoked": n}
+    tok = (payload.get("token") or "").strip()
+    return {"ok": True, "revoked": db.admin_revoke_device(tok) if tok else 0}
+
+
+@router.post("/admin/home-net")
+def admin_add_home_net(payload: dict, _: dict = Depends(require_admin)) -> dict:
+    """Добавить домашнюю сеть вручную (напр. '37.99') — если сменишь провайдера/город."""
+    net = (payload.get("net") or "").strip()
+    if net:
+        db.admin_add_home_net(net)
+    return {"ok": True}
+
 
 @router.post("/admin/officer-password")
 async def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(require_admin)) -> dict:

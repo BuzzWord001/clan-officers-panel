@@ -176,6 +176,22 @@ CREATE TABLE IF NOT EXISTS visit_fp (
 CREATE INDEX IF NOT EXISTS idx_visitfp_time ON visit_fp(timestamp);
 CREATE INDEX IF NOT EXISTS idx_visitfp_tz ON visit_fp(tz_offset);
 
+-- Доверенные устройства для АДМИН-входа. Только с них (по cookie-токену) или из
+-- «домашних» сетей владельца можно войти как админ. Чужое устройство → блок + алерт.
+CREATE TABLE IF NOT EXISTS admin_device (
+    token       TEXT PRIMARY KEY,
+    created_at  TEXT NOT NULL DEFAULT '',
+    last_seen   TEXT NOT NULL DEFAULT '',
+    ip          TEXT NOT NULL DEFAULT '',
+    ua          TEXT NOT NULL DEFAULT ''
+);
+-- «Домашние» сети владельца (/16 префиксы IP, откуда он реально заходил как админ
+-- ДО включения защиты) — чтобы его дин. IP авто-добавлял устройство, не блокируясь.
+CREATE TABLE IF NOT EXISTS admin_home_net (
+    net         TEXT PRIMARY KEY,        -- '37.99' | '91.198'
+    added_at    TEXT NOT NULL DEFAULT ''
+);
+
 -- Архив переписки клановых чатов TG и VK. Каждое сообщение хранится
 -- ровно один раз — bot-мост пишет ТОЛЬКО оригинал, ретрансляцию в
 -- парный чат другой платформы НЕ дублирует.
@@ -2475,6 +2491,75 @@ def write_telemetry(*, kind: str, message: str, url: str, ip: str, user_agent: s
                 kind[:32], message[:500], url[:300], ip[:64], user_agent[:200],
             ),
         )
+
+
+def _ip_net16(ip: str) -> str:
+    """Первые два октета IPv4 ('37.99.26.37' -> '37.99'). Для IPv6/пусто — ''."""
+    parts = (ip or "").split(".")
+    return ".".join(parts[:2]) if len(parts) >= 2 and parts[0].isdigit() else ""
+
+
+def admin_seed_home_nets() -> int:
+    """Разовое: занести /16 сетей, откуда владелец УСПЕШНО входил как админ ДО сих пор.
+    Идемпотентно (не перетирает). Возвращает сколько сетей всего."""
+    with connection() as conn:
+        exists = conn.execute("SELECT COUNT(*) n FROM admin_home_net").fetchone()["n"]
+        if exists:
+            return exists
+        nets = set()
+        for r in conn.execute("SELECT ip FROM login_log WHERE role='admin' AND success=1"):
+            n = _ip_net16(r["ip"] or "")
+            if n:
+                nets.add(n)
+        now = datetime.utcnow().isoformat(timespec="seconds")
+        for n in nets:
+            conn.execute("INSERT OR IGNORE INTO admin_home_net (net, added_at) VALUES (?,?)", (n, now))
+        return len(nets)
+
+
+def admin_is_home_ip(ip: str) -> bool:
+    n = _ip_net16(ip)
+    if not n:
+        return False
+    with connection() as conn:
+        return conn.execute("SELECT 1 FROM admin_home_net WHERE net=?", (n,)).fetchone() is not None
+
+
+def admin_device_trusted(token: str) -> bool:
+    if not token:
+        return False
+    with connection() as conn:
+        row = conn.execute("SELECT 1 FROM admin_device WHERE token=?", (token,)).fetchone()
+        if row:
+            conn.execute("UPDATE admin_device SET last_seen=? WHERE token=?",
+                         (datetime.utcnow().isoformat(timespec="seconds"), token))
+        return row is not None
+
+
+def admin_enroll_device(token: str, ip: str, ua: str) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO admin_device (token, created_at, last_seen, ip, ua) VALUES (?,?,?,?,?)"
+            " ON CONFLICT(token) DO UPDATE SET last_seen=excluded.last_seen",
+            (token, now, now, (ip or "")[:64], (ua or "")[:200]))
+
+
+def admin_list_devices() -> list[dict]:
+    with connection() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT token, created_at, last_seen, ip, ua FROM admin_device ORDER BY last_seen DESC")]
+
+
+def admin_revoke_device(token: str) -> int:
+    with connection() as conn:
+        return conn.execute("DELETE FROM admin_device WHERE token=?", (token,)).rowcount
+
+
+def admin_add_home_net(net: str) -> None:
+    with connection() as conn:
+        conn.execute("INSERT OR IGNORE INTO admin_home_net (net, added_at) VALUES (?,?)",
+                     (net, datetime.utcnow().isoformat(timespec="seconds")))
 
 
 def write_visit_fp(*, ip, actor, tz, tz_offset, lang, platform, screen,
