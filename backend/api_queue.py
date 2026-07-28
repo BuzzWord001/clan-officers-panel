@@ -1199,6 +1199,19 @@ def gen_passwords(payload: GenPwIn, actor: dict = Depends(require_admin)) -> dic
     return {"total": len(out), "generated": len(made), "items": out}
 
 
+@router.get("/admin/chat-clicks")
+def chat_clicks_log(limit: int = 60, _: dict = Depends(require_admin)) -> list[dict]:
+    """Последние клики ссылок чата (для теста авто-регистрации): кто кликнул (ник/канон),
+    платформа, время, IP, и сопоставлен ли с ЗАХОДОМ в чат (matched) + с кем/когда."""
+    limit = max(1, min(limit, 300))
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT id, nick, canon, platform, clicked_at, ip, matched, matched_at, "
+            "match_name, match_pid FROM queue_chat_link_click ORDER BY id DESC LIMIT ?",
+            (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 @router.get("/admin/access-status")
 def access_status(_: dict = Depends(require_admin)) -> dict:
     """Сводка по доступу: сколько людей с аккаунтом (личным паролем) и сколько без."""
