@@ -166,8 +166,8 @@
         if (d.officer) {
           if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)";
           if (rh) rh.innerHTML = "✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> — он в <b>закреплённом сообщении</b> офицерского чата ВК и Telegram (см. картинку), затем придумай личный.";
-          if (demoImg) demoImg.src = "assets/officer-pass-location.webp?v=1";
-          if (lbImg) lbImg.src = "assets/officer-pass-location.webp?v=1";
+          if (demoImg) demoImg.src = "assets/officer-pass-location.webp?v=2";
+          if (lbImg) lbImg.src = "assets/officer-pass-location.webp?v=2";
           if (capSpan) capSpan.textContent = "📍 Где офицерский пароль? (в закрепе офиц. чата) — нажми, чтобы увеличить";
         } else {
           if (rl) rl.textContent = "Общий пароль клана (кнопка G)";
