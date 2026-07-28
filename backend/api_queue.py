@@ -3394,6 +3394,17 @@ def chat_join_match(payload: ChatJoinMatchIn, _=Depends(require_bot_token)) -> d
                 "clicked_at": r["clicked_at"], "window": win}
 
 
+@router.get("/whitelist-ids")
+def whitelist_ids(_=Depends(require_bot_token)) -> dict:
+    """Белый список чатов (для аудит-скрипта бота): id и ник-каноны, кого НЕ считать чужим."""
+    rows = db.chat_whitelist_list()
+    return {
+        "vk_ids": [str(r["vk_id"]) for r in rows if r.get("vk_id")],
+        "tg_ids": [str(r["tg_id"]) for r in rows if r.get("tg_id")],
+        "nick_canons": sorted(db.chat_whitelist_nick_canons()),
+    }
+
+
 @router.get("/rewards")
 def rewards() -> dict:
     """Метаданные наград (режим/стак/порог/накопленный объём) — для пикера ресурса."""
