@@ -3327,18 +3327,27 @@ def chat_invite(request: Request, p: str = Query(..., min_length=2, max_length=4
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_platform")
     with db.connection() as conn:
         acc = _player_ctx(conn, request)
+        # Пускаем ЛЮБОГО залогиненного (игрок/офицер/участник/АДМИН). Клик под ником
+        # логируем только для игрока/офицера (для авто-регистрации по тайм-корреляции);
+        # админ не игрок — он просто идёт в чат, лог-матч ему не нужен.
         if not acc:
-            return RedirectResponse("/login.html", status_code=302)
-        nick = acc.get("main_nick") or acc.get("reg_nick") or ""
-        ip = (request.client.host if request.client else "") or ""
-        try:
-            conn.execute(
-                "INSERT INTO queue_chat_link_click (canon, nick, platform, clicked_at, ip) VALUES (?,?,?,?,?)",
-                (acc.get("main_canon") or "", nick, plat, _now(), ip))
-            _log(conn, "chat_link_click", actor=nick, nick=nick, request=request,
-                 detail="переход в чат " + plat.upper())
-        except Exception:
-            pass
+            try:
+                s = current_session(request)
+            except HTTPException:
+                s = None
+            if not (s and s.get("role") in ("admin", "officer", "member")):
+                return RedirectResponse("/login.html", status_code=302)
+        if acc:
+            nick = acc.get("main_nick") or acc.get("reg_nick") or ""
+            ip = (request.client.host if request.client else "") or ""
+            try:
+                conn.execute(
+                    "INSERT INTO queue_chat_link_click (canon, nick, platform, clicked_at, ip) VALUES (?,?,?,?,?)",
+                    (acc.get("main_canon") or "", nick, plat, _now(), ip))
+                _log(conn, "chat_link_click", actor=nick, nick=nick, request=request,
+                     detail="переход в чат " + plat.upper())
+            except Exception:
+                pass
         row = conn.execute("SELECT val FROM queue_kv WHERE key=?",
                            ("chat_invite_" + plat,)).fetchone()
         url = (row["val"] if row and row["val"] else "") or _DEFAULT_CHAT_INVITE[plat]
