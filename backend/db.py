@@ -1109,16 +1109,217 @@ def _date_ru(iso: str) -> str:
         return str(iso or "")
 
 
+def _vk_resolve_domain(query: str) -> str | None:
+    """Best-effort: VK-домен/короткое имя (напр. 'akiro_okumuro') → числовой vk_id
+    через users.get (групповой токен это умеет). Возвращает id строкой или None."""
+    q = (query or "").strip().lstrip("@")
+    if not q or " " in q or len(q) < 2:
+        return None
+    try:
+        from config import settings as _st
+        tok = getattr(_st, "vk_group_token", "") or ""
+        if not tok:
+            return None
+        import httpx
+        with httpx.Client(timeout=6.0) as cl:
+            r = cl.get("https://api.vk.com/method/users.get",
+                       params={"user_ids": q, "access_token": tok, "v": "5.199"})
+        js = r.json().get("response") or []
+        if js and js[0].get("id"):
+            return str(js[0]["id"])
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_query_to_nick(conn, query: str):
+    """Резолв ЛЮБЫХ данных человека → игровой ник (для /досье по vk-домену, имени-фамилии,
+    id, @tg). Ищет по clan_members: game_nick, display_name, vk_id/tg_id, vk_display/tg_display,
+    vk_screen_name, @tg_username, имя+фамилия. Возвращает (game_nick, how) или (None, None)."""
+    q = (query or "").strip()
+    if not q:
+        return None, None
+    ql = q.lower()
+    qbare = ql.lstrip("@")
+    try:
+        rows = conn.execute(
+            "SELECT game_nick, display_name, vk_id, vk_display, vk_first, vk_last, "
+            "vk_screen_name, tg_id, tg_username, tg_display, tg_first_name, tg_last_name "
+            "FROM clan_members WHERE is_active=1").fetchall()
+    except sqlite3.OperationalError:
+        return None, None
+
+    def _n(s):
+        return (s or "").strip().lower()
+
+    def _first_nick(r):
+        return (r["game_nick"] or "").split(",")[0].strip()
+
+    # 1) ТОЧНОЕ совпадение по идентификаторам/именам (надёжнее частичного)
+    for r in rows:
+        ids = {_n(r["vk_id"]), _n(r["tg_id"])}
+        handles = {_n(r["vk_screen_name"]).lstrip("@"),
+                   _n(r["tg_username"]).lstrip("@")}
+        names = {_n(r["display_name"]), _n(r["vk_display"]), _n(r["tg_display"]),
+                 (_n(r["vk_first"]) + " " + _n(r["vk_last"])).strip(),
+                 (_n(r["tg_first_name"]) + " " + _n(r["tg_last_name"])).strip()}
+        game = {_n(x) for x in (r["game_nick"] or "").split(",")}
+        if qbare in ids or qbare in handles:
+            return _first_nick(r), "id/логин"
+        if ql in names and ql:
+            return _first_nick(r), "имя"
+        if ql in game and ql:
+            return _first_nick(r), "игровой ник"
+
+    # 2) ЧАСТИЧНОЕ совпадение по именам/дисплеям (имя-фамилия целиком или часть)
+    if len(qbare) >= 3:
+        for r in rows:
+            hay = " | ".join(_n(x) for x in (
+                r["display_name"], r["vk_display"], r["tg_display"],
+                r["vk_first"], r["vk_last"], r["tg_first_name"], r["tg_last_name"],
+                r["vk_screen_name"], r["tg_username"]) if x)
+            if qbare in hay:
+                return _first_nick(r), "имя (частично)"
+
+    # 3) VK-домен, которого нет в зеркале → живой резолв через VK API → по vk_id
+    vid = _vk_resolve_domain(q)
+    if vid:
+        for r in rows:
+            if _n(r["vk_id"]) == vid:
+                return _first_nick(r), "VK-домен"
+    return None, None
+
+
+def _person_site_intel(conn, nicks) -> dict | None:
+    """Всё, что сайт знает о человеке: IP (с гео), устройства/отпечатки, входы (вкл. попытки
+    админ-входа). Связка ник→IP по login_log/access_log/queue_log, а отпечаток устройства
+    (visit_fp: пояс/экран/платформа) подтягиваем по ОБЩЕМУ IP (fp пишется как «гость»)."""
+    nset = {(n or "").strip().lower() for n in nicks if (n or "").strip()}
+    if not nset:
+        return None
+    ip_info = {}   # ip -> {"count","first","last"}
+    logins = []
+    admin_att = []
+
+    def _touch(ip, ts):
+        if not ip:
+            return
+        d = ip_info.setdefault(ip, {"count": 0, "first": ts, "last": ts})
+        d["count"] += 1
+        if ts and (not d["first"] or ts < d["first"]):
+            d["first"] = ts
+        if ts and (not d["last"] or ts > d["last"]):
+            d["last"] = ts
+
+    # login_log — входы + попытки (в т.ч. неудачные и админские)
+    try:
+        for r in conn.execute(
+                "SELECT timestamp,role,name,success,reason,ip,user_agent "
+                "FROM login_log ORDER BY id DESC LIMIT 4000"):
+            if (r["name"] or "").strip().lower() not in nset:
+                continue
+            _touch(r["ip"], r["timestamp"])
+            rec = {"ts": r["timestamp"], "role": r["role"], "ok": bool(r["success"]),
+                   "reason": r["reason"], "ip": r["ip"], "ua": r["user_agent"]}
+            if r["role"] == "admin":
+                admin_att.append(rec)
+            if len(logins) < 12:
+                logins.append(rec)
+    except sqlite3.OperationalError:
+        pass
+    # access_log — обычные визиты (по actor_name)
+    try:
+        for r in conn.execute(
+                "SELECT timestamp,actor_name,ip FROM access_log ORDER BY id DESC LIMIT 6000"):
+            if (r["actor_name"] or "").strip().lower() in nset:
+                _touch(r["ip"], r["timestamp"])
+    except sqlite3.OperationalError:
+        pass
+    # queue_log — действия в очереди (по actor)
+    try:
+        for r in conn.execute(
+                "SELECT at,actor,ip FROM queue_log ORDER BY id DESC LIMIT 6000"):
+            if (r["actor"] or "").strip().lower() in nset:
+                _touch(r["ip"], r["at"])
+    except sqlite3.OperationalError:
+        pass
+
+    if not ip_info and not logins:
+        return None
+
+    # гео по IP
+    geo = {}
+    if ip_info:
+        ph = ",".join("?" * len(ip_info))
+        try:
+            for r in conn.execute(
+                    "SELECT ip,country,country_code,city,isp FROM geoip_cache "
+                    "WHERE ip IN (%s)" % ph, tuple(ip_info)):
+                geo[r["ip"]] = dict(r)
+        except sqlite3.OperationalError:
+            pass
+
+    # отпечатки устройств по ОБЩИМ IP (visit_fp пишется как «гость»)
+    devices = []
+    seen_dev = set()
+    if ip_info:
+        ph = ",".join("?" * len(ip_info))
+        try:
+            for r in conn.execute(
+                    "SELECT platform,screen,tz,tz_offset,user_agent,ip FROM visit_fp "
+                    "WHERE ip IN (%s) ORDER BY id DESC LIMIT 400" % ph, tuple(ip_info)):
+                off = r["tz_offset"]
+                utc = ""
+                if off is not None:
+                    h = -int(off) // 60
+                    utc = "UTC%+d" % h
+                parts = [p for p in (r["platform"], r["screen"], utc, r["tz"]) if p]
+                key = "|".join(parts)
+                if key and key not in seen_dev:
+                    seen_dev.add(key)
+                    devices.append({"platform": r["platform"], "screen": r["screen"],
+                                    "tz": r["tz"], "utc": utc, "ua": r["user_agent"], "ip": r["ip"]})
+        except sqlite3.OperationalError:
+            pass
+
+    ip_list = []
+    for ip, d in sorted(ip_info.items(), key=lambda kv: kv[1]["last"] or "", reverse=True):
+        g = geo.get(ip) or {}
+        ip_list.append({
+            "ip": ip, "count": d["count"], "first": d["first"], "last": d["last"],
+            "country": g.get("country_code") or g.get("country") or "",
+            "city": g.get("city") or "", "isp": g.get("isp") or "",
+        })
+    return {"ips": ip_list, "logins": logins, "admin_attempts": admin_att,
+            "devices": devices, "visits_total": sum(d["count"] for d in ip_info.values())}
+
+
 def member_dossier(nick_or_canon: str) -> dict | None:
-    """Полное досье игрока для чат-команды /история: идентичность, первый приём в клан,
+    """Полное досье игрока для чат-команды /история и /досье. Принимает ЛЮБЫЕ данные человека
+    (игровой ник, VK-домен/имя-фамилия/id, @tg): идентичность, первый приём в клан,
     титулы/ранги/классы (история), все твины, соцсети, история доблести по неделям,
-    предупреждения, кики/уходы. Возвращает структурированный dict или None."""
+    предупреждения, кики/уходы + сайт-разведка (IP, гео, устройства, входы).
+    Возвращает структурированный dict или None."""
     active_w_all = valor_active_warnings()               # {canon: [warn,...]} — свои connection'ы
     manual_w_all = valor_manual_warnings_by_canon()
     with connection() as conn:
         amap = _alias_map(conn)
         base = _valor_canon(nick_or_canon)
         main = _resolve_canon(base, amap) or base
+
+        # РЕЗОЛВ ПО ЛЮБЫМ ДАННЫМ: если ввод — не прямой игровой ник из Доблести
+        # (VK-домен «akiro_okumuro», имя-фамилия «Артём Лапин», id, @tg) — ищем
+        # человека в clan_members и подменяем на его игровой ник.
+        matched_by = "игровой ник"
+        direct = bool(main) and conn.execute(
+            "SELECT 1 FROM valor_members WHERE nick_canon=? LIMIT 1", (main,)).fetchone()
+        if not direct:
+            rn, how = _resolve_query_to_nick(conn, nick_or_canon)
+            if rn:
+                nick_or_canon = rn
+                base = _valor_canon(rn)
+                main = _resolve_canon(base, amap) or base
+                matched_by = how or "clan_members"
         if not main:
             return None
 
@@ -1173,7 +1374,7 @@ def member_dossier(nick_or_canon: str) -> dict | None:
 
         cur = _latest(main)
         if not cur:
-            for cn in tcanons:
+            for cn in person_canons:
                 cur = _latest(cn)
                 if cur:
                     main = cn
@@ -1255,8 +1456,18 @@ def member_dossier(nick_or_canon: str) -> dict | None:
 
         prev = _prev_departed_map(conn, amap).get(main)
 
+        # САЙТ-РАЗВЕДКА: IP/гео/устройства/входы. Ники для связки: отображаемый, true_name,
+        # все твины, соцники (vk_display/tg — на случай если входил под ними).
+        intel_nicks = {disp_nick, cur["true_name"] if cur else None}
+        intel_nicks |= {t["nick"] for t in twins}
+        if soc:
+            intel_nicks |= {soc.get("vk_display"), soc.get("tg_display")}
+        if acc and acc.get("game_nick"):
+            intel_nicks.add(acc["game_nick"])
+        site = _person_site_intel(conn, intel_nicks)
+
         return {
-            "nick": disp_nick, "canon": main,
+            "nick": disp_nick, "canon": main, "matched_by": matched_by, "site": site,
             "true_name": (cur["true_name"] if cur else ""), "rank": (cur["rank"] if cur else ""),
             "title": (cur["title"] if cur else ""), "class": (cur["class_"] if cur else ""),
             "level": (cur["level"] if cur else None), "valor": (cur["valor"] if cur else None),

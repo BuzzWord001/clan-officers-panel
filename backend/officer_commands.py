@@ -175,20 +175,27 @@ def _history(rest: str, actor: dict) -> str:
     if "|" in nick:
         nick = nick.split("|", 1)[0].strip()
     if not nick:
-        return "Укажи ник: /история Ник"
+        return ("Укажи кого искать: /досье Ник\n"
+                "Можно по чему угодно: ник, имя-фамилия, VK-домен, @tg, id.")
     try:
         d = db.member_dossier(nick)
     except Exception:
         log.exception("dossier failed")
         return "⚠ Не удалось собрать досье. Попробуй ещё раз или посмотри на сайте."
     if not d or not d.get("found"):
-        return ("Не нашёл информации по нику «" + nick + "».\n"
-                "Проверь написание (как в Доблести/реестре).")
+        return ("Не нашёл никого по запросу «" + nick + "».\n"
+                "Пробуй: игровой ник, имя-фамилию из VK, VK-домен (akiro_okumuro),\n"
+                "@tg-логин или числовой id.")
     return _fmt_dossier(d)
 
 
 def _fmt_dossier(d: dict) -> str:
-    L = ["📜 ДОСЬЕ · " + (d.get("nick") or "?"), _HR]
+    L = ["📜 ДОСЬЕ · " + (d.get("nick") or "?")]
+    mb = d.get("matched_by")
+    if mb and mb not in ("игровой ник", "clan_members"):
+        L.append("   🔎 найден по: " + mb)
+    L.append(_HR)
+    L.append("🎮 ИГРА · ДОБЛЕСТЬ")
     if d.get("true_name"):
         L.append("👤 Имя: " + d["true_name"])
     L.append("🎖 " + (d.get("rank") or "Рядовой") + " · титул: " + (d.get("title") or "—"))
@@ -247,6 +254,7 @@ def _fmt_dossier(d: dict) -> str:
             sp.append("TG: " + tgs)
         if sp:
             L.append(_HR)
+            L.append("👤 ЛИЧНОСТЬ · КОНТАКТЫ")
             L.append("🔗 " + " · ".join(sp))
     hist = d.get("history") or []
     if hist:
@@ -282,6 +290,43 @@ def _fmt_dossier(d: dict) -> str:
         when = (dep.get("when") or "")[:10]
         L.append(verb + ": " + (dep.get("reason") or "причина не указана")
                  + (" (" + by + ")" if by else "") + (" · " + when if when else ""))
+
+    # ── ТЕХНИЧЕСКОЕ: IP / устройства / входы — визуально ОТДЕЛЬНО от игры ──
+    site = d.get("site")
+    L.append("")
+    L.append("═════════ 🌐 IP · УСТРОЙСТВА ═════════")
+    if not site or not (site.get("ips") or site.get("logins")):
+        L.append("нет данных: на сайт под этим ником не заходил")
+        return "\n".join(L)
+    ips = site.get("ips") or []
+    if ips:
+        L.append("🖥 IP (" + str(len(ips)) + " шт · визитов " + str(site.get("visits_total") or 0) + "):")
+        for i in ips[:6]:
+            loc = " · ".join(x for x in (i.get("country"), i.get("city"),
+                                         (i.get("isp") or "")[:22]) if x)
+            L.append("  • " + (i.get("ip") or "?") + (" — " + loc if loc else "")
+                     + "  [×" + str(i.get("count") or 0)
+                     + (", " + (i.get("last") or "")[:10] if i.get("last") else "") + "]")
+    devs = site.get("devices") or []
+    if devs:
+        L.append("📱 Устройства / отпечатки:")
+        for dv in devs[:5]:
+            bits = " · ".join(x for x in (dv.get("platform"), dv.get("screen"),
+                                          dv.get("utc"), dv.get("tz")) if x)
+            L.append("  • " + (bits or "?"))
+    aa = site.get("admin_attempts") or []
+    if aa:
+        L.append("🔐 Попытки АДМИН-входа: " + str(len(aa)))
+        for a in aa[:3]:
+            st = "✅" if a.get("ok") else ("❌ " + (a.get("reason") or ""))
+            L.append("  • " + (a.get("ts") or "")[:16] + " " + st + " " + (a.get("ip") or ""))
+    lg = site.get("logins") or []
+    if lg:
+        L.append("🔑 Входы на сайт:")
+        for a in lg[:5]:
+            st = "✅" if a.get("ok") else "❌"
+            L.append("  • " + (a.get("ts") or "")[:16] + " " + (a.get("role") or "")
+                     + " " + st + " " + (a.get("ip") or ""))
     return "\n".join(L)
 
 
@@ -295,9 +340,11 @@ def _help() -> str:
         "     отменить последний приём (если ошиблись)\n\n"
         "📆 /список\n"
         "     кого приняли на этой неделе\n\n"
-        "📜 /история Ник\n"
-        "     полное досье игрока (звания, классы, твины,\n"
-        "     соцсети, доблесть по неделям, предупреждения)\n" + _HR + "\n"
+        "📜 /досье Ник   (или /история Ник — то же самое)\n"
+        "     полное досье: игра+доблесть, твины, соцсети,\n"
+        "     и отдельно IP/устройства/входы на сайт\n"
+        "     ищет по ЛЮБЫМ данным: ник, имя-фамилия,\n"
+        "     VK-домен, @tg, id — напр. /досье Артём Лапин\n" + _HR + "\n"
         "ℹ️ Ник — одно слово, дальше титул (имя или ~мэйн~).\n"
         "Дата ставится сама. Повторный /принять тем же ником — меняет титул.\n"
         "🌐 Всё видно на сайте: santdevil.com → «Приём в клан»"
