@@ -196,6 +196,15 @@ async def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(re
     return {"ok": True}
 
 
+@router.post("/admin/officer-password/rotate")
+async def rotate_officer_pwd(_: dict = Depends(require_admin)) -> dict:
+    """Сгенерировать новый офицерский пароль сейчас (ручной запуск той же ротации,
+    что идёт еженедельно) + обновить закреп в TG/VK. Возвращает новый пароль."""
+    new = auth_pwd.rotate_officer_password()
+    asyncio.create_task(_republish_after_password_change())
+    return {"ok": True, "password": new}
+
+
 async def _republish_after_password_change() -> None:
     try:
         # Обновляем ЗАКРЕПЛЁННОЕ офицерское сообщение с актуальным паролём в TG+VK

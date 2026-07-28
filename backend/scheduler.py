@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+import auth_pwd
 import db
 import publisher
 import snapshots
@@ -101,7 +102,24 @@ def make_scheduler() -> AsyncIOScheduler:
     # назад именно недавних участников.
     sched.add_job(_member_snapshot_job, CronTrigger(hour=0, minute=15),
                   id="member_snapshot", max_instances=1, coalesce=True)
+    # Еженедельная авто-ротация офицерского пароля: понедельник 07:00 UTC (10:00 МСК),
+    # начало новой недели доблести. Генерит новый читаемый пароль, обновляет
+    # закреплённое сообщение в офиц. чатах TG/VK. Вошедшие офицеры (с личным паролём)
+    # НЕ разлогиниваются — новый пароль требуется только новым офицерам.
+    sched.add_job(_rotate_officer_pw_job, CronTrigger(day_of_week="mon", hour=7, minute=0),
+                  id="officer_pw_rotate", max_instances=1, coalesce=True)
     return sched
+
+
+async def _rotate_officer_pw_job() -> None:
+    try:
+        new = auth_pwd.rotate_officer_password()
+        db.kv_set("officer_pw_rotated_at",
+                  datetime.utcnow().isoformat(timespec="seconds"))
+        res = await publisher.publish_officer_password()
+        log.info("officer password auto-rotated (weekly); pinned updated: %s", res)
+    except Exception:
+        log.exception("weekly officer password rotation failed")
 
 
 def _member_snapshot_job() -> None:

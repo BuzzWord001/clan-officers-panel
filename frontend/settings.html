@@ -105,9 +105,17 @@
       <div class="panel">
         <h2>Общий пароль офицеров</h2>
         <p class="hint" style="margin-bottom: 12px;">
-          Этот пароль офицеры вводят на странице входа вместе с игровым ником.
-          После смены — сообщи новый пароль в офицерском чате.
+          Этот пароль вводят <b>новые</b> офицеры при первом входе (вместе с игровым ником),
+          затем создают личный пароль. Офицеры с личным паролём входят по нему — смена
+          этого пароля их НЕ разлогинивает.
+          <br><b>Меняется автоматически каждую неделю</b> (понедельник 10:00 МСК): генерится
+          новый и обновляется в закреплённом сообщении офицерского чата TG/VK. Можно сменить
+          вручную ниже или сгенерировать новый прямо сейчас.
         </p>
+        <div class="form-actions" style="margin-bottom:14px;">
+          <button type="button" id="op-rotate">Сгенерировать и сменить сейчас</button>
+          <span class="status-line" id="op-rotate-status" style="margin-left:10px;"></span>
+        </div>
         <form id="officer-pwd-form" autocomplete="off">
           <div class="form-group">
             <label for="op-new">Новый пароль</label>
@@ -402,11 +410,11 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1896700000"></script>
+  <script src="js/api.js?v=1896700001"></script>
   <script src="js/view-as.js?v=1896400000"></script>
   <script src="js/global-search.js?v=1888600000"></script>
   <script src="js/queue-tab.js?v=1811000000"></script>
-  <script src="js/settings.js?v=1896700000"></script>
+  <script src="js/settings.js?v=1896700001"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1896500000"></script>
   <script src="js/chamber-door.js?v=1896400000"></script>

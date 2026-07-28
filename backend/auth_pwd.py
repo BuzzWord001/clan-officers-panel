@@ -10,12 +10,35 @@
 """
 
 import logging
+import secrets
 from datetime import datetime
 
 import bcrypt
 
 import db
 from config import settings
+
+# Алфавит читаемых паролей: без похожих символов (i,l,o,u / 0,1) — чтобы офицер
+# без ошибок переписал пароль из закреплённого сообщения.
+_PW_ALPHABET = "abcdefghjkmnpqrstvwxyz"
+_PW_DIGITS = "23456789"
+
+
+def generate_officer_password() -> str:
+    """Читаемый офицерский пароль вида abcd-2345 (4 буквы + 4 цифры)."""
+    a = "".join(secrets.choice(_PW_ALPHABET) for _ in range(4))
+    b = "".join(secrets.choice(_PW_DIGITS) for _ in range(4))
+    return f"{a}-{b}"
+
+
+def rotate_officer_password() -> str:
+    """Сгенерировать НОВЫЙ офицерский пароль и сохранить его. Возвращает plain-текст
+    (для публикации в закрепе). Личные пароли офицеров не трогаются — вошедшие
+    офицеры остаются авторизованными, новый пароль нужен только новым офицерам."""
+    new = generate_officer_password()
+    set_officer_password(new)
+    log.info("officer password auto-rotated")
+    return new
 
 log = logging.getLogger("officers.auth_pwd")
 

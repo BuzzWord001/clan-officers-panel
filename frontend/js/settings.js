@@ -42,6 +42,23 @@
     }
   });
 
+  const rotBtn = $("op-rotate");
+  if (rotBtn) rotBtn.addEventListener("click", async () => {
+    const st = $("op-rotate-status");
+    if (!confirm("Сгенерировать новый офицерский пароль сейчас и обновить закреп в чатах? " +
+                 "Офицеры с личным паролём НЕ разлогинятся.")) return;
+    rotBtn.disabled = true;
+    flash(st, "Генерирую…", true);
+    try {
+      const d = await API.rotateOfficerPwd();
+      flash(st, "✓ Новый пароль: " + d.password + " (обновляется в закрепе чатов)", true);
+    } catch (e) {
+      flash(st, e.detail || e.message || "Ошибка", false);
+    } finally {
+      rotBtn.disabled = false;
+    }
+  });
+
   // ── Пароль комнаты распределения наград (очередь) ──
   const qpwState = $("qpw-state");
   function refreshQpw() {
