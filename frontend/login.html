@@ -101,10 +101,11 @@
 
       <!-- шаг 2а: РЕГИСТРАЦИЯ (первый вход) -->
       <div id="step-register" hidden>
-        <div class="q-hint">🔑 Введи <b>свой личный пароль</b> (высланный на почту в игре) или
-          <b>общий пароль</b> гильдии (в игре, кнопка <b>G</b>). Офицеры — <b>офицерский пароль</b>.</div>
+        <div class="q-hint" id="q-reg-hint">🔑 <b>Игроки:</b> введи <b>личный пароль</b>, высланный
+          тебе на <b>почту в игре</b>. <b>Офицеры:</b> введи <b>офицерский пароль</b> — он в
+          <b>закреплённом сообщении</b> офицерского чата ВК и Telegram.</div>
         <div class="q-field">
-          <label for="q-shared" id="q-shared-lbl">Высланный / общий / офицерский пароль</label>
+          <label for="q-shared" id="q-shared-lbl">Личный (с почты) или офицерский пароль</label>
           <input id="q-shared" type="password" autocomplete="off" maxlength="200">
         </div>
         <div class="q-field">
@@ -206,6 +207,6 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/site-login.js?v=1896500000"></script>
+  <script src="js/site-login.js?v=1896600000"></script>
 </body>
 </html>

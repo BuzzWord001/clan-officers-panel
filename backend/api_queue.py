@@ -1204,6 +1204,63 @@ def access_status(_: dict = Depends(require_admin)) -> dict:
     return {"total": len(persons), "have": len(have), "missing": missing}
 
 
+def _acc_is_self_made(acc) -> bool:
+    """Игрок придумал свой пароль на сайте (pw_temp=0). Высланные/сгенерированные — pw_temp=1."""
+    try:
+        return ("pw_temp" in acc.keys()) and not acc["pw_temp"]
+    except Exception:
+        return False
+
+
+class MailPwIn(BaseModel):
+    skip: list[str] = Field(default_factory=list, max_length=4000)   # ники, кому УЖЕ разослали
+
+
+@router.post("/admin/mail-passwords")
+def mail_passwords(payload: MailPwIn, actor: dict = Depends(require_admin)) -> dict:
+    """Список для рассылки паролей ИГРОКАМ через внутриигровую почту: текущий ростер (последний
+    снимок Доблести + принятые в реестр после «Готово») МИНУС офицеры МИНУС те, кто уже придумал
+    свой пароль на сайте. skip — ники, кому уже разослали (их НЕ трогаем/не перегенерируем).
+    Каждому оставшемуся — свежий читаемый пароль (pw_temp=1). Возвращает {nick,password} + счётчики."""
+    out = []
+    with db.connection() as conn:
+        idx = _people(conn)
+        allowed = _current_login_canons(conn)      # кому вообще разрешён вход (ростер)
+        offs = _officer_canons(conn)
+        persons = {}                               # main_canon -> отображаемый ник (не офицеры)
+        for cn, p in idx.items():
+            mc = p.get("main_canon") or cn
+            if cn not in allowed and mc not in allowed:
+                continue
+            if mc in offs or cn in offs:           # офицеры — исключаем (у них офиц. пароль)
+                continue
+            if mc not in persons:
+                persons[mc] = p.get("main_nick") or p.get("nick") or cn
+        skip_norm = {db._valor_canon(s) for s in (payload.skip or [])}
+        n_self = n_skip = 0
+        for mc, nick in sorted(persons.items(), key=lambda kv: (kv[1] or "").lower()):
+            if db._valor_canon(nick) in skip_norm or mc in skip_norm:
+                n_skip += 1
+                continue                           # уже разослан — не перегенерируем
+            acc = _account_by_main(conn, mc)
+            if acc and _acc_is_self_made(acc):
+                n_self += 1
+                continue                           # придумал свой пароль — не трогаем/не шлём
+            pw = _gen_password()
+            h = _hash(pw)
+            if acc:
+                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?",
+                             (h, acc["id"]))
+            else:
+                conn.execute(
+                    "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, "
+                    "password_hash, created_at, pw_temp) VALUES (?,?,?,?,?,?,1)",
+                    (mc, nick, nick, "", h, _now()))
+            out.append({"nick": nick, "password": pw})
+    return {"items": out, "generated": len(out), "self_made_skipped": n_self,
+            "already_sent_skipped": n_skip, "total_players": len(persons)}
+
+
 @router.get("/admin/manual-nicks")
 def manual_nicks_list(_: dict = Depends(require_admin)) -> dict:
     """Список ручных ников (для админ-панели)."""

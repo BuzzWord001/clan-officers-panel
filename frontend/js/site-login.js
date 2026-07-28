@@ -23,7 +23,7 @@
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
-        if (!r.ok) { var e = new Error(j.detail || r.statusText); e.status = r.status; e.detail = j.detail; throw e; }
+        if (!r.ok) { var e = new Error(j.detail || r.statusText); e.status = r.status; e.detail = j.detail; e.retry = j.retry_after; throw e; }
         return j;
       });
     });
@@ -68,6 +68,13 @@
     else sub.textContent = "С возвращением! Введи свой личный пароль";
   }
   function err(msg, ok) { var el = $("auth-err"); el.textContent = msg || ""; el.classList.toggle("q-ok", !!ok); }
+  function rateLimited(e) {
+    if (e && e.status === 429) {
+      err("Слишком много попыток входа. Подожди " + (e.retry ? e.retry + " сек" : "немного") + " и попробуй снова.");
+      return true;
+    }
+    return false;
+  }
 
   // после входа обычного участника: высланный пароль → предложить придумать свой
   function finishMember(d) {
@@ -152,9 +159,14 @@
         _isOfficerNick = !!d.officer;
         goStep(d.registered ? "login" : "register");
         var rl = $("q-shared-lbl");
-        if (rl) rl.textContent = d.officer
-          ? "Офицерский пароль (из закрепа чата гильдии) — подтверди, что ты офицер"
-          : "Высланный / общий / офицерский пароль";
+        var rh = $("q-reg-hint");
+        if (d.officer) {
+          if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)";
+          if (rh) rh.innerHTML = "✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> — он в <b>закреплённом сообщении</b> офицерского чата ВК и Telegram, затем придумай личный.";
+        } else {
+          if (rl) rl.textContent = "Личный пароль, высланный на почту в игре";
+          if (rh) rh.innerHTML = "🔑 Введи <b>личный пароль</b>, который выслали тебе на <b>почту в игре</b>. Нет пароля? Напиши офицеру.";
+        }
         setTimeout(function () { $(d.registered ? "q-pass" : "q-shared").focus(); }, 30);
       })
       .catch(function (e) { btn.disabled = false; err("Ошибка проверки: " + (e.detail || e.message)); });
@@ -172,11 +184,13 @@
       finishMember(d);
     }).catch(function (e) {
       btn.disabled = false;
-      if (e.detail === "need_officer_password") { err("Это офицерский ник — в поле пароля введи ОФИЦЕРСКИЙ пароль (из закрепа чата), затем придумай личный."); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа чата гильдии)"; setTimeout(function () { $("q-shared").focus(); }, 30); }
+      if (rateLimited(e)) return;
+      if (e.status === 403 && e.detail === "not_in_clan") { err("Этого ника нет в текущем составе клана. Доступ только у актуальных участников — напиши офицеру."); return; }
+      if (e.detail === "need_officer_password") { err("Это офицерский ник — в поле пароля введи ОФИЦЕРСКИЙ пароль (из закрепа офицерского чата), затем придумай личный."); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)"; setTimeout(function () { $("q-shared").focus(); }, 30); }
       else if (e.detail === "personal_password_too_short") err("Придумай личный пароль — минимум 4 символа.");
-      else if (e.status === 401) err(_isOfficerNick ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : "Неверный пароль. Подойдёт высланный на почту пароль, общий пароль гильдии (в игре, кнопка G) или офицерский.");
+      else if (e.status === 401) err(_isOfficerNick ? "Неверный офицерский пароль. Он в закрепе офицерского чата ВК/Telegram." : "Неверный пароль. Введи личный пароль, высланный тебе на почту в игре.");
       else if (e.status === 409) { err("На этот аккаунт пароль уже создан — входи по личному паролю."); goStep("login"); }
-      else if (e.status === 503) err("Общий пароль ещё не задан админом. Напиши офицеру.");
+      else if (e.status === 503) err("Тебе ещё не выслали личный пароль на почту в игре. Напиши офицеру.");
       else if (e.detail === "nick_not_found") err("Ник не найден. Вернись и выбери из подсказок.");
       else err("Ошибка входа: " + (e.detail || e.message));
     });
@@ -193,7 +207,9 @@
       })
       .catch(function (e) {
         btn.disabled = false;
-        if (e.detail === "need_officer_password") { err("Первый вход офицера — создай личный пароль (нужен офицерский пароль)."); goStep("register"); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа чата гильдии)"; setTimeout(function () { $("q-shared").focus(); }, 30); return; }
+        if (rateLimited(e)) return;
+        if (e.status === 403 && e.detail === "not_in_clan") { err("Этого ника нет в текущем составе клана. Доступ только у актуальных участников — напиши офицеру."); return; }
+        if (e.detail === "need_officer_password") { err("Первый вход офицера — создай личный пароль (нужен офицерский пароль)."); goStep("register"); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)"; setTimeout(function () { $("q-shared").focus(); }, 30); return; }
         err(e.status === 401 ? "Неверный личный пароль." : ("Ошибка входа: " + (e.detail || e.message)));
       });
   }
@@ -205,7 +221,8 @@
       .then(function (d) { setToken(d && d.token); go("clan-valor.html"); })
       .catch(function (e) {
         btn.disabled = false;
-        err(e.status === 401 ? "Неверный офицерский пароль. Он в закрепе чата гильдии TG/VK." : ("Ошибка входа: " + (e.detail || e.message)));
+        if (rateLimited(e)) return;
+        err(e.status === 401 ? "Неверный офицерский пароль. Он в закреплённом сообщении офицерского чата ВК/Telegram." : ("Ошибка входа: " + (e.detail || e.message)));
       });
   }
 
