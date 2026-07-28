@@ -1622,6 +1622,24 @@ def queue_set_shared_password(plain: str) -> None:
             "updated_at=excluded.updated_at", (h, now))
 
 
+def kv_get(key: str) -> str:
+    """Значение из queue_kv (общий key-value). '' если нет."""
+    try:
+        with connection() as conn:
+            r = conn.execute("SELECT val FROM queue_kv WHERE key=?", (key,)).fetchone()
+            return (r["val"] if r else "") or ""
+    except Exception:
+        return ""
+
+
+def kv_set(key: str, val: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
+            (key, str(val), datetime.utcnow().isoformat(timespec="seconds")))
+
+
 def _ensure_chat_whitelist(conn) -> None:
     conn.execute(
         "CREATE TABLE IF NOT EXISTS chat_whitelist ("

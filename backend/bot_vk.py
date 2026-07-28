@@ -128,3 +128,32 @@ def publish_manifest(image_path: Path, caption: str, prev_message_id: int | None
 
     log.info("VK manifest posted (cm_id %s)", cm_id)
     return cm_id
+
+
+def publish_officer_pw(text: str, prev_cm_id):
+    """Закреплённое офицерское сообщение с текущим офиц. паролём в VK офиц. чате. Редактирует
+    по conversation_message_id либо постит+пинит новое. Возвращает conversation_message_id."""
+    if not (settings.vk_group_token and settings.vk_officer_peer_id):
+        raise RuntimeError("vk_not_configured")
+    session, api = _api()
+    peer_id = _peer_id()
+    if prev_cm_id:
+        try:
+            api.messages.edit(peer_id=peer_id, conversation_message_id=int(prev_cm_id),
+                              message=text[:4000], keep_forward_messages=1, keep_snippets=1)
+            return int(prev_cm_id)
+        except vk_api.exceptions.ApiError as exc:
+            log.warning("VK officer-pw edit failed (%s), sending new", exc)
+    sent = api.messages.send(peer_id=peer_id, message=text[:4000], random_id=0)
+    info = api.messages.getById(message_ids=sent, extended=0)
+    cm_id = info["items"][0]["conversation_message_id"]
+    try:
+        api.messages.pin(peer_id=peer_id, conversation_message_id=cm_id)
+    except vk_api.exceptions.ApiError as exc:
+        log.warning("VK officer-pw pin failed: %s", exc)
+    if prev_cm_id and int(prev_cm_id) != cm_id:
+        try:
+            api.messages.delete(peer_id=peer_id, cmids=int(prev_cm_id), delete_for_all=1)
+        except Exception:
+            pass
+    return cm_id

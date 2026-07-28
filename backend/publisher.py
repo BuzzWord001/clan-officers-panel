@@ -58,6 +58,64 @@ def _caption_vk() -> str:
     return "\n".join(parts)
 
 
+def _officer_pw_text_tg() -> str:
+    pwd = _caption_password()
+    site = _site_url()
+    return "\n".join([
+        "🔑 <b>Офицерский вход на сайт</b>",
+        "",
+        f'Зайди на <a href="{escape(site)}">{escape(site)}</a>, выбери свой игровой ник, и на шаге',
+        "пароля введи <b>офицерский пароль</b>:",
+        "",
+        (f"<code>{escape(pwd)}</code>" if pwd else "<i>(пароль не задан)</i>"),
+        "",
+        f"<i>Обновлено: {_now_msk()} мск</i>",
+    ])
+
+
+def _officer_pw_text_vk() -> str:
+    pwd = _caption_password()
+    site = _site_url()
+    return "\n".join([
+        "🔑 Офицерский вход на сайт",
+        "",
+        f"Зайди на {site}, выбери свой игровой ник, и на шаге пароля введи офицерский пароль:",
+        "",
+        (pwd or "(пароль не задан)"),
+        "",
+        f"Обновлено: {_now_msk()} мск",
+    ])
+
+
+async def publish_officer_password() -> dict:
+    """Обновляет ЗАКРЕПЛЁННОЕ офицерское сообщение с АКТУАЛЬНЫМ офиц. паролём в TG+VK
+    офиц. чатах. Вызывается при смене офиц. пароля: редактирует существующее (по сохранённому
+    id) или постит новое + пинит. Так в офицерских каналах всегда актуальный пароль."""
+    result: dict = {}
+    if settings.tg_bot_token and settings.tg_officer_chat_id:
+        try:
+            prev = db.kv_get("off_pw_tg_msg")
+            new_id = await bot_tg.publish_officer_pw(
+                _officer_pw_text_tg(), int(prev) if prev.isdigit() else None)
+            db.kv_set("off_pw_tg_msg", str(new_id))
+            result["tg"] = new_id
+        except Exception as exc:
+            log.exception("TG officer-pw publish failed")
+            result["tg_error"] = str(exc)
+    if settings.vk_group_token and settings.vk_officer_peer_id:
+        try:
+            prev = db.kv_get("off_pw_vk_msg")
+            new_id = await asyncio.to_thread(
+                bot_vk.publish_officer_pw, _officer_pw_text_vk(),
+                int(prev) if prev.isdigit() else None)
+            db.kv_set("off_pw_vk_msg", str(new_id))
+            result["vk"] = new_id
+        except Exception as exc:
+            log.exception("VK officer-pw publish failed")
+            result["vk_error"] = str(exc)
+    return result
+
+
 async def publish_now(*, force_repost: bool = False,
                       platforms: tuple[str, ...] | None = None) -> dict:
     """Публикует/обновляет манифест в TG+VK офицерских чатах.

@@ -160,12 +160,21 @@
         goStep(d.registered ? "login" : "register");
         var rl = $("q-shared-lbl");
         var rh = $("q-reg-hint");
+        var demoImg = document.querySelector("#q-passdemo img");
+        var lbImg = document.querySelector("#q-lb img");
+        var capSpan = document.querySelector("#q-passdemo span");
         if (d.officer) {
           if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)";
-          if (rh) rh.innerHTML = "✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> — он в <b>закреплённом сообщении</b> офицерского чата ВК и Telegram, затем придумай личный.";
+          if (rh) rh.innerHTML = "✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> — он в <b>закреплённом сообщении</b> офицерского чата ВК и Telegram (см. картинку), затем придумай личный.";
+          if (demoImg) demoImg.src = "assets/officer-pass-location.webp?v=1";
+          if (lbImg) lbImg.src = "assets/officer-pass-location.webp?v=1";
+          if (capSpan) capSpan.textContent = "📍 Где офицерский пароль? (в закрепе офиц. чата) — нажми, чтобы увеличить";
         } else {
           if (rl) rl.textContent = "Общий пароль клана (кнопка G)";
           if (rh) rh.innerHTML = "🔑 Введи <b>общий пароль клана</b> — он в <b>списке гильдии</b> (в игре кнопка <b>G</b>), внизу строка <b>«Пароль:»</b> (см. картинку), затем придумай свой личный.";
+          if (demoImg) demoImg.src = "assets/pass-location.webp?v=1";
+          if (lbImg) lbImg.src = "assets/pass-location.webp?v=1";
+          if (capSpan) capSpan.textContent = "📍 Где взять пароль? Нажми, чтобы увеличить";
         }
         setTimeout(function () { $(d.registered ? "q-pass" : "q-shared").focus(); }, 30);
       })

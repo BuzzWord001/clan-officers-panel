@@ -198,7 +198,9 @@ async def set_officer_pwd(payload: ChangeOfficerPasswordIn, _: dict = Depends(re
 
 async def _republish_after_password_change() -> None:
     try:
-        await publisher.publish_now()
+        # Обновляем ЗАКРЕПЛЁННОЕ офицерское сообщение с актуальным паролём в TG+VK
+        # офиц. чатах (edit или repost+pin). publish_now (старый манифест) отключён.
+        await publisher.publish_officer_password()
     except Exception:
         # publish уже логирует исключение, тут просто чтобы фоновая задача
         # не падала без обработки.

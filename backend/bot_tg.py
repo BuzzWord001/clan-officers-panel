@@ -175,3 +175,33 @@ async def publish_manifest(image_path: Path, caption: str, prev_message_id: int 
 
     log.info("TG manifest posted (msg %s)", new_id)
     return new_id
+
+
+async def publish_officer_pw(text: str, prev_id):
+    """Закреплённое офицерское сообщение с текущим офиц. паролём. Редактирует по prev_id
+    (editMessageText) либо постит новое + пинит. Возвращает message_id."""
+    chat = settings.tg_officer_chat_id
+    if prev_id:
+        try:
+            await _call("editMessageText", chat_id=chat, message_id=int(prev_id), text=text,
+                        parse_mode="HTML", disable_web_page_preview=True)
+            return int(prev_id)
+        except Exception as exc:
+            # «message is not modified» — текст тот же → уже актуально, не плодим новое.
+            if "not modified" in str(exc).lower():
+                return int(prev_id)
+            log.info("TG officer-pw edit failed (%s), posting new", exc)
+    res = await _call("sendMessage", chat_id=chat, text=text, parse_mode="HTML",
+                      disable_web_page_preview=True)
+    new_id = int(res["message_id"])
+    try:
+        await _call("pinChatMessage", chat_id=chat, message_id=new_id, disable_notification=True)
+    except Exception as exc:
+        log.warning("TG officer-pw pin failed: %s", exc)
+    if prev_id and int(prev_id) != new_id:          # убираем старое, чтобы не копилось
+        try:
+            await _call("unpinChatMessage", chat_id=chat, message_id=int(prev_id))
+        except Exception:
+            pass
+        await delete_message_safe(int(prev_id))
+    return new_id
