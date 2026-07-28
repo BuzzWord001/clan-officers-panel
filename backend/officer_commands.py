@@ -27,8 +27,28 @@ _CANCEL = {"отмена", "отменить", "отмени", "cancel", "undo"}
 _REMOVE = {"удалить", "убрать", "delete", "del", "remove"}
 _LIST = {"список", "list", "кто"}
 _HISTORY = {"история", "досье", "history", "dossier"}
+_SETPW = {"пароль", "password", "парольклана", "парользх", "парольсайта"}
 # Только /help — чтобы не пересекаться с /помощь другого бота в этом чате.
 _HELP = {"help"}
+
+
+def _setpw(rest: str, actor: dict) -> str:
+    """/пароль <новый> — сменить ОБЩИЙ пароль клана (для входа игроков на сайт).
+    Он же публикуется в списке гильдии (кнопка G, строка «Пароль:»)."""
+    pw = (rest or "").strip()
+    if not pw:
+        return ("Укажи новый общий пароль клана: /пароль 5623\n"
+                "Это пароль из списка гильдии (кнопка G) — игроки входят им на сайт.")
+    if len(pw) > 64:
+        return "Слишком длинный пароль (макс 64 символа)."
+    try:
+        db.queue_set_shared_password(pw)
+    except Exception:
+        log.exception("set shared pw failed")
+        return "⚠ Не удалось сменить пароль. Попробуй ещё раз."
+    return ("✅ Общий пароль клана изменён на: " + pw + "\n"
+            "Обнови его в списке гильдии (кнопка G, строка «Пароль:»). Игроки входят на "
+            "santdevil.com своим ником + этим паролём.")
 
 
 def _canon(s: str) -> str:
@@ -416,7 +436,10 @@ def _help() -> str:
         "     полное досье: игра+доблесть, твины, соцсети,\n"
         "     и отдельно IP/устройства/входы на сайт\n"
         "     ищет по ЛЮБЫМ данным: ник, имя-фамилия,\n"
-        "     VK-домен, @tg, id — напр. /досье Артём Лапин\n" + _HR + "\n"
+        "     VK-домен, @tg, id — напр. /досье Артём Лапин\n\n"
+        "🔑 /пароль 5623\n"
+        "     сменить общий пароль клана (для входа игроков\n"
+        "     на сайт). Обнови его в списке гильдии (кнопка G)\n" + _HR + "\n"
         "ℹ️ Ник — одно слово, дальше титул (имя или ~мэйн~).\n"
         "Дата ставится сама. Повторный /принять тем же ником — меняет титул.\n"
         "🌐 Всё видно на сайте: santdevil.com → «Приём в клан»"
@@ -433,7 +456,7 @@ def handle(text: str, actor: dict) -> str | None:
     cmd = head[1:].split("@", 1)[0].lower()   # убрать ведущий / и суффикс @botname (в группах TG)
     rest = rest.strip()
     known = (cmd in _ACCEPT or cmd in _CANCEL or cmd in _REMOVE or cmd in _LIST
-             or cmd in _HELP or cmd in _HISTORY)
+             or cmd in _HELP or cmd in _HISTORY or cmd in _SETPW)
     reply = None
     try:
         if cmd in _ACCEPT:
@@ -446,6 +469,8 @@ def handle(text: str, actor: dict) -> str | None:
             reply = _list()
         elif cmd in _HISTORY:
             reply = _history(rest, actor)
+        elif cmd in _SETPW:
+            reply = _setpw(rest, actor)
         elif cmd in _HELP:
             reply = _help()
     except Exception:

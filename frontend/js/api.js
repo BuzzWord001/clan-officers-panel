@@ -126,6 +126,11 @@
     updateAdmin:   (payload)             => request("POST", "/auth/admin/credentials", payload),
     queuePwStatus: ()                    => request("GET",  "/queue/admin/shared-password"),
     queuePwSet:    (password)            => request("POST", "/queue/admin/shared-password", { password }),
+    accessStatus:  ()                    => request("GET",  "/queue/admin/access-status"),
+    genPasswords:  (scope)               => request("POST", "/queue/admin/gen-passwords", { scope }),
+    chatWhitelist:    ()                 => request("GET",  "/admin/chat-whitelist"),
+    chatWhitelistAdd: (payload)          => request("POST", "/admin/chat-whitelist", payload),
+    chatWhitelistDel: (id)               => request("DELETE", "/admin/chat-whitelist/" + id),
 
     list:          () => request("GET",  "/acceptances"),
     create:        (payload) => request("POST",  "/acceptances", payload),

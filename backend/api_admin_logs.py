@@ -207,3 +207,30 @@ def get_visit_fp(limit: int = 300, suspicious_only: bool = False,
             continue
         out.append(r)
     return out
+
+
+# ── Белый список чатов (люди не из клана, которых оставляем в VK/TG) ──
+class ChatWhitelistIn(BaseModel):
+    nick: str = Field("", max_length=64)
+    vk_id: str = Field("", max_length=32)
+    tg_id: str = Field("", max_length=32)
+    note: str = Field("", max_length=200)
+
+
+@router.get("/chat-whitelist")
+def chat_whitelist(_: dict = Depends(require_admin)) -> list[dict]:
+    return db.chat_whitelist_list()
+
+
+@router.post("/chat-whitelist", status_code=status.HTTP_201_CREATED)
+def chat_whitelist_add(payload: ChatWhitelistIn, actor: dict = Depends(require_admin)) -> dict:
+    if not (payload.nick.strip() or payload.vk_id.strip() or payload.tg_id.strip()):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "need_nick_or_id")
+    return db.chat_whitelist_add(payload.nick, payload.vk_id, payload.tg_id, payload.note,
+                                 actor.get("name") or "admin")
+
+
+@router.delete("/chat-whitelist/{wid}", status_code=status.HTTP_204_NO_CONTENT)
+def chat_whitelist_del(wid: int, _: dict = Depends(require_admin)) -> None:
+    if not db.chat_whitelist_remove(wid):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")

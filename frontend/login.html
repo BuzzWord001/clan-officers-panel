@@ -66,6 +66,15 @@
     .q-sugg-twin{color:#e0a86a}
     .q-sugg-off{color:#bcbcff;font-weight:700}
     .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
+    .q-passdemo{display:block;width:100%;margin:-2px 0 12px;padding:6px;cursor:zoom-in;
+      background:rgba(224,162,74,.08);border:1px solid var(--bd);border-radius:12px}
+    .q-passdemo img{display:block;width:100%;height:auto;border-radius:8px}
+    .q-passdemo span{display:block;text-align:center;font-size:11px;color:#caa66a;margin-top:5px}
+    .q-passdemo:hover{border-color:var(--gold)}
+    .q-lb{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.86);display:none;
+      align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+    .q-lb.show{display:flex}
+    .q-lb img{max-width:96vw;max-height:92vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.7)}
     html.booting .q-app{visibility:hidden}
   </style>
 </head>
@@ -101,11 +110,15 @@
 
       <!-- шаг 2а: РЕГИСТРАЦИЯ (первый вход) -->
       <div id="step-register" hidden>
-        <div class="q-hint" id="q-reg-hint">🔑 <b>Игроки:</b> введи <b>личный пароль</b>, высланный
-          тебе на <b>почту в игре</b>. <b>Офицеры:</b> введи <b>офицерский пароль</b> — он в
-          <b>закреплённом сообщении</b> офицерского чата ВК и Telegram.</div>
+        <div class="q-hint" id="q-reg-hint">🔑 <b>Игроки:</b> введи <b>общий пароль клана</b> — он в
+          <b>списке гильдии</b> (в игре кнопка <b>G</b>), внизу строка <b>«Пароль:»</b> (см. картинку).
+          <b>Офицеры:</b> введи <b>офицерский пароль</b> из закрепа офицерского чата.</div>
+        <button type="button" class="q-passdemo" id="q-passdemo">
+          <img src="assets/pass-location.webp?v=1" alt="Где взять пароль — список гильдии, кнопка G" loading="lazy">
+          <span>📍 Где взять пароль? Нажми, чтобы увеличить</span>
+        </button>
         <div class="q-field">
-          <label for="q-shared" id="q-shared-lbl">Личный (с почты) или офицерский пароль</label>
+          <label for="q-shared" id="q-shared-lbl">Общий пароль клана (кнопка G) или офицерский</label>
           <input id="q-shared" type="password" autocomplete="off" maxlength="200">
         </div>
         <div class="q-field">
@@ -206,7 +219,9 @@
     </main>
   </div>
 
+  <div class="q-lb" id="q-lb"><img src="assets/pass-location.webp?v=1" alt="Где взять пароль — список гильдии (кнопка G)"></div>
+
   <script src="config.js?v=1791600000"></script>
-  <script src="js/site-login.js?v=1896600000"></script>
+  <script src="js/site-login.js?v=1896700000"></script>
 </body>
 </html>

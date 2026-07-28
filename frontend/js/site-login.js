@@ -164,8 +164,8 @@
           if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)";
           if (rh) rh.innerHTML = "✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> — он в <b>закреплённом сообщении</b> офицерского чата ВК и Telegram, затем придумай личный.";
         } else {
-          if (rl) rl.textContent = "Личный пароль, высланный на почту в игре";
-          if (rh) rh.innerHTML = "🔑 Введи <b>личный пароль</b>, который выслали тебе на <b>почту в игре</b>. Нет пароля? Напиши офицеру.";
+          if (rl) rl.textContent = "Общий пароль клана (кнопка G)";
+          if (rh) rh.innerHTML = "🔑 Введи <b>общий пароль клана</b> — он в <b>списке гильдии</b> (в игре кнопка <b>G</b>), внизу строка <b>«Пароль:»</b> (см. картинку), затем придумай свой личный.";
         }
         setTimeout(function () { $(d.registered ? "q-pass" : "q-shared").focus(); }, 30);
       })
@@ -188,9 +188,9 @@
       if (e.status === 403 && e.detail === "not_in_clan") { err("Этого ника нет в текущем составе клана. Доступ только у актуальных участников — напиши офицеру."); return; }
       if (e.detail === "need_officer_password") { err("Это офицерский ник — в поле пароля введи ОФИЦЕРСКИЙ пароль (из закрепа офицерского чата), затем придумай личный."); var rl = $("q-shared-lbl"); if (rl) rl.textContent = "Офицерский пароль (из закрепа офицерского чата)"; setTimeout(function () { $("q-shared").focus(); }, 30); }
       else if (e.detail === "personal_password_too_short") err("Придумай личный пароль — минимум 4 символа.");
-      else if (e.status === 401) err(_isOfficerNick ? "Неверный офицерский пароль. Он в закрепе офицерского чата ВК/Telegram." : "Неверный пароль. Введи личный пароль, высланный тебе на почту в игре.");
+      else if (e.status === 401) err(_isOfficerNick ? "Неверный офицерский пароль. Он в закрепе офицерского чата ВК/Telegram." : "Неверный пароль. Введи общий пароль клана из списка гильдии (кнопка G, строка «Пароль:»).");
       else if (e.status === 409) { err("На этот аккаунт пароль уже создан — входи по личному паролю."); goStep("login"); }
-      else if (e.status === 503) err("Тебе ещё не выслали личный пароль на почту в игре. Напиши офицеру.");
+      else if (e.status === 503) err("Общий пароль клана ещё не задан. Напиши офицеру.");
       else if (e.detail === "nick_not_found") err("Ник не найден. Вернись и выбери из подсказок.");
       else err("Ошибка входа: " + (e.detail || e.message));
     });
@@ -301,6 +301,11 @@
 
   function init() {
     wireSuggest();
+    var pd = $("q-passdemo"), lb = $("q-lb");   // демо «где пароль» → лайтбокс
+    if (pd && lb) {
+      pd.addEventListener("click", function () { lb.classList.add("show"); });
+      lb.addEventListener("click", function () { lb.classList.remove("show"); });
+    }
     $("btn-next").addEventListener("click", doNext);
     $("btn-register").addEventListener("click", doRegister);
     $("btn-login").addEventListener("click", doLogin);

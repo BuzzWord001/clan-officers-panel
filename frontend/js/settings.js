@@ -606,6 +606,111 @@
     }
   });
 
+  // ── Личные пароли участников (единый доступ) ──
+  const accState = $("acc-state");
+  async function reloadAccStatus() {
+    try {
+      const d = await API.accessStatus();
+      accState.textContent =
+        `людей ${d.total} · с паролем ${d.have} · без пароля ${d.missing.length}`;
+      accState.style.color = d.missing.length ? "#e0a86a" : "#9fe0a0";
+    } catch (_) { accState.textContent = "?"; }
+  }
+  function renderAccList(items) {
+    const made = items.filter((i) => i.password);
+    const kept = items.filter((i) => i.status === "есть").length;
+    $("acc-list").value = made.map((i) => i.nick + "\t" + i.password).join("\n");
+    $("acc-count").textContent =
+      `новых паролей: ${made.length}` +
+      (kept ? ` · ${kept} уже со своим паролем — им слать НЕ надо` : "");
+    $("acc-result").style.display = made.length ? "block" : "none";
+    return made;
+  }
+  async function doGen(scope, btn) {
+    const warn = scope === "all"
+      ? "Перегенерировать пароли ВСЕМ? Старые пароли перестанут работать у всех — надо будет разослать заново."
+      : "Сгенерировать пароли тем, у кого их ещё нет?";
+    if (!confirm(warn)) return;
+    btn.disabled = true;
+    try {
+      const d = await API.genPasswords(scope);
+      const made = renderAccList(d.items);
+      flash($("acc-status"), `✓ Готово: сгенерировано ${made.length}`, true);
+      await reloadAccStatus();
+    } catch (e) {
+      flash($("acc-status"), `Ошибка: ${e.detail || e.message}`, false);
+    } finally { btn.disabled = false; }
+  }
+  $("acc-refresh").addEventListener("click", reloadAccStatus);
+  $("acc-gen-missing").addEventListener("click", (e) => doGen("missing", e.currentTarget));
+  $("acc-gen-all").addEventListener("click", (e) => doGen("all", e.currentTarget));
+  $("acc-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("acc-list").value);
+      flash($("acc-status"), "✓ Скопировано в буфер", true);
+    } catch (_) {
+      $("acc-list").select(); document.execCommand("copy");
+      flash($("acc-status"), "✓ Скопировано", true);
+    }
+  });
+  $("acc-csv").addEventListener("click", () => {
+    const rows = $("acc-list").value.split("\n").filter(Boolean)
+      .map((l) => l.split("\t"))
+      .map(([n, p]) => `"${(n || "").replace(/"/g, '""')}",${p || ""}`);
+    const csv = "﻿Ник,Пароль\n" + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "clan_passwords.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  await reloadAccStatus();
+
+  // ── Белый список чатов ──
+  async function reloadWhitelist() {
+    try {
+      const rows = await API.chatWhitelist();
+      if (!rows.length) {
+        $("wl-list").innerHTML = '<div style="opacity:.55;font-size:13px">Список пуст.</div>';
+        return;
+      }
+      $("wl-list").innerHTML = rows.map((r) => {
+        const parts = [];
+        if (r.nick) parts.push("🎮 " + esc(r.nick));
+        if (r.vk_id) parts.push("VK " + esc(r.vk_id));
+        if (r.tg_id) parts.push("TG " + esc(r.tg_id));
+        const note = r.note ? ' — <span style="opacity:.8">' + esc(r.note) + "</span>" : "";
+        return '<div style="display:flex;justify-content:space-between;align-items:center;' +
+          'padding:6px 8px;border-bottom:1px solid rgba(224,162,74,.15)"><span>' +
+          parts.join(" · ") + note + '</span><button type="button" data-wl="' + r.id +
+          '" class="secondary" style="padding:3px 9px">Убрать</button></div>';
+      }).join("");
+      $("wl-list").querySelectorAll("[data-wl]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          if (!confirm("Убрать из белого списка?")) return;
+          try { await API.chatWhitelistDel(b.dataset.wl); await reloadWhitelist(); }
+          catch (e) { flash($("wl-status"), "Ошибка: " + (e.detail || e.message), false); }
+        }));
+    } catch (_) { $("wl-list").innerHTML = ""; }
+  }
+  $("wl-add").addEventListener("click", async () => {
+    const payload = {
+      nick: $("wl-nick").value.trim(), vk_id: $("wl-vk").value.trim(),
+      tg_id: $("wl-tg").value.trim(), note: $("wl-note").value.trim(),
+    };
+    if (!payload.nick && !payload.vk_id && !payload.tg_id) {
+      flash($("wl-status"), "Укажи ник или VK/TG id", false); return;
+    }
+    try {
+      await API.chatWhitelistAdd(payload);
+      $("wl-nick").value = ""; $("wl-vk").value = ""; $("wl-tg").value = ""; $("wl-note").value = "";
+      flash($("wl-status"), "✓ Добавлено в белый список", true);
+      await reloadWhitelist();
+    } catch (e) { flash($("wl-status"), "Ошибка: " + (e.detail || e.message), false); }
+  });
+  await reloadWhitelist();
+
   await reloadSnapshots();
   await reloadStorageStats();
   await reloadLogins();

@@ -1070,7 +1070,13 @@ def _current_login_canons(conn) -> set:
                     allowed_main.add(p["main_canon"])
     except Exception:
         pass
-    return {cn for cn, p in idx.items() if p["main_canon"] in allowed_main}
+    result = {cn for cn, p in idx.items() if p["main_canon"] in allowed_main}
+    # Белый список чатов — этим людям вход разрешён всегда, даже если их нет в клане.
+    try:
+        result |= db.chat_whitelist_nick_canons()
+    except Exception:
+        pass
+    return result
 
 
 def _nick_allowed(conn, nick, allowed=None) -> bool:

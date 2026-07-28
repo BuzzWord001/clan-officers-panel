@@ -184,6 +184,29 @@
       </div>
 
       <div class="panel">
+        <h2>Белый список чатов (не блокировать)</h2>
+        <p class="hint" style="margin-bottom: 12px;">
+          Люди, которых <b>не из клана</b> ты разрешаешь оставить в чатах ВК/Telegram. Они
+          <b>всегда в белом списке</b> и не блокируются из недели в неделю, даже если их уже нет
+          в клане (и вход на сайт им тоже открыт). Укажи <b>игровой ник</b> и/или VK-id / TG-id
+          + короткую заметку зачем.
+        </p>
+        <div class="form-actions" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
+          <div class="form-group" style="margin:0;"><label for="wl-nick">Игровой ник</label>
+            <input type="text" id="wl-nick" maxlength="64" placeholder="ник в игре"></div>
+          <div class="form-group" style="margin:0;"><label for="wl-vk">VK id</label>
+            <input type="text" id="wl-vk" maxlength="32" placeholder="напр. 123456"></div>
+          <div class="form-group" style="margin:0;"><label for="wl-tg">TG id</label>
+            <input type="text" id="wl-tg" maxlength="32" placeholder="напр. 987654"></div>
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;"><label for="wl-note">Заметка</label>
+            <input type="text" id="wl-note" maxlength="200" placeholder="кто это / почему оставляем"></div>
+          <button type="button" id="wl-add">Добавить</button>
+        </div>
+        <div class="status-line" id="wl-status"></div>
+        <div id="wl-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel">
         <h2>Учётные данные администратора</h2>
         <p class="hint" style="margin-bottom: 12px;">
           Этот логин и пароль — только твои. Для подтверждения изменений
@@ -379,11 +402,11 @@
   </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1896100000"></script>
+  <script src="js/api.js?v=1896700000"></script>
   <script src="js/view-as.js?v=1896400000"></script>
   <script src="js/global-search.js?v=1888600000"></script>
   <script src="js/queue-tab.js?v=1811000000"></script>
-  <script src="js/settings.js?v=1896200000"></script>
+  <script src="js/settings.js?v=1896700000"></script>
   <script src="js/tooltips.js?v=1802000000"></script>
   <script src="js/social-bar.js?v=1896500000"></script>
   <script src="js/chamber-door.js?v=1896400000"></script>

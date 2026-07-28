@@ -1609,6 +1609,66 @@ def member_dossier(nick_or_canon: str) -> dict | None:
         }
 
 
+def queue_set_shared_password(plain: str) -> None:
+    """Сменить ОБЩИЙ пароль клана (тот, что в списке гильдии на кнопке G, для входа игроков
+    на сайт). bcrypt, тот же формат что у queue-регистрации. Для офицерской команды /пароль."""
+    import bcrypt
+    h = bcrypt.hashpw((plain or "").encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("ascii")
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO queue_config (id, shared_password_hash, updated_at) VALUES (1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET shared_password_hash=excluded.shared_password_hash, "
+            "updated_at=excluded.updated_at", (h, now))
+
+
+def _ensure_chat_whitelist(conn) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chat_whitelist ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, nick TEXT DEFAULT '', vk_id TEXT DEFAULT '',"
+        " tg_id TEXT DEFAULT '', note TEXT DEFAULT '', added_by TEXT DEFAULT '', added_at TEXT DEFAULT '')")
+
+
+def chat_whitelist_list() -> list[dict]:
+    """Белый список чатов: люди (не из клана), которых оставляем в VK/TG чатах — не блокируем
+    даже когда их нет в клане."""
+    with connection() as conn:
+        _ensure_chat_whitelist(conn)
+        return [dict(r) for r in conn.execute("SELECT * FROM chat_whitelist ORDER BY id DESC")]
+
+
+def chat_whitelist_add(nick: str, vk_id: str, tg_id: str, note: str, added_by: str) -> dict:
+    with connection() as conn:
+        _ensure_chat_whitelist(conn)
+        cur = conn.execute(
+            "INSERT INTO chat_whitelist (nick, vk_id, tg_id, note, added_by, added_at) "
+            "VALUES (?,?,?,?,?,?)",
+            ((nick or "").strip(), (vk_id or "").strip(), (tg_id or "").strip(),
+             (note or "").strip(), added_by or "", datetime.utcnow().isoformat(timespec="seconds")))
+        return {"id": cur.lastrowid}
+
+
+def chat_whitelist_remove(wid: int) -> int:
+    with connection() as conn:
+        _ensure_chat_whitelist(conn)
+        return conn.execute("DELETE FROM chat_whitelist WHERE id=?", (wid,)).rowcount
+
+
+def chat_whitelist_nick_canons() -> set:
+    """Каноны ников из белого списка — им ВСЕГДА разрешён вход (даже если не в клане)."""
+    out = set()
+    try:
+        with connection() as conn:
+            _ensure_chat_whitelist(conn)
+            for r in conn.execute("SELECT nick FROM chat_whitelist WHERE nick != ''"):
+                cn = _valor_canon(r["nick"])
+                if cn:
+                    out.add(cn)
+    except Exception:
+        pass
+    return out
+
+
 def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:
     """Активный реестр (archived=0). include_archived=True → и ушедшие тоже."""
     where = "" if include_archived else "WHERE COALESCE(archived,0) = 0"
