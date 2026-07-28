@@ -153,6 +153,29 @@ CREATE TABLE IF NOT EXISTS telemetry_log (
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_time ON telemetry_log(timestamp);
 
+-- Отпечаток устройства визитёра (для расследований/безопасности): часовой пояс
+-- браузера (VPN его НЕ прячет!), смещение, экран, язык, платформа, память/ядра.
+-- Пишется пассивно при заходе на публичные страницы. Помогает вычислить, кто
+-- заходит за ссылками на чаты — по часовому поясу + модели устройства даже за VPN.
+CREATE TABLE IF NOT EXISTS visit_fp (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT    NOT NULL,
+    ip          TEXT    NOT NULL DEFAULT '',
+    actor       TEXT    NOT NULL DEFAULT '',    -- ник/роль если залогинен, иначе 'гость'
+    tz          TEXT    NOT NULL DEFAULT '',    -- напр. 'Europe/Samara', 'Asia/Yerevan'
+    tz_offset   INTEGER NOT NULL DEFAULT 0,     -- минуты (напр. UTC+4 = -240)
+    lang        TEXT    NOT NULL DEFAULT '',
+    platform    TEXT    NOT NULL DEFAULT '',
+    screen      TEXT    NOT NULL DEFAULT '',
+    dev_mem     TEXT    NOT NULL DEFAULT '',
+    hw_cores    TEXT    NOT NULL DEFAULT '',
+    touch       INTEGER NOT NULL DEFAULT 0,
+    url         TEXT    NOT NULL DEFAULT '',
+    user_agent  TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_visitfp_time ON visit_fp(timestamp);
+CREATE INDEX IF NOT EXISTS idx_visitfp_tz ON visit_fp(tz_offset);
+
 -- Архив переписки клановых чатов TG и VK. Каждое сообщение хранится
 -- ровно один раз — bot-мост пишет ТОЛЬКО оригинал, ретрансляцию в
 -- парный чат другой платформы НЕ дублирует.
@@ -2452,6 +2475,32 @@ def write_telemetry(*, kind: str, message: str, url: str, ip: str, user_agent: s
                 kind[:32], message[:500], url[:300], ip[:64], user_agent[:200],
             ),
         )
+
+
+def write_visit_fp(*, ip, actor, tz, tz_offset, lang, platform, screen,
+                   dev_mem, hw_cores, touch, url, user_agent) -> None:
+    """Отпечаток устройства визитёра (часовой пояс браузера и пр.). Дедуп: не пишем,
+    если такой же (ip+tz+screen+ua) уже был за последние 10 минут — чтобы не спамить."""
+    try:
+        with connection() as conn:
+            recent = conn.execute(
+                "SELECT 1 FROM visit_fp WHERE ip=? AND tz=? AND screen=? AND user_agent=?"
+                " AND timestamp > ? LIMIT 1",
+                (ip[:64], (tz or "")[:48], (screen or "")[:24], (user_agent or "")[:200],
+                 (datetime.utcnow() - timedelta(minutes=10)).isoformat(timespec="seconds"))
+            ).fetchone()
+            if recent:
+                return
+            conn.execute(
+                """INSERT INTO visit_fp (timestamp, ip, actor, tz, tz_offset, lang, platform,
+                   screen, dev_mem, hw_cores, touch, url, user_agent)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (datetime.utcnow().isoformat(timespec="seconds"), ip[:64], (actor or "гость")[:64],
+                 (tz or "")[:48], int(tz_offset or 0), (lang or "")[:24], (platform or "")[:48],
+                 (screen or "")[:24], str(dev_mem or "")[:8], str(hw_cores or "")[:8],
+                 1 if touch else 0, (url or "")[:200], (user_agent or "")[:200]))
+    except Exception:
+        pass
 
 
 def list_telemetry(limit: int = 200) -> list[dict[str, Any]]:

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 import blocklist as _bl
 import db
 import geoip
-from session import client_ip, client_user_agent, require_admin
+from session import client_ip, client_user_agent, require_admin, current_session
 
 
 router = APIRouter(prefix="/admin", tags=["admin-logs"])
@@ -139,3 +139,45 @@ def telemetry_connect_error(payload: TelemetryIn, request: Request) -> None:
         ip=client_ip(request),
         user_agent=client_user_agent(request),
     )
+
+
+# ── Отпечаток устройства визитёра (часовой пояс браузера и пр.) ──
+class FpIn(BaseModel):
+    tz: str = Field("", max_length=48)
+    tz_offset: int = Field(0)
+    lang: str = Field("", max_length=24)
+    platform: str = Field("", max_length=48)
+    screen: str = Field("", max_length=24)
+    dev_mem: str = Field("", max_length=8)
+    hw_cores: str = Field("", max_length=8)
+    touch: bool = Field(False)
+    url: str = Field("", max_length=200)
+
+
+@telemetry_router.post("/fp", status_code=status.HTTP_204_NO_CONTENT)
+def telemetry_fp(payload: FpIn, request: Request) -> None:
+    """Пассивный сбор отпечатка устройства визитёра. Часовой пояс браузера VPN НЕ прячет —
+    помогает вычислить, кто заходит за ссылками на чаты (по поясу + модели устройства)."""
+    try:
+        s = current_session(request)
+        actor = s.get("name") or s.get("role") or "гость"
+    except Exception:
+        actor = "гость"
+    db.write_visit_fp(
+        ip=client_ip(request), actor=actor, tz=payload.tz, tz_offset=payload.tz_offset,
+        lang=payload.lang, platform=payload.platform, screen=payload.screen,
+        dev_mem=payload.dev_mem, hw_cores=payload.hw_cores, touch=payload.touch,
+        url=payload.url, user_agent=client_user_agent(request))
+
+
+@router.get("/visit-fp")
+def get_visit_fp(limit: int = 300, _: dict = Depends(require_admin)) -> list[dict]:
+    """Админу: отпечатки визитёров (для расследований). С гео по IP."""
+    with db.connection() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM visit_fp ORDER BY id DESC LIMIT ?", (min(limit, 1000),))]
+        geo = {r["ip"]: dict(r) for r in conn.execute("SELECT * FROM geoip_cache")}
+    for r in rows:
+        g = geo.get(r["ip"]) or {}
+        r["geo"] = "%s/%s [%s]" % (g.get("country_code", "?"), g.get("city", "?"), (g.get("isp") or "")[:24])
+    return rows
