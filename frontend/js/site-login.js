@@ -70,6 +70,9 @@
 
   // после входа обычного участника: высланный пароль → предложить придумать свой
   function finishMember(d) {
+    // Сохраняем member-сессию токеном (фолбэк для встроенных браузеров TG/VK, режущих
+    // cookie) — иначе /auth/me не увидит сессию и была бы петля login↔доблесть.
+    if (d && d.token) setToken(d.token);
     if (d && d.account && d.account.pw_temp) {
       goStep("setpw");
       setTimeout(function () { $("q-setpw-pass").focus(); }, 40);
@@ -307,6 +310,9 @@
       api("GET", "/queue/me").catch(function () { return null; })
     ]).then(function (r) {
       var me = r[0], q = r[1];
+      // Устройство валидно, но сессия истекла → /queue/me переиздал member-сессию и вернул
+      // токен: сохраняем (фолбэк для браузеров без cookie), чтобы не было петли.
+      if (q && q.session_token) setToken(q.session_token);
       if (me && (me.role === "admin" || me.role === "officer")) {
         if (q && q.officer_needs_setup) { showOfficerSetup(me.name); return; }
         go("index.html"); return;

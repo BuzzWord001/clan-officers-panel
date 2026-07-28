@@ -1559,10 +1559,19 @@ def nick_role(nick: str = Query(..., min_length=1, max_length=64)) -> dict:
 
 
 @router.get("/me")
-def me(request: Request) -> dict:
+def me(request: Request, response: Response) -> dict:
     with db.connection() as conn:
         acc = _player_ctx(conn, request)              # игрок ИЛИ офицер (для жетонов/пола)
         dev = _account_from_request(conn, request)    # ТОЛЬКО настоящий игрок — для поля account
+        # Device-кука живёт 6 мес, а site-сессия 7 дней. Если игрок с валидным устройством,
+        # но сессия истекла — переиздаём member-сессию, иначе была бы петля login↔доблесть
+        # (clan-valor видит 401 от /auth/me → login.html → тот видит device → шлёт назад).
+        refreshed_token = None
+        if dev:
+            try:
+                current_session(request)
+            except HTTPException:
+                refreshed_token = set_session(response, role="member", name=dev["main_nick"])
         tokens = 0
         gender = ""
         prefer_class = False
@@ -1601,7 +1610,7 @@ def me(request: Request) -> dict:
         return {"account": _acc_public(dev) if dev else None, "tokens": tokens,
                 "gender": gender, "prefer_class": prefer_class, "variant": variant,
                 "active_nick": active_nick, "active_canon": active_canon, "identities": identities,
-                "officer_needs_setup": officer_needs_setup}
+                "officer_needs_setup": officer_needs_setup, "session_token": refreshed_token}
 
 
 class SetIdentityIn(BaseModel):
