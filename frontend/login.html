@@ -5,88 +5,207 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#140d07">
   <meta name="color-scheme" content="dark">
-  <title>SanTDeviL — вход</title>
-  <link rel="stylesheet" href="styles.css?v=1881100000">
-  <style>html,body{background:#140d07;color:#f3e8d2}#matrix-canvas,.bg-girl,.scanlines{display:none!important}html.booting .auth-shell{visibility:hidden}
-  .auth-hint{margin:-4px 0 14px;padding:9px 11px;border-radius:9px;font:400 12px/1.5 system-ui,sans-serif;color:#ecdcbe;background:rgba(224,162,74,.1);border:1px solid rgba(224,162,74,.28)}
-  .auth-hint b{color:#f0c878;font-weight:700}</style>
-  <script>setTimeout(function(){document.documentElement.classList.remove("booting");},3500);</script>
-  <!-- Если страница входа восстановлена из bfcache (Назад/Вперёд или возврат
-       после «Выйти») — перезагружаем, чтобы НИКОГДА не показать устаревшую
-       версию (старое оформление/«регистрацию» из кэша браузера). -->
-  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
+  <title>SanTDeviL — Вход</title>
   <link rel="icon" type="image/png" href="assets/logo.png?v=1798200000">
+  <script>window.addEventListener("pageshow",function(e){if(e.persisted)location.reload();});</script>
+  <style>
+    :root{--gold:#f0c878;--bd:rgba(224,162,74,.4)}
+    *{box-sizing:border-box}
+    html{background:#140d07}
+    html,body{margin:0;color:#f3e8d2;font-family:system-ui,Segoe UI,Arial,sans-serif;min-height:100%}
+    html,body{overflow-x:hidden}
+    body{background:transparent}
+    body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+      background:radial-gradient(150% 105% at 50% 42%,transparent 58%,rgba(8,5,2,.4) 100%)}
+    #qs-page-bg{position:fixed;inset:-60px;z-index:-3;background:#140d07 center/cover no-repeat;
+      filter:blur(13px) brightness(.82) saturate(1.02);pointer-events:none}
+    a{color:var(--gold)}
+    .q-top{display:flex;align-items:center;gap:12px;padding:14px 20px}
+    .q-top img{width:40px;height:40px;border-radius:8px}
+    .q-top .t{font:700 18px/1 Georgia,serif;color:var(--gold)}
+
+    .q-auth{max-width:430px;margin:clamp(24px,9vh,120px) auto 48px;padding:28px 26px 24px;
+      background:linear-gradient(180deg,#2e1d0c,#1a1006 60%,#140c05);
+      border:1px solid rgba(240,200,120,.55);border-radius:18px;
+      box-shadow:0 18px 60px rgba(0,0,0,.6),0 0 40px rgba(245,200,120,.12),
+        inset 0 1px 0 rgba(255,224,160,.14),inset 0 0 34px rgba(0,0,0,.45)}
+    .q-auth-ic{display:block;width:110px;max-width:100%;height:auto;margin:-6px auto 10px;border-radius:14px;
+      filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,160,60,.28))}
+    .q-auth h1{font:700 20px/1.25 Georgia,serif;text-align:center;color:var(--gold);
+      margin:2px 0 4px;text-shadow:0 0 12px rgba(245,200,120,.4)}
+    .q-auth .sub{font-size:12.5px;text-align:center;color:#dcc9ad;opacity:.9;margin:0 0 16px}
+    .q-field{margin:0 0 12px;position:relative}
+    .q-field label{display:block;font:600 11px system-ui;letter-spacing:.6px;
+      text-transform:uppercase;color:#caa66a;margin:0 0 5px}
+    .q-field input{width:100%;padding:11px 12px;font-size:14px;color:#f5ecda;
+      background:rgba(0,0,0,.35);border:1px solid rgba(224,162,74,.35);border-radius:9px;outline:none}
+    .q-field input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(224,162,74,.22)}
+    .q-hint{font-size:11.5px;color:#c9b48f;margin:-4px 0 12px;padding:8px 10px;
+      background:rgba(224,162,74,.10);border:1px solid rgba(224,162,74,.25);border-radius:9px}
+    .q-btn{width:100%;padding:12px;margin-top:4px;cursor:pointer;font:700 14px system-ui;
+      color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);border:0;border-radius:10px;
+      box-shadow:0 4px 14px rgba(245,200,120,.35)}
+    .q-btn:hover{filter:brightness(1.06)}
+    .q-btn:disabled{opacity:.6;cursor:default}
+    .q-btn.ghost{background:none;color:#caa66a;border:1px solid var(--bd);box-shadow:none;margin-top:8px}
+    .q-btn.ghost:hover{color:var(--gold);filter:none}
+    .q-err{min-height:16px;margin:10px 0 0;font-size:12.5px;text-align:center;color:#ff8a7a}
+    .q-ok{color:#9fe0a0}
+    .q-remember{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#dcc9ad;margin:2px 0 8px}
+    .q-back-step{display:inline-block;margin-top:10px;font-size:12px;color:#caa66a;
+      background:none;border:0;cursor:pointer}
+    .q-back-step:hover{color:var(--gold)}
+    .q-sugg{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:240px;
+      overflow-y:auto;background:#1a1109;border:1px solid var(--bd);border-radius:10px;
+      box-shadow:0 14px 40px rgba(0,0,0,.6);padding:4px;display:none}
+    .q-sugg.show{display:block}
+    .q-sugg-item{padding:8px 10px;border-radius:7px;cursor:pointer}
+    .q-sugg-item:hover,.q-sugg-item.active{background:rgba(224,162,74,.12)}
+    .q-sugg-nick{font-weight:700;color:#f6ead2;font-size:13.5px}
+    .q-sugg-meta{font-size:11px;color:#a58c68;margin-top:1px}
+    .q-sugg-twin{color:#e0a86a}
+    .q-sugg-off{color:#bcbcff;font-weight:700}
+    .q-sugg-empty{padding:9px 10px;font-size:12px;color:#8a795a;font-style:italic}
+    html.booting .q-app{visibility:hidden}
+  </style>
 </head>
 <body>
+  <div id="qs-page-bg"></div>
+  <script>
+    (function () {
+      var h = (new Date().getUTCHours() + 3) % 24, night = (h >= 20 || h < 7);
+      var b = document.getElementById("qs-page-bg");
+      if (b) b.style.backgroundImage = "url('assets/queue/scene/world-" + (night ? "night" : "day") + ".webp?v=4')";
+    })();
+  </script>
+  <div class="q-app">
+    <div class="q-top">
+      <img src="assets/logo.png?v=1798200000" alt="">
+      <div class="t">SanTDeviL</div>
+    </div>
 
+    <main class="q-auth" id="auth" hidden>
+      <img class="q-auth-ic" src="assets/logo.png?v=1798200000" alt="">
+      <h1>Вход в систему клана</h1>
+      <p class="sub" id="auth-sub">Выбери свой игровой ник, чтобы войти</p>
 
-  <main class="auth-shell">
-    <form class="auth-card" id="login-form" autocomplete="on" novalidate>
-
-      <header class="auth-head">
-        <img class="auth-logo" src="assets/logo.png?v=1798200000" alt="">
-        <h1 class="auth-title">SanTDeviL</h1>
-        <p class="auth-sub">Добро пожаловать</p>
-      </header>
-
-      <div class="auth-field">
-        <label for="f-nick">Введите ваш игровой ник</label>
-        <input type="text" id="f-nick" name="username"
-               autocomplete="username"
-               required maxlength="64"
-               autofocus>
+      <!-- шаг 1: ник -->
+      <div id="step-nick">
+        <div class="q-field">
+          <label for="q-nick">Твой игровой ник</label>
+          <input id="q-nick" type="text" autocomplete="off" maxlength="64" placeholder="Начни вводить ник…">
+          <div class="q-sugg" id="q-sugg"></div>
+        </div>
+        <button class="q-btn" id="btn-next">Далее</button>
       </div>
 
-      <div class="auth-field auth-field--pwd">
-        <label for="f-password">Офицерский пароль</label>
-        <input type="password" id="f-password" name="password"
-               autocomplete="current-password"
-               placeholder="Введите офицерский пароль"
-               required maxlength="200">
-        <button type="button" class="pwd-toggle" data-pwd-for="f-password"
-                aria-label="Показать пароль" title="Показать пароль">
-          <svg class="i-eye" viewBox="0 0 24 24" width="20" height="20" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          <svg class="i-eye-off" viewBox="0 0 24 24" width="20" height="20" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94"/>
-            <path d="M9.9 5.08A10.94 10.94 0 0 1 12 5c7 0 10 7 10 7a18.5 18.5 0 0 1-3.18 4.18"/>
-            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
-            <line x1="2" y1="2" x2="22" y2="22"/>
-          </svg>
-        </button>
+      <!-- шаг 2а: РЕГИСТРАЦИЯ (первый вход) -->
+      <div id="step-register" hidden>
+        <div class="q-hint">🔑 Введи <b>свой личный пароль</b> (высланный на почту в игре) или
+          <b>общий пароль</b> гильдии (в игре, кнопка <b>G</b>). Офицеры — <b>офицерский пароль</b>.</div>
+        <div class="q-field">
+          <label for="q-shared" id="q-shared-lbl">Высланный / общий / офицерский пароль</label>
+          <input id="q-shared" type="password" autocomplete="off" maxlength="200">
+        </div>
+        <div class="q-field">
+          <label for="q-email">Почта (для восстановления пароля, необязательно)</label>
+          <input id="q-email" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-newpass">Придумай свой личный пароль</label>
+          <input id="q-newpass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem1" checked> запомнить меня на этом устройстве</label>
+        <button class="q-btn" id="btn-register">Войти</button>
+        <button class="q-back-step" data-back>← другой ник</button>
       </div>
 
-      <p class="auth-hint">🔒 Пароль есть в <b>закреплённом сообщении</b> офицерского чата ВК или Telegram</p>
+      <!-- шаг 2в: ОФИЦЕР -->
+      <div id="step-officer" hidden>
+        <div class="q-hint">✦ Это <b>офицерский ник</b>. Введи <b>офицерский пароль</b> —
+          он в <b>закреплённом сообщении</b> чата гильдии в Telegram и VK.</div>
+        <div class="q-field">
+          <label for="q-off-pass">Офицерский пароль</label>
+          <input id="q-off-pass" type="password" autocomplete="off" maxlength="200" placeholder="из закрепа чата TG/VK">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem-off" checked> оставаться в системе</label>
+        <button class="q-btn" id="btn-officer">Войти как офицер</button>
+        <button class="q-back-step" data-back>← другой ник</button>
+      </div>
 
-      <button type="submit" class="auth-submit" id="login-btn">Войти</button>
+      <!-- шаг 2б: ВХОД (уже есть личный пароль) -->
+      <div id="step-login" hidden>
+        <div class="q-field">
+          <label for="q-pass">Твой личный пароль</label>
+          <input id="q-pass" type="password" autocomplete="current-password" maxlength="200">
+        </div>
+        <label class="q-remember"><input type="checkbox" id="q-rem2" checked> оставаться в системе</label>
+        <button class="q-btn" id="btn-login">Войти</button>
+        <button type="button" id="btn-forgot" style="background:none;border:0;color:#caa66a;cursor:pointer;font-size:12.5px;text-decoration:underline;padding:4px;margin:2px auto 0;display:block">Забыл пароль?</button>
+        <button class="q-back-step" data-back>← другой ник</button>
+      </div>
 
-      <p class="auth-error" id="login-error" role="alert" aria-live="polite"></p>
+      <!-- шаг: ВОССТАНОВЛЕНИЕ ПАРОЛЯ -->
+      <div id="step-recover" hidden>
+        <div class="q-hint" id="q-rec-hint">Введи <b>почту, которую указал при регистрации</b> — и задай новый пароль.</div>
+        <div class="q-field">
+          <label for="q-rec-email">Почта с регистрации</label>
+          <input id="q-rec-email" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-rec-newpass">Новый личный пароль</label>
+          <input id="q-rec-newpass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <button class="q-btn" id="btn-recover">Восстановить и войти</button>
+        <button class="q-back-step" data-back>← назад</button>
+      </div>
 
-      <div class="auth-or"><span>или</span></div>
+      <!-- шаг: ОФИЦЕР дозаполняет личный пароль -->
+      <div id="step-officer-setup" hidden>
+        <div class="q-hint">✦ Ты вошёл как офицер <b id="q-osetup-name"></b>. Теперь, как и у всех,
+          придумай <b>свой личный пароль</b> — дальше будешь входить только им.</div>
+        <div class="q-field">
+          <label for="q-osetup-email">Почта (для восстановления, необязательно)</label>
+          <input id="q-osetup-email" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+        </div>
+        <div class="q-field">
+          <label for="q-osetup-pass">Придумай свой личный пароль</label>
+          <input id="q-osetup-pass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <button class="q-btn" id="btn-osetup">Сохранить пароль и продолжить</button>
+      </div>
 
-      <button type="button" class="auth-guest" id="guest-btn">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-        <span>Войти как гость</span>
-        <small>просмотр таблицы Доблести и статистики</small>
-      </button>
+      <!-- шаг: вошёл ВЫСЛАННЫМ паролем → предложить придумать свой -->
+      <div id="step-setpw" hidden>
+        <div class="q-hint">✅ Ты вошёл. Сейчас у тебя <b>высланный пароль</b>. Придумай <b>свой личный</b> —
+          дальше будешь входить только им. Можно и пропустить.</div>
+        <div class="q-field">
+          <label for="q-setpw-pass">Новый личный пароль</label>
+          <input id="q-setpw-pass" type="password" autocomplete="new-password" maxlength="200" placeholder="минимум 4 символа">
+        </div>
+        <button class="q-btn" id="btn-setpw">Сохранить и продолжить</button>
+        <button class="q-btn ghost" id="btn-setpw-skip">Пропустить</button>
+      </div>
 
-      <a class="auth-secondary" href="admin_login.html">Я администратор</a>
-    </form>
-  </main>
+      <p class="q-err" id="auth-err" role="alert"></p>
+
+      <details id="q-admin-login" style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:12px;color:#8a795a;list-style:none;text-align:center">⚙ Вход для администратора</summary>
+        <div class="q-field" style="margin-top:10px">
+          <label for="q-adm-user">Логин администратора</label>
+          <input id="q-adm-user" type="text" autocomplete="username" maxlength="120">
+        </div>
+        <div class="q-field">
+          <label for="q-adm-pass">Пароль администратора</label>
+          <input id="q-adm-pass" type="password" autocomplete="current-password" maxlength="200">
+        </div>
+        <button class="q-btn" id="btn-adm-login">Войти как админ</button>
+        <p class="q-err" id="q-adm-err"></p>
+      </details>
+    </main>
+  </div>
 
   <script src="config.js?v=1791600000"></script>
-  <script src="js/api.js?v=1816500000"></script>
-  <script src="js/password_toggle.js?v=1795930000"></script>
-  <script src="js/login.js?v=1795930000"></script>
-  <script src="js/tooltips.js?v=1802000000"></script>
-  <script src="js/social-bar.js?v=1889200000"></script>
+  <script src="js/site-login.js?v=1896300000"></script>
 </body>
 </html>

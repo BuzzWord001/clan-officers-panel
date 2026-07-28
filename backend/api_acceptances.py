@@ -44,7 +44,7 @@ def _save_shot(acc_id: int, data_url: str) -> bool:
 
 
 def _officer_only(s: dict) -> None:
-    if s["role"] == "guest":
+    if s["role"] in ("guest", "member"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
 
 

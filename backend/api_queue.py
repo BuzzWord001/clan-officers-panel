@@ -401,6 +401,12 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN priv_stacks INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: пароль выдан/выслан (не придуман самим) → предложить придумать свой личный.
+        # 1 = временный/высланный на почту; 0 = игрок придумал сам.
+        try:
+            conn.execute("ALTER TABLE queue_accounts ADD COLUMN pw_temp INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
         # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
         try:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
@@ -656,7 +662,8 @@ def _acc_public(acc) -> dict:
     k = acc.keys()
     return {"main_nick": acc["main_nick"], "main_canon": acc["main_canon"],
             "reg_nick": acc["reg_nick"], "email": acc["email"],
-            "active_nick": ((acc["active_nick"] if "active_nick" in k else "") or acc["main_nick"])}
+            "active_nick": ((acc["active_nick"] if "active_nick" in k else "") or acc["main_nick"]),
+            "pw_temp": bool(acc["pw_temp"]) if "pw_temp" in k else False}
 
 
 def _player_ctx(conn, request: Request):
@@ -1070,6 +1077,83 @@ def check_nick(payload: CheckIn) -> dict:
                 "officer": (cn in offs or p["main_canon"] in offs)}
 
 
+# ── ЕДИНЫЙ ДОСТУП: массовая генерация личных паролей участников ─────────────
+
+_PW_ALPHABET = "abcdefghjkmnpqrstvwxyz"    # без i,l,o,u — чтобы не путать при рассылке
+_PW_DIGITS = "23456789"                     # без 0 и 1
+
+
+def _gen_password() -> str:
+    """Читаемый, но стойкий пароль: 4 буквы + '-' + 4 буквы/цифры."""
+    a = "".join(secrets.choice(_PW_ALPHABET) for _ in range(4))
+    b = "".join(secrets.choice(_PW_ALPHABET + _PW_DIGITS) for _ in range(4))
+    return a + "-" + b
+
+
+def _roster_persons(conn) -> dict[str, str]:
+    """Реальные ЛЮДИ текущего клана: уник. main_canon по ПОСЛЕДНЕМУ снимку Доблести
+    (актуальный ростер, 183 персонажа → люди с учётом твинов). Реестр приёмов
+    НЕ подмешиваем — там ушедшие и фантомы. Возвращает {main_canon: отображаемый ник}."""
+    idx = _people(conn)
+    snap = conn.execute("SELECT id FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+    persons: dict[str, str] = {}
+    if not snap:
+        return persons
+    for r in conn.execute("SELECT nick_canon FROM valor_members WHERE snapshot_id=?", (snap["id"],)):
+        p = idx.get(r["nick_canon"])
+        if not p:
+            continue
+        mc = p.get("main_canon") or r["nick_canon"]
+        if mc and mc not in persons:
+            persons[mc] = p.get("main_nick") or p.get("nick") or r["nick_canon"]
+    return persons
+
+
+class GenPwIn(BaseModel):
+    scope: str = Field("missing", pattern=r"^(missing|all)$")
+
+
+@router.post("/admin/gen-passwords")
+def gen_passwords(payload: GenPwIn, actor: dict = Depends(require_admin)) -> dict:
+    """Массовая генерация ЛИЧНЫХ паролей (по одному на человека = main_canon).
+    scope=missing — только тем, у кого ещё НЕТ аккаунта; scope=all — перегенерить всем.
+    Плейнтекст показывается ОДИН раз для рассылки; в БД хранится только bcrypt-хэш."""
+    out = []
+    with db.connection() as conn:
+        persons = _roster_persons(conn)
+        for mc, nick in sorted(persons.items(), key=lambda kv: (kv[1] or "").lower()):
+            acc = _account_by_main(conn, mc)
+            if acc and payload.scope == "missing":
+                out.append({"nick": nick, "canon": mc, "status": "есть", "password": ""})
+                continue
+            pw = _gen_password()
+            h = _hash(pw)
+            if acc:
+                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?",
+                             (h, acc["id"]))
+                st = "сброшен"
+            else:
+                conn.execute(
+                    "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, "
+                    "password_hash, created_at, pw_temp) VALUES (?,?,?,?,?,?,1)",
+                    (mc, nick, nick, "", h, _now()))
+                st = "новый"
+            out.append({"nick": nick, "canon": mc, "status": st, "password": pw})
+    made = [o for o in out if o["password"]]
+    return {"total": len(out), "generated": len(made), "items": out}
+
+
+@router.get("/admin/access-status")
+def access_status(_: dict = Depends(require_admin)) -> dict:
+    """Сводка по доступу: сколько людей с аккаунтом (личным паролем) и сколько без."""
+    with db.connection() as conn:
+        persons = _roster_persons(conn)
+        have, missing = [], []
+        for mc, nick in sorted(persons.items(), key=lambda kv: (kv[1] or "").lower()):
+            (have if _account_by_main(conn, mc) else missing).append(nick)
+    return {"total": len(persons), "have": len(have), "missing": missing}
+
+
 @router.get("/admin/manual-nicks")
 def manual_nicks_list(_: dict = Depends(require_admin)) -> dict:
     """Список ручных ников (для админ-панели)."""
@@ -1278,7 +1362,9 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
                  detail="офицер зарегистрировал личный пароль")
             return {"ok": True, "role": "officer", "officer": True,
                     "account": _acc_public(acc), "device_token": dev_token, "token": tok}
-        return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
+        tok = set_session(response, role="member", name=main_nick)
+        return {"ok": True, "role": "member", "account": _acc_public(acc),
+                "device_token": dev_token, "token": tok}
 
 
 @router.post("/login")
@@ -1308,7 +1394,29 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
             tok = set_session(response, role="officer", name=acc["main_nick"])
             return {"ok": True, "role": "officer", "officer": True,
                     "account": _acc_public(acc), "device_token": dev_token, "token": tok}
-        return {"ok": True, "account": _acc_public(acc), "device_token": dev_token}
+        # обычный игрок → member-сессия на весь сайт (единый вход)
+        tok = set_session(response, role="member", name=acc["main_nick"])
+        return {"ok": True, "role": "member", "account": _acc_public(acc),
+                "device_token": dev_token, "token": tok}
+
+
+class ChangePwIn(BaseModel):
+    personal_password: str = Field(min_length=4, max_length=200)
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePwIn, request: Request, response: Response) -> dict:
+    """Сменить СВОЙ личный пароль (вошедший игрок). Используется после входа высланным
+    паролем — «придумай свой». Ставит новый хэш и снимает флаг pw_temp."""
+    with db.connection() as conn:
+        acc = _account_from_request(conn, request)
+        if not acc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
+        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=0 WHERE id=?",
+                     (_hash(payload.personal_password), acc["id"]))
+        _log(conn, "change_password", actor=acc["main_nick"], nick=acc["main_nick"],
+             request=request, detail="сменил личный пароль")
+    return {"ok": True}
 
 
 @router.post("/officer-login")

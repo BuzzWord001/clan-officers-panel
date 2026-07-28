@@ -15,7 +15,7 @@ def history(
     limit: int = Query(default=200, ge=1, le=1000),
     s: dict = Depends(current_session),
 ) -> list[dict]:
-    if s["role"] == "guest":
+    if s["role"] in ("guest", "member"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
     return db.list_audit(limit)
 
