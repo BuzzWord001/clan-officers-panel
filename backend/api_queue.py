@@ -348,6 +348,31 @@ def ensure_queue_tables() -> None:
               added_by   TEXT    NOT NULL DEFAULT '',
               served_at  TEXT    NOT NULL DEFAULT ''
             );
+
+            -- Ушедшие из клана, УДАЛЁННЫЕ из очереди авто-сверкой с актуальным ростером.
+            -- Запоминаем ВСЁ для точного восстановления места, если человек вернётся:
+            -- очередь, позицию (orig_pos), ресурс(ы), получателя, привилегию, и ПОСЛЕ КОГО
+            -- он стоял (after_nick — человекочитаемо). restored_at != '' → уже возвращён.
+            CREATE TABLE IF NOT EXISTS queue_departed (
+              id           INTEGER PRIMARY KEY AUTOINCREMENT,
+              queue        INTEGER NOT NULL,
+              orig_pos     REAL    NOT NULL,
+              main_canon   TEXT    NOT NULL DEFAULT '',
+              nick         TEXT    NOT NULL DEFAULT '',
+              cls          TEXT    NOT NULL DEFAULT '',
+              resource     TEXT    NOT NULL DEFAULT '',
+              resources    TEXT    NOT NULL DEFAULT '',
+              recipient    TEXT    NOT NULL DEFAULT '',
+              privileged   INTEGER NOT NULL DEFAULT 0,
+              priv_stacks  INTEGER NOT NULL DEFAULT 0,
+              auto_repeat  INTEGER NOT NULL DEFAULT 0,
+              auto_plan    TEXT    NOT NULL DEFAULT '',
+              after_nick   TEXT    NOT NULL DEFAULT '',   -- после кого стоял (предыдущий по pos)
+              after_canon  TEXT    NOT NULL DEFAULT '',
+              removed_at   TEXT    NOT NULL DEFAULT '',
+              reason       TEXT    NOT NULL DEFAULT 'left_clan',
+              restored_at  TEXT    NOT NULL DEFAULT ''
+            );
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_queue_notices_canon ON queue_notices(canon, seen)")
@@ -1143,6 +1168,102 @@ def rebuild_clan_roster() -> dict:
     return res
 
 
+def _rget(r, k, d=""):
+    """Безопасно достать колонку sqlite3.Row (может отсутствовать в старой схеме)."""
+    try:
+        return r[k] if k in r.keys() else d
+    except Exception:
+        return d
+
+
+def reconcile_queue_with_roster() -> dict:
+    """Синхронизирует ОЧЕРЕДЬ с актуальным ростером клана:
+      • УДАЛЯЕТ из очереди тех, кого НЕТ в clan_roster (ушли из клана), ЗАПОМИНАЯ их место
+        (queue_departed: очередь, позиция, ресурс(ы), получатель, привилегия, ПОСЛЕ КОГО стоял) —
+        чтобы восстановить, если вернутся;
+      • ВОЗВРАЩАЕТ ранее удалённых, кто СНОВА в ростере — на прежнюю позицию (orig_pos−0.5, без
+        каскада), с тем же ресурсом/получателем.
+    Fail-safe: пустой/подозрительно маленький ростер → ничего не трогаем."""
+    active = db.clan_roster_active_canons()
+    if len(active) < 20:                     # ростер пуст/битый — не трогаем очередь
+        return {"skipped": "roster_too_small", "roster": len(active)}
+    try:
+        active = active | db.chat_whitelist_nick_canons()
+    except Exception:
+        pass
+    removed, restored = [], []
+    with db.connection() as conn:
+        # ── 1) удалить ушедших, запомнив место ──
+        by_queue: dict = {}
+        for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
+            by_queue.setdefault(r["queue"], []).append(r)
+        for q, rows in by_queue.items():
+            prev_stay = None                 # последний ОСТАВШИЙСЯ (для «после кого»)
+            for r in rows:
+                mc = r["main_canon"] or ""
+                if not mc or mc in active:   # пустой канон не трогаем (не можем проверить)
+                    prev_stay = r
+                    continue
+                conn.execute(
+                    "INSERT INTO queue_departed (queue, orig_pos, main_canon, nick, cls, resource,"
+                    " resources, recipient, privileged, priv_stacks, auto_repeat, auto_plan,"
+                    " after_nick, after_canon, removed_at, reason, restored_at)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')",
+                    (q, r["pos"], mc, r["nick"], _rget(r, "cls"), _rget(r, "resource"),
+                     _rget(r, "resources"), _rget(r, "recipient"), _rget(r, "privileged", 0),
+                     _rget(r, "priv_stacks", 0), _rget(r, "auto_repeat", 0), _rget(r, "auto_plan"),
+                     (prev_stay["nick"] if prev_stay else ""),
+                     (prev_stay["main_canon"] if prev_stay else ""), _now(), "left_clan"))
+                conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+                _log(conn, "auto_remove_left_clan", actor="система", nick=r["nick"], queue=q,
+                     detail="ушёл из клана — убран из очереди %d (место запомнено: после «%s», ресурс %s)"
+                            % (q, (prev_stay["nick"] if prev_stay else "начала"),
+                               _rget(r, "resource") or _rget(r, "resources") or "-"))
+                removed.append({"nick": r["nick"], "queue": q,
+                                "after": (prev_stay["nick"] if prev_stay else "")})
+        # ── 2) вернуть вернувшихся в клан на прежнее место ──
+        for s in conn.execute("SELECT * FROM queue_departed WHERE restored_at='' ORDER BY queue, orig_pos"):
+            mc = s["main_canon"] or ""
+            if mc not in active:
+                continue
+            priv = s["privileged"]
+            ex = conn.execute(
+                "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=?",
+                (s["queue"], mc, priv)).fetchone()
+            target = float(s["orig_pos"]) - 0.5
+            if ex:
+                conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (target, ex["id"]))
+            else:
+                conn.execute(
+                    "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources,"
+                    " recipient, privileged, priv_stacks, auto_repeat, auto_plan, added_by, added_at)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (s["queue"], target, mc, s["nick"], s["cls"], s["resource"], s["resources"],
+                     s["recipient"], priv, s["priv_stacks"], s["auto_repeat"], s["auto_plan"],
+                     "restore_return", _now()))
+            conn.execute("UPDATE queue_departed SET restored_at=? WHERE id=?", (_now(), s["id"]))
+            _log(conn, "auto_restore_returned", actor="система", nick=s["nick"], queue=s["queue"],
+                 detail="вернулся в клан — восстановлен в очереди %d на прежнее место (после «%s»)"
+                        % (s["queue"], s["after_nick"] or "начала"))
+            restored.append({"nick": s["nick"], "queue": s["queue"]})
+    if removed or restored:
+        log.info("queue reconcile: removed=%d restored=%d", len(removed), len(restored))
+    return {"removed": removed, "restored": restored,
+            "removed_count": len(removed), "restored_count": len(restored)}
+
+
+def refresh_membership_and_queue() -> dict:
+    """Полный автономный цикл (планировщик каждые 5 мин + «Готово» + приём в реестр):
+    пересобрать ростер клана и синхронизировать с ним очередь."""
+    r = rebuild_clan_roster()
+    try:
+        q = reconcile_queue_with_roster()
+    except Exception as e:
+        log.exception("queue reconcile failed")
+        q = {"error": str(e)}
+    return {"roster": r, "queue": q}
+
+
 def _nick_allowed(conn, nick, allowed=None) -> bool:
     """Разрешён ли вход этому нику по правилу текущего ростера (см. _current_login_canons)."""
     if allowed is None:
@@ -1287,8 +1408,26 @@ def clan_roster_view(active_only: bool = True, _: dict = Depends(require_admin))
 
 @router.post("/admin/roster/rebuild")
 def clan_roster_rebuild_ep(_: dict = Depends(require_admin)) -> dict:
-    """Ручная пересборка ростера клана (та же, что на «Готово» и ежедневно)."""
-    return rebuild_clan_roster()
+    """Ручная пересборка ростера клана + синхронизация очереди (как на «Готово» и по таймеру)."""
+    return refresh_membership_and_queue()
+
+
+@router.get("/admin/queue-departed")
+def queue_departed_list(include_restored: bool = False,
+                        _: dict = Depends(require_admin)) -> dict:
+    """Ушедшие из клана, УБРАННЫЕ из очереди авто-сверкой — с их местом (очередь, позиция,
+    ресурс, после кого стояли). Для аудита/ручного восстановления."""
+    where = "" if include_restored else "WHERE restored_at=''"
+    with db.connection() as conn:
+        rows = [dict(r) for r in conn.execute(
+            f"SELECT * FROM queue_departed {where} ORDER BY removed_at DESC, queue, orig_pos LIMIT 500")]
+    return {"count": len(rows), "rows": rows}
+
+
+@router.post("/admin/queue-reconcile")
+def queue_reconcile_ep(_: dict = Depends(require_admin)) -> dict:
+    """Ручной запуск сверки очереди с ростером (убрать ушедших, вернуть вернувшихся)."""
+    return reconcile_queue_with_roster()
 
 
 @router.get("/admin/access-status")

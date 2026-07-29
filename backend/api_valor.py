@@ -184,13 +184,16 @@ def valor_request_publish_ep(actor: dict = Depends(require_officer)) -> dict:
         res["top3_tokens_already"] = gt.get("already", False)
     except Exception as e:
         res["top3_tokens_error"] = str(e)
-    # Пересобрать МАТЕРИАЛИЗОВАННЫЙ ростер клана: точные ники этого снимка + принятые после.
-    # Это авторитетный список для входа — обновляется ровно на «Готово» (не догадки на лету).
+    # Пересобрать МАТЕРИАЛИЗОВАННЫЙ ростер клана (точные ники снимка + принятые после) И
+    # синхронизировать очередь (ушедших убрать, вернувшихся вернуть). Авторитетный список
+    # входа/очереди обновляется ровно на «Готово» (не догадки на лету).
     try:
         import api_queue
-        rr = api_queue.rebuild_clan_roster()
+        fr = api_queue.refresh_membership_and_queue()
+        rr = fr.get("roster") or {}
         res["clan_roster"] = {"active": rr.get("active"), "added": rr.get("added"),
                               "removed": rr.get("removed"), "week": rr.get("snapshot_week")}
+        res["queue_sync"] = fr.get("queue")
     except Exception as e:
         res["clan_roster_error"] = str(e)
     return res

@@ -108,21 +108,23 @@ def make_scheduler() -> AsyncIOScheduler:
     # НЕ разлогиниваются — новый пароль требуется только новым офицерам.
     sched.add_job(_rotate_officer_pw_job, CronTrigger(day_of_week="mon", hour=7, minute=0),
                   id="officer_pw_rotate", max_instances=1, coalesce=True)
-    # Материализованный ростер клана: ежедневная пересборка (00:20 UTC = 03:20 МСК) —
-    # страховка, чтобы принятые в реестр/авто-регистрации за сутки попали в список входа,
-    # даже если точечный хук почему-то не сработал. Основная сборка — на «Готово».
-    sched.add_job(_rebuild_roster_job, CronTrigger(hour=0, minute=20),
+    # Материализованный ростер клана + синхронизация очереди — КАЖДЫЕ 5 МИНУТ, автономно на
+    # сервере (работает, даже когда ПК владельца выключен). Пересобирает актуальный список
+    # состава (снимок доблести + принятые после) и убирает из очереди ушедших (запоминая место).
+    sched.add_job(_refresh_membership_job, "interval", minutes=5,
                   id="clan_roster_rebuild", max_instances=1, coalesce=True)
     return sched
 
 
-def _rebuild_roster_job() -> None:
+def _refresh_membership_job() -> None:
     try:
         import api_queue
-        r = api_queue.rebuild_clan_roster()
-        log.info("clan_roster daily rebuild: %s", r)
+        r = api_queue.refresh_membership_and_queue()
+        q = r.get("queue") or {}
+        if (q.get("removed_count") or q.get("restored_count")):
+            log.info("membership refresh: %s", r)
     except Exception:
-        log.exception("clan_roster daily rebuild failed")
+        log.exception("membership refresh failed")
 
 
 async def _rotate_officer_pw_job() -> None:
