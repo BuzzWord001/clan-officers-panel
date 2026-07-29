@@ -3549,7 +3549,9 @@ def chat_link_click(payload: ChatLinkClickIn, request: Request) -> dict:
 
 
 _DEFAULT_CHAT_INVITE = {
-    "tg": "https://t.me/+6U3XCSrrZgo1YTMy",
+    # Фолбэк, если в queue_kv нет chat_invite_*. TG — ссылка С ЗАЯВКОЙ НА ВСТУПЛЕНИЕ
+    # (бот авто-одобряет только кликнувших на сайте). Обычно берётся из queue_kv (Настройки/kv_set).
+    "tg": "https://t.me/+IoqFqrfivoxiNDJi",
     "vk": "https://vk.me/join/rya0CI_hEnkgsCQdahj2jIb3r0wD6OHIA_E=",
 }
 
