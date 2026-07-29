@@ -1365,7 +1365,10 @@ def member_dossier(nick_or_canon: str) -> dict | None:
         for r in all_tw:
             if _valor_canon(r["main_nick"] or "") == main or r["main_canon"] == main:
                 tnick = r["twin_nick"] or r["canon"]
-                tvc = _valor_canon(tnick)
+                # КАНОН твина берём из queue_twins.canon (class-aware, напр. interprisoboroten) —
+                # иначе у омонима-твина с ТЕМ ЖЕ ником, что мэйн (INTerpris-Оборотень), базовый
+                # канон совпал бы с мэйном и твин выпал бы из списка.
+                tvc = (r["canon"] or "").strip() or _valor_canon(tnick)
                 if tvc and tvc != main and tvc not in seen_tw:
                     seen_tw.add(tvc)
                     twin_rows.append((tnick, tvc))
@@ -5276,6 +5279,60 @@ def _valor_canon_cls(nick: str, class_: str | None) -> str:
     return base
 
 
+def _canon_title_match(title_canon: str, nick_canon: str) -> bool:
+    """Титул альта — (усечённый) ник его мэйна. True если равны ИЛИ титул — префикс ника
+    с усечением ≤2 символов (INTerpri→INTerpris), ИЛИ ник — префикс титула (лишние ≤2)."""
+    if not title_canon or not nick_canon or len(title_canon) < 4:
+        return False
+    if title_canon == nick_canon:
+        return True
+    if nick_canon.startswith(title_canon) and 0 < len(nick_canon) - len(title_canon) <= 2:
+        return True
+    if title_canon.startswith(nick_canon) and len(nick_canon) >= 4 and \
+       0 < len(title_canon) - len(nick_canon) <= 2:
+        return True
+    return False
+
+
+def auto_link_twins_by_title(conn, snapshot_id: int) -> list:
+    """АВТО-привязка твина по ТИТУЛУ. Если у КЛАСС-разведённого омонима-альта (напр.
+    INTerpris-Оборотень, канон interprisoboroten; его base-канон == interpris) в ТИТУЛЕ
+    указан ник мэйна — ДАЖЕ УСЕЧЁННЫЙ (INTerpri без последней буквы) — линкуем его как
+    твин мэйна (держателя base-канона того же ника). Так сайт сам понимает связь по
+    неполному нику. Не трогает связанные вручную (queue_twins). Возвращает список привязок."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    rows = conn.execute(
+        "SELECT nick, nick_canon, class_, title FROM valor_members WHERE snapshot_id=?",
+        (snapshot_id,)).fetchall()
+    members = [(r["nick"], r["nick_canon"], (r["title"] or "")) for r in rows]
+    linked = []
+    for nick, canon, title in members:
+        base = _valor_canon(nick)
+        if not canon or canon == base:
+            continue                         # это база/primary, а не альт
+        if conn.execute("SELECT 1 FROM queue_twins WHERE canon=?", (canon,)).fetchone():
+            continue                         # уже связан (вручную/ранее)
+        tcanon = _valor_canon(title)
+        if not tcanon:
+            continue
+        # мэйн = держатель base-канона в ЭТОМ снимке (primary-класс), чей ник совпадает
+        # с титулом альта (равен/усечён). Обычно ровно один.
+        main = None
+        for mn, mc, _t in members:
+            if mc == base and _canon_title_match(tcanon, _valor_canon(mn)):
+                main = (mn, mc)
+                break
+        if not main:
+            continue
+        mn, mc = main
+        conn.execute(
+            "INSERT INTO queue_twins (canon, main_canon, main_nick, twin_nick, updated_by, updated_at)"
+            " VALUES (?,?,?,?,?,?) ON CONFLICT(canon) DO NOTHING",
+            (canon, mc, mn, nick, "auto:title-twin", now))
+        linked.append({"twin": nick, "twin_canon": canon, "main": mn, "via_title": title})
+    return linked
+
+
 def _acceptance_nicks(raw: str) -> list[tuple[str, str]]:
     """Разбор поля game_nick реестра приёма в [(canon, написание), ...].
 
@@ -6681,6 +6738,12 @@ def valor_save_snapshot(
                     )
                     history_added += 1
 
+        # АВТО-твины по титулу: альт с ником мэйна в титуле (даже усечённым) → твин мэйна.
+        try:
+            auto_twins = auto_link_twins_by_title(conn, snap_id)
+        except Exception:
+            auto_twins = []
+
     return {
         "snapshot_id": snap_id,
         "members": len(members),
@@ -6688,6 +6751,7 @@ def valor_save_snapshot(
         "departed_added": len(departed_now),
         "returned": returned,
         "true_name_enriched": enriched,
+        "auto_twins": auto_twins,
     }
 
 
