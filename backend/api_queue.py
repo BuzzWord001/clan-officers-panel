@@ -1070,19 +1070,7 @@ def _current_login_canons(conn) -> set:
                     allowed_main.add(p["main_canon"])
     except Exception:
         pass
-    # УЖЕ ЗАРЕГИСТРИРОВАННЫЕ (есть аккаунт с личным паролём) — вход разрешён ВСЕГДА:
-    # система их запомнила, членство подтверждено при регистрации. Иначе ростер-фильтр
-    # выкидывал бы того, кто выпал из последнего снимка доблести, но давно завёл пароль
-    # (Лир 2026-07-29 — «пускать без проблем как и раньше»).
-    acc_canons = set()
-    try:
-        for r in conn.execute("SELECT main_canon FROM queue_accounts WHERE main_canon IS NOT NULL AND main_canon<>''"):
-            acc_canons.add(r["main_canon"])
-    except Exception:
-        pass
-    allowed_main |= acc_canons
     result = {cn for cn, p in idx.items() if p["main_canon"] in allowed_main}
-    result |= acc_canons                          # на случай, если их нет в индексе людей
     # Белый список чатов — этим людям вход разрешён всегда, даже если их нет в клане.
     try:
         result |= db.chat_whitelist_nick_canons()
@@ -1131,26 +1119,16 @@ def check_nick(payload: CheckIn) -> dict:
     with db.connection() as conn:
         p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         if not p:
-            # Нет в индексе людей, НО уже есть аккаунт по канону ника → зарегистрирован
-            # ранее, система его запомнила → пускаем к вводу личного пароля. Так уже
-            # авторизованные, выпавшие из данных доблести, входят «как и раньше»
-            # (Лир 2026-07-29). login() их всё равно принимает по паролю.
-            acc0 = _account_by_main(conn, db._valor_canon(payload.nick))
-            if acc0:
-                offs0 = _officer_canons(conn)
-                is_off0 = (acc0["main_canon"] in offs0
-                           or db._valor_canon(payload.nick) in offs0)
-                return {"ok": True, "nick": acc0["main_nick"], "main_nick": acc0["main_nick"],
-                        "is_twin": False, "registered": True, "officer": is_off0}
             return {"ok": False, "reason": "not_found"}
         offs = _officer_canons(conn)
         cn = p["main_canon"]
         is_off = cn in offs or db._valor_canon(payload.nick) in offs
-        acc = _account_by_main(conn, p["main_canon"])
-        # ПРАВИЛО РОСТЕРА: пускаем только текущий состав (последний снимок + новые в реестре).
-        # Офицеров и УЖЕ ЗАРЕГИСТРИРОВАННЫХ (есть acc) пускаем всегда.
-        if not is_off and not acc and not _nick_allowed(conn, payload.nick):
+        # ПРАВИЛО РОСТЕРА: пускаем только ТЕКУЩИЙ состав (последний снимок доблести + принятые
+        # после + белый список). Ушедший из клана — not_in_clan, даже если он завёл пароль.
+        # Офицеров пускаем всегда (у них отдельный сильный пароль).
+        if not is_off and not _nick_allowed(conn, payload.nick):
             return {"ok": False, "reason": "not_in_clan"}
+        acc = _account_by_main(conn, p["main_canon"])
         return {"ok": True, "nick": p["nick"], "main_nick": p["main_nick"],
                 "is_twin": p["is_twin"], "registered": bool(acc),
                 "officer": is_off}
@@ -1525,10 +1503,11 @@ def login(payload: LoginIn, request: Request, response: Response) -> dict:
         p = _resolve_person(conn, payload.nick)   # ручной ник имеет приоритет
         main_canon = p["main_canon"] if p else db._valor_canon(payload.nick)
         acc = _account_by_main(conn, main_canon)
-        # ПРАВИЛО РОСТЕРА: вход только текущему составу (последний снимок + новые в реестре).
-        # НЕ блокируем офицеров И уже зарегистрированных (есть acc — система запомнила,
-        # членство подтверждено при регистрации). Гейт только для НОВЫХ ников без аккаунта.
-        if not acc and not _is_officer_nick(conn, payload.nick) and not _nick_allowed(conn, payload.nick):
+        # ПРАВИЛО РОСТЕРА: вход только ТЕКУЩЕМУ составу — кто в последнем снимке доблести
+        # (после «Готово — обновить доблесть») ИЛИ принят в реестр после него ИЛИ в белом
+        # списке чатов. Ушедший из клана (даже со своим паролём) — НЕ входит. Офицеров не
+        # блокируем (у них отдельный сильный пароль).
+        if not _is_officer_nick(conn, payload.nick) and not _nick_allowed(conn, payload.nick):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "not_in_clan")
         # Офицерский ник, но аккаунта ещё нет → сначала зарегистрировать личный пароль офиц. паролем.
         # Ручной ник — отдельный человек, не наследует офицерство гомоглиф-двойника.
