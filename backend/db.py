@@ -756,6 +756,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )""")
     except sqlite3.OperationalError:
         pass
+    # 2026-07-29: МАТЕРИАЛИЗОВАННЫЙ РОСТЕР КЛАНА — авторитетный список тех, кому разрешён
+    # вход на сайт. Каждый КАНОН (мэйн + твины) действующего участника = строка active=1.
+    # Пересобирается из ПОСЛЕДНЕГО снимка доблести (при «Готово») + принятых в реестр после
+    # него + ежедневно планировщиком. Вход сверяется с ним (не пересчёт «на лету»/догадки).
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS clan_roster (
+            canon         TEXT PRIMARY KEY,       -- канон ника (identity)
+            nick          TEXT NOT NULL DEFAULT '',
+            main_canon    TEXT NOT NULL DEFAULT '',
+            source        TEXT NOT NULL DEFAULT 'valor',  -- 'valor' (снимок) | 'registry' (принят после)
+            snapshot_week TEXT NOT NULL DEFAULT '',
+            added_at      TEXT NOT NULL DEFAULT '',
+            active        INTEGER NOT NULL DEFAULT 1,
+            removed_at    TEXT NOT NULL DEFAULT ''
+        )""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_clan_roster_active ON clan_roster(active)")
+    except sqlite3.OperationalError:
+        pass
     # 2026-07-02: ЖИВОЙ РОСТЕР чатов — множество id ВСЕХ участников (вкл.
     # незарегистрированных), кто СЕЙЧАС в VK/TG чатах. Присылает reconcile бота.
     # Даёт точный «в чате сейчас» для ЛЮБОГО (не только зарег.). kv_meta.k=
@@ -1685,6 +1703,84 @@ def chat_whitelist_nick_canons() -> set:
     except Exception:
         pass
     return out
+
+
+# ─────────────────── МАТЕРИАЛИЗОВАННЫЙ РОСТЕР КЛАНА ───────────────────
+# Авторитетный список канонов, кому разрешён вход. Пересобирается api_queue.rebuild_clan_roster
+# из последнего снимка доблести + принятых после. Вход читает clan_roster_active_canons().
+
+def clan_roster_replace(rows: list[dict]) -> dict:
+    """ПОЛНАЯ пересборка ростера: строки rows (canon/nick/main_canon/source/snapshot_week) →
+    active=1 (upsert), отсутствующие ранее активные → active=0 (выбыли). Атомарно.
+    Возвращает {active, added, removed}."""
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    present = {}
+    for r in rows:
+        cn = (r.get("canon") or "").strip()
+        if cn:
+            present[cn] = r
+    with connection() as conn:
+        prev_active = {r["canon"] for r in conn.execute(
+            "SELECT canon FROM clan_roster WHERE active=1")}
+        for cn, r in present.items():
+            conn.execute(
+                """INSERT INTO clan_roster (canon, nick, main_canon, source, snapshot_week, added_at, active, removed_at)
+                   VALUES (?,?,?,?,?,?,1,'')
+                   ON CONFLICT(canon) DO UPDATE SET
+                     nick=excluded.nick, main_canon=excluded.main_canon, source=excluded.source,
+                     snapshot_week=excluded.snapshot_week, active=1, removed_at='',
+                     added_at=CASE WHEN clan_roster.active=1 THEN clan_roster.added_at ELSE excluded.added_at END""",
+                (cn, r.get("nick") or "", r.get("main_canon") or cn,
+                 r.get("source") or "valor", r.get("snapshot_week") or "", now))
+        gone = prev_active - set(present.keys())
+        for cn in gone:
+            conn.execute("UPDATE clan_roster SET active=0, removed_at=? WHERE canon=?", (now, cn))
+        added = set(present.keys()) - prev_active
+    return {"active": len(present), "added": len(added), "removed": len(gone)}
+
+
+def clan_roster_add(canon: str, nick: str, main_canon: str, source: str,
+                    snapshot_week: str = "") -> None:
+    """Добавить/реактивировать ОДИН канон в ростере (например, принятого в реестр после снимка)."""
+    cn = (canon or "").strip()
+    if not cn:
+        return
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO clan_roster (canon, nick, main_canon, source, snapshot_week, added_at, active, removed_at)
+               VALUES (?,?,?,?,?,?,1,'')
+               ON CONFLICT(canon) DO UPDATE SET
+                 nick=excluded.nick, main_canon=excluded.main_canon, active=1, removed_at=''""",
+            (cn, nick or "", main_canon or cn, source or "registry", snapshot_week or "", now))
+
+
+def clan_roster_active_canons() -> set:
+    """Набор канонов действующего состава (active=1) — авторитет для входа."""
+    try:
+        with connection() as conn:
+            return {r["canon"] for r in conn.execute(
+                "SELECT canon FROM clan_roster WHERE active=1")}
+    except Exception:
+        return set()
+
+
+def clan_roster_list(active_only: bool = True, limit: int = 1000) -> list[dict]:
+    """Список ростера (для админ-панели/аудита)."""
+    where = "WHERE active=1" if active_only else ""
+    with connection() as conn:
+        return [dict(r) for r in conn.execute(
+            f"SELECT canon, nick, main_canon, source, snapshot_week, added_at, active, removed_at "
+            f"FROM clan_roster {where} ORDER BY active DESC, nick COLLATE NOCASE LIMIT ?", (limit,))]
+
+
+def clan_roster_stats() -> dict:
+    with connection() as conn:
+        a = conn.execute("SELECT COUNT(*) c FROM clan_roster WHERE active=1").fetchone()["c"]
+        t = conn.execute("SELECT COUNT(*) c FROM clan_roster").fetchone()["c"]
+        wk = conn.execute("SELECT snapshot_week FROM clan_roster WHERE active=1 AND source='valor' "
+                          "ORDER BY snapshot_week DESC LIMIT 1").fetchone()
+    return {"active": a, "total": t, "snapshot_week": (wk["snapshot_week"] if wk else "")}
 
 
 def list_acceptances(include_archived: bool = False) -> list[dict[str, Any]]:

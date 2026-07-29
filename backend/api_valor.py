@@ -105,6 +105,12 @@ def valor_snapshot(payload: ValorSnapshotIn,
         log.warning("class fill from history failed: %s", e)
     log.info("valor snapshot saved: week=%s members=%d history_added=%d",
              payload.week, res["members"], res["history_added"])
+    # Материализуем ростер клана из свежего снимка (авторитет для входа на сайт).
+    try:
+        import api_queue
+        res["clan_roster"] = api_queue.rebuild_clan_roster()
+    except Exception as e:
+        log.warning("clan_roster rebuild after ingest failed: %s", e)
     return res
 
 
@@ -178,6 +184,15 @@ def valor_request_publish_ep(actor: dict = Depends(require_officer)) -> dict:
         res["top3_tokens_already"] = gt.get("already", False)
     except Exception as e:
         res["top3_tokens_error"] = str(e)
+    # Пересобрать МАТЕРИАЛИЗОВАННЫЙ ростер клана: точные ники этого снимка + принятые после.
+    # Это авторитетный список для входа — обновляется ровно на «Готово» (не догадки на лету).
+    try:
+        import api_queue
+        rr = api_queue.rebuild_clan_roster()
+        res["clan_roster"] = {"active": rr.get("active"), "added": rr.get("added"),
+                              "removed": rr.get("removed"), "week": rr.get("snapshot_week")}
+    except Exception as e:
+        res["clan_roster_error"] = str(e)
     return res
 
 

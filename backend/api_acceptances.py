@@ -118,6 +118,12 @@ def create(payload: AcceptanceIn, actor: dict = Depends(current_actor),
         has = _save_shot(res["id"], payload.combat_shot)
         db.acceptance_set_shot(res["id"], has)
         res["has_shot"] = has
+    # Принятый в реестр — сразу в материализованный ростер клана (вход открывается тут же).
+    try:
+        import api_queue
+        api_queue.rebuild_clan_roster()
+    except Exception:
+        pass
     return res
 
 

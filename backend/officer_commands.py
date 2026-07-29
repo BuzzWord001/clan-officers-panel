@@ -114,6 +114,11 @@ def _accept(rest: str, actor: dict) -> str:
     db.create_acceptance(game_nick=nick, title=title,
                          accepted_date=date.today().isoformat(),
                          note="", role_pending=True, by_officer=True, actor=actor)
+    try:                                              # принятый — сразу в ростер клана (вход открыт)
+        import api_queue
+        api_queue.rebuild_clan_roster()
+    except Exception:
+        pass
     warn = _prev_clan_warning(nick)
     return ("✅ Готово! Внёс в список принятых в клан:\n"
             "• Ник: " + nick + "\n"

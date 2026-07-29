@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,8 @@ import auth_pwd
 from config import settings
 from session import require_admin, current_session, set_session
 from api_chat import require_bot_token   # bot-token auth (десктоп PW Анализ доблести)
+
+log = logging.getLogger("officers.queue")
 
 
 def require_officer_or_admin(request: Request) -> dict:
@@ -1042,22 +1045,21 @@ def _resolve_person(conn, typed: str):
     return _people(conn).get(db._valor_canon(typed))
 
 
-def _current_login_canons(conn) -> set:
-    """Кому РАЗРЕШЁН вход на сайт: кто был в ПОСЛЕДНЕМ снимке Доблести (последнее нажатие
-    «Готово — обновить доблесть») + принятые в реестр ПОСЛЕ этого снимка (новые люди, ещё
-    не попавшие в снимок). Прочим (ушедшие/старьё) — вход закрыт.
-    Возвращает набор ВСЕХ канонов разрешённых людей (мэйн + твины) — вход по любому их нику."""
+def _membership_main_canons(conn) -> dict:
+    """MAIN-каноны действующего состава → источник ('valor'|'registry').
+    = кто в ПОСЛЕДНЕМ снимке Доблести (после «Готово») + принятые в реестр ПОСЛЕ снимка.
+    Базовый расчёт, из него материализуется clan_roster и считается вход."""
     idx = _people(conn)
     snap = conn.execute(
-        "SELECT id, captured_at FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+        "SELECT id, week, captured_at FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
     if not snap:
-        return set(idx.keys())                      # снимков нет — не блокируем (fail-open)
+        return {}                                   # снимков нет — вызывающий решает (fail-open)
     cut = (snap["captured_at"] or "")[:10]
-    allowed_main = set()
+    main_src: dict[str, str] = {}
     for r in conn.execute("SELECT nick FROM valor_members WHERE snapshot_id=?", (snap["id"],)):
         p = idx.get(db._valor_canon(r["nick"]))
         if p:
-            allowed_main.add(p["main_canon"])
+            main_src.setdefault(p["main_canon"], "valor")
     try:
         for r in conn.execute(
                 "SELECT game_nick, created_at, accepted_date FROM acceptances "
@@ -1067,16 +1069,78 @@ def _current_login_canons(conn) -> set:
                 first = (r["game_nick"] or "").split(",")[0]
                 p = idx.get(db._valor_canon(first))
                 if p:
-                    allowed_main.add(p["main_canon"])
+                    main_src.setdefault(p["main_canon"], "registry")
     except Exception:
         pass
-    result = {cn for cn, p in idx.items() if p["main_canon"] in allowed_main}
-    # Белый список чатов — этим людям вход разрешён всегда, даже если их нет в клане.
+    return main_src
+
+
+def _compute_membership_canons(conn) -> set:
+    """ВСЕ каноны (мэйн+твины) действующих + белый список — расчёт «на лету» (fallback)."""
+    idx = _people(conn)
+    main_src = _membership_main_canons(conn)
+    if not main_src and not conn.execute(
+            "SELECT 1 FROM valor_snapshots LIMIT 1").fetchone():
+        return set(idx.keys())                      # снимков нет — не блокируем (fail-open)
+    result = {cn for cn, p in idx.items() if p["main_canon"] in main_src}
     try:
         result |= db.chat_whitelist_nick_canons()
     except Exception:
         pass
     return result
+
+
+def _current_login_canons(conn) -> set:
+    """Кому РАЗРЕШЁН вход. АВТОРИТЕТ — материализованный clan_roster (active=1) + белый список.
+    Если ростер ещё пуст (до первой сборки) — считаем на лету и заодно материализуем."""
+    try:
+        active = db.clan_roster_active_canons()
+    except Exception:
+        active = set()
+    if active:
+        try:
+            active = active | db.chat_whitelist_nick_canons()
+        except Exception:
+            pass
+        return active
+    # Ростер пуст → соберём его один раз, дальше вход идёт из таблицы.
+    try:
+        rebuild_clan_roster()
+        active = db.clan_roster_active_canons()
+        if active:
+            try:
+                active = active | db.chat_whitelist_nick_canons()
+            except Exception:
+                pass
+            return active
+    except Exception:
+        pass
+    return _compute_membership_canons(conn)         # крайний fallback
+
+
+def rebuild_clan_roster() -> dict:
+    """Пересобрать МАТЕРИАЛИЗОВАННЫЙ ростер клана (db.clan_roster) из ПОСЛЕДНЕГО снимка доблести
+    + принятых в реестр после. Разворачивает в ВСЕ каноны (мэйн+твины) действующих. Вызывается
+    при «Готово» (ингест снимка), приёме в реестр и ежедневно планировщиком. Свои соединения —
+    вызывать без открытой транзакции."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        snap = conn.execute(
+            "SELECT week FROM valor_snapshots ORDER BY week DESC LIMIT 1").fetchone()
+        if not snap:
+            return {"skipped": "no_snapshot"}
+        main_src = _membership_main_canons(conn)
+        week = snap["week"]
+        rows = []
+        for cn, p in idx.items():
+            if p["main_canon"] in main_src:
+                rows.append({"canon": cn, "nick": p["nick"], "main_canon": p["main_canon"],
+                             "source": main_src[p["main_canon"]], "snapshot_week": week})
+    res = db.clan_roster_replace(rows)               # своё write-соединение
+    res["snapshot_week"] = week
+    log.info("clan_roster rebuilt: active=%s added=%s removed=%s week=%s",
+             res.get("active"), res.get("added"), res.get("removed"), week)
+    return res
 
 
 def _nick_allowed(conn, nick, allowed=None) -> bool:
@@ -1211,6 +1275,20 @@ def chat_clicks_log(limit: int = 60, _: dict = Depends(require_admin)) -> list[d
             "match_name, match_pid FROM queue_chat_link_click ORDER BY id DESC LIMIT ?",
             (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+@router.get("/admin/roster")
+def clan_roster_view(active_only: bool = True, _: dict = Depends(require_admin)) -> dict:
+    """Материализованный ростер клана: авторитетный список тех, кому разрешён вход
+    (точные ники последнего снимка доблести + принятые после). Для админ-аудита."""
+    return {"stats": db.clan_roster_stats(),
+            "rows": db.clan_roster_list(active_only=active_only, limit=2000)}
+
+
+@router.post("/admin/roster/rebuild")
+def clan_roster_rebuild_ep(_: dict = Depends(require_admin)) -> dict:
+    """Ручная пересборка ростера клана (та же, что на «Готово» и ежедневно)."""
+    return rebuild_clan_roster()
 
 
 @router.get("/admin/access-status")
