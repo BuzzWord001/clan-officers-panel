@@ -583,16 +583,27 @@ def _people(conn) -> dict[str, dict]:
             if res:
                 p["main_canon"], p["main_nick"] = res[0], res[1]["nick"]
     # АВТО-твины по БАРЕ-титулу: клановая практика — писать в титул НИК своего мэйна.
-    # Если титул человека (после снятия ~~) ТОЧНО совпадает с ником реального игрока-мэйна
+    # Если титул человека (после снятия ~~) совпадает с ником реального игрока-мэйна
     # (сворачивая гомоглифы Τοмат=Томат) — значит это его твин. Напр. Ocheeva с титулом
-    # «Череп@шка» → твин Череп@шки. Не трогаем тех, у кого связь задана вручную (ниже).
+    # «Череп@шка» → твин Череп@шки; KyбиК/Юнга_/… с «Vandelli» → твины Vandellia.
+    # УСЕЧЁННЫЙ титул (ник не влез: «Vandelli»→«Vandellia», «Mortalit»→«Mortality») тоже
+    # распознаётся через _resolve_partial (уникальный игрок-префикс). Не трогаем ручные связи.
     manual_forced = set()
     try:
         manual_forced = {r["canon"] for r in conn.execute("SELECT canon FROM queue_twins")}
     except Exception:
         manual_forced = set()
+    # Аккаунт-холдеры — их личность УЖЕ заявлена (свой пароль). Авто-твин по титулу НЕ
+    # переопределяет их мэйна: иначе, напр., у офицера с именем-титулом «Ната» main_canon
+    # уехал бы на «наталия33» и сломал бы ему вход/аккаунт.
+    acct_canons = set()
+    try:
+        acct_canons = {r["main_canon"] for r in conn.execute(
+            "SELECT main_canon FROM queue_accounts") if r["main_canon"]}
+    except Exception:
+        acct_canons = set()
     for cn, p in list(idx.items()):
-        if p.get("is_twin") or cn in manual_forced:
+        if p.get("is_twin") or cn in manual_forced or cn in acct_canons:
             continue
         title = (p.get("title") or "").strip()
         if not title:
@@ -603,7 +614,13 @@ def _people(conn) -> dict[str, dict]:
         if not tc or tc == cn:
             continue
         q = idx.get(tc)
-        if q is not None and not q.get("is_twin") and q.get("main_canon") and q["main_canon"] != cn:
+        qc = tc
+        if q is None:                                # усечённый титул → уникальный игрок-префикс
+            part = _resolve_partial(idx, tc)
+            if part:
+                qc, q = part[0], part[1]
+        if q is not None and qc != cn and not q.get("is_twin") and \
+           q.get("main_canon") and q["main_canon"] != cn:
             p["main_canon"], p["main_nick"], p["is_twin"] = q["main_canon"], q["main_nick"], True
     # Ручные твины/фиксация мэйна (офицер/админ) — ПРИОРИТЕТНЕЕ авто. main_canon==canon → «это МЭЙН»
     # (снять ошибочный авто-твин). Иначе — привязать твина к указанному мэйну.
