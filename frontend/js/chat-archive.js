@@ -443,7 +443,7 @@
   // открывает СВОЙ N-й чат, а не наш SanTDeviL). Поэтому даём invite-link
   // на сам чат: открывает у пользователя именно SanTDeviL-чат.
   const VK_CHAT_INVITES = {
-    general:  "https://vk.me/join/E1aBvLrCJPaFpEEbS4CAFCd27eglsMKwKW4=",
+    general:  "https://vk.me/join/8NPd9uaougB4Yecwva_x2wRKsxB6HEAUP1Q=",
     officers: "https://vk.me/join/3tvOJ0uG27KtZXzFJVI6RJWyqLyeXwD9d8Q=",
   };
   function vkChatInviteUrl(m) {
