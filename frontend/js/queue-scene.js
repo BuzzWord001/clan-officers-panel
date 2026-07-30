@@ -120,6 +120,7 @@
     [].forEach.call(root.querySelectorAll(selector), autoCropImg);
   }
   var UPLOADED = {};   // ключ (person-<canon> | class-<Класс>-<m|f>) -> mtime (загружено админом)
+  var HIDDEN_PERS = {};   // канон -> 1: ВСТРОЕННАЯ персональная модель скрыта админом (не показываем)
   var REWARDS_META = {};   // ключ ресурса -> {mode,unit,threshold,total,text} (движок распределения)
   var SPOUSES = {};        // бэк-канон мэйна -> ник получателя (как хранит сервер)
   var SPOUSE_BY_NICK = {}; // фронт-канон ника -> получатель (для префилла: каноны сторон могут расходиться)
@@ -138,7 +139,7 @@
       if (pu) return { url: pu, key: "person-" + keys[i], uploaded: true };
     }
     for (var j = 0; j < keys.length; j++) {
-      if (keys[j] && PERSONAL[keys[j]]) { var f = PERSONAL[keys[j]];
+      if (keys[j] && PERSONAL[keys[j]] && !HIDDEN_PERS[keys[j]]) { var f = PERSONAL[keys[j]];
         return { url: webpUrl("personal/" + f), key: "personal/" + f }; }
     }
     return null;
@@ -202,7 +203,7 @@
         .forEach(function (k) { n++; push(k, uploadedUrl(k), "Личная " + n, "person", k); });
     });
     keys.forEach(function (cn) {
-      if (PERSONAL[cn] && !UPLOADED["person-" + cn]) {
+      if (PERSONAL[cn] && !UPLOADED["person-" + cn] && !HIDDEN_PERS[cn]) {
         n++; push("pers", webpUrl("personal/" + PERSONAL[cn]), "Личная" + (n > 1 ? " " + n : ""), "person", "personal/" + PERSONAL[cn]);
       }
     });
@@ -5295,11 +5296,17 @@
     // o: {uploadKey, staticKey, title, sub, kind:'class'|'person'}
     function card(o) {
       var up = UPLOADED[o.uploadKey];                 // загружена ли своя (override)
+      // ВСТРОЕННАЯ персональная (ассет из бандла, без загруженной) — её нельзя удалить как файл,
+      // но можно СКРЫТЬ (person + staticKey personal/… + нет загрузки). persHidden — уже скрыта.
+      var isBuiltinPers = (o.kind === "person" && !up && o.staticKey &&
+                           o.staticKey.indexOf("personal/") === 0);
+      var persHidden = isBuiltinPers && !!HIDDEN_PERS[o.canon];
       var sKey = up ? o.uploadKey : (o.staticKey || o.uploadKey);   // ключ настроек = как рендерится
       var thumb = up ? uploadedUrl(o.uploadKey) : (o.staticKey ? webpUrl(o.staticKey) : "");
       var ms = MODEL_SETTINGS[sKey] || {};
       var rateHtml;
       if (up) { var r = optRating(INFO[o.uploadKey]); rateHtml = '<div class="qs-mm-rate ' + r.cls + '">' + r.txt + " · <b>своя</b></div>"; }
+      else if (isBuiltinPers) rateHtml = '<div class="qs-mm-rate na">🎭 встроенная персональная' + (persHidden ? ' · <b>🚫 скрыта</b>' : '') + '</div>';
       else if (o.staticKey) rateHtml = '<div class="qs-mm-rate na">📦 встроенная (общая) модель</div>';
       else rateHtml = '<div class="qs-mm-rate na">— нет модели</div>';
       var el = document.createElement("div"); el.className = "qs-mm-card";
@@ -5323,6 +5330,9 @@
                    '" title="зловещая чёрная дымка вокруг этой модели (аура смерти) — видна, когда игрок на неё сменится">☠ дымка</button>' : "") +
           (up ? '<button data-a="opt" title="ужать до оптимальных параметров">🗜 оптимизировать</button>' +
                 '<button data-a="del" class="danger" title="удалить свою (вернётся встроенная)">✕</button>' : "") +
+          (isBuiltinPers ? (persHidden
+            ? '<button data-a="showpers" title="вернуть встроенную модель в сцену">↩ вернуть встроенную</button>'
+            : '<button data-a="hidepers" class="danger" title="скрыть встроенную модель (файл в бандле — удалить нельзя, но можно убрать из сцены)">🚫 скрыть встроенную</button>') : "") +
           (o.kind === "person" ? '<button data-a="addv" class="qs-mm-addv" title="добавить ещё один облик этому игроку — он сам выберет">➕ ещё облик</button>' : "") +
         "</div>" +
         (thumb ? '<div class="qs-mm-scale"><span>📏 размер</span><button data-a="scdn" title="меньше">−</button>' +
@@ -5372,6 +5382,15 @@
           q("POST", "/queue/admin/model-delete", { key: o.uploadKey }).then(function () {
             delete UPLOADED[o.uploadKey]; refresh(); loadInfo(rebuild);
           });
+        } else if (a === "hidepers") {   // скрыть ВСТРОЕННУЮ персональную (её нельзя удалить как файл)
+          if (!confirm("Скрыть встроенную модель «" + o.title + "»? Она уберётся из сцены и переключателя (можно вернуть).")) return;
+          q("POST", "/queue/admin/hide-personal", { canon: o.canon, hidden: true }).then(function () {
+            HIDDEN_PERS[o.canon] = 1; refresh(); loadInfo(rebuild);
+          }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
+        } else if (a === "showpers") {   // вернуть скрытую встроенную
+          q("POST", "/queue/admin/hide-personal", { canon: o.canon, hidden: false }).then(function () {
+            delete HIDDEN_PERS[o.canon]; refresh(); loadInfo(rebuild);
+          }).catch(function (er) { stEl.textContent = "Ошибка: " + (er.detail || er.message); });
         } else if (a === "addv") {   // добавить ЕЩЁ один облик этому же игроку (следующий слот)
           var mm = o.uploadKey.match(/^person-(.+?)(?:--\d+)?$/);
           var cn = mm ? mm[1] : o.uploadKey.slice(7);
@@ -5501,7 +5520,7 @@
         det.appendChild(sum);
         var grid = document.createElement("div"); grid.className = "qs-mm-grid";
         g.keys.forEach(function (kk, i) {
-          grid.appendChild(card({ uploadKey: kk.uploadKey, staticKey: kk.staticKey,
+          grid.appendChild(card({ uploadKey: kk.uploadKey, staticKey: kk.staticKey, canon: cn,
             title: g.title + (i > 0 ? " · вариант " + (i + 1) : ""), kind: "person", sub: "персональная" }));
         });
         det.appendChild(grid);
@@ -6765,6 +6784,7 @@
         q("GET", "/queue/placements").then(function (d) { PLACEMENTS = d.placements || {}; }).catch(function () { PLACEMENTS = {}; }),
         q("GET", "/queue/config").then(function (d) { CONFIG = d.config || {}; }).catch(function () { CONFIG = {}; }),
         q("GET", "/queue/uploaded-models").then(function (d) { UPLOADED = d.keys || {}; }).catch(function () { UPLOADED = {}; }),
+        q("GET", "/queue/hidden-personal").then(function (d) { HIDDEN_PERS = {}; ((d && d.canons) || []).forEach(function (c) { HIDDEN_PERS[c] = 1; }); }).catch(function () { HIDDEN_PERS = {}; }),
         q("GET", "/queue/spouses").then(function (d) { applySpouses(d); }).catch(function () { applySpouses(null); }),
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; _officerName = (m && m.name) || ""; })

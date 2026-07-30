@@ -3239,6 +3239,44 @@ def uploaded_models() -> dict:
     return {"keys": out}
 
 
+def _hidden_personal_set(conn) -> set:
+    import json as _j
+    try:
+        v = db.kv_get("hidden_personal")
+        return set(_j.loads(v)) if v else set()
+    except Exception:
+        return set()
+
+
+@router.get("/hidden-personal")
+def hidden_personal_get() -> dict:
+    """Каноны, у кого ВСТРОЕННАЯ персональная модель СКРЫТА (админ «удалил» её). Скрытую модель
+    сцена/переключатель не показывают. Файл встроенной лежит в бандле фронта — удалить его как
+    загруженную нельзя, поэтому скрываем через этот флаг."""
+    with db.connection() as conn:
+        return {"canons": sorted(_hidden_personal_set(conn))}
+
+
+@router.post("/admin/hide-personal")
+def hide_personal(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Скрыть (hidden=true) или вернуть (false) ВСТРОЕННУЮ персональную модель для канона."""
+    import json as _j
+    cn = (payload.get("canon") or "").strip()
+    if not cn:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_canon")
+    hide = bool(payload.get("hidden", True))
+    with db.connection() as conn:
+        s = _hidden_personal_set(conn)
+        if hide:
+            s.add(cn)
+        else:
+            s.discard(cn)
+        db.kv_set("hidden_personal", _j.dumps(sorted(s)))
+        _log(conn, "hide_personal", actor=_actor_name(actor), request=request,
+             detail=("скрыл встроенную " if hide else "вернул встроенную ") + cn)
+    return {"ok": True, "hidden": hide, "canon": cn}
+
+
 @router.get("/models-info")
 def models_info(_: dict = Depends(require_admin)) -> dict:
     """Детали загруженных моделей (ключ, вес в байтах, размеры) — для менеджера моделей
