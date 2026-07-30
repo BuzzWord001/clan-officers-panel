@@ -105,12 +105,14 @@ def valor_snapshot(payload: ValorSnapshotIn,
         log.warning("class fill from history failed: %s", e)
     log.info("valor snapshot saved: week=%s members=%d history_added=%d",
              payload.week, res["members"], res["history_added"])
-    # Материализуем ростер клана из свежего снимка (авторитет для входа на сайт).
+    # Свежий снимок = уточнён состав И КЛАССЫ. Полный цикл: пересобрать ростер, сверить
+    # очередь и УТОЧНИТЬ КЛАССЫ в очереди (класс новичка-реестровика, неизвестный при
+    # вставании, тут меняется на верный).
     try:
         import api_queue
-        res["clan_roster"] = api_queue.rebuild_clan_roster()
+        res["membership"] = api_queue.refresh_membership_and_queue()
     except Exception as e:
-        log.warning("clan_roster rebuild after ingest failed: %s", e)
+        log.warning("membership refresh after ingest failed: %s", e)
     return res
 
 

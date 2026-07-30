@@ -1269,16 +1269,43 @@ def reconcile_queue_with_roster() -> dict:
             "removed_count": len(removed), "restored_count": len(restored)}
 
 
+def sync_queue_classes() -> int:
+    """Досинк КЛАССА в очереди: у записей с пустым/устаревшим cls ставим АКТУАЛЬНЫЙ класс из
+    _people (уточнённый последним снимком доблести). Класс новичка-реестровика неизвестен при
+    вставании (cls=''), а после воскресного сбора доблести он становится известен — тут запись
+    в очереди меняет класс на верный (в самой БД, не только в отображении). Ручной класс
+    (queue_class) уже учтён в _people, поэтому не перетирается."""
+    fixed = 0
+    with db.connection() as conn:
+        idx = _people(conn)
+        for r in conn.execute(
+                "SELECT id, main_canon, active_canon, cls FROM queue_entries").fetchall():
+            ac = _rget(r, "active_canon") or r["main_canon"]     # класс по активной личности
+            p = idx.get(ac) or idx.get(r["main_canon"]) or {}
+            live = (p.get("cls") or "").strip()
+            if live and live != (r["cls"] or ""):
+                conn.execute("UPDATE queue_entries SET cls=? WHERE id=?", (live, r["id"]))
+                fixed += 1
+    if fixed:
+        log.info("queue class sync: класс уточнён у %d записей", fixed)
+    return fixed
+
+
 def refresh_membership_and_queue() -> dict:
     """Полный автономный цикл (планировщик каждые 5 мин + «Готово» + приём в реестр):
-    пересобрать ростер клана и синхронизировать с ним очередь."""
+    пересобрать ростер клана, синхронизировать очередь и уточнить классы в очереди."""
     r = rebuild_clan_roster()
     try:
         q = reconcile_queue_with_roster()
     except Exception as e:
         log.exception("queue reconcile failed")
         q = {"error": str(e)}
-    return {"roster": r, "queue": q}
+    try:
+        cls_fixed = sync_queue_classes()
+    except Exception:
+        log.exception("queue class sync failed")
+        cls_fixed = 0
+    return {"roster": r, "queue": q, "class_synced": cls_fixed}
 
 
 def _nick_allowed(conn, nick, allowed=None) -> bool:
