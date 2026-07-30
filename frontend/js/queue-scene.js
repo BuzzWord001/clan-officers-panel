@@ -57,7 +57,7 @@
     "дух крови": { m: "Дух крови (м).png", f: "Дух крови (ж).png" }
   };
   // ключи строим через canon(имя) — чтобы совпадали при латинице/кириллице в никах
-  var PERSONAL_SRC = { "Naomi": "_Naomi.png", "Карася": "Карася.png", "Кэя": "Кэя.png",
+  var PERSONAL_SRC = { "Карася": "Карася.png", "Кэя": "Кэя.png",
     "Лирия": "Лирия!.png", "Химеко": "Химеко.png", "Шлюпка": "Шлюпка.png",
     "АдаНет": "АдаНет.png", "Томат": "Томат.png", "Мortаlitу": "Мortаlitу.png" };
   var PERSONAL = {};
@@ -271,7 +271,7 @@
     { key: "class/Паладин (м).png", label: "Паладин (м)" }, { key: "class/Паладин (ж).png", label: "Паладин (ж)" },
     { key: "class/Призрак (м).png", label: "Призрак (м)" }, { key: "class/Призрак (ж).png", label: "Призрак (ж)" },
     { key: "class/Дух крови (м).png", label: "Дух крови (м)" }, { key: "class/Дух крови (ж).png", label: "Дух крови (ж)" },
-    { key: "personal/_Naomi.png", label: "Naomi (личн.)" }, { key: "personal/Карася.png", label: "Карася (личн.)" },
+    { key: "personal/Карася.png", label: "Карася (личн.)" },
     { key: "personal/Кэя.png", label: "Кэя (личн.)" }, { key: "personal/Лирия!.png", label: "Лирия! (личн.)" },
     { key: "personal/Химеко.png", label: "Химеко (личн.)" }, { key: "personal/Шлюпка.png", label: "Шлюпка (личн.)" },
     { key: "personal/АдаНет.png", label: "АдаНет (личн.)" }, { key: "personal/Томат.png", label: "Томат (личн., проводник)" },
