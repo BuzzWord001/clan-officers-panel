@@ -156,6 +156,10 @@
     rolePendingSet: (enabled) => request("POST", "/acceptances/role-pending-default", { enabled: !!enabled }),
     rolePendingClear: () => request("POST", "/acceptances/role-pending-clear"),
 
+    blacklistList:   () => request("GET", "/acceptances/blacklist"),
+    blacklistAdd:    (nick, reason) => request("POST", "/acceptances/blacklist", { nick, reason: reason || "" }),
+    blacklistRemove: (nick) => request("POST", "/acceptances/blacklist-remove", { nick }),
+
     audit:         (limit = 200) => request("GET", `/audit?limit=${limit}`),
     auditDelete:   (id) => request("DELETE", `/audit/${id}`),
     auditClear:    () => request("DELETE", `/audit`),

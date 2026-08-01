@@ -16,6 +16,7 @@
 """
 
 import logging
+import re
 from datetime import date
 
 import db
@@ -30,6 +31,8 @@ _HISTORY = {"история", "досье", "history", "dossier"}
 _SETPW = {"пароль", "password", "парольклана", "парользх", "парольсайта"}
 # Только /help — чтобы не пересекаться с /помощь другого бота в этом чате.
 _HELP = {"help"}
+_BLACKLIST = {"чс", "cs", "blacklist", "бан", "ban", "чёрныйсписок", "черныйсписок"}
+_AFK = {"афк", "afk", "неактив"}
 
 
 def _setpw(rest: str, actor: dict) -> str:
@@ -427,6 +430,208 @@ def _fmt_dossier(d: dict) -> str:
     return "\n".join(L)
 
 
+# ──────────────────────────── /чс — чёрный список ────────────────────────────
+def _blacklist(rest: str, actor: dict) -> str:
+    """/чс Ник Причина — внести в чёрный список клана (виден офицерам/админу на сайте).
+    /чс -Ник — убрать из ЧС. /чс — показать текущий список."""
+    rest = (rest or "").strip()
+    if not rest:
+        rows = db.blacklist_list()
+        if not rows:
+            return "🚫 Чёрный список клана пуст."
+        lines = ["🚫 ЧЁРНЫЙ СПИСОК КЛАНА (" + str(len(rows)) + ")", _HR]
+        for r in rows[:40]:
+            line = "• " + (r["nick"] or r["canon"])
+            if r["reason"]:
+                line += " — " + r["reason"]
+            lines.append(line)
+        lines.append("\nДобавить: /чс Ник причина  ·  убрать: /чс -Ник")
+        return "\n".join(lines)
+    nick, title = _split_nick_title(rest)
+    if nick.startswith("-"):                       # /чс -Ник — убрать
+        target = nick[1:].strip() or title.strip()
+        n = db.blacklist_remove(target)
+        return ("✅ Убран из ЧС: " + target) if n else ("Не найден в ЧС: " + target)
+    reason = title.strip()
+    res = db.blacklist_add(nick, reason, _actor_for_create(actor))
+    if not res.get("ok"):
+        return "⚠ Не понял ник. Формат: /чс Ник причина"
+    verb = "Обновлён в ЧС" if res.get("updated") else "Внесён в ЧС"
+    out = "🚫 " + verb + ": " + (res.get("nick") or nick)
+    if reason:
+        out += "\n• Причина: " + reason
+    out += "\nВиден офицерам и админу на сайте santdevil.com. Убрать: /чс -" + (res.get("nick") or nick)
+    return out
+
+
+# ─────────────────────────────── /афк ────────────────────────────────
+_MONTHS = {
+    "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "май": 5, "мая": 5,
+    "июн": 6, "июл": 7, "август": 8, "авгус": 8, "сентябр": 9, "октябр": 10,
+    "ноябр": 11, "декабр": 12,
+}
+
+
+def _month_num(word: str):
+    w = (word or "").lower().strip(".,")
+    if w in ("мая", "май", "мае"):
+        return 5
+    for stem, num in _MONTHS.items():
+        if w.startswith(stem):
+            return num
+    return None
+
+
+def _mk_date(d: int, m: int, y: int | None):
+    """Собрать дату; если год не задан — текущий, а если получилась в прошлом → +1 год
+    (напр. «до 25.06», когда июнь уже прошёл → следующий год)."""
+    today = date.today()
+    if y is None:
+        y = today.year
+        try:
+            cand = date(y, m, d)
+        except ValueError:
+            return None
+        if cand < today:
+            y += 1
+    if y < 100:                                    # двузначный год 26 → 2026
+        y += 2000
+    try:
+        return date(y, m, d)
+    except ValueError:
+        return None
+
+
+def _try_date_at(toks: list, i: int):
+    """Пытается прочитать дату начиная с toks[i]. Возвращает (date, consumed_tokens) или (None,0).
+    Форматы: ДД.ММ.ГГГГ, ДД.ММ.ГГ, ДД.ММ, ДД <месяц-словом> [ГГГГ]."""
+    tok = toks[i].strip(".,")
+    # ДД.ММ.ГГГГ / ДД.ММ.ГГ / ДД.ММ
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?$", tok)
+    if m:
+        d, mo = int(m.group(1)), int(m.group(2))
+        y = int(m.group(3)) if m.group(3) else None
+        dt = _mk_date(d, mo, y)
+        if dt:
+            return dt, 1
+    # ДД <месяц словом> [ГГГГ]
+    m2 = re.match(r"^(\d{1,2})$", tok)
+    if m2 and i + 1 < len(toks):
+        mo = _month_num(toks[i + 1])
+        if mo:
+            d = int(m2.group(1))
+            y = None
+            consumed = 2
+            if i + 2 < len(toks) and re.match(r"^\d{2,4}$", toks[i + 2].strip(".,")):
+                y = int(toks[i + 2].strip(".,"))
+                consumed = 3
+            dt = _mk_date(d, mo, y)
+            if dt:
+                return dt, consumed
+    return None, 0
+
+
+def _parse_afk_dates(tail: str):
+    """Разобрать хвост '/афк' → (since, until, reason). Формы: '25.06.2026', 'до 25.06.2026',
+    '25.06', 'до 25 января', 'с 25.05.2026 по 27.05.2026', '25.05.2026-27.05.2026'.
+    since/until — 'YYYY-MM-DD' или '' (until пусто = бессрочно). reason — текст после дат."""
+    tail = (tail or "").strip()
+    # дефис/тире между двумя датами → отдельный токен-маркер диапазона: 25.05.2026-27.05.2026
+    tail = re.sub(r"(\d)\s*[-–—]\s*(\d)", r"\1 — \2", tail)
+    toks = tail.split()
+    dates = []                                      # [(hint, iso)]: hint 'since'|'until'|None
+    pending = None
+    i = 0
+    while i < len(toks):
+        low = toks[i].lower().strip(".,")
+        if low in ("до", "по"):
+            pending = "until"; i += 1; continue
+        if low in ("с", "со", "from"):
+            pending = "since"; i += 1; continue
+        if low in ("—", "–", "-"):                  # маркер диапазона: пред. дата → since
+            pending = "range"; i += 1; continue
+        dt, consumed = _try_date_at(toks, i)
+        if dt:
+            iso = dt.isoformat()
+            if pending == "range" and dates:
+                dates[-1] = ("since", dates[-1][1])  # предыдущую сделать началом
+                dates.append(("until", iso))
+            else:
+                dates.append((pending, iso))
+            pending = None
+            i += consumed
+            continue
+        break                                       # не дата и не маркер → дальше причина
+    reason = " ".join(toks[i:]).strip()
+    # разложить по ролям
+    since = next((iso for h, iso in dates if h == "since"), "")
+    until = next((iso for h, iso in dates if h == "until"), "")
+    none_d = [iso for h, iso in dates if h is None]
+    if not since and not until:
+        if len(none_d) >= 2:
+            since, until = none_d[0], none_d[1]     # две даты без маркеров = диапазон
+        elif none_d:
+            until = none_d[0]                       # одна дата = «до»
+    elif since and not until and none_d:
+        until = none_d[-1]
+    elif until and not since and len(none_d) >= 1 and dates and dates[0][0] is None:
+        since = none_d[0]
+    return since, until, reason, bool(dates)
+
+
+def _afk(rest: str, actor: dict) -> str:
+    rest = (rest or "").strip()
+    if not rest:
+        return ("💤 /афк Ник ДАТА [причина]\n"
+                "Форматы даты: 25.06.2026 · до 25.06.2026 · 25.06 · до 25 января ·\n"
+                "с 25.05.2026 по 27.05.2026 · 25.05.2026-27.05.2026\n"
+                "Причина — текст после даты. Снять: /афк -Ник")
+    nick, tail = _split_nick_title(rest)
+    if nick.startswith("-"):                        # снять АФК
+        target = nick[1:].strip() or tail.strip()
+        cn = _canon(target)
+        if not cn:
+            return "⚠ Не понял ник."
+        db.valor_clear_afk_by_canon(cn, _actor_for_create(actor))
+        return "✅ АФК снят: " + target
+    cn = _canon(nick)
+    if not cn:
+        return "⚠ Не понял ник. Формат: /афк Ник ДАТА причина"
+    since, until, reason, got = _parse_afk_dates(tail)
+    res = db.valor_set_afk_by_canon(
+        cn, afk_until=until, afk_since=since,
+        note=(reason if reason else None), actor=_actor_for_create(actor))
+    if not res.get("ok"):
+        return "⚠ Не получилось поставить АФК."
+    disp = res.get("nick") or nick
+    # показываем ФИНАЛЬНЫЕ даты (после логики продления — until мог не сократиться)
+    f_until = res.get("afk_until") or ""
+    f_since = res.get("afk_since") or ""
+    out = "💤 АФК: " + disp
+    if f_since and f_until:
+        out += "\n• Период: с " + _ru_date(f_since) + " по " + _ru_date(f_until)
+    elif f_until:
+        out += ("\n• До: " + _ru_date(f_until) +
+                (" (продлён)" if res.get("extended") else ""))
+    else:
+        out += "\n• Срок: бессрочно"
+    if reason:
+        out += "\n• Причина: " + reason
+    if not got and not f_until:
+        out += "\n⚠ Дату не распознал — поставил бессрочно. Форматы см. /help"
+    out += "\nВидно на santdevil.com. Снять: /афк -" + disp
+    return out
+
+
+def _ru_date(iso: str) -> str:
+    """'2026-06-25' → '25.06.2026' для ответа в чат."""
+    try:
+        y, m, d = iso.split("-")
+        return d + "." + m + "." + y
+    except Exception:
+        return iso
+
+
 def _help() -> str:
     return (
         "📋 ПРИЁМ НОВИЧКОВ В КЛАН\n" + _HR + "\n"
@@ -442,6 +647,15 @@ def _help() -> str:
         "     и отдельно IP/устройства/входы на сайт\n"
         "     ищет по ЛЮБЫМ данным: ник, имя-фамилия,\n"
         "     VK-домен, @tg, id — напр. /досье Артём Лапин\n\n"
+        "💤 /афк Ник ДАТА [причина]\n"
+        "     дать/продлить АФК игроку на сайте. Даты:\n"
+        "     25.06.2026 · до 25.06.2026 · 25.06 · до 25 января ·\n"
+        "     с 25.05.2026 по 27.05.2026 · 25.05.2026-27.05.2026\n"
+        "     текст после даты = причина. Снять: /афк -Ник\n"
+        "     напр: /афк Vasya до 25.05.2027 болеет\n\n"
+        "🚫 /чс Ник [причина]\n"
+        "     внести в чёрный список клана (видят офицеры\n"
+        "     и админ на сайте). Убрать: /чс -Ник. Список: /чс\n\n"
         "🔑 /пароль 5623\n"
         "     сменить общий пароль клана (для входа игроков\n"
         "     на сайт). Обнови его в списке гильдии (кнопка G)\n" + _HR + "\n"
@@ -461,7 +675,8 @@ def handle(text: str, actor: dict) -> str | None:
     cmd = head[1:].split("@", 1)[0].lower()   # убрать ведущий / и суффикс @botname (в группах TG)
     rest = rest.strip()
     known = (cmd in _ACCEPT or cmd in _CANCEL or cmd in _REMOVE or cmd in _LIST
-             or cmd in _HELP or cmd in _HISTORY or cmd in _SETPW)
+             or cmd in _HELP or cmd in _HISTORY or cmd in _SETPW
+             or cmd in _BLACKLIST or cmd in _AFK)
     reply = None
     try:
         if cmd in _ACCEPT:
@@ -476,6 +691,10 @@ def handle(text: str, actor: dict) -> str | None:
             reply = _history(rest, actor)
         elif cmd in _SETPW:
             reply = _setpw(rest, actor)
+        elif cmd in _BLACKLIST:
+            reply = _blacklist(rest, actor)
+        elif cmd in _AFK:
+            reply = _afk(rest, actor)
         elif cmd in _HELP:
             reply = _help()
     except Exception:

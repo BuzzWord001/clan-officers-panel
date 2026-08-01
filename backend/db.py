@@ -693,6 +693,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE valor_afk_note ADD COLUMN afk_until TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+    # 2026-08-02: НАЧАЛО АФК (для отложенного/диапазонного «с ДД по ДД»). Пусто = АФК уже
+    # действует сейчас. Только для отображения «АФК с … по …»; на снятие влияет afk_until.
+    try:
+        conn.execute("ALTER TABLE valor_afk_note ADD COLUMN afk_since TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    # 2026-08-02: ЧЁРНЫЙ СПИСОК клана (ЧС) — кого не принимать/остерегаться. Пополняется
+    # офицерами/админом с сайта и командой /чс из офиц. чата. Виден офицерам и админу.
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS clan_blacklist (
+            canon      TEXT PRIMARY KEY,
+            nick       TEXT NOT NULL DEFAULT '',
+            reason     TEXT NOT NULL DEFAULT '',
+            added_by   TEXT NOT NULL DEFAULT '',
+            added_at   TEXT NOT NULL DEFAULT ''
+        )""")
+    except sqlite3.OperationalError:
+        pass
 
     # 2026-06-01: счётчик стрика невыполненного норматива в valor_members.
     # 0 — выполнил в эту неделю (или АФК). При невыполнении +1 от prev.
@@ -2198,11 +2216,12 @@ def valor_afk_notes() -> dict[str, str]:
 
 
 def valor_afk_info() -> dict[str, dict]:
-    """canon → {note, until}: комментарий к АФК и срок (дата 'YYYY-MM-DD' или '')."""
+    """canon → {note, until, since}: комментарий, срок и (для диапазона) начало АФК."""
     with connection() as conn:
-        return {r["nick_canon"]: {"note": r["note"], "until": r["afk_until"]}
+        return {r["nick_canon"]: {"note": r["note"], "until": r["afk_until"],
+                                  "since": (r["afk_since"] if "afk_since" in r.keys() else "")}
                 for r in conn.execute(
-                    "SELECT nick_canon, note, afk_until FROM valor_afk_note")}
+                    "SELECT nick_canon, note, afk_until, afk_since FROM valor_afk_note")}
 
 
 def _norm_afk_until(v) -> str:
@@ -6975,6 +6994,130 @@ def valor_set_afk(member_id: int, is_afk: bool, afk_note: str | None,
         return {"ok": True, "is_afk": bool(is_afk), "afk_until": until or ""}
 
 
+def valor_set_afk_by_canon(canon: str, *, afk_until: str = "", afk_since: str = "",
+                           note: str | None = None, actor: dict | None = None,
+                           extend: bool = True) -> dict:
+    """Дать/продлить АФК по КАНОНУ ника (для чат-команды /афк — человек может быть в реестре
+    без строки снимка). Пишет valor_afk_note (переживает снимки) + ставит is_afk=1 на
+    ПОСЛЕДНЕЙ строке снимка этого канона, если она есть.
+
+    extend=True (по умолч.): если АФК уже стоит с более ПОЗДНЕЙ датой снятия — НЕ сокращаем
+    (берём max). Если новая дата позже — продлеваем. note/since перезаписываются, если заданы.
+    Возвращает {ok, afk_until, afk_since, extended, prev_until}."""
+    canon = (canon or "").strip()
+    if not canon:
+        return {"ok": False, "error": "bad_canon"}
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    nu = _norm_afk_until(afk_until)
+    ns = _norm_afk_until(afk_since)
+    with connection() as conn:
+        cur = conn.execute(
+            "SELECT note, afk_until, afk_since FROM valor_afk_note WHERE nick_canon=?",
+            (canon,)).fetchone()
+        prev_until = (cur["afk_until"] if cur else "") or ""
+        prev_note = (cur["note"] if cur else "") or ""
+        prev_since = (cur["afk_since"] if (cur and "afk_since" in cur.keys()) else "") or ""
+        extended = False
+        final_until = nu
+        if extend and prev_until and nu and prev_until >= nu:
+            final_until = prev_until          # уже есть более поздний срок — не сокращаем
+        elif extend and prev_until and nu and nu > prev_until:
+            extended = True
+        final_note = note if note is not None else prev_note
+        final_since = ns if ns else prev_since
+        # берём отображаемый ник из последнего снимка канона (или оставляем канон)
+        disp = conn.execute(
+            "SELECT nick FROM valor_members WHERE nick_canon=? ORDER BY snapshot_id DESC LIMIT 1",
+            (canon,)).fetchone()
+        disp_nick = disp["nick"] if disp else canon
+        conn.execute(
+            """INSERT INTO valor_afk_note (nick_canon, note, afk_until, afk_since, updated_at, updated_by)
+               VALUES (?,?,?,?,?,?)
+               ON CONFLICT(nick_canon) DO UPDATE SET
+                 note=excluded.note, afk_until=excluded.afk_until, afk_since=excluded.afk_since,
+                 updated_at=excluded.updated_at, updated_by=excluded.updated_by""",
+            (canon, final_note, final_until, final_since, now, actor.get("name", "")))
+        # is_afk=1 на последней строке снимка (если человек есть в доблести)
+        last = conn.execute(
+            "SELECT id FROM valor_members WHERE nick_canon=? ORDER BY snapshot_id DESC LIMIT 1",
+            (canon,)).fetchone()
+        if last:
+            conn.execute("UPDATE valor_members SET is_afk=1 WHERE id=?", (last["id"],))
+        _write_audit(conn, "afk_on", None, disp_nick,
+                     {"afk_until": prev_until or "—"},
+                     {"afk_until": final_until or "бессрочно",
+                      "afk_since": final_since or "—",
+                      "afk_note": final_note or "—"}, actor)
+    return {"ok": True, "afk_until": final_until, "afk_since": final_since,
+            "extended": extended, "prev_until": prev_until, "nick": disp_nick}
+
+
+def valor_clear_afk_by_canon(canon: str, actor: dict | None = None) -> dict:
+    """Снять АФК по канону (для /афк -Ник): удаляет срок/заметку + is_afk=0 на последнем снимке."""
+    canon = (canon or "").strip()
+    if not canon:
+        return {"ok": False}
+    actor = actor or {"platform": "", "id": "", "name": ""}
+    with connection() as conn:
+        conn.execute("DELETE FROM valor_afk_note WHERE nick_canon=?", (canon,))
+        last = conn.execute(
+            "SELECT id, nick FROM valor_members WHERE nick_canon=? ORDER BY snapshot_id DESC LIMIT 1",
+            (canon,)).fetchone()
+        if last:
+            conn.execute("UPDATE valor_members SET is_afk=0 WHERE id=?", (last["id"],))
+            _write_audit(conn, "afk_off", None, last["nick"], {"is_afk": True},
+                         {"is_afk": False}, actor)
+    return {"ok": True}
+
+
+# ─────────────────────── ЧЁРНЫЙ СПИСОК КЛАНА (ЧС) ───────────────────────
+
+def blacklist_add(nick: str, reason: str = "", actor: dict | None = None) -> dict:
+    """Внести ник в ЧС клана (по канону — переживает написание). Повтор обновляет причину."""
+    actor = actor or {"name": ""}
+    canon = _valor_canon(nick)
+    if not canon:
+        return {"ok": False, "error": "bad_nick"}
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    with connection() as conn:
+        existed = conn.execute("SELECT 1 FROM clan_blacklist WHERE canon=?", (canon,)).fetchone()
+        conn.execute(
+            """INSERT INTO clan_blacklist (canon, nick, reason, added_by, added_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(canon) DO UPDATE SET
+                 nick=excluded.nick,
+                 reason=CASE WHEN excluded.reason<>'' THEN excluded.reason ELSE clan_blacklist.reason END,
+                 added_by=excluded.added_by, added_at=excluded.added_at""",
+            (canon, (nick or "").strip(), (reason or "").strip(), actor.get("name", ""), now))
+    return {"ok": True, "canon": canon, "nick": (nick or "").strip(), "updated": bool(existed)}
+
+
+def blacklist_remove(nick: str) -> int:
+    canon = _valor_canon(nick)
+    if not canon:
+        return 0
+    with connection() as conn:
+        return conn.execute("DELETE FROM clan_blacklist WHERE canon=?", (canon,)).rowcount
+
+
+def blacklist_list() -> list[dict]:
+    with connection() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT canon, nick, reason, added_by, added_at FROM clan_blacklist "
+            "ORDER BY added_at DESC")]
+
+
+def blacklist_has(nick: str) -> dict | None:
+    canon = _valor_canon(nick)
+    if not canon:
+        return None
+    with connection() as conn:
+        r = conn.execute("SELECT canon, nick, reason, added_by, added_at FROM clan_blacklist "
+                         "WHERE canon=?", (canon,)).fetchone()
+        return dict(r) if r else None
+
+
 def valor_manual_warnings_by_canon() -> dict[str, list[dict]]:
     """Map canon → список ручных предупреждений."""
     out: dict[str, list[dict]] = {}
@@ -8269,6 +8412,7 @@ def valor_get_current(with_reg_notes: bool = False,
             m["dismissed_count"] = dismissed_count.get(cn, 0)  # прощённых всего
             m["afk_note"] = afk_notes_map.get(cn, "")
             m["afk_until"] = (afk_info_map.get(cn) or {}).get("until", "")
+            m["afk_since"] = (afk_info_map.get(cn) or {}).get("since", "")
             # Ручной иммунитет: показываем только АКТУАЛЬНЫЙ — на ОТОБРАЖАЕМУЮ
             # неделю (тогда ячейка станет иммунной) ИЛИ на текущую/будущую ISO-
             # неделю (тогда кнопка подсвечена, «выдан наперёд»). Прошедшие

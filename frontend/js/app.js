@@ -665,6 +665,54 @@
     });
   })();
 
+  // ── Чёрный список клана (офицер/админ) ──
+  function renderBlacklist(items) {
+    const tb = $("bl-tbody"); if (!tb) return;
+    items = items || [];
+    const cnt = $("bl-count"); if (cnt) cnt.textContent = items.length ? `(${items.length})` : "";
+    const emp = $("bl-empty"); if (emp) emp.hidden = items.length > 0;
+    tb.innerHTML = items.map((r, i) =>
+      `<tr><td>${i + 1}</td><td><b>${esc(r.nick || r.canon)}</b></td>` +
+      `<td>${r.reason ? esc(r.reason) : "—"}</td>` +
+      `<td>${esc(r.added_by || "—")}</td>` +
+      `<td>${r.added_at ? DateRu.fmtRus(String(r.added_at).slice(0, 10)) : "—"}</td>` +
+      `<td><button class="sec bl-del" data-nick="${esc(r.nick || r.canon)}" style="border-color:rgba(120,200,120,.4)">убрать</button></td></tr>`
+    ).join("");
+    tb.querySelectorAll(".bl-del").forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("Убрать «" + b.dataset.nick + "» из чёрного списка?")) return;
+      try { await API.blacklistRemove(b.dataset.nick); await loadBlacklist(); }
+      catch (e) { alert("Ошибка: " + (e.detail || e.message)); }
+    }));
+  }
+  async function loadBlacklist() {
+    try { const d = await API.blacklistList(); renderBlacklist(d.items || []); } catch (_) {}
+  }
+  (function initBlacklist() {
+    const t = $("bl-toggle");
+    if (t) t.addEventListener("click", () => {
+      const w = $("bl-wrap");
+      const open = w.style.display !== "none";
+      w.style.display = open ? "none" : "block";
+      $("bl-arrow").textContent = open ? "▶" : "▼";
+      if (!open) loadBlacklist();
+    });
+    const add = $("bl-add");
+    if (add) add.addEventListener("click", async () => {
+      const nick = ($("bl-nick").value || "").trim();
+      const reason = ($("bl-reason").value || "").trim();
+      const st = $("bl-status");
+      if (!nick) { if (st) st.textContent = "Введи ник."; return; }
+      try {
+        await API.blacklistAdd(nick, reason);
+        $("bl-nick").value = ""; $("bl-reason").value = "";
+        if (st) { st.textContent = "✓ Внесён в ЧС: " + nick; st.style.color = "#9fe0a0"; }
+        await loadBlacklist();
+      } catch (e) {
+        if (st) { st.textContent = "Ошибка: " + (e.detail || e.message); st.style.color = "#ff8a7a"; }
+      }
+    });
+  })();
+
   let allRows = [];
   function applyFilter() {
     const box = $("reg-search");
@@ -701,6 +749,7 @@
       renderRolePendingPanel();
       updateRegCount();
       fillSpouseDatalist();
+      loadBlacklist();
     } catch (e) {
       setStatus(`✗ Не удалось загрузить: ${e.message}`);
     }

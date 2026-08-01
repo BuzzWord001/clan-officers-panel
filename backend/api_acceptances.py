@@ -53,6 +53,33 @@ def _admin_only(s: dict) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "admin_only")
 
 
+# ─────────────────────── ЧЁРНЫЙ СПИСОК КЛАНА (ЧС) ───────────────────────
+# Виден офицерам и админу. Пополняется с сайта (тут) и командой /чс из офиц. чата.
+
+@router.get("/blacklist")
+def blacklist_get(s: dict = Depends(current_session)) -> dict:
+    _officer_only(s)
+    return {"items": db.blacklist_list()}
+
+
+@router.post("/blacklist")
+def blacklist_add(payload: dict, actor: dict = Depends(current_actor)) -> dict:
+    nick = (payload.get("nick") or "").strip()
+    if not nick:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    res = db.blacklist_add(nick, (payload.get("reason") or "").strip(), actor)
+    if not res.get("ok"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_nick")
+    return res
+
+
+@router.post("/blacklist-remove")
+def blacklist_remove(payload: dict, actor: dict = Depends(current_actor)) -> dict:
+    nick = (payload.get("nick") or "").strip()
+    n = db.blacklist_remove(nick)
+    return {"ok": True, "removed": n}
+
+
 @router.get("/role-pending-default")
 def role_pending_default_get(s: dict = Depends(current_session)) -> dict:
     """Состояние глобального тумблера «роль пока не выдана в игре» (для новых)."""

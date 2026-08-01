@@ -935,7 +935,9 @@
       const a = m.afk_info;
       const note = m.afk_note || "";
       const until = m.afk_until || "";                       // 'YYYY-MM-DD' или ''
+      const since = m.afk_since || "";                       // начало периода (для «с…по»)
       const untilTxt = until ? until.split("-").reverse().join(".") : "";  // → ДД.ММ.ГГГГ
+      const sinceTxt = since ? since.split("-").reverse().join(".") : "";
       const total = (a && a.valor_total) || 0;
       // «Общее окошко» (кастомный тултип data-wtip): ПОМЕТКА — почему человек в
       // АФК — ВЫДЕЛЕНА жирной фиолетовой 1-й строкой; ниже — детали. Так сразу
@@ -949,7 +951,8 @@
         wl.push(`Норматив не оценивается.`);
       wl.push(total > 0 ? `Набрано за время АФК: +${total}`
                         : `За время АФК доблесть не набиралась`);
-      if (until) wl.push(`⏳ АФК до ${untilTxt} — снимется автоматически`);
+      if (since && until) wl.push(`⏳ АФК с ${sinceTxt} по ${untilTxt} — снимется автоматически`);
+      else if (until) wl.push(`⏳ АФК до ${untilTxt} — снимется автоматически`);
       const wtipAttr = `data-wtip="${esc(wl.join("\n"))}" data-wtipcolor="#c3a2ee"`;
       // Значки в самой ячейке (💬 — есть пометка, ⏳ — срок). Свой title им НЕ
       // даём: наведение на ячейку и так открывает общее окошко с пометкой.
