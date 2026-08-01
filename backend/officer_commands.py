@@ -23,6 +23,18 @@ import db
 
 log = logging.getLogger("officers.commands")
 
+# Последнее ИЗМЕНЯЮЩЕЕ действие каждого офицера (для универсальной /отмена).
+# Ключ = 'platform:id'. In-memory (живёт, пока работает сервер) — «отмени последнюю».
+_LAST_ACTION: dict = {}
+
+
+def _akey(actor: dict) -> str:
+    return (actor.get("platform") or "") + ":" + str(actor.get("id") or "")
+
+
+def _remember(actor: dict, kind: str, data: dict) -> None:
+    _LAST_ACTION[_akey(actor)] = {"kind": kind, "data": data}
+
 _ACCEPT = {"принять", "прием", "приём", "accept", "add"}
 _CANCEL = {"отмена", "отменить", "отмени", "cancel", "undo"}
 _REMOVE = {"удалить", "убрать", "delete", "del", "remove"}
@@ -114,9 +126,10 @@ def _accept(rest: str, actor: dict) -> str:
         return (head + "\n"
                 "• Ник: " + existing["game_nick"] + "\n"
                 "• Титул: " + (shown or "не указан"))
-    db.create_acceptance(game_nick=nick, title=title,
-                         accepted_date=date.today().isoformat(),
-                         note="", role_pending=True, by_officer=True, actor=actor)
+    res = db.create_acceptance(game_nick=nick, title=title,
+                               accepted_date=date.today().isoformat(),
+                               note="", role_pending=True, by_officer=True, actor=actor)
+    _remember(actor, "accept", {"acc_id": (res or {}).get("id"), "nick": nick, "title": title})
     try:                                              # принятый — сразу в ростер клана (вход открыт)
         import api_queue
         api_queue.rebuild_clan_roster()
@@ -146,8 +159,40 @@ def _prev_clan_warning(nick: str) -> str:
 
 
 def _cancel(actor: dict) -> str:
-    """Отменить ПОСЛЕДНИЙ приём, который добавил именно этот офицер (по автору).
-    Так /отмена от разных офицеров (TG/VK) не мешают друг другу."""
+    """УНИВЕРСАЛЬНАЯ отмена: откатывает ПОСЛЕДНЮЮ изменяющую команду этого офицера
+    (/принять, /чс, /афк). Ключ по автору — /отмена разных офицеров не мешают друг другу.
+    Если последнего действия в памяти нет (напр. после рестарта) — фолбэк на отмену
+    последнего приёма из реестра."""
+    la = _LAST_ACTION.get(_akey(actor))
+    if la:
+        kind, d = la["kind"], la["data"]
+        try:
+            if kind == "accept":
+                if d.get("acc_id"):
+                    db.delete_acceptance(d["acc_id"], actor=actor)
+                _LAST_ACTION.pop(_akey(actor), None)
+                return "↩ Отменён приём: " + d.get("nick", "") + (
+                    " — " + d["title"] if d.get("title") else "")
+            if kind == "blacklist_add":
+                db.blacklist_remove(d["nick"])
+                _LAST_ACTION.pop(_akey(actor), None)
+                return "↩ Отменено: «" + d["nick"] + "» убран из чёрного списка."
+            if kind == "blacklist_remove":
+                db.blacklist_add(d["nick"], d.get("reason", ""), actor)
+                _LAST_ACTION.pop(_akey(actor), None)
+                return "↩ Отменено: «" + d["nick"] + "» возвращён в чёрный список."
+            if kind == "afk_set":
+                _restore_afk(d["canon"], d.get("prev"), actor)
+                _LAST_ACTION.pop(_akey(actor), None)
+                return "↩ Отменён АФК: " + d.get("nick", "") + _afk_prev_hint(d.get("prev"))
+            if kind == "afk_clear":
+                _restore_afk(d["canon"], d.get("prev"), actor)
+                _LAST_ACTION.pop(_akey(actor), None)
+                return "↩ Отменено снятие АФК: " + d.get("nick", "") + " — статус возвращён."
+        except Exception:
+            log.exception("undo failed: %s", kind)
+            return "⚠ Не получилось отменить. Сделай вручную на сайте."
+    # фолбэк — последний приём (как раньше)
     plat = actor.get("platform") or ""
     pid = str(actor.get("id") or "")
     mine = [r for r in db.list_acceptances()
@@ -155,12 +200,29 @@ def _cancel(actor: dict) -> str:
             and r.get("created_by_platform") == plat
             and str(r.get("created_by_id")) == pid]
     if not mine:
-        return "Нечего отменять — вы ещё никого не принимали."
+        return "Нечего отменять."
     mine.sort(key=lambda r: r.get("id", 0), reverse=True)
     row = mine[0]
     db.delete_acceptance(row["id"], actor=actor)
     t = (row.get("title") or "").strip()
     return "↩ Отменён приём: " + row["game_nick"] + (" — " + t if t else "")
+
+
+def _restore_afk(canon: str, prev: dict | None, actor: dict) -> None:
+    """Вернуть АФК-состояние канона к prev (или снять, если prev пуст)."""
+    if prev:
+        db.valor_set_afk_by_canon(
+            canon, afk_until=prev.get("afk_until", ""), afk_since=prev.get("afk_since", ""),
+            note=prev.get("note", ""), actor=_actor_for_create(actor), extend=False)
+    else:
+        db.valor_clear_afk_by_canon(canon, _actor_for_create(actor))
+
+
+def _afk_prev_hint(prev: dict | None) -> str:
+    if not prev:
+        return " — АФК снят."
+    u = prev.get("afk_until", "")
+    return " — возвращён прежний АФК" + (" (до " + _ru_date(u) + ")" if u else "") + "."
 
 
 def _remove(rest: str, actor: dict) -> str:
@@ -450,10 +512,16 @@ def _blacklist(rest: str, actor: dict) -> str:
     nick, title = _split_nick_title(rest)
     if nick.startswith("-"):                       # /чс -Ник — убрать
         target = nick[1:].strip() or title.strip()
+        prev = db.blacklist_has(target)            # запомнить для отмены
         n = db.blacklist_remove(target)
+        if n and prev:
+            _remember(actor, "blacklist_remove",
+                      {"nick": prev.get("nick") or target, "reason": prev.get("reason", "")})
         return ("✅ Убран из ЧС: " + target) if n else ("Не найден в ЧС: " + target)
     reason = title.strip()
     res = db.blacklist_add(nick, reason, _actor_for_create(actor))
+    if res.get("ok") and not res.get("updated"):
+        _remember(actor, "blacklist_add", {"nick": res.get("nick") or nick})
     if not res.get("ok"):
         return "⚠ Не понял ник. Формат: /чс Ник причина"
     verb = "Обновлён в ЧС" if res.get("updated") else "Внесён в ЧС"
@@ -592,15 +660,20 @@ def _afk(rest: str, actor: dict) -> str:
         cn = _canon(target)
         if not cn:
             return "⚠ Не понял ник."
+        prev = db.valor_afk_get_by_canon(cn)        # запомнить для отмены
         db.valor_clear_afk_by_canon(cn, _actor_for_create(actor))
+        _remember(actor, "afk_clear", {"canon": cn, "nick": target, "prev": prev})
         return "✅ АФК снят: " + target
     cn = _canon(nick)
     if not cn:
         return "⚠ Не понял ник. Формат: /афк Ник ДАТА причина"
     since, until, reason, got = _parse_afk_dates(tail)
+    prev = db.valor_afk_get_by_canon(cn)            # состояние ДО (для отмены)
     res = db.valor_set_afk_by_canon(
         cn, afk_until=until, afk_since=since,
         note=(reason if reason else None), actor=_actor_for_create(actor))
+    if res.get("ok"):
+        _remember(actor, "afk_set", {"canon": cn, "nick": res.get("nick") or nick, "prev": prev})
     if not res.get("ok"):
         return "⚠ Не получилось поставить АФК."
     disp = res.get("nick") or nick
@@ -639,7 +712,7 @@ def _help() -> str:
         "     принять новичка в список\n"
         "     напр: /принять DarkLord ~Vasya~\n\n"
         "↩ /отмена\n"
-        "     отменить последний приём (если ошиблись)\n\n"
+        "     отменить ПОСЛЕДНЮЮ команду (приём / чс / афк)\n\n"
         "📆 /список\n"
         "     кого приняли на этой неделе\n\n"
         "📜 /досье Ник   (или /история Ник — то же самое)\n"

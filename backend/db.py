@@ -7053,6 +7053,18 @@ def valor_set_afk_by_canon(canon: str, *, afk_until: str = "", afk_since: str = 
             "extended": extended, "prev_until": prev_until, "nick": disp_nick}
 
 
+def valor_afk_get_by_canon(canon: str) -> dict | None:
+    """Текущее АФК-состояние канона {note, afk_until, afk_since} или None — для отмены."""
+    canon = (canon or "").strip()
+    if not canon:
+        return None
+    with connection() as conn:
+        r = conn.execute(
+            "SELECT note, afk_until, afk_since FROM valor_afk_note WHERE nick_canon=?",
+            (canon,)).fetchone()
+        return dict(r) if r else None
+
+
 def valor_clear_afk_by_canon(canon: str, actor: dict | None = None) -> dict:
     """Снять АФК по канону (для /афк -Ник): удаляет срок/заметку + is_afk=0 на последнем снимке."""
     canon = (canon or "").strip()
