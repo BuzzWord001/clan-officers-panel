@@ -500,14 +500,28 @@ def _blacklist(rest: str, actor: dict) -> str:
     if not rest:
         rows = db.blacklist_list()
         if not rows:
-            return "🚫 Чёрный список клана пуст."
-        lines = ["🚫 ЧЁРНЫЙ СПИСОК КЛАНА (" + str(len(rows)) + ")", _HR]
-        for r in rows[:40]:
-            line = "• " + (r["nick"] or r["canon"])
-            if r["reason"]:
-                line += " — " + r["reason"]
-            lines.append(line)
-        lines.append("\nДобавить: /чс Ник причина  ·  убрать: /чс -Ник")
+            return ("🚫 ЧЁРНЫЙ СПИСОК КЛАНА\n" + _HR +
+                    "\nСписок пуст — никто не внесён.\n\n"
+                    "Добавить: /чс Ник причина")
+        lines = ["🚫 ЧЁРНЫЙ СПИСОК КЛАНА · " + str(len(rows)) + " чел.", _HR]
+        for i, r in enumerate(rows[:50], 1):
+            lines.append("")
+            lines.append(str(i) + ". ⛔ " + (r["nick"] or r["canon"]))
+            lines.append("   📝 " + (r["reason"].strip() if (r.get("reason") or "").strip()
+                                      else "причина не указана"))
+            meta = []
+            if (r.get("added_by") or "").strip():
+                meta.append("внёс: " + r["added_by"].strip())
+            if (r.get("added_at") or "").strip():
+                meta.append(_ru_date((r["added_at"] or "")[:10]))
+            if meta:
+                lines.append("   👤 " + " · 📅 ".join(meta) if len(meta) == 2
+                             else "   👤 " + meta[0])
+        if len(rows) > 50:
+            lines.append("\n…и ещё " + str(len(rows) - 50) + ". Полный список — на сайте.")
+        lines.append("\n" + _HR)
+        lines.append("Добавить: /чс Ник причина")
+        lines.append("Убрать:  /чс -Ник")
         return "\n".join(lines)
     nick, title = _split_nick_title(rest)
     if nick.startswith("-"):                       # /чс -Ник — убрать
