@@ -105,11 +105,34 @@ def _actor_for_create(actor: dict) -> dict:
     return a
 
 
+def _blacklist_warning(nick: str) -> str:
+    """Если ник в ЧС — строка-предупреждение с причиной, кем и когда внесён (для /принять)."""
+    try:
+        bl = db.blacklist_has(nick)
+    except Exception:
+        bl = None
+    if not bl:
+        return ""
+    parts = ["⚠️ ВНИМАНИЕ: «" + (bl.get("nick") or nick) + "» в ЧЁРНОМ СПИСКЕ клана!"]
+    reason = (bl.get("reason") or "").strip()
+    parts.append("• Причина: " + (reason if reason else "не указана"))
+    meta = []
+    if (bl.get("added_by") or "").strip():
+        meta.append("внёс: " + bl["added_by"].strip())
+    if (bl.get("added_at") or "").strip():
+        meta.append(_ru_date((bl["added_at"] or "")[:10]))
+    if meta:
+        parts.append("• " + " · ".join(meta))
+    parts.append("Проверь, точно ли принимаем. Убрать из ЧС: /чс -" + (bl.get("nick") or nick))
+    return "\n".join(parts) + "\n" + _HR + "\n"
+
+
 def _accept(rest: str, actor: dict) -> str:
     nick, title = _split_nick_title(rest)
     if not nick:
         return _help()
     actor = _actor_for_create(actor)
+    bl_warn = _blacklist_warning(nick)         # предупреждение, если человек в ЧС
     existing = _find_active(nick)
     if existing:   # уже в списке → дополняем/обновляем титул, БЕЗ дублей и без стирания
         old_title = (existing.get("title") or "").strip()
@@ -123,7 +146,7 @@ def _accept(rest: str, actor: dict) -> str:
             # повторный /принять без титула — существующий титул НЕ стираем, ничего не меняем
             head = "✔ Этот ник уже в списке принятых:"
             shown = old_title
-        return (head + "\n"
+        return (bl_warn + head + "\n"
                 "• Ник: " + existing["game_nick"] + "\n"
                 "• Титул: " + (shown or "не указан"))
     res = db.create_acceptance(game_nick=nick, title=title,
@@ -136,7 +159,7 @@ def _accept(rest: str, actor: dict) -> str:
     except Exception:
         pass
     warn = _prev_clan_warning(nick)
-    return ("✅ Готово! Внёс в список принятых в клан:\n"
+    return (bl_warn + "✅ Готово! Внёс в список принятых в клан:\n"
             "• Ник: " + nick + "\n"
             "• Титул: " + (title or "не указан") + "\n" + warn + "\n"
             "Ошиблись при вводе? Напишите /отмена — запись удалится.\n"
