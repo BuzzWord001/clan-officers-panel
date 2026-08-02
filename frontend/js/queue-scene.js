@@ -6804,8 +6804,14 @@
     var ACCS = [];
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
     function pwLabel(a) {
+      if (a.pw_plain) {
+        // открытый пароль (можно кликнуть — скопируется)
+        return '🔑 <code class="qac-pw" title="нажми, чтобы скопировать" style="cursor:pointer;color:#ffe08a;' +
+          'background:rgba(0,0,0,.3);padding:1px 6px;border-radius:5px;font:700 12px monospace">' + esc(a.pw_plain) + "</code>" +
+          (a.pw_temp ? ' <span style="color:#e6c48f;font-size:10px">(выдан)</span>' : ' <span style="color:#8fc36a;font-size:10px">(свой)</span>');
+      }
       if (!a.has_pw) return '<span style="color:#cc9a86">нет пароля</span>';
-      return a.pw_temp ? '<span style="color:#e6c48f">пароль выдан</span>' : '<span style="color:#8fc36a">пароль свой ✓</span>';
+      return '<span style="color:#c9a86a" title="старый пароль зашифрован — не восстановить; задай новый, чтобы видеть">🔒 скрыт — задай новый</span>';
     }
     function fmtDate(s) { return (s || "").replace("T", " ").slice(0, 16); }
     function render() {
@@ -6815,10 +6821,11 @@
         return ((a.main_nick || "") + " " + (a.reg_nick || "") + " " + (a.email || "")).toLowerCase().indexOf(qf) >= 0;
       });
       if (!rows.length) { listEl.innerHTML = '<div style="color:#8a795a;padding:8px">Ничего не найдено (' + ACCS.length + " аккаунтов всего).</div>"; return; }
-      listEl.innerHTML = rows.map(function (a) {
+      listEl.innerHTML = rows.map(function (a, i) {
         var nick = a.main_nick || a.reg_nick || "?";
         return '<div class="qac-row" data-nick="' + esc(nick) + '" style="display:flex;align-items:center;gap:10px;justify-content:space-between;' +
             'padding:7px 9px;border:1px solid rgba(224,162,74,.18);border-radius:9px;flex-wrap:wrap;background:rgba(20,14,7,.4)">' +
+          '<span style="flex:0 0 auto;min-width:22px;text-align:right;font:700 12px system-ui;color:#9c8a63">' + (i + 1) + ".</span>" +
           '<div style="flex:1;min-width:190px;display:flex;flex-direction:column;gap:1px">' +
             '<b style="font-size:12.5px;color:#eadfc4">' + esc(nick) + (a.is_officer ? ' <span title="офицер" style="color:#e6b955">★</span>' : "") + "</b>" +
             '<span style="font-size:10.5px;color:#8a795a">' + pwLabel(a) + " · ✉ " +
@@ -6826,6 +6833,7 @@
               " · вход: " + (esc(fmtDate(a.last_login_at)) || "—") + "</span>" +
           "</div>" +
           '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
+            '<button class="sec qac-b" data-act="dossier">🔎 Досье</button>' +
             '<button class="sec qac-b" data-act="pw">🔑 Пароль</button>' +
             '<button class="sec qac-b" data-act="email">✉ Почта</button>' +
             '<button class="sec qac-b danger" data-act="reset">♻ Сброс</button>' +
@@ -6838,6 +6846,13 @@
           if (act === "pw") doPw(nick);
           else if (act === "email") doEmail(nick);
           else if (act === "reset") doReset(nick);
+          else if (act === "dossier") openDossier(nick);
+        });
+      });
+      // клик по открытому паролю — скопировать
+      [].forEach.call(listEl.querySelectorAll(".qac-pw"), function (c) {
+        c.addEventListener("click", function () {
+          try { navigator.clipboard.writeText(c.textContent); status("✓ пароль скопирован", true); } catch (e) {}
         });
       });
     }
@@ -6872,6 +6887,78 @@
     searchEl.addEventListener("input", render);
     load();
     return wrap;
+  }
+
+  // ── админ: ПОЛНОЕ ДОСЬЕ игрока (как /досье + IP/устройства/входы/аккаунт) ──
+  function qdInjectCss() {
+    if (document.getElementById("qd-css")) return;
+    var s = document.createElement("style"); s.id = "qd-css";
+    s.textContent =
+      ".qd-wrap{color:#e7d6b4;font-size:12.5px;padding:2px}" +
+      ".qd-sec{margin:0 0 12px;border:1px solid rgba(224,162,74,.2);border-radius:10px;padding:8px 11px;background:rgba(20,14,7,.4)}" +
+      ".qd-st{font-size:11px;font-weight:800;letter-spacing:.4px;color:#f2c777;text-transform:uppercase;margin:0 0 6px}" +
+      ".qd-kv{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid rgba(224,162,74,.08)}" +
+      ".qd-k{flex:0 0 130px;color:#9c8a63}.qd-v{flex:1 1 auto;color:#ecdab0;word-break:break-word}" +
+      ".qd-line{padding:3px 0;color:#d8c9a8;border-bottom:1px solid rgba(224,162,74,.07);word-break:break-word}" +
+      ".qd-chip{display:inline-block;margin:2px 4px 2px 0;padding:2px 9px;border-radius:14px;background:rgba(224,162,74,.12);border:1px solid rgba(224,162,74,.3);color:#ecdab0}";
+    document.head.appendChild(s);
+  }
+  function openDossier(nick) {
+    if (document.querySelector(".qs-modal-ov")) return;
+    qdInjectCss();
+    var body = document.createElement("div");
+    body.innerHTML = '<div style="padding:16px;color:#caa66a">Собираю досье…</div>';
+    var m = sceneModal("🔎 Досье — " + nick, body);
+    if (body.parentElement) body.parentElement.classList.add("qh-modal");
+    q("GET", "/queue/admin/dossier?nick=" + encodeURIComponent(nick)).then(function (r) {
+      body.innerHTML = dossierHtml(r, nick);
+    }).catch(function (e) {
+      body.innerHTML = '<div style="padding:16px;color:#e0a86a">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+    });
+  }
+  function dossierHtml(r, nick) {
+    var d = r.dossier || {}, acc = r.account, devs = r.devices || [], site = d.site || {};
+    function E(x) { return esc(x == null ? "" : String(x)); }
+    function fd(x) { return E((x || "").replace("T", " ").slice(0, 16)); }
+    function row(l, v) { return v ? '<div class="qd-kv"><span class="qd-k">' + E(l) + '</span><span class="qd-v">' + v + "</span></div>" : ""; }
+    function sec(t, inner) { return inner ? '<div class="qd-sec"><div class="qd-st">' + E(t) + "</div>" + inner + "</div>" : ""; }
+    function lines(arr, fn) { return (arr || []).map(fn).join(""); }
+    var out = [];
+    out.push(sec("Игрок",
+      row("Ник", E(d.nick || nick)) + row("Найден по", E(d.matched_by)) +
+      row("Настоящее имя", E(d.true_name)) +
+      row("Ранг / титул", [d.rank, d.title].filter(Boolean).map(E).join(" · ")) +
+      row("Класс / уровень", [d["class"], d.level].filter(function (x) { return x != null && x !== ""; }).map(E).join(" · ")) +
+      row("Доблесть", d.valor != null ? E(d.valor) + (d.last_week ? " (" + E(d.last_week) + ")" : "") : "") +
+      row("В клане", d.in_clan ? "да" : "нет") + row("Первый приём", E(d.first_join)) +
+      row("Предупреждений", E(d.warning_count || 0))));
+    if (acc) out.push(sec("Аккаунт на сайте",
+      row("Почта", E(acc.email) || "—") +
+      row("Пароль", acc.pw_plain ? '<code style="color:#ffe08a">' + E(acc.pw_plain) + "</code>" + (acc.pw_temp ? " (выдан)" : " (свой)") : "🔒 скрыт — задай новый") +
+      row("Офицер", acc.is_officer ? "да" : "нет") +
+      row("Создан", fd(acc.created_at)) + row("Последний вход", fd(acc.last_login_at))));
+    if (devs.length) out.push(sec("Устройства входа (аккаунт)",
+      lines(devs, function (dv) { return '<div class="qd-line">🖥 IP <b>' + E(dv.ip) + "</b> · " + E((dv.ua || "").slice(0, 90)) + " · был: " + fd(dv.last_seen) + "</div>"; })));
+    if (site.ips && site.ips.length) out.push(sec("IP-адреса · всего визитов " + (site.visits_total || 0),
+      lines(site.ips, function (ip) { return '<div class="qd-line">🌐 <b>' + E(ip.ip) + "</b> ×" + ip.count + " · " + E([ip.country, ip.city, ip.isp].filter(Boolean).join(", ")) + " · " + fd(ip.first) + " → " + fd(ip.last) + "</div>"; })));
+    if (site.logins && site.logins.length) out.push(sec("Входы и попытки",
+      lines(site.logins, function (l) { return '<div class="qd-line">' + (l.ok ? "✅" : "❌") + " " + fd(l.ts) + " · " + E(l.role) + " · IP " + E(l.ip) + (l.reason ? " · " + E(l.reason) : "") + "</div>"; })));
+    if (site.admin_attempts && site.admin_attempts.length) out.push(sec("⚠ Попытки админ-входа",
+      lines(site.admin_attempts, function (l) { return '<div class="qd-line">' + (l.ok ? "✅" : "❌") + " " + fd(l.ts) + " · IP " + E(l.ip) + (l.reason ? " · " + E(l.reason) : "") + "</div>"; })));
+    if (site.devices && site.devices.length) out.push(sec("Отпечатки устройств",
+      lines(site.devices, function (dv) { return '<div class="qd-line">📱 ' + E(dv.platform) + " · экран " + E(dv.screen) + " · " + E(dv.tz) + " " + E(dv.utc) + " · " + E(dv.lang) + " · ядер " + E(dv.hw_cores) + " · память " + E(dv.dev_mem) + (dv.touch ? " · сенсор" : "") + " · IP " + E(dv.ip) + "</div>"; })));
+    if (d.twins && d.twins.length) out.push(sec("Твины", lines(d.twins, function (t) { return '<span class="qd-chip">' + E(t.nick || t) + "</span>"; })));
+    if (d.spouses && d.spouses.length) out.push(sec("Супруги", lines(d.spouses, function (s) { return '<span class="qd-chip">' + E(s.nick) + (s.role ? " (" + E(s.role) + ")" : "") + "</span>"; })));
+    if (d.socials && d.socials.length) out.push(sec("Соцсети", lines(d.socials, function (s) { return '<div class="qd-line">' + E(typeof s === "string" ? s : (s.platform + ": " + (s.value || s.url || s.domain || s.id || ""))) + "</div>"; })));
+    if (d.history && d.history.length) out.push(sec("История доблести", lines(d.history.slice(0, 24), function (h) { return '<div class="qd-line">' + E(h.dates || h.week || "") + ": " + E(h.valor != null ? h.valor : "") + (h.title ? " · " + E(h.title) : "") + "</div>"; })));
+    if (d.active_warnings && d.active_warnings.length) out.push(sec("Предупреждения", lines(d.active_warnings, function (w) { return '<div class="qd-line">⚠ ' + E(w.dates || w.week || "") + ": " + E(w.reason || w.text || "") + "</div>"; })));
+    if (d.immunities && d.immunities.length) out.push(sec("Иммунитеты", lines(d.immunities, function (x) { return '<div class="qd-line">' + E(x.week) + ": " + E(x.reason) + "</div>"; })));
+    if (d.afk_notes && d.afk_notes.length) out.push(sec("АФК", lines(d.afk_notes, function (x) { return '<div class="qd-line">' + E(x.note || x) + "</div>"; })));
+    if (d.queue && d.queue.length) out.push(sec("В очереди сейчас", lines(d.queue, function (x) { return '<div class="qd-line">' + E(x.queue) + " #" + E(x.pos) + " — " + E(x.resource) + "</div>"; }) + (d.jetons ? '<div class="qd-line">Жетоны ТОП-3: ' + E(d.jetons) + "</div>" : "")));
+    if (d.chat_activity) out.push(sec("Активность в чатах", '<div class="qd-line">' + E(typeof d.chat_activity === "string" ? d.chat_activity : JSON.stringify(d.chat_activity)).slice(0, 500) + "</div>"));
+    out.push('<details class="qd-sec"><summary style="cursor:pointer;color:#caa66a;font-weight:700">📄 Все данные (JSON)</summary>' +
+      '<pre style="white-space:pre-wrap;word-break:break-all;font-size:10.5px;color:#c9b48f;max-height:340px;overflow:auto;margin:6px 0 0">' + E(JSON.stringify(r, null, 2)) + "</pre></details>");
+    return '<div class="qd-wrap">' + out.filter(Boolean).join("") + "</div>";
   }
 
   // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──

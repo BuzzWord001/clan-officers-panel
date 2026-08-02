@@ -448,6 +448,13 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_accounts ADD COLUMN pw_temp INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: ОТКРЫТЫЙ пароль (по просьбе Лира — админ видит пароли в панели). Заполняется
+        # при КАЖДОЙ установке пароля (регистрация/смена/выдача/генерация). Старые (уже хэшированные
+        # до этого) пусты — их не восстановить (bcrypt необратим), нужен новый пароль.
+        try:
+            conn.execute("ALTER TABLE queue_accounts ADD COLUMN pw_plain TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
         try:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
@@ -1431,14 +1438,14 @@ def gen_passwords(payload: GenPwIn, actor: dict = Depends(require_admin)) -> dic
             pw = _gen_password()
             h = _hash(pw)
             if acc:
-                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?",
-                             (h, acc["id"]))
+                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_plain=?, pw_temp=1 WHERE id=?",
+                             (h, pw, acc["id"]))
                 st = "сброшен"
             else:
                 conn.execute(
                     "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, "
-                    "password_hash, created_at, pw_temp) VALUES (?,?,?,?,?,?,1)",
-                    (mc, nick, nick, "", h, _now()))
+                    "password_hash, pw_plain, created_at, pw_temp) VALUES (?,?,?,?,?,?,?,1)",
+                    (mc, nick, nick, "", h, pw, _now()))
                 st = "новый"
             out.append({"nick": nick, "canon": mc, "status": st, "password": pw})
     made = [o for o in out if o["password"]]
@@ -1546,13 +1553,13 @@ def mail_passwords(payload: MailPwIn, actor: dict = Depends(require_admin)) -> d
             pw = _gen_password()
             h = _hash(pw)
             if acc:
-                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?",
-                             (h, acc["id"]))
+                conn.execute("UPDATE queue_accounts SET password_hash=?, pw_plain=?, pw_temp=1 WHERE id=?",
+                             (h, pw, acc["id"]))
             else:
                 conn.execute(
                     "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, "
-                    "password_hash, created_at, pw_temp) VALUES (?,?,?,?,?,?,1)",
-                    (mc, nick, nick, "", h, _now()))
+                    "password_hash, pw_plain, created_at, pw_temp) VALUES (?,?,?,?,?,?,?,1)",
+                    (mc, nick, nick, "", h, pw, _now()))
             out.append({"nick": nick, "password": pw})
     return {"items": out, "generated": len(out), "self_made_skipped": n_self,
             "already_sent_skipped": n_skip, "total_players": len(persons)}
@@ -1752,11 +1759,11 @@ def register(payload: RegisterIn, request: Request, response: Response) -> dict:
         # активная личность = ник, которым регистрируются (мэйн ИЛИ его твин)
         act_nick, act_canon, _ = _active_identity(_people(conn), main_canon, payload.nick)
         cur = conn.execute(
-            "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
+            "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash, pw_plain,"
             " is_officer, active_nick, active_canon, created_at, last_login_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (main_canon, main_nick, reg_nick, payload.email.strip(),
-             _hash(payload.personal_password), 1 if role_officer else 0,
+             _hash(payload.personal_password), payload.personal_password, 1 if role_officer else 0,
              act_nick, act_canon, _now(), _now()))
         acc_id = cur.lastrowid
         dev_token = _set_device(conn, response, acc_id, request)
@@ -1825,8 +1832,8 @@ def change_password(payload: ChangePwIn, request: Request, response: Response) -
         acc = _account_from_request(conn, request)
         if not acc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_logged_in")
-        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=0 WHERE id=?",
-                     (_hash(payload.personal_password), acc["id"]))
+        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_plain=?, pw_temp=0 WHERE id=?",
+                     (_hash(payload.personal_password), payload.personal_password, acc["id"]))
         _log(conn, "change_password", actor=acc["main_nick"], nick=acc["main_nick"],
              request=request, detail="сменил личный пароль")
     return {"ok": True}
@@ -1894,8 +1901,8 @@ def recover(payload: RecoverIn, request: Request, response: Response) -> dict:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "email_mismatch")
         if len(payload.new_password) < 4:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "personal_password_too_short")
-        conn.execute("UPDATE queue_accounts SET password_hash=?, last_login_at=? WHERE id=?",
-                     (_hash(payload.new_password), _now(), acc["id"]))
+        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_plain=?, pw_temp=0, last_login_at=? WHERE id=?",
+                     (_hash(payload.new_password), payload.new_password, _now(), acc["id"]))
         dev_token = _set_device(conn, response, acc["id"], request)
         is_off = bool(acc["is_officer"]) if "is_officer" in acc.keys() else False
         _log(conn, "recover", actor=acc["main_nick"], nick=acc["main_nick"], request=request,
@@ -1952,10 +1959,10 @@ def officer_setup(payload: OfficerSetupIn, request: Request, response: Response)
         if _account_by_main(conn, mc):
             raise HTTPException(status.HTTP_409_CONFLICT, "already_registered")
         cur = conn.execute(
-            "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash,"
-            " is_officer, created_at, last_login_at) VALUES (?,?,?,?,?,1,?,?)",
+            "INSERT INTO queue_accounts (main_canon, main_nick, reg_nick, email, password_hash, pw_plain,"
+            " is_officer, created_at, last_login_at) VALUES (?,?,?,?,?,?,1,?,?)",
             (mc, main_nick, reg_nick, payload.email.strip(),
-             _hash(payload.personal_password), _now(), _now()))
+             _hash(payload.personal_password), payload.personal_password, _now(), _now()))
         acc_id = cur.lastrowid
         dev_token = _set_device(conn, response, acc_id, request)
         _log(conn, "officer_setup", actor=main_nick, nick=main_nick, request=request,
@@ -4930,7 +4937,7 @@ def admin_accounts(_: dict = Depends(require_admin)) -> dict:
         tmap = _build_translit_map(idx)
         accs = conn.execute(
             "SELECT main_canon, main_nick, reg_nick, email, created_at, last_login_at,"
-            " password_hash, pw_temp, is_officer FROM queue_accounts ORDER BY last_login_at DESC").fetchall()
+            " password_hash, pw_plain, pw_temp, is_officer FROM queue_accounts ORDER BY last_login_at DESC").fetchall()
         inq = {r["main_canon"] for r in conn.execute("SELECT DISTINCT main_canon FROM queue_entries")}
     out = []
     for a in accs:
@@ -4959,6 +4966,7 @@ def admin_accounts(_: dict = Depends(require_admin)) -> dict:
             "in_queue": mc in inq,
             # пароли ХЭШИРОВАНЫ (bcrypt) — показать нельзя; отдаём только статус
             "has_pw": bool(("password_hash" in _k) and a["password_hash"]),
+            "pw_plain": (a["pw_plain"] if ("pw_plain" in _k) else ""),   # открытый пароль (по просьбе Лира)
             "pw_temp": bool(("pw_temp" in _k) and a["pw_temp"]),   # выдан/сгенерирован (не свой)
             "is_officer": bool(("is_officer" in _k) and a["is_officer"]),
         })
@@ -4991,7 +4999,8 @@ def admin_account_set_password(payload: AccountPwIn, request: Request,
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "password_too_short")
         if not pw:
             pw = _gen_password()
-        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?", (_hash(pw), acc["id"]))
+        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_plain=?, pw_temp=1 WHERE id=?",
+                     (_hash(pw), pw, acc["id"]))
         _log(conn, "admin_set_password", actor=_actor_name(actor), nick=acc["main_nick"],
              request=request, detail="админ задал личный пароль (выдан)")
     return {"ok": True, "nick": acc["main_nick"], "password": pw}
@@ -5012,6 +5021,34 @@ def admin_account_set_email(payload: AccountEmailIn, request: Request,
         _log(conn, "admin_set_email", actor=_actor_name(actor), nick=acc["main_nick"],
              request=request, detail="админ сменил почту")
     return {"ok": True, "nick": acc["main_nick"], "email": em}
+
+
+@router.get("/admin/dossier")
+def admin_dossier(nick: str = Query(..., min_length=1), _: dict = Depends(require_admin)) -> dict:
+    """ПОЛНОЕ досье игрока (всё, что знает сайт): идентичность, доблесть/титулы, твины, супруги,
+    соцсети, история по неделям, предупреждения/иммунитеты/АФК, очередь/жетоны, приём в клан,
+    + РАЗВЕДКА (IP с гео, входы и попытки, устройства/отпечатки) + аккаунт (почта, пароль,
+    привязанные устройства). Как /досье, но подробнее. Только админ (чувствительные данные)."""
+    d = db.member_dossier(nick) or {"found": False}
+    account, devices = None, []
+    with db.connection() as conn:
+        p = _resolve_person(conn, nick)
+        mc = p["main_canon"] if p else db._valor_canon(nick)
+        acc = _account_by_main(conn, mc) if mc else None
+        if acc:
+            k = acc.keys()
+            account = {
+                "main_nick": acc["main_nick"], "reg_nick": acc["reg_nick"], "email": acc["email"],
+                "pw_plain": (acc["pw_plain"] if "pw_plain" in k else ""),
+                "pw_temp": bool(acc["pw_temp"]) if "pw_temp" in k else False,
+                "is_officer": bool(acc["is_officer"]) if "is_officer" in k else False,
+                "created_at": acc["created_at"], "last_login_at": acc["last_login_at"]}
+            for dv in conn.execute(
+                    "SELECT ip, user_agent, created_at, last_seen_at FROM queue_devices"
+                    " WHERE account_id=? ORDER BY last_seen_at DESC", (acc["id"],)):
+                devices.append({"ip": dv["ip"], "ua": dv["user_agent"],
+                                "created": dv["created_at"], "last_seen": dv["last_seen_at"]})
+    return {"dossier": d, "account": account, "devices": devices}
 
 
 @router.get("/activity-log")
