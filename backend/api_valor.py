@@ -99,6 +99,7 @@ def valor_snapshot(payload: ValorSnapshotIn,
         cf = db.valor_fill_class_from_history(payload.week)
         res["class_filled"] = cf.get("filled", 0)
         res["class_cleared"] = cf.get("cleared", 0)
+        res["class_mismatch"] = cf.get("mismatch", 0)   # класс разошёлся с эталоном → на проверку
         # Сгладить выбросы номеров кадров (кадр не убывает по списку).
         res["frames_fixed"] = db.valor_smooth_frames(payload.week).get("fixed", 0)
     except Exception as e:

@@ -6343,14 +6343,28 @@ def _class_from_history(conn, canon: str, exclude_snapshot_id: int) -> str:
     return (r["class_"] if r else "") or ""
 
 
+def _hist_classes_for_canon(conn, canon: str, exclude_snapshot_id: int) -> set:
+    """Все НЕпустые классы этого канона в ПРОШЛЫХ снимках. len==1 → класс однозначен
+    (не омоним) → можно доверять как эталону. len>1 → под каноном были разные классы
+    (омонимы/реролл) — не помечаем расхождение, чтобы не ловить ложное."""
+    return {(r["class_"] or "").strip() for r in conn.execute(
+        "SELECT DISTINCT m.class_ FROM valor_members m "
+        "WHERE m.nick_canon = ? AND m.snapshot_id != ? AND TRIM(m.class_) != ''",
+        (canon, exclude_snapshot_id))} - {""}
+
+
 def valor_fill_class_from_history(week: str) -> dict:
-    """Заполнить пустой/сомнительный класс из ранее известного класса игрока
-    (прежние сборы). Класс не меняется, поэтому прошлое значение надёжнее
-    текущего OCR. Снимаем flag_ocr_suspect, если класс взят/подтверждён
-    историей. Возвращает {ok, filled, cleared}."""
+    """Использовать ПРОШЛЫЕ снимки как ЭТАЛОН класса (класс в игре стабилен):
+      • пустой/сомнительный класс — ЗАПОЛНЯЕМ из истории (снимаем flag_ocr_suspect);
+      • класс РАСПОЗНАН, но ОТЛИЧАЕТСЯ от ОДНОЗНАЧНОГО прошлого (в истории у канона был
+        РОВНО ОДИН класс) — НЕ заменяем (вдруг реролл), но ПОМЕЧАЕМ flag_ocr_suspect, чтобы
+        Лир проверил в review. Так класс уже не путается вслепую каждую неделю.
+    Омонимы (под каноном в истории >1 класса) не помечаем — там класс различает игроков.
+    Возвращает {ok, filled, cleared, mismatch}."""
     week = (week or "").strip()
     filled = 0
     cleared = 0
+    mismatch = 0
     with connection() as conn:
         snap = conn.execute(
             "SELECT id FROM valor_snapshots WHERE week = ?", (week,)).fetchone()
@@ -6358,14 +6372,21 @@ def valor_fill_class_from_history(week: str) -> dict:
             return {"ok": False, "reason": "no_snapshot"}
         sid = snap["id"]
         rows = conn.execute(
-            "SELECT id, nick_canon, class_, flag_ocr_suspect "
+            "SELECT id, nick, nick_canon, class_, flag_ocr_suspect "
             "FROM valor_members WHERE snapshot_id = ?", (sid,)).fetchall()
         for r in rows:
             cls = (r["class_"] or "").strip()
             suspect = bool(r["flag_ocr_suspect"])
-            if cls and not suspect:
-                continue   # класс есть и сомнений нет — не трогаем
             hist = _class_from_history(conn, r["nick_canon"], sid)
+            if cls and not suspect:
+                # класс есть и не сомнителен — проверим расхождение с ОДНОЗНАЧНЫМ прошлым
+                if hist and hist != cls:
+                    hset = _hist_classes_for_canon(conn, r["nick_canon"], sid)
+                    if len(hset) == 1:      # прошлый класс однозначен → текущий подозрителен
+                        conn.execute(
+                            "UPDATE valor_members SET flag_ocr_suspect = 1 WHERE id = ?", (r["id"],))
+                        mismatch += 1
+                continue
             if not hist:
                 continue   # негде взять — оставляем как есть (сомнение остаётся)
             sets, vals = [], []
@@ -6377,7 +6398,7 @@ def valor_fill_class_from_history(week: str) -> dict:
                 conn.execute(
                     f"UPDATE valor_members SET {', '.join(sets)} WHERE id = ?",
                     (*vals, r["id"]))
-    return {"ok": True, "filled": filled, "cleared": cleared}
+    return {"ok": True, "filled": filled, "cleared": cleared, "mismatch": mismatch}
 
 
 def valor_smooth_frames(week: str) -> dict:
