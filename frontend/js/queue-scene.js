@@ -6623,7 +6623,7 @@
         '<b style="color:#caa66a">офицеры</b>. Ты (админ) всегда видишь и можешь всё. Проверяется и на сервере.</div>' +
       '<div class="q-admin-row" style="gap:8px;margin-bottom:10px">' +
         '<button class="sec" id="qoa-all">✓ Включить всё</button>' +
-        '<button class="sec" id="qoa-none">✕ Только базовое</button>' +
+        '<button class="sec" id="qoa-none">↺ По умолчанию</button>' +
         '<span id="qoa-status" style="font-size:11.5px;color:#9fe0a0;align-self:center"></span>' +
       "</div>" +
       '<div id="qoa-base"></div>' +
@@ -6648,7 +6648,7 @@
     function render() {
       wrap.querySelector("#qoa-base").innerHTML =
         '<div style="font-size:11px;font-weight:800;color:#8fbf7f;letter-spacing:.4px;text-transform:uppercase;margin:2px 0 6px">' +
-          'Базовый доступ (офицеры видят по умолчанию — сними, чтобы запретить)</div>' +
+          'Разделы сайта — что видят офицеры (поставь галочку — начнут видеть раздел)</div>' +
         SECTIONS.map(function (s) { return rowHtml(s, false, ACCESS[s.key] !== false); }).join("");
       wrap.querySelector("#qoa-grant").innerHTML =
         '<div style="font-size:11px;font-weight:800;color:#e6b955;letter-spacing:.4px;text-transform:uppercase;margin:12px 0 6px">' +
@@ -6669,7 +6669,7 @@
       GRANTS.forEach(function (s) { ACCESS[s.key] = true; }); render(); save();
     });
     wrap.querySelector("#qoa-none").addEventListener("click", function () {
-      SECTIONS.forEach(function (s) { ACCESS[s.key] = true; });   // базовое оставляем
+      SECTIONS.forEach(function (s) { ACCESS[s.key] = (s["default"] !== false); });   // к дефолту раздела
       GRANTS.forEach(function (s) { ACCESS[s.key] = false; }); render(); save();
     });
     q("GET", "/queue/admin/officer-access").then(function (d) {

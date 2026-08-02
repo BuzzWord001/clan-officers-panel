@@ -9990,12 +9990,12 @@ OFFICER_SECTIONS = [
      "desc": "Просмотр досье ушедших и возврат из архива"},
     {"key": "valor_search", "label": "Доблесть — глобальный поиск",
      "desc": "Поиск игрока по всей истории доблести"},
-    {"key": "chat_archive", "label": "Чаты — архив и поиск",
-     "desc": "Просмотр и поиск переписки, статистика, медиа"},
-    {"key": "chat_members", "label": "Чаты — участники",
-     "desc": "Профили, таймлайны и активность участников чатов"},
-    {"key": "chat_restore", "label": "Чаты — возврат состава",
-     "desc": "Снапшоты состава и восстановление ушедших участников"},
+    {"key": "chat_archive", "label": "Чаты — архив и поиск", "default": False,
+     "desc": "Просмотр и поиск переписки, статистика, медиа (по умолчанию скрыт от офицеров)"},
+    {"key": "chat_members", "label": "Чаты — участники", "default": False,
+     "desc": "Профили, таймлайны и активность участников чатов (по умолчанию скрыт от офицеров)"},
+    {"key": "chat_restore", "label": "Чаты — возврат состава", "default": False,
+     "desc": "Снапшоты состава и восстановление ушедших участников (по умолчанию скрыт от офицеров)"},
     {"key": "queue_links", "label": "Очередь — связки и облики",
      "desc": "Супруги/твины, запросы связей, заявки на модельки, смена облика игроку"},
     {"key": "queue_due", "label": "Очередь — «не забрал»",
@@ -10084,7 +10084,7 @@ def officer_access_map(conn) -> dict:
             saved = _json.loads(row["val"])
         except (ValueError, TypeError):
             saved = {}
-    out = {s["key"]: bool(saved.get(s["key"], True)) for s in OFFICER_SECTIONS}
+    out = {s["key"]: bool(saved.get(s["key"], s.get("default", True))) for s in OFFICER_SECTIONS}
     for g in OFFICER_GRANTS:
         out[g["key"]] = bool(saved.get(g["key"], False))
     return out
@@ -10097,7 +10097,7 @@ def officer_access_set(conn, incoming: dict) -> dict:
     known = OFFICER_SECTION_KEYS | OFFICER_GRANT_KEYS
     defaults = {}
     for s in OFFICER_SECTIONS:
-        defaults[s["key"]] = True
+        defaults[s["key"]] = s.get("default", True)
     for g in OFFICER_GRANTS:
         defaults[g["key"]] = False
     changed = []
