@@ -4842,22 +4842,49 @@ def activity_log(_: dict = Depends(require_officer_or_admin)) -> dict:
     return {"log": [dict(r) for r in rows]}
 
 
+def _iso_week_key(created_at: str) -> str:
+    """ISO-неделя из created_at (для анти-дубля недель в истории). Все повторные публикации/
+    перепубликации/пробные отчёты за одну неделю падают в один ключ → показываем только последний."""
+    from datetime import datetime
+    s = (created_at or "").strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(s[:19])   # без таймзоны
+        except ValueError:
+            return created_at or ""
+    y, w, _ = dt.isocalendar()
+    return "%04d-W%02d" % (y, w)
+
+
 @router.get("/history")
 def history(_: dict = Depends(require_officer_or_admin)) -> dict:
-    """Архив недельных распределений (метаданные) — офицерам и админу."""
+    """Архив недельных распределений (метаданные) — офицерам и админу.
+
+    АНТИ-ДУБЛЬ НЕДЕЛЬ: за одну неделю бывает несколько записей queue_reports (перепубликации,
+    пробные прогоны, дельта-отчёты). Показываем ТОЛЬКО последнюю (max id) за каждую ISO-неделю —
+    один таб на неделю, без дублей."""
     import json as _json
     with db.connection() as conn:
         rows = conn.execute(
             "SELECT id, created_at, stages, channels, summary, actor FROM queue_reports"
-            " ORDER BY id DESC LIMIT 60").fetchall()
+            " ORDER BY id DESC LIMIT 200").fetchall()
     out = []
-    for r in rows:
+    seen_weeks = set()
+    for r in rows:                       # от новых к старым → первый за неделю = самый свежий
+        wk = _iso_week_key(r["created_at"])
+        if wk in seen_weeks:
+            continue
+        seen_weeks.add(wk)
         try:
             ch = _json.loads(r["channels"]) if r["channels"] else {}
         except (ValueError, TypeError):
             ch = {}
-        out.append({"id": r["id"], "at": r["created_at"], "stages": r["stages"],
+        out.append({"id": r["id"], "at": r["created_at"], "stages": r["stages"], "week": wk,
                     "channels": ch, "summary": r["summary"], "actor": r["actor"]})
+        if len(out) >= 60:
+            break
     return {"reports": out}
 
 

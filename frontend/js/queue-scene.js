@@ -6539,8 +6539,9 @@
     function renderWeekTabs() {
       return '<div class="qh-weeks">' + weeks.map(function (w, i) {
         var lbl = w.at ? new Date(w.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : ("отчёт " + w.id);
+        var wn = (w.week && /W(\d+)/.test(w.week)) ? (" · нед. " + RegExp.$1) : "";
         return '<span class="qh-wtab' + (w.id === cur ? " active" : "") + '" data-wid="' + w.id + '">' +
-          esc(lbl) + (w.stages != null ? " · " + w.stages + " эт." : "") + "</span>";
+          esc(lbl) + wn + (w.stages != null ? " · " + w.stages + " эт." : "") + "</span>";
       }).join("") + "</div>";
     }
     function loadReport(id) {
