@@ -6193,6 +6193,7 @@
       '<div style="font-size:11.5px;color:#8a795a;margin:2px 0 8px">Полная история для ручной проверки: ' +
         'что раздавали каждую неделю, сколько этапов было закрыто, куда ушёл отчёт, и вся активность (кто вставал/выходил/за чем).</div>' +
       '<div class="q-hist-tabs">' +
+        '<button class="sec" id="qh-rich" style="font-weight:700" title="Полный обзор: 4 очереди с модельками, кто сколько получил, остаток">📜 Обзор распределения (с модельками)</button>' +
         '<button class="sec q-hist-tab active" data-tab="weeks">🗓 Недельные отчёты</button>' +
         '<button class="sec q-hist-tab" data-tab="activity">📋 Активность очереди</button>' +
         '<button class="sec" id="qh-refresh" style="margin-left:auto">↻ Обновить</button>' +
@@ -6272,8 +6273,237 @@
     wrap.querySelector("#qh-refresh").addEventListener("click", function () {
       if (!weeksHost.hidden) loadWeeks(); else loadActivity();
     });
+    wrap.querySelector("#qh-rich").addEventListener("click", openQueueHistoryModal);
     loadWeeks();
     return wrap;
+  }
+
+  // ══════════ ИСТОРИЯ РАСПРЕДЕЛЕНИЯ (богатый обзор: 4 очереди с модельками) ══════════
+  // Для админа/офицеров: полноэкранный обзор недельного распределения — сверху сводка
+  // «сколько роздано / остаток» с иконками, ниже 4 очереди с модельками, у каждого сколько
+  // чего получил и его доблесть, плюс кому не хватило доблести. Чтобы при сдвиге очереди
+  // проверять, всё ли распределено верно.
+  var QH_TITLES = {
+    0: "Обычная очередь · базовые ресурсы",
+    1: "Очередь камня душ · Приказ Феникса",
+    2: "Легендарная очередь · Драконья чешуя / Сущность карты",
+    3: "Очередь высшего камня божества (мифическая)"
+  };
+  var QH_THR = { 0: 60, 1: 100, 2: 100, 3: 200 };
+  var QH_RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "koloda-kart",
+    "kamen-bessmertnyh", "pilyulya", "gramota", "prikaz-feniksa", "drakonya-cheshuya",
+    "sushchnost-karty", "vysshiy-kamen", "mount-cilin"];
+
+  function qhInjectCss() {
+    if (document.getElementById("qh-css")) return;
+    var s = document.createElement("style"); s.id = "qh-css";
+    s.textContent =
+      ".qs-modal.qh-modal{max-width:1200px}" +
+      ".qh-wrap{color:#e7d6b4;font-size:13px}" +
+      ".qh-top{position:sticky;top:0;z-index:3;background:linear-gradient(180deg,rgba(26,17,8,.98),rgba(26,17,8,.9));" +
+        "border-bottom:1px solid rgba(224,162,74,.45);padding:10px 4px 12px;margin-bottom:10px}" +
+      ".qh-top-t{font-size:12px;font-weight:800;letter-spacing:.4px;color:#f2c777;margin:2px 0 6px;text-transform:uppercase}" +
+      ".qh-res-row{display:flex;flex-wrap:wrap;gap:7px}" +
+      ".qh-res{display:inline-flex;align-items:center;gap:5px;background:rgba(224,162,74,.1);" +
+        "border:1px solid rgba(224,162,74,.32);border-radius:8px;padding:4px 9px 4px 5px;font-size:12.5px}" +
+      ".qh-res img{width:24px;height:24px;object-fit:contain;filter:drop-shadow(0 1px 2px #000)}" +
+      ".qh-res b{color:#ffe4a8;font-size:13.5px}" +
+      ".qh-res.rem{background:rgba(150,120,80,.09);border-color:rgba(150,120,80,.3);color:#c9b691}" +
+      ".qh-res.rem b{color:#e6cf9c}" +
+      ".qh-note{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}" +
+      ".qh-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 8px;border-radius:20px;" +
+        "background:rgba(20,14,7,.6);border:1px solid rgba(224,162,74,.28);color:#d8c398}" +
+      ".qh-chip.gold{border-color:#e6b955;color:#ffdd93;box-shadow:0 0 8px rgba(230,185,85,.25) inset}" +
+      ".qh-chip.dragon{border-color:#d98a4a;color:#ffc196}" +
+      ".qh-chip.prov{border-color:#7fae7f;color:#bfe6bf}" +
+      ".qh-q{margin:0 0 16px}" +
+      ".qh-q-h{font-size:13.5px;font-weight:800;color:#f0dcb4;border-left:3px solid #e0a24a;padding-left:8px;" +
+        "margin:0 0 9px;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}" +
+      ".qh-q-h .qh-cnt{font-size:11px;font-weight:600;color:#9c8a63}" +
+      ".qh-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}" +
+      ".qh-card{background:rgba(20,14,7,.55);border:1px solid rgba(224,162,74,.22);border-radius:11px;" +
+        "padding:8px 7px 9px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative}" +
+      ".qh-card.gold{border-color:rgba(230,185,85,.6);box-shadow:0 0 12px rgba(230,185,85,.14)}" +
+      ".qh-card.dragon{border-color:rgba(217,138,74,.6)}" +
+      ".qh-card.prov{border-color:rgba(127,174,127,.5)}" +
+      ".qh-mdl{width:96px;height:104px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}" +
+      ".qh-mdl img{max-width:100%;max-height:104px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.55))}" +
+      ".qh-mdl.death img{filter:drop-shadow(0 0 7px rgba(120,0,160,.7)) drop-shadow(0 3px 5px #000)}" +
+      ".qh-nm{font-size:12.5px;font-weight:700;color:#f4e6c4;margin-top:3px;line-height:1.15;word-break:break-word}" +
+      ".qh-vl{font-size:11px;color:#c6a96a;margin-top:1px}" +
+      ".qh-vl.low{color:#e08a6a}" +
+      ".qh-got{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:6px}" +
+      ".qh-g{display:inline-flex;align-items:center;gap:2px;background:rgba(224,162,74,.1);border-radius:6px;padding:2px 5px 2px 3px;font-size:11.5px;color:#ecdab0}" +
+      ".qh-g img{width:19px;height:19px;object-fit:contain}" +
+      ".qh-g b{color:#ffe4a8}" +
+      ".qh-badge{margin-top:6px;font-size:10px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:20px;text-transform:uppercase}" +
+      ".qh-badge.gold{background:rgba(230,185,85,.16);color:#ffde96;border:1px solid rgba(230,185,85,.5)}" +
+      ".qh-badge.dragon{background:rgba(217,138,74,.16);color:#ffc39a;border:1px solid rgba(217,138,74,.5)}" +
+      ".qh-badge.prov{background:rgba(127,174,127,.14);color:#c3e6c3;border:1px solid rgba(127,174,127,.45)}" +
+      ".qh-via{font-size:10.5px;color:#a9926a;margin-top:2px}" +
+      ".qh-low{margin-top:9px;font-size:11.5px;color:#b79e73}" +
+      ".qh-low b{color:#e0a86a;font-weight:700}" +
+      ".qh-lowchip{display:inline-flex;align-items:center;gap:4px;background:rgba(60,40,20,.4);border:1px solid rgba(160,110,70,.3);" +
+        "border-radius:14px;padding:2px 8px;margin:3px 4px 0 0;font-size:11px;color:#d3b78a}" +
+      ".qh-empty{color:#8a795a;font-style:italic;padding:4px 2px}" +
+      ".qh-weeks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}" +
+      ".qh-wtab{font-size:11.5px;padding:4px 10px;border-radius:16px;cursor:pointer;background:rgba(20,14,7,.6);" +
+        "border:1px solid rgba(224,162,74,.3);color:#cbb388}" +
+      ".qh-wtab.active{background:rgba(224,162,74,.22);border-color:#e0a24a;color:#ffe4a8;font-weight:700}";
+    document.head.appendChild(s);
+  }
+
+  // карточка одного получателя: моделька + ник + доблесть + что получил (+ бейдж)
+  function qhCard(person, opts) {
+    opts = opts || {};
+    var e = { nick: person.nick, main_nick: person.main_canon || person.nick, cls: person.cls || "",
+              gender: person.gender || "", true_name: person.nick };
+    var mi = modelInfo(e) || {};
+    var mset = (mi.key && MODEL_SETTINGS[mi.key]) || {};
+    var tr = transformStr(mset);
+    var death = (mset.aura === "death") ? " death" : "";
+    var got = person.got || {};
+    var gotHtml = QH_RES_ORDER.filter(function (k) { return got[k]; }).map(function (k) {
+      return '<span class="qh-g"><img src="' + resImg(k) + '" alt=""><b>' + got[k] + '</b></span>';
+    }).join("");
+    var cls = "qh-card" + (opts.cls ? " " + opts.cls : "");
+    var badge = opts.badge ? '<span class="qh-badge ' + (opts.badgeCls || "") + '">' + esc(opts.badge) + "</span>" : "";
+    var via = (person.recipient && person.recipient.trim() && person.recipient.trim() !== person.nick)
+      ? '<div class="qh-via">→ получает ' + esc(person.recipient.trim()) + "</div>" : "";
+    var vl = (typeof person.valor === "number")
+      ? '<div class="qh-vl' + (opts.lowVal ? " low" : "") + '">' + person.valor + " доблести</div>" : "";
+    return '<div class="' + cls + '">' +
+      '<div class="qh-mdl' + death + '">' + (mi.url ? '<img src="' + mi.url + '" style="transform:' + tr + '" alt="">' : "") + "</div>" +
+      '<div class="qh-nm">' + esc(person.nick || "?") + "</div>" + vl + via +
+      (gotHtml ? '<div class="qh-got">' + gotHtml + "</div>" : "") + badge + "</div>";
+  }
+
+  // весь богатый HTML истории для одного отчёта
+  function qhReportHtml(rep, at) {
+    var totals = rep.totals || {}, lft = rep.leftovers || {};
+    // сводка «роздано» = totals − остаток; «остаток» = leftovers
+    var distChips = QH_RES_ORDER.map(function (k) {
+      if (k === "mount-cilin") return "";
+      var d = (totals[k] || 0) - (lft[k] || 0);
+      if (d <= 0) return "";
+      return '<span class="qh-res"><img src="' + resImg(k) + '" alt=""><b>' + d + "</b> " + esc(resName(k)) + "</span>";
+    }).filter(Boolean).join("");
+    var remChips = QH_RES_ORDER.map(function (k) {
+      var r = lft[k] || 0; if (r <= 0) return "";
+      return '<span class="qh-res rem"><img src="' + resImg(k) + '" alt=""><b>' + r + "</b> " + esc(resName(k)) + "</span>";
+    }).filter(Boolean).join("");
+    // особые раздачи (часть «роздано»): проводники, жетон ТОП-3, цилинь
+    var notes = [];
+    (rep.groups || []).forEach(function (g) {
+      if (!g.provodnik) return;
+      var who = (g.people || []).map(function (p) { return esc(p.receiver); }).join(", ");
+      var what = (g.resources || []).map(function (r) { return esc(r.name) + " ×" + r.per; }).join(", ");
+      notes.push('<span class="qh-chip prov">🎯 Проводники (+10%): ' + who + " — " + what + " каждому</span>");
+    });
+    (rep.priv_claims || []).forEach(function (c) {
+      notes.push('<span class="qh-chip gold">🎫 Вне очереди (жетон ТОП-3): ' + esc(c.nick) + " — " + esc(c.name) + " ×" + c.amount + "</span>");
+    });
+    if ((rep.cilin_given || []).length) {
+      notes.push('<span class="qh-chip dragon">🐲 Огненный цилинь: ' + rep.cilin_given.map(esc).join(", ") + "</span>");
+    }
+    var when = at ? new Date(at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "";
+    var top = '<div class="qh-top">' +
+      '<div class="qh-top-t">Роздано за неделю' + (rep.stages != null ? " · закрыто этапов: " + rep.stages : "") + (when ? " · " + esc(when) : "") + "</div>" +
+      '<div class="qh-res-row">' + (distChips || '<span class="qh-empty">нет данных о раздаче</span>') + "</div>" +
+      (remChips ? '<div class="qh-top-t" style="margin-top:9px">Остаток клана (в казну / мастер раздаёт вручную)</div><div class="qh-res-row">' + remChips + "</div>" : "") +
+      (notes.length ? '<div class="qh-note">' + notes.join("") + "</div>" : "") +
+      "</div>";
+    // 4 очереди
+    var qmap = {};
+    (rep.queues || []).forEach(function (Q) { qmap[Q.queue] = Q; });
+    var body = "";
+    [0, 1, 2, 3].forEach(function (qi) {
+      var Q = qmap[qi] || { rows: [] };
+      var rows = Q.rows || [];
+      var okRows = rows.filter(function (r) { return r.status === "ok"; });
+      var lowRows = rows.filter(function (r) { return r.status === "low_valor"; });
+      var emptyRows = rows.filter(function (r) { return r.status === "empty"; });
+      var cards = okRows.map(function (r) { return qhCard(r, {}); });
+      // жетоны ТОП-3, попавшие в эту очередь (по ресурсу) — отдельными карточками
+      (rep.priv_claims || []).forEach(function (c) {
+        if ((qhResQueue(c.resource)) === qi) {
+          var got = {}; got[c.resource] = c.amount;
+          cards.unshift(qhCard({ nick: c.nick, got: got }, { cls: "gold", badge: "Жетон ТОП-3 · вне очереди", badgeCls: "gold" }));
+        }
+      });
+      // цилинь-получатели — карточками в легендарной очереди (q2)
+      if (qi === 2) {
+        (rep.cilin_given || []).forEach(function (nk) {
+          cards.push(qhCard({ nick: nk, got: { "mount-cilin": 1 } }, { cls: "dragon", badge: "Огненный цилинь", badgeCls: "dragon" }));
+        });
+      }
+      var lowHtml = "";
+      if (lowRows.length) {
+        lowHtml += '<div class="qh-low"><b>Не хватило доблести</b> (порог ' + QH_THR[qi] + "): " +
+          lowRows.map(function (r) { return '<span class="qh-lowchip">' + esc(r.nick) + " · " + (r.valor != null ? r.valor : "?") + "</span>"; }).join("") + "</div>";
+      }
+      if (emptyRows.length) {
+        lowHtml += '<div class="qh-low"><b>Не досталось ресурса</b> (остались в очереди): ' +
+          emptyRows.map(function (r) { return '<span class="qh-lowchip">' + esc(r.nick) + "</span>"; }).join("") + "</div>";
+      }
+      body += '<div class="qh-q"><div class="qh-q-h">' + esc(QH_TITLES[qi]) +
+        '<span class="qh-cnt">получили: ' + okRows.length + (cards.length - okRows.length > 0 ? " +" + (cards.length - okRows.length) + " особых" : "") + "</span></div>" +
+        (cards.length ? '<div class="qh-cards">' + cards.join("") + "</div>" : '<div class="qh-empty">в этой очереди на этой неделе никому не раздавали</div>') +
+        lowHtml + "</div>";
+    });
+    return '<div class="qh-wrap">' + top + body + "</div>";
+  }
+
+  function qhResQueue(k) {
+    if (k === "prikaz-feniksa" || k === "gramota") return 1;
+    if (k === "drakonya-cheshuya" || k === "sushchnost-karty" || k === "mount-cilin") return 2;
+    if (k === "vysshiy-kamen") return 3;
+    return 0;
+  }
+
+  // открыть полноэкранный обзор истории (список недель + богатый рендер)
+  function openQueueHistoryModal() {
+    if (document.querySelector(".qs-modal-ov")) return;
+    qhInjectCss();
+    var body = document.createElement("div");
+    body.className = "qh-body";
+    body.innerHTML = '<div class="qh-empty">Загрузка истории…</div>';
+    var m = sceneModal("📜 История распределения наград КХ", body);
+    if (body.parentElement) body.parentElement.classList.add("qh-modal");
+    var weeks = [], cur = null;
+    function renderWeekTabs() {
+      return '<div class="qh-weeks">' + weeks.map(function (w, i) {
+        var lbl = w.at ? new Date(w.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : ("отчёт " + w.id);
+        return '<span class="qh-wtab' + (w.id === cur ? " active" : "") + '" data-wid="' + w.id + '">' +
+          esc(lbl) + (w.stages != null ? " · " + w.stages + " эт." : "") + "</span>";
+      }).join("") + "</div>";
+    }
+    function loadReport(id) {
+      cur = id;
+      var slot = body.querySelector(".qh-slot");
+      if (slot) slot.innerHTML = '<div class="qh-empty">Загрузка отчёта…</div>';
+      [].forEach.call(body.querySelectorAll(".qh-wtab"), function (t) {
+        t.classList.toggle("active", parseInt(t.getAttribute("data-wid"), 10) === id);
+      });
+      q("GET", "/queue/history/" + id).then(function (d) {
+        var slot = body.querySelector(".qh-slot");
+        if (slot) slot.innerHTML = qhReportHtml(d.report || {}, d.at);
+      }).catch(function (e) {
+        var slot = body.querySelector(".qh-slot");
+        if (slot) slot.innerHTML = '<div class="qh-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+      });
+    }
+    q("GET", "/queue/history").then(function (d) {
+      weeks = (d.reports || []).slice(0, 20);
+      if (!weeks.length) { body.innerHTML = '<div class="qh-empty">Пока нет ни одного распределения.</div>'; return; }
+      body.innerHTML = renderWeekTabs() + '<div class="qh-slot"></div>';
+      [].forEach.call(body.querySelectorAll(".qh-wtab"), function (t) {
+        t.addEventListener("click", function () { loadReport(parseInt(t.getAttribute("data-wid"), 10)); });
+      });
+      loadReport(weeks[0].id);   // самая свежая (эта неделя) — сверху
+    }).catch(function (e) {
+      body.innerHTML = '<div class="qh-empty">Ошибка загрузки истории: ' + esc(e.detail || e.message) + "</div>";
+    });
   }
 
   // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──
@@ -6299,6 +6529,7 @@
           '<input type="number" id="qd-pet" min="0" value="' + pet + '" style="width:90px"></label>' +
       "</div>" +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
+        '<button id="qd-history" class="sec" style="font-weight:700" title="Полный обзор недельного распределения — 4 очереди с модельками, кто сколько получил, остаток">📜 История распределения</button>' +
         '<button id="qd-report" class="sec" title="Показать расчёт на странице (не публикует)">📋 Показать расчёт (превью на странице)</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
@@ -6447,6 +6678,7 @@
       saveCfg("queue_test_send", this.checked ? "1" : "0");
       status(this.checked ? "🧪 Пробный режим ВКЛ — отчёт пойдёт в личку (@pw_spamer_bot)" : "Пробный режим выкл — отчёт в офицерский чат", true);
     });
+    wrap.querySelector("#qd-history").addEventListener("click", openQueueHistoryModal);
     wrap.querySelector("#qd-report").addEventListener("click", function () {
       status("Считаю отчёт…");
       q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
