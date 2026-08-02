@@ -4930,15 +4930,45 @@ def history(_: dict = Depends(require_officer_or_admin)) -> dict:
     return {"reports": out}
 
 
+def _report_not_collected(conn, created_at: str) -> list:
+    """Кто ПОСТФАКТУМ отмечен «не забрал» после этого отчёта (до следующего отчёта).
+    Источник — queue_log: kind 'uncollected' (detail «не забрал…»/«забрал…») и 'restore_uncollected'
+    (возврат = точно не забрал). Берём ПОСЛЕДНЕЕ событие на человека в окне отчёта."""
+    nxt = conn.execute(
+        "SELECT MIN(created_at) m FROM queue_reports WHERE created_at > ?", (created_at,)).fetchone()
+    end = nxt["m"] if nxt and nxt["m"] else None
+    if end:
+        rows = conn.execute(
+            "SELECT at, kind, nick, detail FROM queue_log WHERE kind IN ('uncollected','restore_uncollected')"
+            " AND at >= ? AND at < ? ORDER BY at", (created_at, end)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT at, kind, nick, detail FROM queue_log WHERE kind IN ('uncollected','restore_uncollected')"
+            " AND at >= ? ORDER BY at", (created_at,)).fetchall()
+    state, names = {}, {}
+    for r in rows:
+        c = db._valor_canon(r["nick"] or "")
+        if not c:
+            continue
+        names[c] = r["nick"]
+        if r["kind"] == "restore_uncollected":
+            state[c] = True
+        else:                                    # uncollected: «не забрал — остаётся» vs «забрал — пройдёт»
+            state[c] = ("не забрал" in (r["detail"] or ""))
+    return [names[c] for c, v in state.items() if v]
+
+
 @router.get("/history/{rid}")
 def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
-    """Полный отчёт распределения за конкретную неделю — офицерам и админу."""
+    """Полный отчёт распределения за конкретную неделю — офицерам и админу.
+    + not_collected: ники, отмеченные «не забрал» УЖЕ ПОСЛЕ публикации (постфактум)."""
     import json as _json
     with db.connection() as conn:
         row = conn.execute(
             "SELECT created_at, stages, report, channels FROM queue_reports WHERE id=?", (rid,)).fetchone()
-    if not row:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+        not_collected = _report_not_collected(conn, row["created_at"])
     try:
         rep = _json.loads(row["report"]) if row["report"] else {}
     except (ValueError, TypeError):
@@ -4947,7 +4977,7 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
         ch = _json.loads(row["channels"]) if row["channels"] else {}
     except (ValueError, TypeError):
         ch = {}
-    return {"report": rep, "at": row["created_at"], "channels": ch}
+    return {"report": rep, "at": row["created_at"], "channels": ch, "not_collected": not_collected}
 
 
 # таблицы создаём при импорте модуля (db-файл уже сконфигурирован settings)

@@ -6402,6 +6402,10 @@
         "padding:1px 6px;border-radius:9px;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.5)}" +
       ".qh-c-tag.gold{background:#ecc25a;color:#3a2408}" +
       ".qh-c-tag.dragon{background:#e0954e;color:#2a1400}" +
+      ".qh-c-tag.nc{background:#c0453a;color:#ffe0d8}" +
+      ".qh-c.nc .qh-c-mdl img{filter:grayscale(.5) brightness(.85) drop-shadow(0 0 5px rgba(200,60,50,.55))}" +
+      ".qh-c.nc .qh-c-nm{color:#e8a99a;text-decoration:line-through;text-decoration-color:rgba(200,80,70,.7)}" +
+      ".qh-c.nc .qh-c-got{opacity:.5}" +
       ".qh-c-reason{font-size:9px;color:#cc9a86;font-style:italic;text-align:center;line-height:1.05;max-width:80px}" +
       // ── разделитель «получили │ не выдано» ──
       ".qh-sep{flex:0 0 auto;align-self:stretch;display:flex;flex-direction:column;align-items:center;" +
@@ -6445,11 +6449,20 @@
     var gotIcons = QH_RES_ORDER.filter(function (k) { return got[k]; }).map(function (k) {
       return '<img src="' + resImg(k) + '" alt="">';
     }).join("");
-    var tag = opts.badge ? '<span class="qh-c-tag ' + (opts.badgeCls || "") + '">' + esc(opts.badge) + "</span>" : "";
+    // приоритет тега: «не забрал» (постфактум) важнее обычного бейджа
+    var tag = opts.uncollected
+      ? '<span class="qh-c-tag nc">не забрал</span>'
+      : (opts.badge ? '<span class="qh-c-tag ' + (opts.badgeCls || "") + '">' + esc(opts.badge) + "</span>" : "");
     var val = (typeof person.valor === "number")
       ? '<span class="qh-c-val' + (opts.lowVal ? " low" : "") + '">' + person.valor + " добл.</span>" : "";
     var reason = opts.reason ? '<span class="qh-c-reason">' + esc(opts.reason) + "</span>" : "";
-    return '<div class="qh-c' + (opts.dim ? " dim" : "") + '" data-tip="' + esc(qhTip(person, opts)) + '">' +
+    var tipOpts = opts;
+    if (opts.uncollected) {
+      tipOpts = {}; for (var _k in opts) { if (opts.hasOwnProperty(_k)) tipOpts[_k] = opts[_k]; }
+      tipOpts.reason = "получил, но НЕ забрал (отмечено позже)";
+    }
+    return '<div class="qh-c' + (opts.dim ? " dim" : "") + (opts.uncollected ? " nc" : "") +
+      '" data-tip="' + esc(qhTip(person, tipOpts)) + '">' +
       tag +
       '<div class="qh-c-mdl">' + (mi.url ? '<img src="' + mi.url + '"' + flip + ' alt="">' : "") + "</div>" +
       '<div class="qh-c-nm">' + esc(person.nick || "?") + "</div>" + val +
@@ -6458,7 +6471,10 @@
 
   // весь HTML истории для одного отчёта: баннер недели + 4 ланы (как полосы очередей)
   var QH_ACCENT = { 0: "#7ec46a", 1: "#ff8a2b", 2: "#c07be0", 3: "#f2ecff" };
-  function qhReportHtml(rep, at) {
+  function qhReportHtml(rep, at, notCollected) {
+    // множество тех, кто ПОСТФАКТУМ отмечен «не забрал» (по canon ника)
+    var ncSet = {};
+    (notCollected || []).forEach(function (n) { ncSet[canon(n)] = 1; });
     var totals = rep.totals || {}, lft = rep.leftovers || {};
     // сводка «роздано» = totals − остаток; «остаток» = leftovers
     var distChips = QH_RES_ORDER.map(function (k) {
@@ -6503,7 +6519,8 @@
       var lowRows = rows.filter(function (r) { return r.status === "low_valor"; });
       var emptyRows = rows.filter(function (r) { return r.status === "empty"; });
       // ПОЛУЧИВШИЕ награду на этой неделе (+ жетон ТОП-3 и цилинь спец-карточками)
-      var recip = okRows.map(function (r) { return qhCellHtml(r, {}); });
+      // Отмеченные ПОСТФАКТУМ «не забрал» — помечаем прямо на карточке.
+      var recip = okRows.map(function (r) { return qhCellHtml(r, { uncollected: !!ncSet[canon(r.nick)] }); });
       (rep.priv_claims || []).forEach(function (c) {
         if (qhResQueue(c.resource) === qi) {
           var g = {}; g[c.resource] = c.amount;
@@ -6564,7 +6581,7 @@
       });
       q("GET", "/queue/history/" + id).then(function (d) {
         var slot = body.querySelector(".qh-slot");
-        if (slot) slot.innerHTML = qhReportHtml(d.report || {}, d.at);
+        if (slot) slot.innerHTML = qhReportHtml(d.report || {}, d.at, d.not_collected || []);
       }).catch(function (e) {
         var slot = body.querySelector(".qh-slot");
         if (slot) slot.innerHTML = '<div class="qh-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
