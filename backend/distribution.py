@@ -278,12 +278,18 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         # НЕДОПОЛУЧЕНО: ресурсы, которые человек ВЫБРАЛ и которые БЫЛИ в пуле (had>0), но ему НЕ
         # достались (pack ушёл первому / fixed кончился) и он их ещё не получал ранее (received).
         # По ним человек ОСТАЁТСЯ в очереди (обрабатывается в _shift_queues) — не выкидываем.
+        # ПАРТИАЛ-ОСТАВЛЕНИЕ — ТОЛЬКО обычная очередь q0 (много разных ресурсов: человек хочет
+        # несколько, получил не все → остаётся за оставшимися). Лир 2026-08-02: в ЛЕГЕНДАРНОЙ
+        # очереди q2 (драк.чешуя/сущность) правило иное — получил ОДИН легендарный ресурс →
+        # ВЫБЫВАЕТ из q2 целиком (или в конец, если ставил 🔁), второй легендарный в этом цикле
+        # не добирает. q1/q3 — один ресурс, партиал невозможен. Потому missing считаем лишь для q0.
         missing = [[] for _ in range(N)]
-        for i, e in enumerate(ordered):
-            already = set(e.get("received") or [])
-            missing[i] = [res for res in q_resources
-                          if _wants(e, res) and res not in got[i]
-                          and res not in already and had.get(res, 0) > 0]
+        if q == 0:
+            for i, e in enumerate(ordered):
+                already = set(e.get("received") or [])
+                missing[i] = [res for res in q_resources
+                              if _wants(e, res) and res not in got[i]
+                              and res not in already and had.get(res, 0) > 0]
         rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
         rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in priv_low]  # жетон, но мало доблести
         rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty",
