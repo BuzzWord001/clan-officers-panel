@@ -1513,6 +1513,22 @@
     ".qs-fwallet{position:absolute;transform:translate(-50%,0);line-height:0;pointer-events:none;" +
       "filter:drop-shadow(0 4px 9px rgba(0,0,0,.55))}" +
     ".qs-frame.place-on .qs-fwallet{pointer-events:auto;cursor:move}" +
+    // кнопка «История распределения» НА РАМЕ (слева вверху) — резная золотая табличка в стиль рамы
+    ".qs-histbtn{position:absolute;display:inline-flex;align-items:center;gap:.5em;cursor:pointer;" +
+      "font-family:inherit;font-size:calc(clamp(9px,1.06vw,14px) * var(--hbs,1));" +
+      "padding:.42em .8em .42em .58em;border-radius:.7em;pointer-events:auto;white-space:nowrap;" +
+      "color:#3a2408;text-shadow:0 1px 0 rgba(255,230,170,.4);" +
+      "background:linear-gradient(180deg,#f3d488 0%,#e0a63e 52%,#b9781f 100%);" +
+      "border:1px solid #7a4e14;box-shadow:0 3px 8px rgba(0,0,0,.5),inset 0 1px 1px rgba(255,246,214,.7),inset 0 -2px 3px rgba(120,70,10,.5);" +
+      "transition:transform .12s,box-shadow .12s,filter .12s}" +
+    ".qs-histbtn:hover{filter:brightness(1.07);transform:translateY(-1px);" +
+      "box-shadow:0 5px 13px rgba(0,0,0,.55),0 0 12px rgba(240,200,110,.45),inset 0 1px 1px rgba(255,246,214,.8)}" +
+    ".qs-histbtn:active{transform:translateY(0)}" +
+    ".qs-hb-ic{font-size:1.32em;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}" +
+    ".qs-hb-tw{display:flex;flex-direction:column;line-height:1.05;text-align:left}" +
+    ".qs-hb-tw b{font-weight:800;letter-spacing:.2px}" +
+    ".qs-hb-tw span{font-size:.78em;font-weight:600;opacity:.82}" +
+    ".qs-frame.place-on .qs-histbtn{cursor:move}" +
     // ссылки клана НА РАМЕ (слева, в углу): резные золотые надписи на бронзовых
     // табличках в стиль рамы — столбик. Размер масштабируется (--fls = objSize).
     ".qs-flinks{position:absolute;display:flex;flex-direction:column;gap:.42em;" +
@@ -3193,6 +3209,35 @@
         var fltag = admTag(flPos, "Ссылки клана");
         fltag.style.zIndex = "100001";
         frame.appendChild(fltag);
+      }
+    }
+
+    // ── кнопка «История распределения» НА РАМЕ (слева вверху) — админу и офицерам ──
+    // Красивая резная табличка в стиль рамы; открывает полноэкранный обзор (4 очереди с
+    // модельками, кто сколько получил, остаток). Перетаскиваемая/масштабируемая в режиме
+    // расстановки (ключ "histbtn"), как кошелёк и ссылки клана.
+    if ((_isAdmin || _role === "officer") && !isHidden("histbtn")) {
+      var hbPos = placedPos("histbtn", 3, 3.5);       // дефолт — верхний ЛЕВЫЙ угол рамы
+      var histBtn = document.createElement("button");
+      histBtn.type = "button";
+      histBtn.className = "qs-histbtn";
+      histBtn.dataset.fixedz = "1";                   // всегда поверх рамки
+      histBtn.style.cssText = "left:" + hbPos.x.toFixed(2) + "%;top:" + hbPos.y.toFixed(2) +
+        "%;z-index:100000;transform:none";
+      histBtn.style.setProperty("--hbs", objSize("histbtn", 1).toFixed(3));
+      histBtn.title = "Полный обзор недельного распределения: 4 очереди с модельками, кто сколько получил, остаток";
+      histBtn.innerHTML = '<span class="qs-hb-ic">📜</span>' +
+        '<span class="qs-hb-tw"><b>История</b><span>распределения</span></span>';
+      histBtn.addEventListener("click", function (e) {
+        if (_placeMode) return;                       // в режиме расстановки — только тащим
+        e.preventDefault(); openQueueHistoryModal();
+      });
+      if (_placeMode) makeDraggable(histBtn, "histbtn");
+      frame.appendChild(histBtn);
+      if (_isAdmin && _placeMode) {
+        var hbtag = admTag(hbPos, "Кнопка «История»");
+        hbtag.style.zIndex = "100001";
+        frame.appendChild(hbtag);
       }
     }
     return frame;
