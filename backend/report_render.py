@@ -144,25 +144,16 @@ def render_report_png(report: dict, delta: dict | None, when: str, out_path) -> 
         d.line([(x, y[0]), (x + innerw, y[0])], fill=(120, 92, 52), width=1)
         y[0] += 12
 
-    # ── Огненный цилинь (по порядку; мало доблести — ярко помечен, из списка НЕ убираем) ──
+    # ── Огненный цилинь — ТОЛЬКО кому ВЫДАН на этой неделе (Лир 2026-08-02: ждунов не рисуем) ──
     hr()
-    line("ОГНЕННЫЙ ЦИЛИНЬ — очередь по порядку", f_sec, ORANGE)
-    line("раздаётся мастером по мере выпадения", f_small, DIM, gap=6)
-    pet = report.get("pet_queue") or []
-    if pet:
-        for i, p in enumerate(pet, 1):
-            base = "%d) %s" % (i, _plabel(p))
-            if p.get("status") == "pet_low":
-                d.text((x + 6, y[0]), base, font=f_body, fill=DIM)
-                off = 6 + d.textlength(base + "   ", font=f_body)
-                d.text((x + off, y[0]), "!! мало доблести: %d — не получит" % (p.get("valor") or 0),
-                       font=f_body, fill=RED)
-            else:
-                d.text((x + 6, y[0]), base, font=f_body, fill=TAN)
-            y[0] += f_body.size + 6
+    line("ОГНЕННЫЙ ЦИЛИНЬ — на этой неделе выдаётся", f_sec, ORANGE)
+    given = report.get("cilin_given") or []
+    if given:
+        d.text((x + 6, y[0]), ", ".join(given), font=f_body, fill=TAN)
+        y[0] += f_body.size + 6
     else:
-        line("очередь пуста", f_body, DIM, dx=6)
-    # (группа «не хватило доблести» за ресурсы — только в админ-панели, в картинку НЕ рисуем)
+        line("на этой неделе никому не выдан", f_body, DIM, dx=6)
+    # (очередь ждунов и «не хватило доблести» — только в админ-панели, в картинку НЕ рисуем)
 
     # ── дельта «если закроем ещё этап» ──
     if delta and (delta.get("groups") or []):

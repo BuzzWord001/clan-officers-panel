@@ -3803,6 +3803,13 @@ def _build_report(conn, stages_override: int | None = None, stages_from: int = 0
          "pet_count": _cfg_int(conn, "pet_count", 0),
          "shooters": shooters, "claims": claims, "main_map": main_map})
     report["has_valor"] = bool(valor_map)
+    # ВЫДАННЫЕ огненные цилини на этой неделе (из снимка раздачи, added_by='cilin') — чтобы
+    # отчёт показывал КОМУ выдан цилинь (получатель выходит из очереди → в pet_queue его уже нет).
+    try:
+        report["cilin_given"] = [r["nick"] for r in conn.execute(
+            "SELECT nick FROM queue_served_last WHERE added_by='cilin' ORDER BY served_at, id")]
+    except Exception:
+        report["cilin_given"] = []
     # топ-3 поимённо (для отчёта): имя МЭЙНА персоны + её лучший валор (человек+твины = 1 строка)
     report["top3_named"] = sorted(
         [{"nick": main_nick_map.get(c, name_map.get(c, c)),
