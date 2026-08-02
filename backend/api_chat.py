@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 import db
@@ -101,10 +101,15 @@ def require_bot_token(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "bad_token")
 
 
-def require_officer(session: dict = Depends(current_session)) -> dict:
-    """Архив доступен и офицерам, и админу."""
+def require_officer(request: Request, session: dict = Depends(current_session)) -> dict:
+    """Архив доступен и офицерам, и админу.
+    + ПРАВА РАЗДЕЛОВ: gated-путь, выключенный для офицеров → 403 (админ всегда проходит)."""
     if session["role"] not in ("officer", "admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
+    if session["role"] != "admin":
+        with db.connection() as conn:
+            if not db.officer_path_allowed(conn, request.url.path, session["role"]):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "section_forbidden")
     return session
 
 

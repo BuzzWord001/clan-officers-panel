@@ -41,10 +41,15 @@ log = logging.getLogger("officers.queue")
 
 
 def require_officer_or_admin(request: Request) -> dict:
-    """Офицер ИЛИ админ — для функций, доступных офицерам (связки супругов)."""
+    """Офицер ИЛИ админ — для функций, доступных офицерам (связки супругов).
+    + ПРАВА РАЗДЕЛОВ: если путь принадлежит gated-разделу и офицеру он выключен → 403."""
     s = current_session(request)
     if s["role"] not in ("officer", "admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "officer_only")
+    if s["role"] != "admin":
+        with db.connection() as conn:
+            if not db.officer_path_allowed(conn, request.url.path, s["role"]):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "section_forbidden")
     return s
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -3514,6 +3519,43 @@ def _cfg_set(conn, key, val) -> None:
         "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?)"
         " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
         (key, str(val), _now()))
+
+
+# ══════════ ДОСТУП ОФИЦЕРОВ К РАЗДЕЛАМ САЙТА (админ регулирует) ══════════
+# Ядро (список разделов, карта доступа, path→section) — в db.py (общий модуль, чтобы им
+# пользовались и api_chat/api_valor без циклического импорта). Здесь — только эндпоинты.
+# Владелец-админ ВСЕГДА видит и может всё; управляем ТОЛЬКО ролью "officer". Enforcement —
+# в require_officer_or_admin (тут), require_officer (api_chat) и api_acceptances (defense in depth).
+@router.get("/admin/officer-access")
+def officer_access_get(_: dict = Depends(require_admin)) -> dict:
+    """Список разделов + текущая карта доступа офицеров (для настроек админа)."""
+    with db.connection() as conn:
+        access = db.officer_access_map(conn)
+    return {"sections": db.OFFICER_SECTIONS, "access": access}
+
+
+@router.post("/admin/officer-access")
+def officer_access_set(payload: dict, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Сохранить доступ офицеров. payload.access = {section_key: bool}. Неизвестные ключи игнор."""
+    incoming = (payload or {}).get("access") or {}
+    with db.connection() as conn:
+        res = db.officer_access_set(conn, incoming)
+        if res["changed"]:
+            _log(conn, "officer_access", actor=(actor or {}).get("name", "admin"),
+                 request=request, detail="доступ офицеров: " + ", ".join(res["changed"]))
+    return {"ok": True, "access": res["access"]}
+
+
+@router.get("/officer-access-mine")
+def officer_access_mine(session: dict = Depends(require_officer_or_admin)) -> dict:
+    """Эффективный доступ ТЕКУЩЕГО пользователя (фронт скрывает запрещённые разделы).
+    Админ — всё разрешено; офицер — по сохранённой карте."""
+    with db.connection() as conn:
+        if session.get("role") == "admin":
+            access = {s["key"]: True for s in db.OFFICER_SECTIONS}
+        else:
+            access = db.officer_access_map(conn)
+    return {"role": session.get("role"), "access": access}
 
 
 def _valor_map(conn) -> tuple[dict, dict]:

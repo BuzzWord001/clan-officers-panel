@@ -3216,7 +3216,7 @@
     // Красивая резная табличка в стиль рамы; открывает полноэкранный обзор (4 очереди с
     // модельками, кто сколько получил, остаток). Перетаскиваемая/масштабируемая в режиме
     // расстановки (ключ "histbtn"), как кошелёк и ссылки клана.
-    if ((_isAdmin || _role === "officer") && !isHidden("histbtn")) {
+    if ((_isAdmin || (_role === "officer" && officerCan("queue_history"))) && !isHidden("histbtn")) {
       var hbPos = placedPos("histbtn", 3, 3.5);       // дефолт — верхний ЛЕВЫЙ угол рамы
       var histBtn = document.createElement("button");
       histBtn.type = "button";
@@ -4095,6 +4095,10 @@
   }
 
   var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], [], []] };
+  var _offAccess = {};   // права офицера {section_key: bool} (для скрытия разделов; админ = всё)
+  // Может ли ТЕКУЩИЙ пользователь пользоваться разделом. Админ — всегда; офицер — по карте
+  // (отсутствие ключа = разрешено). Совпадает с серверной проверкой (defense in depth).
+  function officerCan(key) { return _isAdmin || _offAccess[key] !== false; }
   var _myIdentities = [], _myActiveNick = "";   // свои ники (мэйн+твины) и кем стою сейчас
   var _selfPicks = {};     // АДМИНУ: id записи → ресурсы, что игрок выбрал САМ (по логам)
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
@@ -4547,11 +4551,11 @@
     if (!_pathMode && !_placeMode) { var _ip = buildIdentityPicker(); if (_ip) wrap.appendChild(_ip); }
     if (!_pathMode && !_placeMode) { var _gp = buildGenderPicker(); if (_gp) wrap.appendChild(_gp); }
     if (_isAdmin) wrap.appendChild(adminPanel(state));
-    else if (_role === "officer") {          // офицеру — связки + отметка «не забрал»
+    else if (_role === "officer") {          // офицеру — связки + отметка «не забрал» (по правам)
       wrap.appendChild(buildOfficerHeader());   // подпись «Офицерская панель — только у офицеров»
-      wrap.appendChild(buildSpousePanel(true));
-      wrap.appendChild(buildDuePanel(true));
-      wrap.appendChild(buildHistoryPanel(true));
+      if (officerCan("queue_links")) wrap.appendChild(buildSpousePanel(true));
+      if (officerCan("queue_due")) wrap.appendChild(buildDuePanel(true));
+      if (officerCan("queue_history")) wrap.appendChild(buildHistoryPanel(true));
     }
     // правая fixed-панель управления объектами сцены — только админу (внутри wrap, чтобы
     // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя).
@@ -4779,6 +4783,11 @@
               '<input type="range" id="qa-models" min="0.4" max="1.6" step="0.05" value="' + getSize("models", 1) + '" style="width:240px"></label>' +
           "</div>" +
         "</div></details>" +
+
+      // ── 👮 ПРАВА ОФИЦЕРОВ: какие разделы видят и могут менять офицеры ──
+      '<details class="q-sec"><summary>👮 Права офицеров' +
+        '<span class="q-sec-hint">какие разделы сайта видят и могут менять офицеры</span></summary>' +
+        '<div class="q-sec-body" id="qsec-offacc"></div></details>' +
 
       // ── 🎨 СЦЕНА: фон, размеры, расстановка ──
       '<details class="q-sec"><summary>🎨 Сцена: фон, размеры, расстановка' +
@@ -5222,6 +5231,8 @@
     secModels.appendChild(buildModelSizePanel());
     secModels.appendChild(buildUploadPanel());
     box.querySelector("#qsec-env").appendChild(buildEnvPanel());
+    var secOff = box.querySelector("#qsec-offacc");
+    if (secOff) secOff.appendChild(buildOfficerAccessPanel());
     // СОХРАНЯЕМ раскрытость секций между перерисовками: при клике любой кнопки render()
     // пересобирает панель — без этого все разделы схлопывались каждый раз.
     [].forEach.call(box.querySelectorAll("details.q-sec"), function (d, i) {
@@ -6572,6 +6583,58 @@
     });
   }
 
+  // ── админ: ПРАВА ОФИЦЕРОВ — какие разделы сайта видят и могут менять офицеры ──
+  function buildOfficerAccessPanel() {
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin";
+    wrap.innerHTML =
+      '<div style="font-size:11.5px;color:#8a795a;margin-bottom:9px">Отметь, какими разделами сайта могут ' +
+        'пользоваться <b style="color:#caa66a">офицеры</b>. Ты (админ) всегда видишь и можешь всё. ' +
+        'Снятая галочка — офицеры не видят раздел и не могут им пользоваться (проверяется и на сервере).</div>' +
+      '<div class="q-admin-row" style="gap:8px;margin-bottom:8px">' +
+        '<button class="sec" id="qoa-all">✓ Включить всё</button>' +
+        '<button class="sec" id="qoa-none">✕ Выключить всё</button>' +
+        '<span id="qoa-status" style="font-size:11.5px;color:#9fe0a0;align-self:center"></span>' +
+      "</div>" +
+      '<div id="qoa-list" style="display:flex;flex-direction:column;gap:6px">Загрузка…</div>';
+    var listEl = wrap.querySelector("#qoa-list");
+    var st = wrap.querySelector("#qoa-status");
+    var SECTIONS = [], ACCESS = {};
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function render() {
+      listEl.innerHTML = SECTIONS.map(function (s) {
+        var on = ACCESS[s.key] !== false;
+        return '<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;cursor:pointer;' +
+          'border:1px solid ' + (on ? "rgba(126,196,106,.4)" : "rgba(160,110,70,.35)") + ';border-radius:9px;' +
+          'background:' + (on ? "rgba(126,196,106,.07)" : "rgba(60,40,20,.25)") + '">' +
+          '<input type="checkbox" class="qoa-cb" data-k="' + esc(s.key) + '"' + (on ? " checked" : "") +
+            ' style="margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:#7ec46a">' +
+          '<span style="display:flex;flex-direction:column;gap:1px">' +
+            '<b style="font-size:12.5px;color:' + (on ? "#eadfc4" : "#9a8a6a") + '">' + esc(s.label) + "</b>" +
+            '<span style="font-size:11px;color:#8a795a">' + esc(s.desc || "") + "</span></span></label>";
+      }).join("");
+      [].forEach.call(listEl.querySelectorAll(".qoa-cb"), function (cb) {
+        cb.addEventListener("change", function () { ACCESS[cb.getAttribute("data-k")] = cb.checked; save(); });
+      });
+    }
+    function save() {
+      status("Сохраняю…", true);
+      q("POST", "/queue/admin/officer-access", { access: ACCESS })
+        .then(function (d) { ACCESS = d.access || ACCESS; render(); status("✓ Сохранено", true); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    }
+    wrap.querySelector("#qoa-all").addEventListener("click", function () {
+      SECTIONS.forEach(function (s) { ACCESS[s.key] = true; }); render(); save();
+    });
+    wrap.querySelector("#qoa-none").addEventListener("click", function () {
+      SECTIONS.forEach(function (s) { ACCESS[s.key] = false; }); render(); save();
+    });
+    q("GET", "/queue/admin/officer-access").then(function (d) {
+      SECTIONS = d.sections || []; ACCESS = d.access || {}; render();
+    }).catch(function (e) { listEl.textContent = "Ошибка загрузки: " + (e.detail || e.message); });
+    return wrap;
+  }
+
   // ── админ: данные распределения (этапы КХ, питомец, проводники) + отчёт ──
   function buildDistPanel() {
     var wrap = document.createElement("div");
@@ -7087,6 +7150,7 @@
         q("GET", "/queue/rewards").then(function (d) { REWARDS_META = d.rewards || {}; }).catch(function () { REWARDS_META = {}; }),
         q("GET", "/auth/me").then(function (m) { _role = (m && m.role) || ""; _isAdmin = _role === "admin"; _officerName = (m && m.name) || ""; })
           .catch(function () { _role = ""; _isAdmin = false; _officerName = ""; }),
+        q("GET", "/queue/officer-access-mine").then(function (d) { _offAccess = (d && d.access) || {}; }).catch(function () { _offAccess = {}; }),
         q("GET", "/queue/me").then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; _myIdentities = (m && m.identities) || []; _myActiveNick = (m && m.active_nick) || ""; }).catch(function () { _myTokens = 0; _myGender = ""; _myPreferClass = false; _myVariant = ""; _myIdentities = []; _myActiveNick = ""; }),
         q("GET", "/queue/notices").then(function (d) { _notices = (d && d.notices) || []; }).catch(function () { _notices = []; }),
         q("GET", "/queue/token-board").then(function (d) { _tokenBoard = (d && d.holders) || []; }).catch(function () { _tokenBoard = []; })

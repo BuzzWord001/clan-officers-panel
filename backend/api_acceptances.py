@@ -4,7 +4,7 @@ import base64
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
 import db
@@ -13,7 +13,16 @@ from schemas import AcceptanceIn, AcceptanceUpdate, AcceptanceOut, ArchiveIn
 from session import current_actor, current_session
 
 
-router = APIRouter(prefix="/acceptances", tags=["acceptances"])
+def _section_guard(request: Request, s: dict = Depends(current_session)) -> None:
+    """ПРАВА РАЗДЕЛОВ: приём/ЧС выключены для офицеров → 403. Админ всегда проходит."""
+    if s.get("role") != "admin":
+        with db.connection() as conn:
+            if not db.officer_path_allowed(conn, request.url.path, s.get("role", "")):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "section_forbidden")
+
+
+router = APIRouter(prefix="/acceptances", tags=["acceptances"],
+                   dependencies=[Depends(_section_guard)])
 
 # Скрины «Боевых Характеристик» — на томе рядом с БД (не в самой БД, чтобы список не пух).
 _SHOT_DIR = Path(settings.db_path).parent / "acc_shots"

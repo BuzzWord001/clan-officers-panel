@@ -9969,3 +9969,127 @@ def magic_reset(course_id: str | None = None) -> None:
         else:
             conn.execute("DELETE FROM magic_progress")
             conn.execute("DELETE FROM magic_daily")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Права офицеров: доступ к разделам сайта (владелец-админ регулирует)
+# ══════════════════════════════════════════════════════════════════════════════
+# Владелец-админ (вход по паролю) ВСЕГДА видит и может всё. Управляем ТОЛЬКО ролью
+# "officer". Хранение: queue_kv["officer_access"] = JSON {section_key: 0|1}.
+# Отсутствие ключа/раздела = РАЗРЕШЕНО (обратная совместимость: раньше офицеры видели всё).
+OFFICER_SECTIONS = [
+    {"key": "acceptances", "label": "Приём в клан (заявки)",
+     "desc": "Просмотр и обработка заявок новичков, приём/отклонение"},
+    {"key": "blacklist", "label": "Чёрный список чатов",
+     "desc": "Список «не блокировать» / чёрный список для входа в чаты"},
+    {"key": "valor_table", "label": "Доблесть — правки в таблице",
+     "desc": "Теги, предупреждения, АФК, иммунитеты, заметки, архивация строк"},
+    {"key": "valor_screens", "label": "Доблесть — скрины и публикация",
+     "desc": "Скрины недели, сравнение, сессии, публикация ТОП-20 и пропуск недель"},
+    {"key": "valor_archive", "label": "Доблесть — архив ушедших",
+     "desc": "Просмотр досье ушедших и возврат из архива"},
+    {"key": "valor_search", "label": "Доблесть — глобальный поиск",
+     "desc": "Поиск игрока по всей истории доблести"},
+    {"key": "chat_archive", "label": "Чаты — архив и поиск",
+     "desc": "Просмотр и поиск переписки, статистика, медиа"},
+    {"key": "chat_members", "label": "Чаты — участники",
+     "desc": "Профили, таймлайны и активность участников чатов"},
+    {"key": "chat_restore", "label": "Чаты — возврат состава",
+     "desc": "Снапшоты состава и восстановление ушедших участников"},
+    {"key": "queue_links", "label": "Очередь — связки и облики",
+     "desc": "Супруги/твины, запросы связей, заявки на модельки, смена облика игроку"},
+    {"key": "queue_due", "label": "Очередь — «не забрал»",
+     "desc": "Отметка не забравших ресурсы, долги и возврат в очередь"},
+    {"key": "queue_history", "label": "Очередь — история и распределение",
+     "desc": "Недельные отчёты, обзор распределения, журнал активности, жетоны"},
+]
+OFFICER_SECTION_KEYS = frozenset(s["key"] for s in OFFICER_SECTIONS)
+
+# Allowlist: ТОЛЬКО эти префиксы путей gated разделами. Более специфичные — ВЫШЕ
+# (первое совпадение выигрывает), чтобы напр. /chat/members/snapshot ушёл в chat_restore,
+# а не в chat_members. Всё, чего тут нет, офицеру всегда доступно (нулевой риск сломать).
+_OFFICER_PATH_RULES = [
+    # очередь
+    ("/queue/spouses", "queue_links"), ("/queue/spouse", "queue_links"),
+    ("/queue/twins", "queue_links"), ("/queue/twin", "queue_links"),
+    ("/queue/link-request", "queue_links"), ("/queue/model-request", "queue_links"),
+    ("/queue/officer/model", "queue_links"),
+    ("/queue/due", "queue_due"), ("/queue/mark-uncollected", "queue_due"),
+    ("/queue/served-last", "queue_due"), ("/queue/restore-uncollected", "queue_due"),
+    ("/queue/history", "queue_history"), ("/queue/activity-log", "queue_history"),
+    ("/queue/privileges", "queue_history"),
+    # доблесть (правки — require_officer; просмотр таблицы идёт через require_viewer и НЕ gated)
+    ("/valor/tags", "valor_table"), ("/valor/tag", "valor_table"),
+    ("/valor/warning", "valor_table"), ("/valor/afk", "valor_table"),
+    ("/valor/manual-immunity", "valor_table"), ("/valor/notes", "valor_table"),
+    ("/valor/note", "valor_table"), ("/valor/archive", "valor_table"),
+    ("/valor/restore", "valor_table"),
+    ("/valor/screenshots", "valor_screens"), ("/valor/screenshot", "valor_screens"),
+    ("/valor/compare", "valor_screens"), ("/valor/sessions", "valor_screens"),
+    ("/valor/missing-weeks", "valor_screens"), ("/valor/request-publish", "valor_screens"),
+    ("/valor/skip-week", "valor_screens"),
+    ("/valor/by-canon", "valor_archive"), ("/valor/departed-check", "valor_archive"),
+    ("/valor/return-from-archive", "valor_archive"),
+    ("/valor/global-search", "valor_search"),
+    # чаты (порядок: restore-roster/snapshot/backup ВЫШЕ общего /chat/members)
+    ("/chat/members/restore-roster", "chat_restore"), ("/chat/members/snapshot", "chat_restore"),
+    ("/chat/members/backup", "chat_restore"),
+    ("/chat/members", "chat_members"),
+    ("/chat/list", "chat_archive"), ("/chat/stats", "chat_archive"),
+    ("/chat/groups", "chat_archive"), ("/chat/media", "chat_archive"),
+    ("/chat/messages", "chat_archive"), ("/chat/message", "chat_archive"),
+    # приём/чс (blacklist ВЫШЕ общего /acceptances)
+    ("/acceptances/blacklist", "blacklist"),
+    ("/acceptances", "acceptances"),
+]
+
+
+def officer_access_map(conn) -> dict:
+    """Карта доступа офицеров {section_key: bool}. Отсутствие раздела = разрешено (True)."""
+    import json as _json
+    row = conn.execute("SELECT val FROM queue_kv WHERE key='officer_access'").fetchone()
+    saved = {}
+    if row and row["val"]:
+        try:
+            saved = _json.loads(row["val"])
+        except (ValueError, TypeError):
+            saved = {}
+    return {s["key"]: bool(saved.get(s["key"], True)) for s in OFFICER_SECTIONS}
+
+
+def officer_access_set(conn, incoming: dict) -> dict:
+    """Сохранить доступ (только известные ключи). Возвращает новую полную карту + список изменений."""
+    import json as _json
+    cur = officer_access_map(conn)
+    changed = []
+    for k, v in (incoming or {}).items():
+        if k in OFFICER_SECTION_KEYS:
+            if bool(v) != cur.get(k, True):
+                changed.append(k + "=" + ("вкл" if v else "выкл"))
+            cur[k] = bool(v)
+    conn.execute(
+        "INSERT INTO queue_kv (key, val, updated_at) VALUES ('officer_access', ?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
+        (_json.dumps(cur), datetime.utcnow().isoformat(timespec="seconds")))
+    return {"access": cur, "changed": changed}
+
+
+def officer_section_for_path(path: str):
+    """Раздел (section key), которому принадлежит путь запроса, или None (не gated)."""
+    p = (path or "").split("?")[0].rstrip("/") or "/"
+    for prefix, sec in _OFFICER_PATH_RULES:
+        # граница: точное совпадение, либо следующий символ '/' или '-' (под-роуты вида
+        # /model-upload, /backup-export, /blacklist-remove, /warning/dismiss)
+        if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "-"):
+            return sec
+    return None
+
+
+def officer_path_allowed(conn, path: str, role: str) -> bool:
+    """Разрешён ли путь для роли. Админ — всегда. Офицер — по карте (не-gated пути = да)."""
+    if role == "admin":
+        return True
+    sec = officer_section_for_path(path)
+    if sec is None:
+        return True
+    return officer_access_map(conn).get(sec, True)
