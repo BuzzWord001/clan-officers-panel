@@ -217,8 +217,16 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                 for e in cil_all:
                     v = entry_valor(e)
                     pet_queue.append(_row(e, v, top3, shooter_lc, {}, "pet" if v >= thr else "pet_low"))
-        elig = [e for e in rest_raw if entry_valor(e) >= thr]
-        low = [e for e in rest_raw if entry_valor(e) < thr]
+        # q2 (Драконья чешуя / Сущность карты — редкие FIXED): раздаём первым N в очереди за
+        # ресурсом ПО ПОРЯДКУ, порог доблести НЕ исключает (сколько выпало за этапы — столько и
+        # раздаётся сверху очереди). Лир 2026-08-02: чешуи 3 за 6 этапов → 3 получателя, даже если
+        # у 3-го доблесть чуть ниже порога. Камень божества (q3) — порог 200 остаётся (строго).
+        if q == 2:
+            elig = rest_raw
+            low = []
+        else:
+            elig = [e for e in rest_raw if entry_valor(e) >= thr]
+            low = [e for e in rest_raw if entry_valor(e) < thr]
         # кому не хватило доблести за РЕСУРС (не цилинь) — в отдельный АДМИН-список (в отчёт НЕ идёт)
         if stages_from == 0:
             for e in low:
