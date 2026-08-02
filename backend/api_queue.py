@@ -4005,7 +4005,10 @@ def _shift_queues(conn, report: dict) -> dict:
     for Q in report["queues"]:
         served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"] if r["status"] == "ok" and r["id"] is not None}
     requeued = left_after = stayed_uncollected = 0
-    conn.execute("DELETE FROM queue_served_last")
+    # Чистим только снимки ПРОШЛОГО отчёта (added_by='report'). Снимки раздачи цилиня
+    # (added_by='cilin') НЕ трогаем — иначе публикация отчёта стирала бы возможность вернуть
+    # цилинь-получателя через «не забрал», если цилиня раздали ДО отчёта (порядок Лира).
+    conn.execute("DELETE FROM queue_served_last WHERE added_by != 'cilin'")
     for q in QUEUES:
         rows = conn.execute(
             "SELECT id, pos, main_canon, nick, cls, resource, recipient, auto_repeat, auto_plan, not_collected"
@@ -4145,6 +4148,9 @@ def cilin_distribute(payload: CilinDistributeIn, request: Request,
         elig = [p for p in pet if p.get("status") == "pet" and p.get("id")]
         n = min(payload.count, len(elig))
         given = []
+        # Чистим снимки ПРОШЛОЙ раздачи цилиня (added_by='cilin'), чтобы не копились по неделям.
+        # Снимки отчёта (added_by='report') не трогаем — они живут своим циклом.
+        conn.execute("DELETE FROM queue_served_last WHERE added_by='cilin'")
         for p in elig[:n]:
             row = conn.execute("SELECT * FROM queue_entries WHERE id=?", (p["id"],)).fetchone()
             if not row:
