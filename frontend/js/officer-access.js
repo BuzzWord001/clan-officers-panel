@@ -72,11 +72,27 @@
         '<a href="index.html" style="color:#ffd27a;font-weight:700">← На главную</a></div>';
     }
   }
+  function currentView() {                              // «Смотреть как» (view-as.js) — sessionStorage
+    try { return sessionStorage.getItem("santdevil_view_as") || ""; } catch (e) { return ""; }
+  }
+  function fetchJson(path) {
+    return fetch(BASE + path, { credentials: "include", headers: headers() })
+      .then(function (r) { return r.ok ? r.json() : null; });
+  }
   function run() {
-    fetch(BASE + "/queue/officer-access-mine", { credentials: "include", headers: headers() })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(apply)
-      .catch(function () {});
+    var view = currentView();
+    fetchJson("/queue/officer-access-mine").then(function (d) {
+      if (!d) return;
+      if (d.role !== "admin") { apply(d); return; }     // настоящий офицер — его карта
+      // Настоящий АДМИН смотрит «как офицер» → применяем СОХРАНЁННУЮ карту офицеров
+      // (иначе превью показывало бы всё как админу и не скрывало/не открывало разделы).
+      if (view === "officer") {
+        fetchJson("/queue/admin/officer-access").then(function (a) {
+          if (a) apply({ role: "officer", access: a.access });
+        }).catch(function () {});
+      }
+      // прочее (реальный админ / превью участник-гость) — навигацию не трогаем (CSS по роли)
+    }).catch(function () {});
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
   else run();
