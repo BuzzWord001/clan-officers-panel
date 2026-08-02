@@ -4009,16 +4009,21 @@ def _shift_queues(conn, report: dict) -> dict:
     (для возврата «не забрал»)."""
     import json as _json
     served_by_q = {}
+    row_by_id = {}                    # id → строка отчёта (для got/missing)
     for Q in report["queues"]:
         served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"] if r["status"] == "ok" and r["id"] is not None}
-    requeued = left_after = stayed_uncollected = 0
+        for r in Q["rows"]:
+            if r.get("id") is not None:
+                row_by_id[r["id"]] = r
+    requeued = left_after = stayed_uncollected = partial_stay = 0
     # Чистим только снимки ПРОШЛОГО отчёта (added_by='report'). Снимки раздачи цилиня
     # (added_by='cilin') НЕ трогаем — иначе публикация отчёта стирала бы возможность вернуть
     # цилинь-получателя через «не забрал», если цилиня раздали ДО отчёта (порядок Лира).
     conn.execute("DELETE FROM queue_served_last WHERE added_by != 'cilin'")
     for q in QUEUES:
         rows = conn.execute(
-            "SELECT id, pos, main_canon, nick, cls, resource, recipient, auto_repeat, auto_plan, not_collected"
+            "SELECT id, pos, main_canon, nick, cls, resource, resources, received, recipient,"
+            " auto_repeat, auto_plan, not_collected"
             " FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
         served = served_by_q.get(q, set())
         keep_ids = []; requeue_ids = []
@@ -4029,6 +4034,21 @@ def _shift_queues(conn, report: dict) -> dict:
                 keep_ids.append(r["id"])
                 conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
                 stayed_uncollected += 1
+            elif (row_by_id.get(r["id"], {}).get("missing") or []):
+                # Получил НЕ ВСЁ выбранное (часть ресурсов не досталась — pack ушёл первому /
+                # fixed кончился). ОСТАЁТСЯ в очереди за НЕДОПОЛУЧЕННЫМИ; полученное сейчас →
+                # received (в пикере станет серым, повторно не выберет). Не выкидываем.
+                miss = row_by_id[r["id"]]["missing"]
+                got_now = list((row_by_id[r["id"]].get("got") or {}).keys())
+                try:
+                    prev_recv = _json.loads(r["received"]) if r["received"] else []
+                except (ValueError, TypeError):
+                    prev_recv = []
+                new_recv = sorted(set(prev_recv) | set(got_now))
+                conn.execute(
+                    "UPDATE queue_entries SET resource=?, resources=?, received=? WHERE id=?",
+                    (miss[0], _json.dumps(miss), _json.dumps(new_recv), r["id"]))
+                keep_ids.append(r["id"]); partial_stay += 1
             else:
                 conn.execute(
                     "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
@@ -4060,7 +4080,8 @@ def _shift_queues(conn, report: dict) -> dict:
             for i in requeue_ids:
                 p += 1.0
                 conn.execute("UPDATE queue_entries SET pos=?, received='' WHERE id=?", (p, i))
-    return {"requeued": requeued, "left_removed": left_after, "stayed_uncollected": stayed_uncollected}
+    return {"requeued": requeued, "left_removed": left_after,
+            "stayed_uncollected": stayed_uncollected, "partial_stay": partial_stay}
 
 
 @router.post("/admin/report")

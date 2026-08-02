@@ -244,8 +244,10 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         def _wants(e, res):
             sel = e.get("resources")
             return (not sel) or (res in sel)
-        for res in [rr for rr in RES_ORDER
-                    if REWARDS[rr]["q"] == q and rr not in MANUAL_RESOURCES and rr != "mount-cilin"]:
+        q_resources = [rr for rr in RES_ORDER
+                       if REWARDS[rr]["q"] == q and rr not in MANUAL_RESOURCES and rr != "mount-cilin"]
+        had = {res: pool.get(res, 0) for res in q_resources}   # пул ДО раздачи (для «недополучено»)
+        for res in q_resources:
             have = pool.get(res, 0)
             if have <= 0 or N == 0:
                 continue
@@ -273,10 +275,19 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
                     if cnt > 0:
                         got[j][res] = cnt * unit
                 pool[res] = have - total_stacks * unit   # только неполный стак (< unit) → в клан
+        # НЕДОПОЛУЧЕНО: ресурсы, которые человек ВЫБРАЛ и которые БЫЛИ в пуле (had>0), но ему НЕ
+        # достались (pack ушёл первому / fixed кончился) и он их ещё не получал ранее (received).
+        # По ним человек ОСТАЁТСЯ в очереди (обрабатывается в _shift_queues) — не выкидываем.
+        missing = [[] for _ in range(N)]
+        for i, e in enumerate(ordered):
+            already = set(e.get("received") or [])
+            missing[i] = [res for res in q_resources
+                          if _wants(e, res) and res not in got[i]
+                          and res not in already and had.get(res, 0) > 0]
         rows = [_row(e, entry_valor(e), top3, shooter_lc, {}, "privileged") for e in priv]  # первыми
         rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in priv_low]  # жетон, но мало доблести
-        rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty")
-                 for i, e in enumerate(ordered)]
+        rows += [_row(e, entry_valor(e), top3, shooter_lc, got[i], "ok" if got[i] else "empty",
+                      missing=missing[i]) for i, e in enumerate(ordered)]
         rows += [_row(e, entry_valor(e), top3, shooter_lc, {}, "low_valor") for e in low]
         queues_out.append({"queue": q, "threshold": thr, "rows": rows})
 
@@ -321,7 +332,7 @@ RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "kol
              "drakonya-cheshuya", "sushchnost-karty", "vysshiy-kamen", "mount-cilin"]
 
 
-def _row(e, v, top3, shooter_lc, got, status) -> dict:
+def _row(e, v, top3, shooter_lc, got, status, missing=None) -> dict:
     who = e.get("nick", "")
     to = (e.get("recipient") or "").strip()
     res = e.get("resource") or ""
@@ -333,7 +344,7 @@ def _row(e, v, top3, shooter_lc, got, status) -> dict:
         "provodnik": who.strip().lower() in shooter_lc,
         "recipient_ok": e.get("recipient_ok", True),
         "not_collected": e.get("not_collected", False),
-        "got": got, "status": status,
+        "got": got, "status": status, "missing": (missing or []),
         # для персональных уведомлений (нехватка доблести и т.п.)
         "main_canon": e.get("main_canon", ""), "resource": res,
         "res_name": res_name(res) if res else "",
