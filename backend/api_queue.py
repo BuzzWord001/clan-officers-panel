@@ -3490,6 +3490,11 @@ _LOGGED_CFG = {"queue_open", "stages_closed", "pet_count", "shooters", "forceTim
 
 @router.post("/admin/config")
 def set_config(payload: KVIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    # Выданный офицер может писать ТОЛЬКО разрешённые его грантами ключи (не officer_access и пр.).
+    if actor.get("role") != "admin":
+        with db.connection() as conn:
+            if not db.officer_config_key_allowed(conn, payload.key, actor.get("role", "")):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "config_key_forbidden")
     with db.connection() as conn:
         conn.execute(
             "INSERT INTO queue_kv (key, val, updated_at) VALUES (?,?,?)"
@@ -3528,10 +3533,10 @@ def _cfg_set(conn, key, val) -> None:
 # в require_officer_or_admin (тут), require_officer (api_chat) и api_acceptances (defense in depth).
 @router.get("/admin/officer-access")
 def officer_access_get(_: dict = Depends(require_admin)) -> dict:
-    """Список разделов + текущая карта доступа офицеров (для настроек админа)."""
+    """Разделы (базовые + выдаваемые админ-функции) + текущая карта доступа (для настроек админа)."""
     with db.connection() as conn:
         access = db.officer_access_map(conn)
-    return {"sections": db.OFFICER_SECTIONS, "access": access}
+    return {"sections": db.OFFICER_SECTIONS, "grants": db.OFFICER_GRANTS, "access": access}
 
 
 @router.post("/admin/officer-access")
@@ -3553,6 +3558,8 @@ def officer_access_mine(session: dict = Depends(require_officer_or_admin)) -> di
     with db.connection() as conn:
         if session.get("role") == "admin":
             access = {s["key"]: True for s in db.OFFICER_SECTIONS}
+            for g in db.OFFICER_GRANTS:
+                access[g["key"]] = True
         else:
             access = db.officer_access_map(conn)
     return {"role": session.get("role"), "access": access}

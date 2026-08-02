@@ -10005,6 +10005,35 @@ OFFICER_SECTIONS = [
 ]
 OFFICER_SECTION_KEYS = frozenset(s["key"] for s in OFFICER_SECTIONS)
 
+# ── ВЫДАВАЕМЫЕ АДМИН-ФУНКЦИИ (default ВЫКЛ) — админ может ДАТЬ офицерам то, чего у них не было ──
+# Владелец-критичное (пароли, учётка, роли офицеров, очистка/тест очереди, сами права офицеров)
+# в список НЕ входит — не выдаётся никогда (защита от эскалации привилегий).
+OFFICER_GRANTS = [
+    {"key": "adm_distribution", "label": "Распределение ресурсов",
+     "desc": "Публикация недельных отчётов в чаты, огненный цилинь, «не забрал», проводники, "
+             "жетоны ТОП-3, суперспособность — полная панель раздачи наград"},
+    {"key": "adm_scene", "label": "Сцена: модели и оформление",
+     "desc": "Загрузка/поворот/размер обликов игроков и объектов окружения на картинке"},
+]
+OFFICER_GRANT_KEYS = frozenset(g["key"] for g in OFFICER_GRANTS)
+
+# Пути АДМИН-эндпоинтов, которые можно ВЫДАТЬ офицеру (path→grant). Чего тут нет — админ-только.
+_OFFICER_GRANT_RULES = [
+    ("/queue/admin/report", "adm_distribution"),
+    ("/queue/admin/distribute", "adm_distribution"),
+    ("/queue/admin/cilin-distribute", "adm_distribution"),
+    ("/queue/admin/return-nicks", "adm_distribution"),
+    ("/queue/admin/grant-token", "adm_distribution"),
+    ("/queue/admin/prune-left", "adm_distribution"),
+    ("/queue/admin/model", "adm_scene"),          # model / model-upload / model-delete / model-variant-as
+]
+# Ключи /queue/admin/config, которые разрешены выданному офицеру (иначе — 403 в set_config).
+# officer_access сюда НЕ входит НИКОГДА → офицер не может расширить себе права.
+_GRANT_CONFIG_KEYS = {
+    "adm_distribution": ["shooters", "stages_closed", "pet_count", "queue_test_send"],
+    "adm_scene": ["env_objects"],
+}
+
 # Allowlist: ТОЛЬКО эти префиксы путей gated разделами. Более специфичные — ВЫШЕ
 # (первое совпадение выигрывает), чтобы напр. /chat/members/snapshot ушёл в chat_restore,
 # а не в chat_members. Всё, чего тут нет, офицеру всегда доступно (нулевой риск сломать).
@@ -10045,7 +10074,8 @@ _OFFICER_PATH_RULES = [
 
 
 def officer_access_map(conn) -> dict:
-    """Карта доступа офицеров {section_key: bool}. Отсутствие раздела = разрешено (True)."""
+    """Карта доступа офицеров {section_key: bool}. Базовые разделы default True (были доступны),
+    ВЫДАВАЕМЫЕ админ-функции default False (по умолчанию не выданы)."""
     import json as _json
     row = conn.execute("SELECT val FROM queue_kv WHERE key='officer_access'").fetchone()
     saved = {}
@@ -10054,17 +10084,26 @@ def officer_access_map(conn) -> dict:
             saved = _json.loads(row["val"])
         except (ValueError, TypeError):
             saved = {}
-    return {s["key"]: bool(saved.get(s["key"], True)) for s in OFFICER_SECTIONS}
+    out = {s["key"]: bool(saved.get(s["key"], True)) for s in OFFICER_SECTIONS}
+    for g in OFFICER_GRANTS:
+        out[g["key"]] = bool(saved.get(g["key"], False))
+    return out
 
 
 def officer_access_set(conn, incoming: dict) -> dict:
-    """Сохранить доступ (только известные ключи). Возвращает новую полную карту + список изменений."""
+    """Сохранить доступ (базовые разделы + выдаваемые функции). Возвращает карту + изменения."""
     import json as _json
     cur = officer_access_map(conn)
+    known = OFFICER_SECTION_KEYS | OFFICER_GRANT_KEYS
+    defaults = {}
+    for s in OFFICER_SECTIONS:
+        defaults[s["key"]] = True
+    for g in OFFICER_GRANTS:
+        defaults[g["key"]] = False
     changed = []
     for k, v in (incoming or {}).items():
-        if k in OFFICER_SECTION_KEYS:
-            if bool(v) != cur.get(k, True):
+        if k in known:
+            if bool(v) != cur.get(k, defaults.get(k, True)):
                 changed.append(k + "=" + ("вкл" if v else "выкл"))
             cur[k] = bool(v)
     conn.execute(
@@ -10072,6 +10111,37 @@ def officer_access_set(conn, incoming: dict) -> dict:
         " ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at",
         (_json.dumps(cur), datetime.utcnow().isoformat(timespec="seconds")))
     return {"access": cur, "changed": changed}
+
+
+def officer_admin_grant_allowed(conn, path: str, role: str) -> bool:
+    """Пускать ли офицера на АДМИН-эндпоинт `path`. Админ — всегда. Офицер — ТОЛЬКО если путь в
+    grant-allowlist и раздел выдан. /queue/admin/config — если есть ЛЮБОЙ config-пишущий грант
+    (конкретный ключ проверяется в set_config через officer_config_key_allowed)."""
+    if role == "admin":
+        return True
+    p = (path or "").split("?")[0].rstrip("/") or "/"
+    access = officer_access_map(conn)
+    if p == "/queue/admin/config" or p.startswith("/queue/admin/config/"):
+        return any(access.get(g, False) for g in _GRANT_CONFIG_KEYS)
+    for prefix, sec in _OFFICER_GRANT_RULES:
+        if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "-"):
+            return bool(access.get(sec, False))
+    return False
+
+
+def officer_config_key_allowed(conn, key: str, role: str) -> bool:
+    """Разрешён ли выданному офицеру config-ключ `key`. Админ — всегда. officer_access и любой
+    ключ вне белого списка выданных грантов — запрещены (нет эскалации привилегий)."""
+    if role == "admin":
+        return True
+    access = officer_access_map(conn)
+    for sec, matchers in _GRANT_CONFIG_KEYS.items():
+        if not access.get(sec, False):
+            continue
+        for m in matchers:
+            if (m.endswith(":") and (key or "").startswith(m)) or key == m:
+                return True
+    return False
 
 
 def officer_section_for_path(path: str):

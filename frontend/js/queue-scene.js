@@ -4099,6 +4099,14 @@
   // Может ли ТЕКУЩИЙ пользователь пользоваться разделом. Админ — всегда; офицер — по карте
   // (отсутствие ключа = разрешено). Совпадает с серверной проверкой (defense in depth).
   function officerCan(key) { return _isAdmin || _offAccess[key] !== false; }
+  // Обёртка выданной админ-функции в раскрывающуюся секцию (как у админ-панели)
+  function offGrantSection(title, hint, nodes) {
+    var d = document.createElement("details"); d.className = "q-sec q-admin";
+    d.innerHTML = '<summary>' + title + '<span class="q-sec-hint">' + hint + "</span></summary>";
+    var body = document.createElement("div"); body.className = "q-sec-body";
+    (nodes || []).forEach(function (n) { if (n) body.appendChild(n); });
+    d.appendChild(body); return d;
+  }
   var _myIdentities = [], _myActiveNick = "";   // свои ники (мэйн+твины) и кем стою сейчас
   var _selfPicks = {};     // АДМИНУ: id записи → ресурсы, что игрок выбрал САМ (по логам)
   var _notices = [];       // персональные уведомления игрока (напр. «не хватило доблести»)
@@ -4556,6 +4564,12 @@
       if (officerCan("queue_links")) wrap.appendChild(buildSpousePanel(true));
       if (officerCan("queue_due")) wrap.appendChild(buildDuePanel(true));
       if (officerCan("queue_history")) wrap.appendChild(buildHistoryPanel(true));
+      // ВЫДАННЫЕ АДМИНОМ функции (default off) — оформляем как раскрывающиеся секции
+      if (officerCan("adm_distribution"))
+        wrap.appendChild(offGrantSection("🎁 Распределение ресурсов", "выдано админом", [buildDistPanel()]));
+      if (officerCan("adm_scene"))
+        wrap.appendChild(offGrantSection("🧍 Модели и оформление сцены", "выдано админом",
+          [buildModelSizePanel(), buildUploadPanel(), buildEnvPanel()]));
     }
     // правая fixed-панель управления объектами сцены — только админу (внутри wrap, чтобы
     // очищалась вместе со сценой и не плодила дубли; position:fixed не зависит от родителя).
@@ -6605,32 +6619,42 @@
     var wrap = document.createElement("div");
     wrap.className = "q-admin";
     wrap.innerHTML =
-      '<div style="font-size:11.5px;color:#8a795a;margin-bottom:9px">Отметь, какими разделами сайта могут ' +
-        'пользоваться <b style="color:#caa66a">офицеры</b>. Ты (админ) всегда видишь и можешь всё. ' +
-        'Снятая галочка — офицеры не видят раздел и не могут им пользоваться (проверяется и на сервере).</div>' +
-      '<div class="q-admin-row" style="gap:8px;margin-bottom:8px">' +
+      '<div style="font-size:11.5px;color:#8a795a;margin-bottom:9px">Настрой, что могут ' +
+        '<b style="color:#caa66a">офицеры</b>. Ты (админ) всегда видишь и можешь всё. Проверяется и на сервере.</div>' +
+      '<div class="q-admin-row" style="gap:8px;margin-bottom:10px">' +
         '<button class="sec" id="qoa-all">✓ Включить всё</button>' +
-        '<button class="sec" id="qoa-none">✕ Выключить всё</button>' +
+        '<button class="sec" id="qoa-none">✕ Только базовое</button>' +
         '<span id="qoa-status" style="font-size:11.5px;color:#9fe0a0;align-self:center"></span>' +
       "</div>" +
-      '<div id="qoa-list" style="display:flex;flex-direction:column;gap:6px">Загрузка…</div>';
-    var listEl = wrap.querySelector("#qoa-list");
+      '<div id="qoa-base"></div>' +
+      '<div id="qoa-grant"></div>';
     var st = wrap.querySelector("#qoa-status");
-    var SECTIONS = [], ACCESS = {};
+    var SECTIONS = [], GRANTS = [], ACCESS = {};
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function rowHtml(s, grant, on) {
+      // grant: default off (выдача). base: default on (ограничение).
+      var okColor = grant ? "rgba(230,185,85,.5)" : "rgba(126,196,106,.4)";
+      var okBg = grant ? "rgba(230,185,85,.09)" : "rgba(126,196,106,.07)";
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;cursor:pointer;' +
+        'border:1px solid ' + (on ? okColor : "rgba(120,95,60,.3)") + ';border-radius:9px;margin-bottom:6px;' +
+        'background:' + (on ? okBg : "rgba(40,28,14,.35)") + '">' +
+        '<input type="checkbox" class="qoa-cb" data-k="' + esc(s.key) + '"' + (on ? " checked" : "") +
+          ' style="margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:' + (grant ? "#e6b955" : "#7ec46a") + '">' +
+        '<span style="display:flex;flex-direction:column;gap:1px">' +
+          '<b style="font-size:12.5px;color:' + (on ? "#eadfc4" : "#9a8a6a") + '">' + (grant ? "➕ " : "") + esc(s.label) +
+            (grant && on ? ' <span style="color:#e6b955;font-weight:600">— выдано</span>' : "") + "</b>" +
+          '<span style="font-size:11px;color:#8a795a">' + esc(s.desc || "") + "</span></span></label>";
+    }
     function render() {
-      listEl.innerHTML = SECTIONS.map(function (s) {
-        var on = ACCESS[s.key] !== false;
-        return '<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;cursor:pointer;' +
-          'border:1px solid ' + (on ? "rgba(126,196,106,.4)" : "rgba(160,110,70,.35)") + ';border-radius:9px;' +
-          'background:' + (on ? "rgba(126,196,106,.07)" : "rgba(60,40,20,.25)") + '">' +
-          '<input type="checkbox" class="qoa-cb" data-k="' + esc(s.key) + '"' + (on ? " checked" : "") +
-            ' style="margin-top:2px;width:17px;height:17px;flex:0 0 auto;accent-color:#7ec46a">' +
-          '<span style="display:flex;flex-direction:column;gap:1px">' +
-            '<b style="font-size:12.5px;color:' + (on ? "#eadfc4" : "#9a8a6a") + '">' + esc(s.label) + "</b>" +
-            '<span style="font-size:11px;color:#8a795a">' + esc(s.desc || "") + "</span></span></label>";
-      }).join("");
-      [].forEach.call(listEl.querySelectorAll(".qoa-cb"), function (cb) {
+      wrap.querySelector("#qoa-base").innerHTML =
+        '<div style="font-size:11px;font-weight:800;color:#8fbf7f;letter-spacing:.4px;text-transform:uppercase;margin:2px 0 6px">' +
+          'Базовый доступ (офицеры видят по умолчанию — сними, чтобы запретить)</div>' +
+        SECTIONS.map(function (s) { return rowHtml(s, false, ACCESS[s.key] !== false); }).join("");
+      wrap.querySelector("#qoa-grant").innerHTML =
+        '<div style="font-size:11px;font-weight:800;color:#e6b955;letter-spacing:.4px;text-transform:uppercase;margin:12px 0 6px">' +
+          'Расширенный доступ — выдать офицерам админ-функции (по умолчанию только у тебя)</div>' +
+        GRANTS.map(function (s) { return rowHtml(s, true, ACCESS[s.key] === true); }).join("");
+      [].forEach.call(wrap.querySelectorAll(".qoa-cb"), function (cb) {
         cb.addEventListener("change", function () { ACCESS[cb.getAttribute("data-k")] = cb.checked; save(); });
       });
     }
@@ -6641,14 +6665,16 @@
         .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     }
     wrap.querySelector("#qoa-all").addEventListener("click", function () {
-      SECTIONS.forEach(function (s) { ACCESS[s.key] = true; }); render(); save();
+      SECTIONS.forEach(function (s) { ACCESS[s.key] = true; });
+      GRANTS.forEach(function (s) { ACCESS[s.key] = true; }); render(); save();
     });
     wrap.querySelector("#qoa-none").addEventListener("click", function () {
-      SECTIONS.forEach(function (s) { ACCESS[s.key] = false; }); render(); save();
+      SECTIONS.forEach(function (s) { ACCESS[s.key] = true; });   // базовое оставляем
+      GRANTS.forEach(function (s) { ACCESS[s.key] = false; }); render(); save();
     });
     q("GET", "/queue/admin/officer-access").then(function (d) {
-      SECTIONS = d.sections || []; ACCESS = d.access || {}; render();
-    }).catch(function (e) { listEl.textContent = "Ошибка загрузки: " + (e.detail || e.message); });
+      SECTIONS = d.sections || []; GRANTS = d.grants || []; ACCESS = d.access || {}; render();
+    }).catch(function (e) { wrap.querySelector("#qoa-base").textContent = "Ошибка загрузки: " + (e.detail || e.message); });
     return wrap;
   }
 

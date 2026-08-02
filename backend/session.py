@@ -138,6 +138,17 @@ def current_actor(request: Request) -> dict[str, str]:
 
 def require_admin(request: Request) -> dict[str, str]:
     s = current_session(request)
-    if s["role"] != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin_only")
-    return s
+    if s["role"] == "admin":
+        return s
+    # Офицер может пройти на АДМИН-эндпоинт, ТОЛЬКО если этот путь входит в grant-allowlist и
+    # соответствующий раздел выдан офицерам админом (иначе — 403). Владелец-критичные эндпоинты
+    # (пароли, учётка, роли, сами права офицеров) в allowlist НЕ входят → офицерам недоступны.
+    if s["role"] == "officer":
+        try:
+            import db
+            with db.connection() as conn:
+                if db.officer_admin_grant_allowed(conn, request.url.path, s["role"]):
+                    return s
+        except Exception:
+            pass
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "admin_only")
