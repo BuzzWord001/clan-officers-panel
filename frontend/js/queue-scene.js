@@ -1929,6 +1929,15 @@
     ".qs-rcpt-mine-b{cursor:pointer;font:700 11.5px system-ui;padding:5px 10px;border-radius:8px;" +
       "border:1px solid rgba(120,180,224,.5);color:#bfe0ff;background:rgba(120,180,224,.14)}" +
     ".qs-rcpt-mine-b:hover{filter:brightness(1.12)}.qs-rcpt-mine-b:active{transform:scale(.96)}" +
+    // ── ПО-РЕСУРСНЫЕ получатели (обычная очередь): у каждого ресурса своя выпадашка ──
+    ".qs-rcpt-per{display:flex;flex-direction:column;gap:5px;margin:4px 0 2px}" +
+    ".qs-rcpt-empty{font:400 12px system-ui;color:#8a795a;padding:6px 2px}" +
+    ".qs-rcpt-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:9px;" +
+      "background:rgba(224,162,74,.06);border:1px solid rgba(224,162,74,.2)}" +
+    ".qs-rcpt-ic{width:26px;height:26px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px #000)}" +
+    ".qs-rcpt-rn{flex:1 1 auto;font:600 12.5px system-ui;color:#ecdab0;min-width:0}" +
+    ".qs-rcpt-sel{flex:0 0 auto;max-width:52%;padding:6px 8px;border-radius:8px;font:600 12.5px system-ui;" +
+      "color:#f0e2c0;background:#2a1c0b;border:1px solid rgba(224,162,74,.5);cursor:pointer}" +
     // ── боковые окошки-запросы подтверждения связи (офицеру/админу) + уведомления игроку ──
     ".qlreq-host{position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:340px}" +
     ".qlreq{background:linear-gradient(180deg,#2c1d0c,#181005);border:1px solid rgba(240,200,120,.6);border-radius:13px;" +
@@ -2155,7 +2164,7 @@
     (_lastState.queues[q] || []).forEach(function (e) {
       if (canon(e.main_nick) === mc && !e.privileged) mine = e;             // моё обычное место
     });
-    if (mine) openResourcePicker(b, { resource: res, resources: mine.resources, recipient: mine.recipient || "",
+    if (mine) openResourcePicker(b, { resource: res, resources: mine.resources, recipient: mine.recipient || "", recipients: mine.recipients,
       received: mine.received || [], auto_repeat: mine.auto_repeat, plan: mine.auto_plan || [] });
     else openResourcePicker(b, null, res);
   }
@@ -2414,6 +2423,28 @@
     body.className = "qs-pick2";
     var defRcpt = edit ? (edit.recipient || "")
       : (SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)] || "");
+    // получатели для передачи: себе / свои твины (кроме активного) / супруг — только валидные
+    function recipientOptions() {
+      var opts = [{ value: "", label: "🏠 Себе" }];
+      var seen = {};
+      (_myIdentities || []).forEach(function (i) {
+        var c = canon(i.nick);
+        if (c === canon(_myActiveNick) || seen[c]) return; seen[c] = 1;
+        opts.push({ value: i.nick, label: (i.is_main ? "⭐ " : "👥 ") + i.nick });
+      });
+      var sp = SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)];
+      if (sp && !seen[canon(sp)]) { seen[canon(sp)] = 1; opts.push({ value: sp, label: "💞 " + sp }); }
+      return opts;
+    }
+    // ПО-РЕСУРСНЫЕ получатели {res: ник} (только multi). Инициализация из правки.
+    var perRcpt = {};
+    if (multi) {
+      if (edit && edit.recipients && Object.keys(edit.recipients).length) {
+        Object.keys(edit.recipients).forEach(function (k) { perRcpt[k] = edit.recipients[k] || ""; });
+      } else if (edit && edit.recipient) {
+        items.forEach(function (it) { perRcpt[it] = edit.recipient; });   // легаси: один на всех
+      }
+    }
     var planOpts = items.map(function (it) { return '<option value="' + esc(it) + '">' + esc(resName(it)) + "</option>"; }).join("");
     // необязательные настройки открыты сразу только если они уже заданы (правка)
     var openMore = !!(edit && (edit.recipient || edit.auto_repeat || (edit.plan && edit.plan.length)));
@@ -2428,8 +2459,13 @@
       '<details class="qs-p2-more"' + (openMore ? " open" : "") + '>' +
         '<summary>⚙️ Дополнительно <span class="qs-p2-more-sub">— кому передать, повтор (всё необязательно)</span></summary>' +
         '<div class="qs-p2-more-body">' +
-          '<div class="qs-p2-lbl">Кому передать <span style="color:#8a795a;font-weight:400">(свой мэйн/твин или супруг)</span>:</div>' +
-          '<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
+          '<div class="qs-p2-lbl">Кому передать ' + (multi
+            ? '<span style="color:#8a795a;font-weight:400">(по каждому ресурсу отдельно — себе, твину или супругу)</span>'
+            : '<span style="color:#8a795a;font-weight:400">(свой мэйн/твин или супруг)</span>') + ':</div>' +
+          // MULTI (обычная очередь): у КАЖДОГО ресурса свой выбор получателя
+          (multi ? '<div id="qs-rcpt-per" class="qs-rcpt-per"></div>' :
+          // одиночная очередь — как раньше, один получатель
+          ('<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
           '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
           // быстрые кнопки: свои аккаунты (мэйн + твины), кроме того, кем стою сейчас
           (function () {
@@ -2441,7 +2477,7 @@
                       esc(i.nick) + (i.is_main ? " ⭐" : "") + "</button>";
                   }).join("") + "</div>"
               : "";
-          })() +
+          })())) +
           '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
           '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
           ((_isAdmin || _role === "officer")
@@ -2481,6 +2517,31 @@
           warn.style.display = "block";
         } else warn.style.display = "none";
       }
+      renderPerRcpt();
+    }
+    // ПО-РЕСУРСНЫЕ получатели: для каждого выбранного ресурса — выпадашка «кому передать»
+    function renderPerRcpt() {
+      var host = body.querySelector("#qs-rcpt-per");
+      if (!host) return;
+      var chosen = multi ? Object.keys(selSet) : [];
+      if (!chosen.length) {
+        host.innerHTML = '<div class="qs-rcpt-empty">Отметь ресурсы выше — тут появится, кому передать каждый (по умолчанию — себе).</div>';
+        return;
+      }
+      var opts = recipientOptions();
+      host.innerHTML = chosen.map(function (res) {
+        var cur = perRcpt[res] || "";
+        var sels = opts.map(function (o) {
+          return '<option value="' + esc(o.value) + '"' + (canon(o.value) === canon(cur) ? " selected" : "") + ">" + esc(o.label) + "</option>";
+        }).join("");
+        return '<div class="qs-rcpt-row">' +
+          '<img class="qs-rcpt-ic" src="' + resImg(res) + '" alt="">' +
+          '<span class="qs-rcpt-rn">' + esc(resName(res)) + "</span>" +
+          '<select class="qs-rcpt-sel" data-res="' + esc(res) + '">' + sels + "</select></div>";
+      }).join("");
+      [].forEach.call(host.querySelectorAll(".qs-rcpt-sel"), function (s) {
+        s.addEventListener("change", function () { perRcpt[s.getAttribute("data-res")] = s.value; });
+      });
     }
     items.forEach(function (it) {
       var got = !!receivedSet[it];
@@ -2514,6 +2575,7 @@
     // «отправитель» — тот, кто стоит: игрок/офицер по своему нику, либо админ-тест как Лирия!
     var senderNick = _meAcc ? _meAcc.main_nick : ((_isAdmin && !_meAcc) ? ADMIN_NICK : "");
     function checkRcpt() {
+      if (!rcptEl) return;                          // multi: получатели выбираются по-ресурсно (выпадашки)
       var rel = recipientRel(rcptEl.value);
       if (rel === "other") { warnEl.textContent = "⚠ этот игрок не твин и не супруг — ресурс уйдёт постороннему"; warnEl.style.display = "block"; }
       else if (rel === "spouse") { warnEl.textContent = "✓ супруг"; warnEl.style.color = "#8fc36a"; warnEl.style.display = "block"; }
@@ -2569,7 +2631,7 @@
         q("GET", "/queue/roster").then(function (d) { _roster = d.roster || _roster; checkRcpt(); }).catch(function () { checkRcpt(); });
       });
     });
-    rcptEl.addEventListener("input", checkRcpt); checkRcpt();
+    if (rcptEl) { rcptEl.addEventListener("input", checkRcpt); checkRcpt(); }
     // быстрые кнопки «свои» (мэйн/твины) — подставить свой аккаунт в получателя
     body.querySelectorAll(".qs-rcpt-mine-b").forEach(function (b) {
       b.addEventListener("click", function () { rcptEl.value = b.dataset.n; checkRcpt(); });
@@ -2631,9 +2693,16 @@
       if (edit && multi && !isPriv && !edit.adminEid && resources.length === 0) {
         if (!confirm("Ты снял все ресурсы. Выйти из очереди «" + b.title + "»?")) return;
       }
-      var rcpt = (rcptEl.value || "").trim();
+      var rcpt = (rcptEl && rcptEl.value || "").trim();
+      // MULTI: собираем по-ресурсную карту получателей {res: ник} (себе — не пишем).
+      var rcptMap = null;
+      if (multi) {
+        rcptMap = {};
+        (resources || []).forEach(function (res) { if (perRcpt[res]) rcptMap[res] = perRcpt[res]; });
+      }
       // ЗАПРЕТ: передавать можно только твину или супругу. Офицер/админ могут тут же указать связь
-      // (кнопки выше). Обычному игроку — блок с понятным сообщением.
+      // (кнопки выше). Обычному игроку — блок с понятным сообщением. (Только одиночная очередь —
+      // в multi выпадашки предлагают лишь валидных получателей.)
       if (rcpt && recipientRel(rcpt) === "other") {
         if (canLinks) {
           if (!confirm("«" + rcpt + "» пока не отмечен как твин/супруг. Сначала укажи связь кнопками выше (💞/👥). Всё равно продолжить?")) return;
@@ -2663,16 +2732,17 @@
       }
       // Админ без игрового аккаунта встаёт/меняет ресурсы ОТ ИМЕНИ Лирия! (тест)
       if (_isAdmin && !_meAcc) {
-        var aj = { nick: ADMIN_NICK, queue: b.q, recipient: rcpt };
-        if (multi) aj.resources = resources; else aj.resource = resource;
+        var aj = { nick: ADMIN_NICK, queue: b.q, recipient: multi ? "" : rcpt };
+        if (multi) { aj.resources = resources; aj.recipients = rcptMap; } else aj.resource = resource;
         q("POST", "/queue/admin/join-as", aj)
           .then(function () { _justJoined = { q: b.q, canon: canon(ADMIN_NICK), src: src || "scene" }; refresh(); })
           .catch(function (e2) { alert("Ошибка: " + (e2.detail || e2.message)); });
         return;
       }
-      var payload = { queue: b.q, recipient: rcpt,
+      var payload = { queue: b.q, recipient: multi ? "" : rcpt,
                       auto_repeat: body.querySelector("#qs-repeat").checked, plan: planArr };
-      if (multi) payload.resources = resources; else payload.resource = resource;
+      if (multi) { payload.resources = resources; payload.recipients = rcptMap; }
+      else payload.resource = resource;
       var path = edit ? "/queue/set-entry" : "/queue/join";
       q("POST", path, payload).then(function () {
         if (!edit && _meAcc) _justJoined = { q: b.q, canon: canon(_meAcc.main_nick), src: src || "scene" };
@@ -2726,9 +2796,23 @@
         (mi ? '<img class="qs-fl-mdl" src="' + esc(mi.url) + '" alt="">' : '<span class="qs-fl-mdl ph">?</span>') +
         '<span class="qs-fl-nick">' + esc(e.nick) + "</span>" +
         resHtml +
-        (e.recipient ? '<span class="qs-fl-rcpt" title="кому передать"' +
-            (e.recipient_ok === false ? ' style="color:#e0a86a;border-color:rgba(224,168,106,.5);background:rgba(224,168,106,.12)"' : "") +
-            '>→ ' + esc(e.recipient) + (e.recipient_ok === false ? " ⚠" : "") + "</span>" : "") +
+        (function () {
+          // получатели: легаси-одиночный ИЛИ по-ресурсная карта (уникальные ники)
+          if (e.recipient) {
+            return '<span class="qs-fl-rcpt" title="кому передать"' +
+              (e.recipient_ok === false ? ' style="color:#e0a86a;border-color:rgba(224,168,106,.5);background:rgba(224,168,106,.12)"' : "") +
+              '>→ ' + esc(e.recipient) + (e.recipient_ok === false ? " ⚠" : "") + "</span>";
+          }
+          var rmap = e.recipients || {}, rok = e.recipients_ok || {};
+          var keys = Object.keys(rmap).filter(function (k) { return (rmap[k] || "").trim(); });
+          if (!keys.length) return "";
+          var dests = keys.map(function (k) { return rmap[k]; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+          var bad = keys.some(function (k) { return rok[k] === false; });
+          var title = keys.map(function (k) { return resName(k) + " → " + rmap[k]; }).join(", ");
+          return '<span class="qs-fl-rcpt" title="' + esc(title) + '"' +
+            (bad ? ' style="color:#e0a86a;border-color:rgba(224,168,106,.5);background:rgba(224,168,106,.12)"' : "") +
+            '>→ ' + dests.map(esc).join(", ") + (bad ? " ⚠" : "") + "</span>";
+        })() +
         '<span class="qs-fl-flags">' +
           (e.auto_repeat ? '<span class="qs-fl-flag" style="background:rgba(126,196,106,.16);color:#8fc36a" title="повторяет каждую неделю">🔁</span>' : "") +
           (e.auto_plan && e.auto_plan.length ? '<span class="qs-fl-flag" style="background:rgba(224,162,74,.16);color:#e6c48f" title="план на ' + e.auto_plan.length + ' нед.">📅' + e.auto_plan.length + "</span>" : "") +
@@ -2754,11 +2838,11 @@
       } else if (act === "res") {   // админ меняет ресурсы записи
         if (m) m.close();
         openResourcePicker(b, { adminEid: e.id, resource: e.resource || "", resources: e.resources,
-          received: e.received || [], recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+          received: e.received || [], recipient: e.recipient || "", recipients: e.recipients, auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
       } else if (act === "mine") {  // игрок меняет свои ресурсы
         if (m) m.close();
         openResourcePicker(b, { resource: e.resource || "", resources: e.resources,
-          recipient: e.recipient || "", auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
+          recipient: e.recipient || "", recipients: e.recipients, auto_repeat: e.auto_repeat, plan: e.auto_plan || [] });
       } else if (act === "skin") {  // сменить облик своей модельки
         if (m) m.close();
         openModelSwitcher(e);
@@ -2964,13 +3048,13 @@
           var ae = entries.filter(function (e) { return canon(e.main_nick) === canon(ADMIN_NICK) && !e.privileged; })[0];
           if (!ae) { openResourcePicker(b); return; }   // нет обычного места → встать (жетон покажется блоком)
           openResourcePicker(b, { resource: ae.resource || "", resources: ae.resources,
-            recipient: ae.recipient || "", auto_repeat: ae.auto_repeat, plan: ae.auto_plan || [] });
+            recipient: ae.recipient || "", recipients: ae.recipients, auto_repeat: ae.auto_repeat, plan: ae.auto_plan || [] });
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
         if (iAmIn) {   // в очереди → меню «изменить ресурсы или выйти» (не выходим сразу!)
           openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources,
-            recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
+            recipient: myEntry.recipient || "", recipients: myEntry.recipients, auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
           return;
         }
         openResourcePicker(b);   // не в обычной очереди → встать; активный жетон покажется блоком в окне
@@ -3023,7 +3107,7 @@
         editBtn.style.cssText = "left:" + ep.x.toFixed(2) + "%;top:" + ep.y.toFixed(2) + "%;--gc:" + b.accent;
         editBtn.title = "Изменить ресурс и кому передать"; editBtn.textContent = "✎ ресурс/кому";
         editBtn.addEventListener("click", function () {
-          openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources, recipient: myEntry.recipient || "",
+          openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources, recipient: myEntry.recipient || "", recipients: myEntry.recipients,
             auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] });
         });
         stage.appendChild(editBtn);
@@ -3874,13 +3958,13 @@
           if (!adminIn) { openResourcePicker(b, null, null, "lane"); return; }
           var ae2 = entries.filter(function (e) { return canon(e.main_nick) === canon(ADMIN_NICK) && !e.privileged; })[0];
           openResourcePicker(b, { resource: (ae2 && ae2.resource) || "", resources: (ae2 && ae2.resources),
-            recipient: (ae2 && ae2.recipient) || "", auto_repeat: ae2 && ae2.auto_repeat, plan: (ae2 && ae2.auto_plan) || [] }, null, "lane");
+            recipient: (ae2 && ae2.recipient) || "", recipients: (ae2 && ae2.recipients), auto_repeat: ae2 && ae2.auto_repeat, plan: (ae2 && ae2.auto_plan) || [] }, null, "lane");
           return;
         }
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
         if (iAmIn) {   // в очереди → меню «изменить ресурсы или выйти» (не выходим сразу!)
           openResourcePicker(b, { resource: myEntry.resource || "", resources: myEntry.resources,
-            recipient: myEntry.recipient || "", auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] }, null, "lane");
+            recipient: myEntry.recipient || "", recipients: myEntry.recipients, auto_repeat: myEntry.auto_repeat, plan: myEntry.auto_plan || [] }, null, "lane");
           return;
         }
         openResourcePicker(b, null, null, "lane");   // не в обычной очереди → встать; жетон покажется блоком в окне
@@ -3923,7 +4007,7 @@
         if (mine) {
           cell.classList.add("clk");
           cell.addEventListener("click", function () {
-            openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "",
+            openResourcePicker(b, { resource: e.resource || "", resources: e.resources, recipient: e.recipient || "", recipients: e.recipients,
               auto_repeat: e.auto_repeat, plan: e.auto_plan || [], privileged: !!e.privileged });
           });
         }
@@ -3975,7 +4059,7 @@
         var it = chip.getAttribute("data-res"); if (!it) return;
         if (_isAdmin && !_meAcc) { openResourcePicker(b, null, it, "lane"); return; }   // админ встаёт как Лирия!
         if (!_meAcc) { alert("Чтобы встать в очередь, войди как игрок (по своему нику)."); return; }
-        if (iAmIn) openResourcePicker(b, { resource: it, resources: (myEntry && myEntry.resources), recipient: (myEntry && myEntry.recipient) || "",
+        if (iAmIn) openResourcePicker(b, { resource: it, resources: (myEntry && myEntry.resources), recipient: (myEntry && myEntry.recipient) || "", recipients: (myEntry && myEntry.recipients),
           auto_repeat: myEntry && myEntry.auto_repeat, plan: (myEntry && myEntry.auto_plan) || [] });
         else openResourcePicker(b, null, it, "lane");
       });
@@ -6421,6 +6505,10 @@
       ".qh-c.nc .qh-c-nm{color:#e8a99a;text-decoration:line-through;text-decoration-color:rgba(200,80,70,.7)}" +
       ".qh-c.nc .qh-c-got{opacity:.5}" +
       ".qh-c-reason{font-size:9px;color:#cc9a86;font-style:italic;text-align:center;line-height:1.05;max-width:80px}" +
+      ".qh-gi{position:relative;display:inline-flex;line-height:0}" +
+      ".qh-gi.gift img{outline:1.5px solid rgba(255,190,120,.7);border-radius:4px}" +
+      ".qh-gi-to{position:absolute;top:-6px;right:-4px;font-size:11px;color:#ffcf8a;font-weight:900;text-shadow:0 1px 2px #000}" +
+      ".qh-c-gives{font-size:9.5px;color:#ffcf8a;text-align:center;line-height:1.1;max-width:80px;margin-top:1px}" +
       // ── разделитель «получили │ не выдано» ──
       ".qh-sep{flex:0 0 auto;align-self:stretch;display:flex;flex-direction:column;align-items:center;" +
         "justify-content:center;gap:6px;padding:2px 5px;min-width:30px}" +
@@ -6440,9 +6528,12 @@
     var vl = (typeof person.valor === "number")
       ? '<span class="qtip-res" style="justify-content:center"><b>' + person.valor + " доблести</b></span>" : "";
     var got = person.got || {};
+    var gotTo = person.got_to || {};
     var rows = QH_RES_ORDER.filter(function (k) { return got[k]; }).map(function (k) {
+      var dest = (gotTo[k] || "").trim();
+      var to = dest ? ' <span style="color:#ffcf8a">→ ' + esc(dest) + "</span>" : "";
       return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' +
-        esc(resName(k)) + ' — <b>' + got[k] + " шт</b></span>";
+        esc(resName(k)) + ' — <b>' + got[k] + " шт</b>" + to + "</span>";
     }).join("");
     var label = opts.jetton ? "взял ВНЕ очереди (жетон ТОП-3)"
       : opts.cilin ? "получил Огненного цилиня"
@@ -6460,9 +6551,18 @@
     var mset = (mi.key && MODEL_SETTINGS[mi.key]) || {};
     var flip = mset.flip ? ' style="transform:scaleX(-1)"' : "";
     var got = person.got || {};
+    var gotTo = person.got_to || {};
     var gotIcons = QH_RES_ORDER.filter(function (k) { return got[k]; }).map(function (k) {
-      return '<img src="' + resImg(k) + '" alt="">';
+      // ресурс, переданный другому (супруг/твин) — с меткой стрелки над иконкой
+      return (gotTo[k] || "").trim()
+        ? '<span class="qh-gi gift" title="' + esc(resName(k) + " → " + gotTo[k]) + '"><img src="' + resImg(k) + '" alt=""><span class="qh-gi-to">→</span></span>'
+        : '<img src="' + resImg(k) + '" alt="">';
     }).join("");
+    // сводка «кому что передал» под моделькой (если есть переданное)
+    var giveList = QH_RES_ORDER.filter(function (k) { return got[k] && (gotTo[k] || "").trim(); });
+    var gives = giveList.length
+      ? '<span class="qh-c-gives">→ ' + giveList.map(function (k) { return esc(gotTo[k]); })
+          .filter(function (v, i, a) { return a.indexOf(v) === i; }).join(", ") + "</span>" : "";
     // приоритет тега: «не забрал» (постфактум) важнее обычного бейджа
     var tag = opts.uncollected
       ? '<span class="qh-c-tag nc">не забрал</span>'
@@ -6480,7 +6580,7 @@
       tag +
       '<div class="qh-c-mdl">' + (mi.url ? '<img src="' + mi.url + '"' + flip + ' alt="">' : "") + "</div>" +
       '<div class="qh-c-nm">' + esc(person.nick || "?") + "</div>" + val +
-      (gotIcons ? '<div class="qh-c-got">' + gotIcons + "</div>" : "") + reason + "</div>";
+      (gotIcons ? '<div class="qh-c-got">' + gotIcons + "</div>" : "") + gives + reason + "</div>";
   }
 
   // весь HTML истории для одного отчёта: баннер недели + 4 ланы (как полосы очередей)

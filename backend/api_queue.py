@@ -434,6 +434,14 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_entries ADD COLUMN priv_stacks INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # миграция: ПОЛУЧАТЕЛЬ ПО КАЖДОМУ РЕСУРСУ (JSON {res_key: nick}). "" или отсутствие ключа =
+        # оставить себе; иначе — передать этому нику (свой твин или супруг). Позволяет один ресурс
+        # оставить себе, другой отдать супругу, третий — твину. Одиночный recipient — легаси-дефолт
+        # для ресурсов, которых нет в этой карте (обратная совместимость).
+        try:
+            conn.execute("ALTER TABLE queue_entries ADD COLUMN recipients TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: пароль выдан/выслан (не придуман самим) → предложить придумать свой личный.
         # 1 = временный/высланный на почту; 0 = игрок придумал сам.
         try:
@@ -789,6 +797,7 @@ class JoinIn(BaseModel):
     resource: str = Field(default="", max_length=64)
     resources: list[str] = Field(default_factory=list)   # МУЛЬТИ-выбор (обычная/редкая) — каждый по стаку
     recipient: str = Field(default="", max_length=64)   # кому передать (твин/супруг), необязательно
+    recipients: dict[str, str] = Field(default_factory=dict)  # ПО-РЕСУРСНО {res: ник}; ""/нет = себе
     auto_repeat: bool = False                            # вставать за этим же ресурсом каждую неделю
     plan: list[str] = Field(default_factory=list)        # план ресурсов на будущие недели (по порядку)
     privileged: bool = False                             # для leave: выйти из привилегированной (жетон) записи
@@ -799,6 +808,7 @@ class SetEntryIn(BaseModel):
     resource: str | None = Field(default=None, max_length=64)    # None = не менять
     resources: list[str] | None = None                           # None = не менять; список = мульти-выбор
     recipient: str | None = Field(default=None, max_length=64)   # None = не менять; "" = очистить
+    recipients: dict[str, str] | None = None                     # None = не менять; {res: ник} по-ресурсно
     auto_repeat: bool | None = None                              # None = не менять
     plan: list[str] | None = None                                # None = не менять
     privileged: bool = False                                     # менять привилегированную (жетон) запись, а не обычную
@@ -891,6 +901,7 @@ class JoinAsIn(BaseModel):
     resource: str = Field(default="", max_length=64)
     resources: list[str] = Field(default_factory=list)
     recipient: str = Field(default="", max_length=64)
+    recipients: dict[str, str] = Field(default_factory=dict)   # по-ресурсно {res: ник}
 
 
 class PrivClaimAsIn(BaseModel):
@@ -2165,6 +2176,24 @@ def _entry_received(r) -> list:
     except (ValueError, TypeError):
         return []
 
+
+def _entry_recipients(r) -> dict:
+    """Карта получателей ПО РЕСУРСАМ {res: ник}. "" или отсутствие ключа = оставить себе."""
+    import json as _json
+    try:
+        raw = r["recipients"] if "recipients" in r.keys() else ""
+    except Exception:
+        raw = ""
+    if not raw:
+        return {}
+    try:
+        m = _json.loads(raw)
+        if isinstance(m, dict):
+            return {str(k): (str(v).strip() if v else "") for k, v in m.items()}
+    except (ValueError, TypeError):
+        pass
+    return {}
+
 # ── параметры движка распределения (подтверждено Лиром 2026-07-16) ──
 # Пороги доблести: обычная ≥60, редкие/легендарные ≥100, мифические (SS) ≥200 (с 2026-W30).
 VALOR_THRESHOLD = {0: 60, 1: 100, 2: 100, 3: 200}
@@ -2293,6 +2322,20 @@ def _recipient_ok(rcpt, main_canon, idx, smap) -> bool:
     return bool(spouse and db._valor_canon(spouse) == rc)
 
 
+def _norm_recipients(recipients, picked, main_canon, idx, smap) -> dict:
+    """Нормализовать карту получателей по ресурсам: только выбранные ресурсы (picked), непустой
+    ник, валидный (твин/супруг). Себе ("") — опускаем (дефолт). Невалидный → 400."""
+    out = {}
+    for res in (picked or []):
+        dest = ((recipients or {}).get(res) or "").strip()[:64]
+        if not dest:
+            continue
+        if not _recipient_ok(dest, main_canon, idx, smap):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "recipient_not_linked")
+        out[res] = dest
+    return out
+
+
 def _migrate_recipients(conn) -> int:
     """Разовая миграция: у кого в очереди уже указан получатель, который НЕ твин и НЕ супруг —
     НЕ удаляем связь, а закрепляем её как супруга (если это твин — он и так распознан по мэйну,
@@ -2364,6 +2407,14 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
     kin.sort(key=lambda x: (not x["is_main"], (x["nick"] or "").lower()))
     rcpt = r["recipient"] if "recipient" in keys else ""
     import json as _json
+    # ПО-РЕСУРСНЫЕ получатели: карта recipients (приоритет) → иначе легаси-одиночный rcpt.
+    _rmap = _entry_recipients(r)
+    _res_list = _entry_resources(r)
+    recipients_pub, recipients_ok = {}, {}
+    for _res in _res_list:
+        _dest = _rmap[_res] if _res in _rmap else rcpt
+        recipients_pub[_res] = _dest
+        recipients_ok[_res] = _recipient_ok(_dest, mc, idx, smap)
     try:
         plan = _json.loads(r["auto_plan"]) if ("auto_plan" in keys and r["auto_plan"]) else []
     except (ValueError, TypeError):
@@ -2382,6 +2433,8 @@ def _entry_public(r, idx, gmap, smap=None, pmap=None, shooters_canon=None, tmap=
             "received": _entry_received(r),
             "recipient": rcpt,
             "recipient_ok": _recipient_ok(rcpt, mc, idx, smap),
+            "recipients": recipients_pub,          # {res: ник} эффективные (карта → легаси)
+            "recipients_ok": recipients_ok,        # {res: bool} валидность каждого получателя
             "auto_repeat": (bool(r["auto_repeat"]) if "auto_repeat" in keys else False),
             "auto_plan": plan,
             "not_collected": (bool(r["not_collected"]) if "not_collected" in keys else False),
@@ -2494,14 +2547,21 @@ def join(payload: JoinIn, request: Request) -> dict:
             picked = [res]
         if picked:
             res = picked[0]
+        # ПО-РЕСУРСНЫЕ получатели: если заданы — одиночный recipient как общий дефолт НЕ применяем
+        # (ресурсы вне карты = себе). Иначе легаси-поведение (rcpt на все ресурсы).
+        rmap = _norm_recipients(payload.recipients, picked, acc["main_canon"], _people(conn), _spouse_map(conn))
+        if rmap:
+            rcpt = ""
         conn.execute(
             "INSERT INTO queue_entries (queue, pos, main_canon, active_canon, nick, cls, resource, resources,"
-            " recipient, auto_repeat, auto_plan, added_by, added_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " recipient, recipients, auto_repeat, auto_plan, added_by, added_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (q, _append_pos(conn, q), acc["main_canon"], _ac, nick, ent_cls, res, _json.dumps(picked), rcpt,
-             1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
+             _json.dumps(rmap), 1 if payload.auto_repeat else 0, _json.dumps(plan), "self", _now()))
         _log(conn, "join", actor=nick, nick=nick, queue=q, request=request,
-             detail=("res=%s resources=%r%s%s%s" % (
+             detail=("res=%s resources=%r%s%s%s%s" % (
                  res, picked, (" →" + rcpt if rcpt else ""),
+                 (" по-рес:" + _json.dumps(rmap, ensure_ascii=False) if rmap else ""),
                  (" 🔁" if payload.auto_repeat else ""),
                  (" план:%d" % len(plan) if plan else ""))))
     return {"ok": True}
@@ -2584,11 +2644,26 @@ def set_entry(payload: SetEntryIn, request: Request) -> dict:
             import json as _jsonr
             sets.append("resources=?"); vals.append(_jsonr.dumps(picked))
             sets.append("resource=?"); vals.append(picked[0])   # resource = первый (совместимость)
-        if payload.recipient is not None:
+        # ПОЛУЧАТЕЛИ: по-ресурсная карта (recipients) ИЛИ одиночный (recipient) — взаимоисключающе,
+        # чтобы не дублировать колонку recipient в SET. Карта задана → одиночный чистим (и наоборот).
+        if payload.recipients is not None:
+            if payload.resources is not None:
+                _valid = _QUEUE_ITEMS[payload.queue] if 0 <= payload.queue < len(_QUEUE_ITEMS) else []
+                _pick_for = [x for x in payload.resources if x in _valid]
+            else:
+                _cur = conn.execute("SELECT * FROM queue_entries WHERE id=?", (row["id"],)).fetchone()
+                _pick_for = _entry_resources(_cur) if _cur else []
+            _rmap = _norm_recipients(payload.recipients, _pick_for, acc["main_canon"],
+                                     _people(conn), _spouse_map(conn))
+            import json as _jr
+            sets.append("recipients=?"); vals.append(_jr.dumps(_rmap))
+            sets.append("recipient=?"); vals.append("")
+        elif payload.recipient is not None:
             _rcpt = payload.recipient.strip()[:64]
             if _rcpt and not _recipient_ok(_rcpt, acc["main_canon"], _people(conn), _spouse_map(conn)):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "recipient_not_linked")
             sets.append("recipient=?"); vals.append(_rcpt)
+            sets.append("recipients=?"); vals.append("")   # одиночный режим → чистим по-ресурсную карту
         if payload.auto_repeat is not None:
             sets.append("auto_repeat=?"); vals.append(1 if payload.auto_repeat else 0)
         if payload.plan is not None:
@@ -4589,17 +4664,22 @@ def join_as(payload: JoinAsIn, request: Request, actor: dict = Depends(require_a
     res_json = _json.dumps(picked)
     with db.connection() as conn:
         cn, nick, cls = _canon_and_person(conn, payload.nick)
+        _rcpt = (payload.recipient or "").strip()[:64]
+        _rmap = _norm_recipients(payload.recipients, picked, cn, _people(conn), _spouse_map(conn))
+        if _rmap:
+            _rcpt = ""
+        _rmap_json = _json.dumps(_rmap)
         ex = conn.execute("SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
                           (payload.queue, cn)).fetchone()
         if ex:
-            conn.execute("UPDATE queue_entries SET resource=?, resources=?, recipient=? WHERE id=?",
-                         (res, res_json, (payload.recipient or "").strip()[:64], ex["id"]))
+            conn.execute("UPDATE queue_entries SET resource=?, resources=?, recipient=?, recipients=? WHERE id=?",
+                         (res, res_json, _rcpt, _rmap_json, ex["id"]))
         else:
             pos = (conn.execute("SELECT MAX(pos) m FROM queue_entries WHERE queue=?", (payload.queue,)).fetchone()["m"] or 0) + 1
             conn.execute(
-                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources, recipient, added_by, added_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (payload.queue, pos, cn, nick, cls, res, res_json, (payload.recipient or "").strip()[:64],
+                "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, resources, recipient, recipients, added_by, added_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (payload.queue, pos, cn, nick, cls, res, res_json, _rcpt, _rmap_json,
                  "admin-as:" + _actor_name(actor), _now()))
         _log(conn, "join_as", actor=_actor_name(actor), nick=nick, queue=payload.queue, request=request,
              detail="АДМИН встал как «%s»%s" % (nick, (" за " + distribution.res_name(res)) if res else ""))

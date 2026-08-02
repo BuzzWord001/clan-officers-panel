@@ -340,12 +340,31 @@ RES_ORDER = ["kamen-doblesti", "meteorit", "zhemchuzhina", "znak-edinstva", "kol
 
 def _row(e, v, top3, shooter_lc, got, status, missing=None) -> dict:
     who = e.get("nick", "")
-    to = (e.get("recipient") or "").strip()
+    legacy = (e.get("recipient") or "").strip()
+    rmap = e.get("recipients") or {}          # {res: ник} эффективные (карта → легаси на бэке)
     res = e.get("resource") or ""
     rr = REWARDS.get(res) or {}
+    # ПО-РЕСУРСНЫЙ получатель каждого ВЫДАННОГО ресурса: карта → легаси → себе ("")
+    got_to = {}
+    dests = set()
+    for rk in (got or {}):
+        d = (rmap.get(rk, legacy) or "").strip()
+        got_to[rk] = d
+        dests.add(d)
+    nonempty = [d for d in dests if d]
+    # общий receiver/via (обратная совместимость): единый не-себе получатель ВСЕХ выданных → он;
+    # смешанные/себе → строка на самого стоящего; без выдачи (empty/priv) → легаси-получатель.
+    if got and len(dests) == 1 and len(nonempty) == 1:
+        to = nonempty[0]
+    elif not got and legacy:
+        to = legacy
+    else:
+        to = ""
+    mixed = len(nonempty) > 0 and not (len(dests) == 1 and len(nonempty) == 1)
     return {
         "id": e.get("id"), "nick": who, "recipient": to,
         "receiver": (to or who), "via": (who if to else ""),
+        "got_to": got_to, "mixed_recipients": mixed,   # ПО-РЕСУРСНО кому что
         "valor": v, "top3": (e.get("main_canon") in top3 or e.get("canon_nick") in top3),
         "provodnik": who.strip().lower() in shooter_lc,
         "recipient_ok": e.get("recipient_ok", True),
