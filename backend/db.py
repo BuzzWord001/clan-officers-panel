@@ -8597,7 +8597,8 @@ def valor_update_member(member_id: int, fields: dict, actor: dict) -> dict | Non
             eff_cls = fields.get("class")
             if eff_cls is None:
                 eff_cls = row["class_"] or ""
-            _sync_nick_in_conn(conn, canon, nn, now, by, class_=str(eff_cls))
+            _sync_nick_in_conn(conn, canon, nn, now, by, class_=str(eff_cls),
+                               only_member_id=member_id)
         out_row = conn.execute(
             "SELECT * FROM valor_members WHERE id = ?", (member_id,)).fetchone()
         out = dict(out_row) if out_row else {"ok": True}
@@ -8956,7 +8957,7 @@ def _dedup_member_rows(conn, canon: str) -> None:
 
 
 def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str,
-                       class_: str | None = None) -> str:
+                       class_: str | None = None, only_member_id: int | None = None) -> str:
     """Двусторонняя синхронизация ника человека между Доблестью и Реестром.
 
     Меняет отображаемый ник ВЕЗДЕ, где это один и тот же человек (по canon):
@@ -8988,7 +8989,30 @@ def _sync_nick_in_conn(conn, base_canon: str, new_nick: str, now: str, by: str,
         other.discard("")
         if my and other and my not in other:
             target = src   # разные игроки — оставляем при своём canon, без слияния
-    if target and src and target != src:
+    # ОМОНИМЫ в src: если под старым каноном src стоят строки РАЗНЫХ классов (тёзки-омонимы,
+    # напр. HARDKISS-Воин + HARDKISS-Страж), правка ОДНОГО не должна тащить второго. Мигрируем
+    # canon ТОЛЬКО у строк класса правимого игрока; историю/first_seen/alias НЕ трогаем (они
+    # общие для омонимов — их слияние тут навредило бы второму).
+    my_class = (class_ or "").strip().lower() if class_ is not None else ""
+    src_classes = {(r["class_"] or "").strip().lower() for r in conn.execute(
+        "SELECT DISTINCT class_ FROM valor_members WHERE nick_canon=?", (src,))}
+    src_classes.discard("")
+    src_has_omonym = bool(my_class and len(src_classes) > 1 and my_class in src_classes)
+
+    if target and src and target != src and src_has_omonym:
+        # ЧАСТИЧНАЯ миграция: переносим на target ТОЛЬКО правимую строку (по member_id, если
+        # известен — самое точное) либо строки правимого класса. Омоним(ы) остаются на src со
+        # своим ником/каноном. Историю/first_seen/alias НЕ трогаем (они общие для омонимов).
+        if only_member_id is not None:
+            conn.execute("UPDATE valor_members SET nick_canon=? WHERE id=? AND nick_canon=?",
+                         (target, only_member_id, src))
+        else:
+            conn.execute(
+                "UPDATE valor_members SET nick_canon=? WHERE nick_canon=? "
+                "AND lower(trim(COALESCE(class_,'')))=?", (target, src, my_class))
+        _dedup_member_rows(conn, target)
+        final = target
+    elif target and src and target != src:
         conn.execute("UPDATE valor_members SET nick_canon=? WHERE nick_canon=?", (target, src))
         conn.execute("UPDATE OR REPLACE valor_history SET nick_canon=? WHERE nick_canon=?", (target, src))
         for tbl in ("valor_tags", "valor_manual_warnings"):
