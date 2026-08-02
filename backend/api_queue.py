@@ -4929,8 +4929,8 @@ def admin_accounts(_: dict = Depends(require_admin)) -> dict:
         idx = _people(conn)
         tmap = _build_translit_map(idx)
         accs = conn.execute(
-            "SELECT main_canon, main_nick, reg_nick, email, created_at, last_login_at"
-            " FROM queue_accounts ORDER BY last_login_at DESC").fetchall()
+            "SELECT main_canon, main_nick, reg_nick, email, created_at, last_login_at,"
+            " password_hash, pw_temp, is_officer FROM queue_accounts ORDER BY last_login_at DESC").fetchall()
         inq = {r["main_canon"] for r in conn.execute("SELECT DISTINCT main_canon FROM queue_entries")}
     out = []
     for a in accs:
@@ -4948,16 +4948,70 @@ def admin_accounts(_: dict = Depends(require_admin)) -> dict:
                 p = idx[tc]
         status = "exact" if exact else ("resolved" if p is not None else "unknown")
         roster_nick = (p or {}).get("nick", "")
+        _k = a.keys()
         out.append({
-            "reg_nick": a["reg_nick"], "main_nick": a["main_nick"], "email": a["email"],
+            "reg_nick": a["reg_nick"], "main_nick": a["main_nick"], "main_canon": mc, "email": a["email"],
             "created_at": a["created_at"], "last_login_at": a["last_login_at"],
             "status": status, "roster_nick": roster_nick,
             "roster_main": (p or {}).get("main_nick", ""),
             "is_twin": bool((p or {}).get("is_twin")),
             "cls": (p or {}).get("cls", ""),
             "in_queue": mc in inq,
+            # пароли ХЭШИРОВАНЫ (bcrypt) — показать нельзя; отдаём только статус
+            "has_pw": bool(("password_hash" in _k) and a["password_hash"]),
+            "pw_temp": bool(("pw_temp" in _k) and a["pw_temp"]),   # выдан/сгенерирован (не свой)
+            "is_officer": bool(("is_officer" in _k) and a["is_officer"]),
         })
     return {"accounts": out}
+
+
+class AccountPwIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    password: str = Field(default="", max_length=200)   # пусто → сгенерировать читаемый
+
+
+class AccountEmailIn(BaseModel):
+    nick: str = Field(min_length=1, max_length=64)
+    email: str = Field(default="", max_length=200)
+
+
+@router.post("/admin/account-set-password")
+def admin_account_set_password(payload: AccountPwIn, request: Request,
+                               actor: dict = Depends(require_admin)) -> dict:
+    """Задать/сменить ЛИЧНЫЙ пароль игрока (админ). Пусто → сгенерировать читаемый. Плейнтекст
+    возвращается ОДИН раз (передать игроку); в БД — только bcrypt-хэш. pw_temp=1 (выдан админом)."""
+    with db.connection() as conn:
+        p = _resolve_person(conn, payload.nick)
+        mc = p["main_canon"] if p else db._valor_canon(payload.nick)
+        acc = _account_by_main(conn, mc) if mc else None
+        if not acc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_account")
+        pw = (payload.password or "").strip()
+        if pw and len(pw) < 4:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "password_too_short")
+        if not pw:
+            pw = _gen_password()
+        conn.execute("UPDATE queue_accounts SET password_hash=?, pw_temp=1 WHERE id=?", (_hash(pw), acc["id"]))
+        _log(conn, "admin_set_password", actor=_actor_name(actor), nick=acc["main_nick"],
+             request=request, detail="админ задал личный пароль (выдан)")
+    return {"ok": True, "nick": acc["main_nick"], "password": pw}
+
+
+@router.post("/admin/account-set-email")
+def admin_account_set_email(payload: AccountEmailIn, request: Request,
+                            actor: dict = Depends(require_admin)) -> dict:
+    """Сменить почту игрока (админ)."""
+    em = (payload.email or "").strip()[:200]
+    with db.connection() as conn:
+        p = _resolve_person(conn, payload.nick)
+        mc = p["main_canon"] if p else db._valor_canon(payload.nick)
+        acc = _account_by_main(conn, mc) if mc else None
+        if not acc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_account")
+        conn.execute("UPDATE queue_accounts SET email=? WHERE id=?", (em, acc["id"]))
+        _log(conn, "admin_set_email", actor=_actor_name(actor), nick=acc["main_nick"],
+             request=request, detail="админ сменил почту")
+    return {"ok": True, "nick": acc["main_nick"], "email": em}
 
 
 @router.get("/activity-log")

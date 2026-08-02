@@ -4887,6 +4887,11 @@
         '<span class="q-sec-hint">какие разделы сайта видят и могут менять офицеры</span></summary>' +
         '<div class="q-sec-body" id="qsec-offacc"></div></details>' +
 
+      // ── 🔑 АККАУНТЫ И ПАРОЛИ: почты, статус пароля, смена/сброс ──
+      '<details class="q-sec"><summary>🔑 Аккаунты и пароли игроков' +
+        '<span class="q-sec-hint">почты · сменить/сбросить пароль · сброс регистрации</span></summary>' +
+        '<div class="q-sec-body" id="qsec-accounts"></div></details>' +
+
       // ── 🎨 СЦЕНА: фон, размеры, расстановка ──
       '<details class="q-sec"><summary>🎨 Сцена: фон, размеры, расстановка' +
         '<span class="q-sec-hint">день/ночь · размеры моделей · перетаскивание предметов</span></summary>' +
@@ -5331,6 +5336,8 @@
     box.querySelector("#qsec-env").appendChild(buildEnvPanel());
     var secOff = box.querySelector("#qsec-offacc");
     if (secOff) secOff.appendChild(buildOfficerAccessPanel());
+    var secAcc = box.querySelector("#qsec-accounts");
+    if (secAcc) secAcc.appendChild(buildAccountsPanel());
     // СОХРАНЯЕМ раскрытость секций между перерисовками: при клике любой кнопки render()
     // пересобирает панель — без этого все разделы схлопывались каждый раз.
     [].forEach.call(box.querySelectorAll("details.q-sec"), function (d, i) {
@@ -6775,6 +6782,95 @@
     q("GET", "/queue/admin/officer-access").then(function (d) {
       SECTIONS = d.sections || []; GRANTS = d.grants || []; ACCESS = d.access || {}; render();
     }).catch(function (e) { wrap.querySelector("#qoa-base").textContent = "Ошибка загрузки: " + (e.detail || e.message); });
+    return wrap;
+  }
+
+  // ── админ: аккаунты игроков — почты, статус пароля, смена/сброс ──
+  function buildAccountsPanel() {
+    var wrap = document.createElement("div");
+    wrap.className = "q-admin";
+    wrap.innerHTML =
+      '<div style="font-size:11.5px;color:#8a795a;margin-bottom:8px">Личные пароли хранятся <b>зашифрованно</b> — ' +
+        'показать их нельзя (так безопаснее). Можно: <b>задать новый пароль</b> (система выдаст его — передашь игроку), ' +
+        'сменить <b>почту</b>, или <b>сбросить</b> регистрацию — тогда игрок войдёт заново по общему/офицерскому паролю и придумает свой.</div>' +
+      '<div class="q-admin-row" style="gap:8px;margin-bottom:8px">' +
+        '<input id="qac-search" placeholder="поиск по нику или почте…" autocomplete="off" style="flex:1;min-width:160px">' +
+        '<span id="qac-status" style="font-size:11.5px;color:#9fe0a0;align-self:center"></span>' +
+      "</div>" +
+      '<div id="qac-list" style="display:flex;flex-direction:column;gap:5px;max-height:520px;overflow:auto">Загрузка…</div>';
+    var listEl = wrap.querySelector("#qac-list");
+    var st = wrap.querySelector("#qac-status");
+    var searchEl = wrap.querySelector("#qac-search");
+    var ACCS = [];
+    function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    function pwLabel(a) {
+      if (!a.has_pw) return '<span style="color:#cc9a86">нет пароля</span>';
+      return a.pw_temp ? '<span style="color:#e6c48f">пароль выдан</span>' : '<span style="color:#8fc36a">пароль свой ✓</span>';
+    }
+    function fmtDate(s) { return (s || "").replace("T", " ").slice(0, 16); }
+    function render() {
+      var qf = (searchEl.value || "").trim().toLowerCase();
+      var rows = ACCS.filter(function (a) {
+        if (!qf) return true;
+        return ((a.main_nick || "") + " " + (a.reg_nick || "") + " " + (a.email || "")).toLowerCase().indexOf(qf) >= 0;
+      });
+      if (!rows.length) { listEl.innerHTML = '<div style="color:#8a795a;padding:8px">Ничего не найдено (' + ACCS.length + " аккаунтов всего).</div>"; return; }
+      listEl.innerHTML = rows.map(function (a) {
+        var nick = a.main_nick || a.reg_nick || "?";
+        return '<div class="qac-row" data-nick="' + esc(nick) + '" style="display:flex;align-items:center;gap:10px;justify-content:space-between;' +
+            'padding:7px 9px;border:1px solid rgba(224,162,74,.18);border-radius:9px;flex-wrap:wrap;background:rgba(20,14,7,.4)">' +
+          '<div style="flex:1;min-width:190px;display:flex;flex-direction:column;gap:1px">' +
+            '<b style="font-size:12.5px;color:#eadfc4">' + esc(nick) + (a.is_officer ? ' <span title="офицер" style="color:#e6b955">★</span>' : "") + "</b>" +
+            '<span style="font-size:10.5px;color:#8a795a">' + pwLabel(a) + " · ✉ " +
+              (a.email ? esc(a.email) : '<span style="color:#8a795a">нет почты</span>') +
+              " · вход: " + (esc(fmtDate(a.last_login_at)) || "—") + "</span>" +
+          "</div>" +
+          '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
+            '<button class="sec qac-b" data-act="pw">🔑 Пароль</button>' +
+            '<button class="sec qac-b" data-act="email">✉ Почта</button>' +
+            '<button class="sec qac-b danger" data-act="reset">♻ Сброс</button>' +
+          "</div></div>";
+      }).join("");
+      [].forEach.call(listEl.querySelectorAll(".qac-b"), function (btn) {
+        btn.addEventListener("click", function () {
+          var row = btn.closest(".qac-row"); var nick = row.getAttribute("data-nick");
+          var act = btn.getAttribute("data-act");
+          if (act === "pw") doPw(nick);
+          else if (act === "email") doEmail(nick);
+          else if (act === "reset") doReset(nick);
+        });
+      });
+    }
+    function doPw(nick) {
+      var custom = prompt("Новый личный пароль для «" + nick + "»\n(оставь пусто — сгенерирую читаемый):", "");
+      if (custom === null) return;
+      status("Меняю пароль…", true);
+      q("POST", "/queue/admin/account-set-password", { nick: nick, password: (custom || "").trim() })
+        .then(function (d) { status(""); alert("Новый пароль для «" + d.nick + "»:\n\n    " + d.password + "\n\nПередай игроку. Показывается ОДИН раз."); load(); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    }
+    function doEmail(nick) {
+      var cur = (ACCS.filter(function (a) { return (a.main_nick || a.reg_nick) === nick; })[0] || {}).email || "";
+      var em = prompt("Почта для «" + nick + "» (пусто — очистить):", cur);
+      if (em === null) return;
+      status("Меняю почту…", true);
+      q("POST", "/queue/admin/account-set-email", { nick: nick, email: (em || "").trim() })
+        .then(function () { status("✓ почта обновлена", true); load(); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    }
+    function doReset(nick) {
+      if (!confirm("Сбросить регистрацию «" + nick + "»?\n\nАккаунт удалится, и при следующем входе игрок введёт ОБЩИЙ/офицерский пароль и придумает новый личный. Доблесть, очередь и прочие данные не тронутся.")) return;
+      status("Сбрасываю…", true);
+      q("POST", "/queue/admin/reset-password", { nick: nick })
+        .then(function () { status("✓ сброшено — войдёт заново по общему паролю", true); load(); })
+        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    }
+    function load() {
+      q("GET", "/queue/admin/accounts").then(function (d) { ACCS = d.accounts || []; render(); })
+        .catch(function (e) { listEl.textContent = "Ошибка загрузки: " + (e.detail || e.message); });
+    }
+    searchEl.addEventListener("input", render);
+    load();
     return wrap;
   }
 
