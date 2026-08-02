@@ -6,9 +6,11 @@
   var API_URL = (window.OFFICERS_CONFIG && window.OFFICERS_CONFIG.API_URL) || "";
 
   function inject() {
-    if (document.getElementById("bl-tab-link")) return;
     var tabs = document.querySelector("#tabs") || document.querySelector(".tabs");
     if (!tabs) return;
+    // Уже есть вкладка ЧС (статично в разметке blacklist.html или добавлена ранее) —
+    // не дублируем. Проверяем по href, а не по id (статичная не имеет id).
+    if (tabs.querySelector('a[href="blacklist.html"]')) return;
     // группа «приём» — первая tabs-group (или ищем по ссылке на index.html)
     var group = null, groups = tabs.querySelectorAll(".tabs-group");
     for (var i = 0; i < groups.length; i++) {
