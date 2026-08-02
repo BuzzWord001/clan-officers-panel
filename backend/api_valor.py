@@ -142,6 +142,22 @@ def valor_current(s: dict = Depends(require_viewer)) -> dict:
     return res
 
 
+@router.get("/top")
+def valor_top(_=Depends(require_bot_token)) -> dict:
+    """ТОП по доблести за ПОСЛЕДНИЙ снимок — для локального поллера ТОП-20 (clan-valor-top-post).
+    Доступ по BOT-ТОКЕНУ (не через /auth/guest — гость отключён при защите чатов, из-за чего
+    поллер падал на fallback и публиковал СТАРУЮ неделю). Отдаёт week/norm/members(nick,valor,id)
+    + top3_tokens. Без соц-данных/примечаний (публичный топ)."""
+    res = db.valor_get_current(with_reg_notes=False, with_socials=False)
+    try:
+        wk = (res.get("snapshot") or {}).get("week")
+        if wk:
+            res["top3_tokens"] = db.valor_top3_token_names(wk)
+    except Exception:
+        pass
+    return res
+
+
 @router.get("/known-nicks")
 def known_nicks(_=Depends(require_bot_token)) -> dict:
     """Список известных ников клана (снимки доблести + override + активный
