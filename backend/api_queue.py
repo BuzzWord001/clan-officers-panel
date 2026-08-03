@@ -3940,6 +3940,7 @@ def _build_report(conn, stages_override: int | None = None, stages_from: int = 0
             e = _entry_public(r, idx, gmap, smap)
             e["main_canon"] = r["main_canon"]
             e["canon_nick"] = db._valor_canon(e["nick"])
+            e["pos"] = r["pos"]              # позиция в очереди — чтобы порядок в истории был точным
             queues[r["queue"]].append(e)
     valor_map, name_map = _valor_map(conn)
     # карта: canon персонажа -> canon мэйна (для сворачивания твинов в одну персону в топ-3)

@@ -6877,8 +6877,14 @@
         if (["ok", "empty", "low_valor"].indexOf(r.status) < 0) return;
         qs[Q.queue].push({ nick: r.nick, main_nick: r.main_canon, main_canon: r.main_canon, cls: r.cls,
           resources: (r.got && Object.keys(r.got).length) ? Object.keys(r.got) : (r.resource ? [r.resource] : []),
-          resource: r.resource, valor: r.valor, privileged: false });
+          resource: r.resource, valor: r.valor, privileged: false, pos: r.pos });
       });
+    });
+    // ТОЧНЫЙ порядок очереди: сортируем по pos (новые отчёты хранят pos в строках; старые — нет,
+    // тогда сортировка стабильна и порядок остаётся как в отчёте — приблизительно).
+    qs.forEach(function (arr) {
+      if (arr.some(function (e) { return e.pos != null; }))
+        arr.sort(function (a, b) { return (a.pos == null ? 1e9 : a.pos) - (b.pos == null ? 1e9 : b.pos); });
     });
     return qs;
   }

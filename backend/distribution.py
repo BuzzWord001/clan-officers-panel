@@ -365,6 +365,7 @@ def _row(e, v, top3, shooter_lc, got, status, missing=None) -> dict:
         "id": e.get("id"), "nick": who, "recipient": to,
         "receiver": (to or who), "via": (who if to else ""),
         "got_to": got_to, "mixed_recipients": mixed,   # ПО-РЕСУРСНО кому что
+        "pos": e.get("pos"),                            # позиция в очереди (для точного порядка в истории)
         "valor": v, "top3": (e.get("main_canon") in top3 or e.get("canon_nick") in top3),
         "provodnik": who.strip().lower() in shooter_lc,
         "recipient_ok": e.get("recipient_ok", True),
