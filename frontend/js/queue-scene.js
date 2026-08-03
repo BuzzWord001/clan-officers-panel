@@ -6459,7 +6459,7 @@
     if (document.getElementById("qh-css")) return;
     var s = document.createElement("style"); s.id = "qh-css";
     s.textContent =
-      ".qs-modal.qh-modal{max-width:1180px}" +
+      ".qs-modal.qh-modal{max-width:1480px}" +
       ".qh-wrap{color:#e7d6b4;font-size:13px}" +
       ".qh-weeks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}" +
       ".qh-wtab{font-size:11.5px;padding:4px 10px;border-radius:16px;cursor:pointer;background:rgba(20,14,7,.6);" +
@@ -6521,7 +6521,39 @@
         "justify-content:center;gap:6px;padding:2px 5px;min-width:30px}" +
       ".qh-sep-bar{width:2px;flex:1 1 auto;min-height:26px;background:linear-gradient(180deg,transparent,rgba(224,162,74,.55),transparent);border-radius:2px}" +
       ".qh-sep-tx{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;color:#a98f63;white-space:nowrap;letter-spacing:.6px;text-transform:uppercase}" +
-      ".qh-empty{color:#8a795a;font-style:italic;padding:5px 2px}";
+      ".qh-empty{color:#8a795a;font-style:italic;padding:5px 2px}" +
+      // ── ИСТОРИЯ: отчёт слева + снапшот-очередь справа (1-в-1 с живой полосой) ──
+      ".qsh-wrap{color:#e7d6b4}" +
+      ".qsh-approx{font-size:11px;color:#e0b070;background:rgba(224,162,74,.08);border:1px solid rgba(224,162,74,.25);border-radius:8px;padding:6px 10px;margin:0 0 10px}" +
+      ".qsh-cols{display:flex;gap:14px;align-items:flex-start}" +
+      ".qsh-left{flex:0 0 360px;max-width:360px;position:sticky;top:0;border:2px solid rgba(224,162,74,.5);border-radius:12px;" +
+        "background:rgba(26,17,8,.7);padding:10px 12px;max-height:78vh;overflow:auto;box-shadow:0 3px 12px rgba(0,0,0,.4)}" +
+      ".qsh-right{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:10px}" +
+      ".qsh-lane{background:rgba(18,12,6,.5)}" +
+      ".qsh-lane .qs-lane-head{margin-bottom:4px}" +
+      ".qsh-cnt{font-size:11px;color:#9c8a63;margin-left:8px}" +
+      ".qsh-sw{display:flex;align-items:stretch;gap:8px;min-width:0}" +
+      ".qsh-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;padding:8px 2px 10px;" +
+        "justify-content:flex-end;min-width:0;scrollbar-width:thin}" +
+      ".qsh-cell{cursor:default}" +
+      // подсветка тех, кому достаётся ресурс по распределению
+      ".qsh-cell.qsh-win .qs-cell-mdl{filter:drop-shadow(0 0 7px rgba(255,210,120,.85))}" +
+      ".qsh-cell.qsh-win .qs-cell-nick{color:#ffe4a8;font-weight:800}" +
+      ".qsh-cell.qsh-win{background:linear-gradient(180deg,rgba(255,210,120,.16),rgba(255,210,120,.02));border-radius:10px}" +
+      ".qsh-cell.qsh-nc .qs-cell-nick{text-decoration:line-through;text-decoration-color:rgba(200,80,70,.8);color:#e8a99a}" +
+      ".qsh-cell.qsh-nc .qs-cell-mdl{filter:grayscale(.5) drop-shadow(0 0 6px rgba(200,60,50,.6))}" +
+      ".qsh-vl{color:#8fc36a;font-weight:700}" +
+      ".qsh-cell.qsh-win .qsh-vl{color:#ffd27a}" +
+      // статичный торговец справа
+      ".qsh-merch{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;align-items:center;gap:2px;" +
+        "padding:6px 8px;border:1px solid rgba(224,162,74,.35);border-radius:11px;background:rgba(30,20,9,.6);min-width:96px}" +
+      ".qsh-merch .qs-merch-img{width:64px;height:64px;object-fit:contain}" +
+      ".qsh-merch.merch-sm .qs-merch-img{width:52px;height:52px}" +
+      ".qsh-merch .qs-merch-title{font-size:10.5px;font-weight:700;color:var(--gc,#f0dcb4);text-align:center;line-height:1.15}" +
+      ".qsh-merch .qs-merch-thr{display:block;font-size:9.5px;color:#9c8a63;font-weight:600}" +
+      // рамка отчёта слева — компактнее
+      ".qsh-report .qs-distrep{font-size:12px}" +
+      "@media(max-width:900px){.qsh-cols{flex-direction:column}.qsh-left{position:static;flex-basis:auto;max-width:none;width:100%;max-height:none}}";
     document.head.appendChild(s);
   }
 
@@ -6675,6 +6707,120 @@
     return 0;
   }
 
+  // ── ИСТОРИЯ: точная копия очереди на момент публикации (снапшот) + отчёт слева ──
+  function qhBannerHtml(rep, at) {
+    var totals = rep.totals || {}, lft = rep.leftovers || {};
+    var distChips = QH_RES_ORDER.map(function (k) {
+      if (k === "mount-cilin") return "";
+      var d = (totals[k] || 0) - (lft[k] || 0);
+      if (d <= 0) return "";
+      return '<span class="qh-res"><img src="' + resImg(k) + '" alt=""><b>' + d + "</b> " + esc(resName(k)) + "</span>";
+    }).filter(Boolean).join("");
+    var remChips = QH_RES_ORDER.map(function (k) {
+      var r = lft[k] || 0; if (r <= 0) return "";
+      return '<span class="qh-res rem"><img src="' + resImg(k) + '" alt=""><b>' + r + "</b> " + esc(resName(k)) + "</span>";
+    }).filter(Boolean).join("");
+    var when = at ? new Date(at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "";
+    return '<div class="qh-banner">' +
+      '<div class="qh-ban-t">🎁 Роздано на этой неделе' + (rep.stages != null ? " · этапов: " + rep.stages : "") + (when ? " · " + esc(when) : "") + "</div>" +
+      '<div class="qh-res-row">' + (distChips || '<span class="qh-empty">нет данных</span>') + "</div>" +
+      (remChips ? '<div class="qh-rem-t">Остаток клана (в казну · грамоты — вручную):</div><div class="qh-res-row">' + remChips + "</div>" : "") +
+      "</div>";
+  }
+  // canon получателя -> {got, got_to, valor, jetton, cilin} (кому что достаётся по отчёту)
+  function qhGotMap(rep) {
+    var m = {};
+    (rep.queues || []).forEach(function (Q) {
+      (Q.rows || []).forEach(function (r) {
+        if (r.status === "ok" && r.got && Object.keys(r.got).length)
+          m[canon(r.nick)] = { got: r.got, got_to: r.got_to || {}, valor: r.valor };
+      });
+    });
+    (rep.priv_claims || []).forEach(function (c) {
+      var e = m[canon(c.nick)] = m[canon(c.nick)] || { got: {}, got_to: {} };
+      e.got[c.resource] = c.amount; e.jetton = true;
+    });
+    (rep.cilin_given || []).forEach(function (nk) {
+      var e = m[canon(nk)] = m[canon(nk)] || { got: {}, got_to: {} };
+      e.got["mount-cilin"] = 1; e.cilin = true;
+    });
+    return m;
+  }
+  function qsSnapTip(e, ge, nc) {
+    var head = tipPortrait(e) + '<span class="qtip-nick">' + esc(e.nick) + "</span>";
+    var vl = (typeof e.valor === "number") ? '<span class="qtip-res" style="justify-content:center"><b>' + e.valor + " доблести</b></span>" : "";
+    if (ge && ge.got && Object.keys(ge.got).length) {
+      var rows = QH_RES_ORDER.filter(function (k) { return ge.got[k]; }).map(function (k) {
+        var to = (ge.got_to && (ge.got_to[k] || "").trim()) ? ' <span style="color:#ffcf8a">→ ' + esc(ge.got_to[k]) + "</span>" : "";
+        return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' + esc(resName(k)) + " — <b>" + ge.got[k] + " шт</b>" + to + "</span>";
+      }).join("");
+      return head + vl + tipDiv(nc ? "получил, но НЕ забрал" : ge.jetton ? "жетон ТОП-3 · вне очереди" : ge.cilin ? "получит Огненного цилиня" : "получит по этому распределению") + rows;
+    }
+    var bl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    var list = bl.map(function (k) { return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' + esc(resName(k)) + "</span>"; }).join("");
+    return head + vl + tipDiv("стоит за") + (list || '<span class="qtip-res none">—</span>');
+  }
+  function qsSnapCell(e, num, ge, nc) {
+    var mi = modelInfo(e) || {};
+    var cflip = (mi.key && MODEL_SETTINGS[mi.key] && MODEL_SETTINGS[mi.key].flip) ? ' style="transform:scaleX(-1)"' : "";
+    var bl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    var bubble = bl.length
+      ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' + resImg(bl[0]) + '" alt="">' + (bl.length > 1 ? '<span class="qs-bubble-n">+' + (bl.length - 1) + "</span>" : "") + "</div>"
+      : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
+    var win = !!(ge && ge.got && Object.keys(ge.got).length);
+    var cls = "qs-cell qsh-cell" + (win ? " qsh-win" : "") + (e.privileged ? " priv" : "") + (nc ? " qsh-nc" : "");
+    return '<div class="' + cls + '" data-tip="' + esc(qsSnapTip(e, ge, nc)) + '">' +
+      '<span class="qs-cell-toplbl">' + (e.privileged ? "⚡ ТОП-3" : (nc ? "не забрал" : (win ? "🎁" : ""))) + "</span>" +
+      bubble +
+      '<div class="qs-cell-mdl">' +
+        (mi.url ? '<img class="qs-cell-img" src="' + esc(mi.url) + '"' + cflip + ' alt="">' : '<span class="qs-cell-img ph">?</span>') +
+        (e.privileged ? "" : '<span class="qs-cell-badge">' + num + "</span>") +
+      "</div>" +
+      '<span class="qs-cell-nick">' + esc(e.nick) + (typeof e.valor === "number" ? ' <span class="qsh-vl">' + e.valor + "</span>" : "") + "</span>" +
+      "</div>";
+  }
+  function qsSnapLane(qi, entries, gotMap, ncSet) {
+    var b = BOOTHS[qi] || {};
+    // как в живой полосе: №1 (первый к торговцу) СПРАВА → reverse, номер = i+1
+    var cells = (entries || []).map(function (e, i) { return { e: e, i: i }; }).reverse().map(function (o) {
+      return qsSnapCell(o.e, o.i + 1, gotMap[canon(o.e.nick)], !!ncSet[canon(o.e.nick)]);
+    }).join("");
+    var merch = '<div class="qs-merch-box qsh-merch' + (qi === 3 ? " merch-sm" : "") + '" style="--gc:' + (b.accent || "#e0a24a") + '">' +
+      '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + qi + '.webp?v=3" alt="">' +
+      '<div class="qs-merch-title">🏪 ' + esc(MERCH_LABEL[qi] || "") + '<span class="qs-merch-thr">≥' + QH_THR[qi] + " добл.</span></div></div>";
+    return '<div class="qs-lane qsh-lane" style="--gc:' + (b.accent || "#e0a24a") + '">' +
+      '<div class="qs-lane-head"><span class="qs-lane-title">' + esc(b.title || QH_TITLES[qi]) + "</span>" +
+        '<span class="qsh-cnt">' + (entries || []).length + " чел</span></div>" +
+      '<div class="qsh-sw"><div class="qs-lane-strip qsh-strip">' + (cells || '<div class="qs-lane-empty">очередь пуста</div>') + "</div>" + merch + "</div>" +
+      "</div>";
+  }
+  function qsFallbackQueues(rep) {
+    var qs = [[], [], [], []];
+    (rep.queues || []).forEach(function (Q) {
+      (Q.rows || []).forEach(function (r) {
+        if (["ok", "empty", "low_valor"].indexOf(r.status) < 0) return;
+        qs[Q.queue].push({ nick: r.nick, main_nick: r.main_canon, main_canon: r.main_canon, cls: r.cls,
+          resources: (r.got && Object.keys(r.got).length) ? Object.keys(r.got) : (r.resource ? [r.resource] : []),
+          resource: r.resource, valor: r.valor, privileged: false });
+      });
+    });
+    return qs;
+  }
+  function qsHistoryHtml(d) {
+    var rep = d.report || {}, snap = d.snapshot, nc = d.not_collected || [];
+    var ncSet = {}; nc.forEach(function (n) { ncSet[canon(n)] = 1; });
+    var gotMap = qhGotMap(rep);
+    var banner = qhBannerHtml(rep, d.at);
+    var reportCard = '<div class="qsh-report">' + distReportHtml(rep) + "</div>";
+    var qBy = (snap && snap.queues && snap.queues.length) ? snap.queues : qsFallbackQueues(rep);
+    var lanes = [0, 1, 2, 3].map(function (qi) { return qsSnapLane(qi, qBy[qi] || [], gotMap, ncSet); }).join("");
+    var note = (snap && snap.queues) ? "" :
+      '<div class="qsh-approx">⚠ старый отчёт без снапшота — очередь показана приблизительно (по получателям отчёта). Новые отчёты сохраняют точную копию очереди.</div>';
+    return '<div class="qsh-wrap">' + banner + note +
+      '<div class="qsh-cols"><div class="qsh-left">' + reportCard + "</div>" +
+      '<div class="qsh-right">' + lanes + "</div></div></div>";
+  }
+
   // открыть полноэкранный обзор истории (список недель + богатый рендер)
   function openQueueHistoryModal() {
     if (document.querySelector(".qs-modal-ov")) return;
@@ -6702,7 +6848,10 @@
       });
       q("GET", "/queue/history/" + id).then(function (d) {
         var slot = body.querySelector(".qh-slot");
-        if (slot) slot.innerHTML = qhReportHtml(d.report || {}, d.at, d.not_collected || []);
+        if (!slot) return;
+        slot.innerHTML = qsHistoryHtml(d);
+        // центровка моделей/иконок как в живой полосе
+        try { autoCropAll(slot, ".qs-cell-img"); autoCropAll(slot, ".qs-bubble-ic"); autoCropAll(slot, ".qs-merch-img"); } catch (e2) {}
       }).catch(function (e) {
         var slot = body.querySelector(".qh-slot");
         if (slot) slot.innerHTML = '<div class="qh-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";

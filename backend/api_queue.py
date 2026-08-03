@@ -455,6 +455,12 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_accounts ADD COLUMN pw_plain TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: СНИМОК очереди на момент публикации отчёта (ДО сдвига) — точная копия очереди
+        # для «истории распределения» (кто где стоял, за какими ресурсами, с какой доблестью).
+        try:
+            conn.execute("ALTER TABLE queue_reports ADD COLUMN snapshot TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
         try:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
@@ -3895,6 +3901,34 @@ def _priv_claims(conn) -> list[dict]:
     return out
 
 
+def _capture_queue_snapshot(conn) -> dict:
+    """Полный снимок очередей (как /queue/state) + доблесть и позиция каждого — для «истории
+    распределения»: ТОЧНАЯ копия очереди на момент публикации отчёта (ДО сдвига). Модель, ресурсы,
+    получатели, позиция, доблесть — всё сохраняется, чтобы позже показать очередь 1-в-1."""
+    import json as _json
+    idx = _people(conn)
+    gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+    pmap = {r["canon"]: r["prefer_class"] for r in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
+    vmap = {r["canon"]: (r["variant"] or "") for r in conn.execute("SELECT canon, variant FROM queue_model_pref")}
+    smap = _spouse_map(conn)
+    tmap = _build_translit_map(idx)
+    try:
+        _sh = [s for s in _json.loads(_cfg_val(conn, "shooters", "[]")) if s]
+    except (ValueError, TypeError):
+        _sh = []
+    shooters_canon = {db._valor_canon(s) for s in _sh if db._valor_canon(s)}
+    valor_map, _ = _valor_map(conn)
+    queues = [[], [], [], []]
+    for r in conn.execute("SELECT * FROM queue_entries ORDER BY queue, pos, id"):
+        if r["queue"] in QUEUES:
+            e = _entry_public(r, idx, gmap, smap, pmap, shooters_canon, tmap, vmap)
+            e["pos"] = r["pos"]
+            e["main_canon"] = r["main_canon"]
+            e["valor"] = valor_map.get(r["main_canon"]) or valor_map.get(db._valor_canon(e["nick"])) or 0
+            queues[r["queue"]].append(e)
+    return {"queues": queues, "captured_at": _now(), "week": db.valor_latest_week() or ""}
+
+
 def _build_report(conn, stages_override: int | None = None, stages_from: int = 0) -> dict:
     import json
     idx = _people(conn)
@@ -4274,15 +4308,18 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     # первый БОЕВОЙ сдвиг за эту неделю: публикуем (картинка→текст) и сдвигаем очередь
     channels = await (_send_report_media(img, text) if img else _send_text_to_chats(text))
     with db.connection() as conn:
+        # СНИМОК очереди ДО сдвига — точная копия для «истории распределения»
+        snapshot = _capture_queue_snapshot(conn)
         stats = _shift_queues(conn, main)
         n_groups = len(main.get("groups") or [])
         n_people = sum(len(g.get("people") or []) for g in (main.get("groups") or []))
         conn.execute(
-            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor)"
-            " VALUES (?,?,?,?,?,?)",
+            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor, snapshot)"
+            " VALUES (?,?,?,?,?,?,?)",
             (_now(), lo, _json.dumps(main, ensure_ascii=False),
              _json.dumps(channels, ensure_ascii=False),
-             "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi), _actor_name(actor)))
+             "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi),
+             _actor_name(actor), _json.dumps(snapshot, ensure_ascii=False)))
         conn.execute("DELETE FROM queue_entries WHERE privileged=1")
         conn.execute("DELETE FROM queue_priv_claims")
         _save_low_valor_notices(conn, main)
@@ -5143,7 +5180,7 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
     import json as _json
     with db.connection() as conn:
         row = conn.execute(
-            "SELECT created_at, stages, report, channels FROM queue_reports WHERE id=?", (rid,)).fetchone()
+            "SELECT created_at, stages, report, channels, snapshot FROM queue_reports WHERE id=?", (rid,)).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
         not_collected = _report_not_collected(conn, row["created_at"])
@@ -5155,7 +5192,15 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
         ch = _json.loads(row["channels"]) if row["channels"] else {}
     except (ValueError, TypeError):
         ch = {}
-    return {"report": rep, "at": row["created_at"], "channels": ch, "not_collected": not_collected}
+    snap = None
+    try:
+        _sk = row.keys()
+        if "snapshot" in _sk and row["snapshot"]:
+            snap = _json.loads(row["snapshot"])
+    except (ValueError, TypeError):
+        snap = None
+    return {"report": rep, "at": row["created_at"], "channels": ch,
+            "not_collected": not_collected, "snapshot": snap}
 
 
 # таблицы создаём при импорте модуля (db-файл уже сконфигурирован settings)
