@@ -6536,7 +6536,7 @@
       ".qsh-cnt{font-size:11px;color:#9c8a63;margin-left:8px}" +
       ".qsh-sw{display:flex;align-items:stretch;gap:8px;min-width:0}" +
       ".qsh-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;padding:8px 2px 10px;" +
-        "justify-content:flex-end;min-width:0;scrollbar-width:thin}" +
+        "min-width:0;scrollbar-width:thin}" +
       ".qsh-cell{cursor:default}" +
       // СВЕТИТСЯ только жетон ТОП-3 «вне очереди»
       ".qsh-cell.qsh-glow .qs-cell-mdl{filter:drop-shadow(0 0 9px rgba(255,210,120,.95))}" +
@@ -6768,19 +6768,45 @@
     });
     return m;
   }
+  // ПО-ОЧЕРЕДНО: [4] × {canon -> {got, got_to}} — что получит человек ИМЕННО из этой очереди
+  function qhGotByQueue(rep) {
+    var byQ = [{}, {}, {}, {}];
+    (rep.queues || []).forEach(function (Q) {
+      (Q.rows || []).forEach(function (r) {
+        if (r.status === "ok" && r.got && Object.keys(r.got).length)
+          byQ[Q.queue][canon(r.nick)] = { got: r.got, got_to: r.got_to || {}, valor: r.valor };
+      });
+    });
+    (rep.priv_claims || []).forEach(function (c) {
+      var qi = qhResQueue(c.resource);
+      var e = byQ[qi][canon(c.nick)] = byQ[qi][canon(c.nick)] || { got: {}, got_to: {} };
+      e.got[c.resource] = c.amount; e.jetton = true;
+    });
+    (rep.cilin_given || []).forEach(function (nk) {
+      var e = byQ[2][canon(nk)] = byQ[2][canon(nk)] || { got: {}, got_to: {} };
+      e.got["mount-cilin"] = 1; e.cilin = true;
+    });
+    return byQ;
+  }
   function qsSnapTip(e, ge, nc) {
     var head = tipPortrait(e) + '<span class="qtip-nick">' + esc(e.nick) + "</span>";
     var vl = (typeof e.valor === "number") ? '<span class="qtip-res" style="justify-content:center"><b>' + e.valor + " доблести</b></span>" : "";
+    // ЗА ЧЕМ СТОИТ В ЭТОЙ очереди
+    var bl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+    var stood = bl.map(function (k) { return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' + esc(resName(k)) + "</span>"; }).join("");
+    var stoodSec = tipDiv("стоит в этой очереди за") + (stood || '<span class="qtip-res none">—</span>');
+    // ПОЛУЧИТ ИЗ ЭТОЙ очереди на этой неделе (только из неё, не из других)
+    var getsSec;
     if (ge && ge.got && Object.keys(ge.got).length) {
       var rows = QH_RES_ORDER.filter(function (k) { return ge.got[k]; }).map(function (k) {
         var to = (ge.got_to && (ge.got_to[k] || "").trim()) ? ' <span style="color:#ffcf8a">→ ' + esc(ge.got_to[k]) + "</span>" : "";
         return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' + esc(resName(k)) + " — <b>" + ge.got[k] + " шт</b>" + to + "</span>";
       }).join("");
-      return head + vl + tipDiv(nc ? "получил, но НЕ забрал" : ge.jetton ? "жетон ТОП-3 · вне очереди" : ge.cilin ? "получит Огненного цилиня" : "получит по этому распределению") + rows;
+      getsSec = tipDiv(nc ? "получил из этой очереди, но НЕ забрал" : ge.jetton ? "берёт по жетону ТОП-3 (вне очереди)" : ge.cilin ? "получит Огненного цилиня" : "получит из этой очереди на этой неделе") + rows;
+    } else {
+      getsSec = tipDiv("из этой очереди на этой неделе") + '<span class="qtip-res none">ничего не получает</span>';
     }
-    var bl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
-    var list = bl.map(function (k) { return '<span class="qtip-res"><img class="qtip-ic" src="' + resImg(k) + '" alt=""> ' + esc(resName(k)) + "</span>"; }).join("");
-    return head + vl + tipDiv("стоит за") + (list || '<span class="qtip-res none">—</span>');
+    return head + vl + stoodSec + getsSec;
   }
   function qsSnapCell(e, num, ge, nc) {
     var mi = modelInfo(e) || {};
@@ -6791,30 +6817,30 @@
       : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
     var isRecip = !!(ge && ge.got && Object.keys(ge.got).length);
     var isJeton = !!e.privileged;              // жетонный клон ТОП-3 «вне очереди» — только он светится
-    // СВЕТИТСЯ только жетон; получатель — обычный (яркий); НЕ получатель — серый
+    // ПО-ОЧЕРЕДНО: получатель ИЗ ЭТОЙ очереди — обычный (яркий); НЕ получает в ней — серый.
+    // Светится только жетон ТОП-3 «вне очереди».
     var cls = "qs-cell qsh-cell" + (isJeton ? " qsh-glow" : "") +
       ((isRecip || isJeton) ? "" : " qsh-gray") + (nc ? " qsh-nc" : "");
-    // ЧТО ДОСТАНЕТСЯ (для получателей) — прямо под ником, из распределения (отчёта слева)
-    var gets = (isRecip && ge.got) ? QH_RES_ORDER.filter(function (k) { return ge.got[k]; }).map(function (k) {
-      var to = (ge.got_to && (ge.got_to[k] || "").trim()) ? '<span class="qsh-g-to">→' + esc(ge.got_to[k]) + "</span>" : "";
-      return '<span class="qsh-g"><img src="' + resImg(k) + '" alt=""><b>' + ge.got[k] + "</b>" + to + "</span>";
-    }).join("") : "";
     return '<div class="' + cls + '" data-tip="' + esc(qsSnapTip(e, ge, nc)) + '">' +
-      '<span class="qs-cell-toplbl">' + (isJeton ? "⚡ жетон" : (nc ? "не забрал" : "")) + "</span>" +
+      '<span class="qs-cell-toplbl">' + (isJeton ? "⚡ жетон" : e.cilin ? "🐲 цилинь" : (nc ? "не забрал" : "")) + "</span>" +
       bubble +
       '<div class="qs-cell-mdl">' +
         (mi.url ? '<img class="qs-cell-img" src="' + esc(mi.url) + '"' + cflip + ' alt="">' : '<span class="qs-cell-img ph">?</span>') +
-        (e.privileged ? "" : '<span class="qs-cell-badge">' + num + "</span>") +
+        ((!e.privileged && num) ? '<span class="qs-cell-badge">' + num + "</span>" : "") +
       "</div>" +
       '<span class="qs-cell-nick">' + esc(e.nick) + (typeof e.valor === "number" ? ' <span class="qsh-vl">' + e.valor + "</span>" : "") + "</span>" +
-      (gets ? '<div class="qsh-gets" title="достанется при этом распределении">' + gets + "</div>" : "") +
       "</div>";
   }
-  function qsSnapLane(qi, entries, gotMap, ncSet) {
+  function qsSnapLane(qi, entries, gotQ, ncSet, extras) {
     var b = BOOTHS[qi] || {};
     // как в живой полосе: №1 (первый к торговцу) СПРАВА → reverse, номер = i+1
+    // gotQ — получатели ИМЕННО этой очереди (по-очередно): в других очередях может быть иначе.
     var cells = (entries || []).map(function (e, i) { return { e: e, i: i }; }).reverse().map(function (o) {
-      return qsSnapCell(o.e, o.i + 1, gotMap[canon(o.e.nick)], !!ncSet[canon(o.e.nick)]);
+      return qsSnapCell(o.e, o.i + 1, gotQ[canon(o.e.nick)], !!ncSet[canon(o.e.nick)]);
+    }).join("");
+    // ВНЕ ОЧЕРЕДИ (цилинь-получатели / жетоны, которых уже нет в очереди) — отдельными карточками у торговца
+    var extraCells = (extras || []).map(function (x) {
+      return qsSnapCell(x, "", { got: x.got || {}, got_to: x.got_to || {}, jetton: x.jetton, cilin: x.cilin }, false);
     }).join("");
     // тултип торговца: какие ресурсы доступны (как в живой полосе), встать нельзя — только смотреть
     var resItems = BOOTH_ITEMS[qi] || [];
@@ -6839,7 +6865,7 @@
         '<span class="qsh-cnt">' + (entries || []).length + " чел</span></div>" +
       '<div class="qsh-sw">' +
         '<button class="qsh-arrow" data-dir="-1" title="назад" type="button">◀</button>' +
-        '<div class="qs-lane-strip qsh-strip">' + (cells || '<div class="qs-lane-empty">очередь пуста</div>') + "</div>" +
+        '<div class="qs-lane-strip qsh-strip">' + (cells || (extraCells ? "" : '<div class="qs-lane-empty">очередь пуста</div>')) + extraCells + "</div>" +
         '<button class="qsh-arrow" data-dir="1" title="вперёд" type="button">▶</button>' +
         merch +
       "</div></div>";
@@ -6859,11 +6885,22 @@
   function qsHistoryHtml(d) {
     var rep = d.report || {}, snap = d.snapshot, nc = d.not_collected || [];
     var ncSet = {}; nc.forEach(function (n) { ncSet[canon(n)] = 1; });
-    var gotMap = qhGotMap(rep);
+    var gotByQ = qhGotByQueue(rep);       // по-очередно: подсветка/тултип от ЭТОЙ очереди
     var banner = qhBannerHtml(rep, d.at);
     var reportCard = '<div class="qsh-report">' + distReportHtml(rep) + "</div>";
     var qBy = (snap && snap.queues && snap.queues.length) ? snap.queues : qsFallbackQueues(rep);
-    var lanes = [0, 1, 2, 3].map(function (qi) { return qsSnapLane(qi, qBy[qi] || [], gotMap, ncSet); }).join("");
+    // ВНЕ ОЧЕРЕДИ (уже вышли из очереди на момент снапшота): цилинь-получатели → q2, жетоны → своя оч.
+    var present = [{}, {}, {}, {}];
+    qBy.forEach(function (arr, qi) { (arr || []).forEach(function (e) { present[qi][canon(e.nick)] = 1; }); });
+    var extraByQ = [[], [], [], []];
+    (rep.cilin_given || []).forEach(function (nk) {
+      if (!present[2][canon(nk)]) extraByQ[2].push({ nick: nk, resources: ["mount-cilin"], got: { "mount-cilin": 1 }, cilin: true });
+    });
+    (rep.priv_claims || []).forEach(function (c) {
+      var qi = qhResQueue(c.resource);
+      if (!present[qi][canon(c.nick)]) { var g = {}; g[c.resource] = c.amount; extraByQ[qi].push({ nick: c.nick, resources: [c.resource], got: g, jetton: true, privileged: true }); }
+    });
+    var lanes = [0, 1, 2, 3].map(function (qi) { return qsSnapLane(qi, qBy[qi] || [], gotByQ[qi], ncSet, extraByQ[qi]); }).join("");
     var note = (snap && snap.queues) ? "" :
       '<div class="qsh-approx">⚠ старый отчёт без снапшота — очередь показана приблизительно (по получателям отчёта). Новые отчёты сохраняют точную копию очереди.</div>';
     return '<div class="qsh-wrap">' + banner + note +
@@ -6903,15 +6940,16 @@
         slot.innerHTML = qsHistoryHtml(d);
         // центровка моделей/иконок как в живой полосе
         try { autoCropAll(slot, ".qs-cell-img"); autoCropAll(slot, ".qs-bubble-ic"); autoCropAll(slot, ".qs-merch-img"); } catch (e2) {}
-        // прокрутка очередей вперёд/назад по стрелкам ◀ ▶
-        [].forEach.call(slot.querySelectorAll(".qsh-arrow"), function (a) {
-          a.addEventListener("click", function () {
-            var sw = a.closest(".qsh-sw"); if (!sw) return;
-            var strip = sw.querySelector(".qsh-strip"); if (!strip) return;
-            strip.scrollBy({ left: (a.getAttribute("data-dir") === "1" ? 300 : -300), behavior: "smooth" });
-          });
+        // прокрутка очередей вперёд/назад по стрелкам ◀ ▶ (делегирование — надёжнее)
+        slot.addEventListener("click", function (ev) {
+          var a = ev.target.closest && ev.target.closest(".qsh-arrow");
+          if (!a) return;
+          var sw = a.closest(".qsh-sw"); if (!sw) return;
+          var strip = sw.querySelector(".qsh-strip"); if (!strip) return;
+          var step = Math.max(200, Math.round(strip.clientWidth * 0.7));
+          strip.scrollBy({ left: (a.getAttribute("data-dir") === "1" ? step : -step), behavior: "smooth" });
         });
-        // изначально прокрутить к голове очереди (к торговцу, где №1)
+        // изначально показать голову очереди (№1 у торговца справа)
         [].forEach.call(slot.querySelectorAll(".qsh-strip"), function (s) { s.scrollLeft = s.scrollWidth; });
       }).catch(function (e) {
         var slot = body.querySelector(".qh-slot");
@@ -7487,6 +7525,11 @@
         html += '<div class="qs-dr-row"><b>' + esc(c.nick) + "</b> — " + esc(c.name) + " ×" + c.amount + "</div>";
       });
       html += "</div>";
+    }
+    if (rep.cilin_given && rep.cilin_given.length) {
+      html += '<div class="qs-dr-sec"><h4>🐲 Огненный цилинь — выдан на этой неделе</h4>' +
+        '<div class="qs-dr-rline"><img class="qs-dr-ic" src="' + resImg("mount-cilin") + '" alt=""><b>' +
+        rep.cilin_given.map(esc).join(", ") + "</b></div></div>";
     }
     var groups = rep.groups || [];
     html += '<div class="qs-dr-sec"><h4>📦 Группы раздачи</h4>';
