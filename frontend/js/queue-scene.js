@@ -1744,6 +1744,8 @@
     ".qs-dr-gh{font:800 12px system-ui;color:#f0c878;margin:0 0 4px}" +
     ".qs-dr-gp{font-size:12.5px;color:#f6ead2;line-height:1.5;margin:0 0 5px}" +
     ".qs-dr-gr{font-size:12px;color:#a9e08f;line-height:1.55;border-top:1px dashed rgba(224,162,74,.2);padding-top:5px}" +
+    ".qs-dr-rline{display:flex;align-items:center;gap:6px;padding:2px 0}" +
+    ".qs-dr-ic{width:22px;height:22px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(0 1px 2px #000)}" +
     ".qs-fulllist{padding:10px 14px 16px}" +
     ".qs-fl-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid rgba(224,162,74,.14)}" +
     ".qs-fl-row.waiting{opacity:.62}" +
@@ -6536,14 +6538,34 @@
       ".qsh-strip{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;overflow-y:visible;padding:8px 2px 10px;" +
         "justify-content:flex-end;min-width:0;scrollbar-width:thin}" +
       ".qsh-cell{cursor:default}" +
-      // подсветка тех, кому достаётся ресурс по распределению
-      ".qsh-cell.qsh-win .qs-cell-mdl{filter:drop-shadow(0 0 7px rgba(255,210,120,.85))}" +
-      ".qsh-cell.qsh-win .qs-cell-nick{color:#ffe4a8;font-weight:800}" +
-      ".qsh-cell.qsh-win{background:linear-gradient(180deg,rgba(255,210,120,.16),rgba(255,210,120,.02));border-radius:10px}" +
+      // СВЕТИТСЯ только жетон ТОП-3 «вне очереди»
+      ".qsh-cell.qsh-glow .qs-cell-mdl{filter:drop-shadow(0 0 9px rgba(255,210,120,.95))}" +
+      ".qsh-cell.qsh-glow{background:radial-gradient(closest-side,rgba(255,210,120,.22),transparent);border-radius:10px}" +
+      ".qsh-cell.qsh-glow .qs-cell-nick{color:#ffe4a8;font-weight:800}" +
+      // не получает ресурсы → серый; получает → как обычно (яркий)
+      ".qsh-cell.qsh-gray{opacity:.5}" +
+      ".qsh-cell.qsh-gray .qs-cell-mdl img{filter:grayscale(.85) brightness(.85)}" +
+      ".qsh-cell.qsh-gray .qs-cell-nick{color:#9a8a6a}" +
       ".qsh-cell.qsh-nc .qs-cell-nick{text-decoration:line-through;text-decoration-color:rgba(200,80,70,.8);color:#e8a99a}" +
-      ".qsh-cell.qsh-nc .qs-cell-mdl{filter:grayscale(.5) drop-shadow(0 0 6px rgba(200,60,50,.6))}" +
+      ".qsh-cell.qsh-nc .qs-cell-mdl img{filter:grayscale(.4) drop-shadow(0 0 6px rgba(200,60,50,.6))}" +
       ".qsh-vl{color:#8fc36a;font-weight:700}" +
-      ".qsh-cell.qsh-win .qsh-vl{color:#ffd27a}" +
+      // что достанется получателю — иконки+кол-во под ником
+      ".qsh-gets{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;margin-top:2px;max-width:88px}" +
+      ".qsh-g{display:inline-flex;align-items:center;gap:1px;background:rgba(255,210,120,.14);border-radius:5px;padding:1px 4px 1px 2px;font-size:10px;color:#ffe4a8}" +
+      ".qsh-g img{width:15px;height:15px;object-fit:contain}" +
+      ".qsh-g b{color:#fff2cf}" +
+      ".qsh-g-to{color:#ffcf8a;font-weight:700;margin-left:1px}" +
+      // стрелки прокрутки очереди
+      ".qsh-arrow{flex:0 0 auto;align-self:center;width:26px;height:46px;border:1px solid rgba(224,162,74,.4);border-radius:8px;" +
+        "background:rgba(30,20,9,.7);color:#e0c188;cursor:pointer;font-size:14px;font-weight:700}" +
+      ".qsh-arrow:hover{background:rgba(224,162,74,.22);color:#ffe4a8}" +
+      ".qsh-arrow:active{transform:scale(.94)}" +
+      // тултип торговца (какие ресурсы доступны — только посмотреть)
+      ".qtip-merch-h{font-size:12px;font-weight:800;color:#ffe0a0;margin-bottom:4px}" +
+      ".qtip-merch-r{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#ecdab0;padding:2px 0}" +
+      ".qtip-merch-r img{width:20px;height:20px;object-fit:contain}" +
+      ".qtip-merch-st{color:#9c8a63;font-size:10.5px}" +
+      ".qtip-merch-cnt{margin-left:auto;color:#8fc36a;font-size:10.5px}" +
       // статичный торговец справа
       ".qsh-merch{flex:0 0 auto;align-self:center;display:flex;flex-direction:column;align-items:center;gap:2px;" +
         "padding:6px 8px;border:1px solid rgba(224,162,74,.35);border-radius:11px;background:rgba(30,20,9,.6);min-width:96px}" +
@@ -6767,16 +6789,25 @@
     var bubble = bl.length
       ? '<div class="qs-bubble' + (e.privileged ? " priv" : "") + '"><img class="qs-bubble-ic" src="' + resImg(bl[0]) + '" alt="">' + (bl.length > 1 ? '<span class="qs-bubble-n">+' + (bl.length - 1) + "</span>" : "") + "</div>"
       : '<div class="qs-bubble empty"><span class="qs-bubble-q">?</span></div>';
-    var win = !!(ge && ge.got && Object.keys(ge.got).length);
-    var cls = "qs-cell qsh-cell" + (win ? " qsh-win" : "") + (e.privileged ? " priv" : "") + (nc ? " qsh-nc" : "");
+    var isRecip = !!(ge && ge.got && Object.keys(ge.got).length);
+    var isJeton = !!e.privileged;              // жетонный клон ТОП-3 «вне очереди» — только он светится
+    // СВЕТИТСЯ только жетон; получатель — обычный (яркий); НЕ получатель — серый
+    var cls = "qs-cell qsh-cell" + (isJeton ? " qsh-glow" : "") +
+      ((isRecip || isJeton) ? "" : " qsh-gray") + (nc ? " qsh-nc" : "");
+    // ЧТО ДОСТАНЕТСЯ (для получателей) — прямо под ником, из распределения (отчёта слева)
+    var gets = (isRecip && ge.got) ? QH_RES_ORDER.filter(function (k) { return ge.got[k]; }).map(function (k) {
+      var to = (ge.got_to && (ge.got_to[k] || "").trim()) ? '<span class="qsh-g-to">→' + esc(ge.got_to[k]) + "</span>" : "";
+      return '<span class="qsh-g"><img src="' + resImg(k) + '" alt=""><b>' + ge.got[k] + "</b>" + to + "</span>";
+    }).join("") : "";
     return '<div class="' + cls + '" data-tip="' + esc(qsSnapTip(e, ge, nc)) + '">' +
-      '<span class="qs-cell-toplbl">' + (e.privileged ? "⚡ ТОП-3" : (nc ? "не забрал" : (win ? "🎁" : ""))) + "</span>" +
+      '<span class="qs-cell-toplbl">' + (isJeton ? "⚡ жетон" : (nc ? "не забрал" : "")) + "</span>" +
       bubble +
       '<div class="qs-cell-mdl">' +
         (mi.url ? '<img class="qs-cell-img" src="' + esc(mi.url) + '"' + cflip + ' alt="">' : '<span class="qs-cell-img ph">?</span>') +
         (e.privileged ? "" : '<span class="qs-cell-badge">' + num + "</span>") +
       "</div>" +
       '<span class="qs-cell-nick">' + esc(e.nick) + (typeof e.valor === "number" ? ' <span class="qsh-vl">' + e.valor + "</span>" : "") + "</span>" +
+      (gets ? '<div class="qsh-gets" title="достанется при этом распределении">' + gets + "</div>" : "") +
       "</div>";
   }
   function qsSnapLane(qi, entries, gotMap, ncSet) {
@@ -6785,14 +6816,33 @@
     var cells = (entries || []).map(function (e, i) { return { e: e, i: i }; }).reverse().map(function (o) {
       return qsSnapCell(o.e, o.i + 1, gotMap[canon(o.e.nick)], !!ncSet[canon(o.e.nick)]);
     }).join("");
-    var merch = '<div class="qs-merch-box qsh-merch' + (qi === 3 ? " merch-sm" : "") + '" style="--gc:' + (b.accent || "#e0a24a") + '">' +
+    // тултип торговца: какие ресурсы доступны (как в живой полосе), встать нельзя — только смотреть
+    var resItems = BOOTH_ITEMS[qi] || [];
+    var resCount = {};
+    (entries || []).forEach(function (e) {
+      var rl = (e.resources && e.resources.length) ? e.resources : (e.resource ? [e.resource] : []);
+      rl.forEach(function (r) { resCount[r] = (resCount[r] || 0) + 1; });
+    });
+    var mtip = '<div class="qtip-merch-h">🏪 ' + esc(MERCH_LABEL[qi] || "") + " · ≥" + QH_THR[qi] + " доблести</div>" +
+      resItems.map(function (it) {
+        var rm = REWARDS_META[it] || {};
+        var stt = rm.mode === "pack" ? "всё 1-му" : rm.mode === "fixed" ? ("по " + rm.unit) : ("стак " + rm.unit);
+        return '<div class="qtip-merch-r"><img src="' + resImg(it) + '" alt=""> ' + esc(resName(it)) +
+          ' <span class="qtip-merch-st">' + esc(stt) + "</span> <span class=\"qtip-merch-cnt\">👥" + (resCount[it] || 0) + "</span></div>";
+      }).join("");
+    var merch = '<div class="qs-merch-box qsh-merch' + (qi === 3 ? " merch-sm" : "") + '" style="--gc:' + (b.accent || "#e0a24a") +
+      '" data-tip="' + esc(mtip) + '">' +
       '<img class="qs-merch-img" src="assets/queue/scene/merchant-' + qi + '.webp?v=3" alt="">' +
       '<div class="qs-merch-title">🏪 ' + esc(MERCH_LABEL[qi] || "") + '<span class="qs-merch-thr">≥' + QH_THR[qi] + " добл.</span></div></div>";
     return '<div class="qs-lane qsh-lane" style="--gc:' + (b.accent || "#e0a24a") + '">' +
       '<div class="qs-lane-head"><span class="qs-lane-title">' + esc(b.title || QH_TITLES[qi]) + "</span>" +
         '<span class="qsh-cnt">' + (entries || []).length + " чел</span></div>" +
-      '<div class="qsh-sw"><div class="qs-lane-strip qsh-strip">' + (cells || '<div class="qs-lane-empty">очередь пуста</div>') + "</div>" + merch + "</div>" +
-      "</div>";
+      '<div class="qsh-sw">' +
+        '<button class="qsh-arrow" data-dir="-1" title="назад" type="button">◀</button>' +
+        '<div class="qs-lane-strip qsh-strip">' + (cells || '<div class="qs-lane-empty">очередь пуста</div>') + "</div>" +
+        '<button class="qsh-arrow" data-dir="1" title="вперёд" type="button">▶</button>' +
+        merch +
+      "</div></div>";
   }
   function qsFallbackQueues(rep) {
     var qs = [[], [], [], []];
@@ -6832,7 +6882,8 @@
     if (body.parentElement) body.parentElement.classList.add("qh-modal");
     var weeks = [], cur = null;
     function renderWeekTabs() {
-      return '<div class="qh-weeks">' + weeks.map(function (w, i) {
+      // СЛЕВА→НАПРАВО: старые слева, свежие справа (weeks приходят новыми первыми → разворачиваем)
+      return '<div class="qh-weeks">' + weeks.slice().reverse().map(function (w) {
         var lbl = w.at ? new Date(w.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : ("отчёт " + w.id);
         var wn = (w.week && /W(\d+)/.test(w.week)) ? (" · нед. " + RegExp.$1) : "";
         return '<span class="qh-wtab' + (w.id === cur ? " active" : "") + '" data-wid="' + w.id + '">' +
@@ -6852,6 +6903,16 @@
         slot.innerHTML = qsHistoryHtml(d);
         // центровка моделей/иконок как в живой полосе
         try { autoCropAll(slot, ".qs-cell-img"); autoCropAll(slot, ".qs-bubble-ic"); autoCropAll(slot, ".qs-merch-img"); } catch (e2) {}
+        // прокрутка очередей вперёд/назад по стрелкам ◀ ▶
+        [].forEach.call(slot.querySelectorAll(".qsh-arrow"), function (a) {
+          a.addEventListener("click", function () {
+            var sw = a.closest(".qsh-sw"); if (!sw) return;
+            var strip = sw.querySelector(".qsh-strip"); if (!strip) return;
+            strip.scrollBy({ left: (a.getAttribute("data-dir") === "1" ? 300 : -300), behavior: "smooth" });
+          });
+        });
+        // изначально прокрутить к голове очереди (к торговцу, где №1)
+        [].forEach.call(slot.querySelectorAll(".qsh-strip"), function (s) { s.scrollLeft = s.scrollWidth; });
       }).catch(function (e) {
         var slot = body.querySelector(".qh-slot");
         if (slot) slot.innerHTML = '<div class="qh-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
@@ -7437,8 +7498,9 @@
         return s;
       }).join(", ");
       var res = g.resources.map(function (info) {
-        return "<b>" + esc(info.name) + "</b> — " + info.total + " шт";
-      }).join("<br>");
+        var ic = info.key ? '<img class="qs-dr-ic" src="' + resImg(info.key) + '" alt="">' : "";
+        return '<span class="qs-dr-rline">' + ic + "<b>" + esc(info.name) + "</b> — " + info.total + " шт</span>";
+      }).join("");
       html += '<div class="qs-dr-group"><div class="qs-dr-gh">Группа ' + (gi + 1) +
         (g.provodnik ? ' <span class="qs-dr-prov">🎯 проводники</span>' : "") +
         " · " + g.people.length + " чел</div>" +
