@@ -2257,9 +2257,9 @@ video.chat-media-thumb {
 .members-table .m-col-idx   { text-align: right; width: 36px;
                               padding-left: 4px !important;
                               padding-right: 4px !important; }
-.members-table .m-cell-idx  { text-align: right; color: var(--text-dim);
+.members-table .m-cell-idx  { text-align: right; color: var(--text);
                               font-family: "Cascadia Code", monospace;
-                              font-size: 11px;
+                              font-size: 14px; font-weight: 700;
                               padding-left: 4px !important;
                               padding-right: 4px !important;
                               user-select: none; }
@@ -2274,6 +2274,74 @@ video.chat-media-thumb {
   cursor: pointer;
 }
 .members-table tbody tr.m-row:hover { background: rgba(224, 162, 74, 0.06); }
+/* ── ТВИН: обычная строка (те же колонки/кнопки), но ник мелкий, без номера/кубка, ── */
+/* а на ФОНЕ — золотая эмблема «ТВИН» (по образцу баннера «ЭЛИТА»). Приоритет над элитой */
+/* даём через #valor-table + порядок ниже элитных правил + !important на фоне. */
+#valor-table tr.m-row-twin,
+#acceptances-table tr.m-row-twin,
+tr.m-row-twin {
+  /* эмблема «ТВИН» по центру + мягкий тёмный ореол под ней (читаемость центральных ячеек). */
+  /* Края строки прозрачные — как у обычных строк, однородно с соседями. */
+  background:
+    url("assets/tvin.webp?v=1") no-repeat center / auto min(25px, 34%),
+    radial-gradient(ellipse 20% 60% at 50% 50%,
+      rgba(0,0,0,.42), rgba(0,0,0,.18) 56%, rgba(0,0,0,0) 78%),
+    /* диагональные золотистые полоски — неброский узор, выделяет строки твинов */
+    repeating-linear-gradient(45deg,
+      rgba(224,162,74,.075) 0px, rgba(224,162,74,.075) 3px,
+      rgba(0,0,0,0) 3px, rgba(0,0,0,0) 12px),
+    /* мягкая заливка всей строки — неброский тёмно-золотисто-коричневый под тон сайта */
+    linear-gradient(180deg, rgba(46,34,17,.55), rgba(33,24,11,.55)) !important;
+  animation: none !important;
+}
+#valor-table tr.m-row-twin > td,
+#acceptances-table tr.m-row-twin > td,
+tr.m-row-twin > td {
+  background: transparent !important;   /* гасит и подложку/рамку баннера Элиты у твина-элиты */
+  box-shadow: none !important;
+  animation: none !important;
+  /* тёмное halo под текстом ячеек — читаемость поверх золотой надписи ТВИН */
+  text-shadow: 0 1px 2px rgba(10,6,0,.92), 0 0 3px rgba(10,6,0,.8);
+}
+/* Левые колонки (№/ник) — НЕПРОЗРАЧНАЯ тёмная подложка + те же диагональные полоски, */
+/* что и на остальной строке (не просвечивает арт, узор единый по всей строке). */
+#valor-table tr.m-row-twin td:nth-child(1),
+#valor-table tr.m-row-twin td:nth-child(2) {
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(224,162,74,.075) 0px, rgba(224,162,74,.075) 3px,
+      rgba(0,0,0,0) 3px, rgba(0,0,0,0) 12px),
+    linear-gradient(180deg, #241705, #140c02) !important;
+}
+#valor-table tr.m-row-twin:hover > td,
+tr.m-row-twin:hover > td { background: rgba(224, 162, 74, 0.05) !important; }
+#valor-table tr.m-row-twin:hover td:nth-child(1),
+#valor-table tr.m-row-twin:hover td:nth-child(2) {
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(224,162,74,.075) 0px, rgba(224,162,74,.075) 3px,
+      rgba(0,0,0,0) 3px, rgba(0,0,0,0) 12px),
+    linear-gradient(180deg, #2e1f08, #1a1004) !important;
+}
+/* Ник — МЕЛКО (по просьбе) и особым тёплым янтарно-золотым цветом (отличать твинов). */
+#valor-table tr.m-row-twin .m-cell-name b,
+.members-table tbody tr.m-row-twin .m-cell-name b {
+  font-size: 11px; font-weight: 600;
+  color: #eec06a !important;
+  text-shadow: 0 1px 2px rgba(10,6,0,.95), 0 0 3px rgba(10,6,0,.7);
+}
+.members-table tbody tr.m-row-twin .nick-cup { display: none; }
+/* бейдж «элита» у ника твина-элиты */
+.tw-badge {
+  display: inline-block; margin-left: 6px; padding: 0 6px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  border-radius: 8px; vertical-align: middle; white-space: nowrap;
+}
+.tw-badge-elite {
+  color: #ffd0d5; background: rgba(255, 100, 112, 0.2);
+  border: 1px solid rgba(255, 100, 112, 0.55);
+  text-shadow: none;
+}
 .m-expand-icon {
   color: var(--accent-dim); font-size: 9px; margin-right: 4px;
   display: inline-block; transition: transform 0.15s;
@@ -5341,4 +5409,16 @@ tr.reg-row-flash > td { animation: regRowFlash 1.6s ease-out; }
   color: #fff0b0;
   font-weight: 800;
   text-shadow: 0 0 10px rgba(255, 210, 90, .85);
+}
+.members-stats .val-twin-count,
+.val-twin-count {
+  color: #eec06a;
+  font-weight: 700;
+  text-shadow: 0 0 7px rgba(224, 162, 74, .45);
+}
+.members-stats .val-twin-count b,
+.val-twin-count b {
+  color: #ffe0a0;
+  font-weight: 800;
+  text-shadow: 0 0 9px rgba(224, 162, 74, .7);
 }

@@ -118,9 +118,9 @@
     { img: "vk-chat.png", g: "#f57a30", label: "ВКонтакте",
       href: "/queue/chat-invite?p=vk", ext: true },
     { img: "ts.png", g: "#ff6a24", label: "TeamSpeak",
-      href: "ts3server://melodybum.ts3.se", ext: false,
-      copies: [{ note: "адрес", cp: "melodybum.ts3.se", disp: "melodybum.ts3.se" },
-               { note: "IP", cp: "45.151.182.57:10440", disp: "45.151.182.57:10440" }] }
+      href: "ts3server://santdevil.ts3.so", ext: false,
+      copies: [{ note: "адрес", cp: "santdevil.ts3.so", disp: "santdevil.ts3.so" },
+               { note: "IP", cp: "46.8.53.123:7368", disp: "46.8.53.123:7368" }] }
   ];
   function socialCss() {
     if (document.getElementById("ts3-social-css")) return;

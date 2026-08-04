@@ -215,6 +215,9 @@
       (x) => (x.tags_all || []).includes("elite") || (x.tags || []).includes("elite")
     ).length;
     const eliteChip = `<span class="val-elite-count" title="Игроков с ролью Элита (Топ по урону) в текущем составе">⚔ Элита: <b>${eliteCount}</b></span>`;
+    // Сколько твин-аккаунтов в текущем составе (вне нумерации/кубков — учитываются в персоне мэйна).
+    const twinCount = m.filter((x) => x.is_twin).length;
+    const twinChip = `<span class="val-twin-count" title="Твин-аккаунтов в текущем составе (вне нумерации и кубков — учитываются в персоне мэйна)">👥 Твины: <b>${twinCount}</b></span>`;
     const immChip = immActive
       ? `<span>иммун. новички: <b style="color:#7bc7ff">🛡 ${immActive}</b></span>`
       : "";
@@ -226,6 +229,7 @@
       <span>норматив: <b>${esc(s.valor_norm)}</b></span>
       <span>всего: <b>${m.length}</b></span>
       ${eliteChip}
+      ${twinChip}
       <span>выполнили: <b style="color:#88ff88">${metGood}</b></span>
       <span>частично (≥${PARTIAL_THRESHOLD}%): <b style="color:#ffcc66">${metPartial}</b></span>
       <span>не выполнили: <b style="color:#ff8080">${metBad}</b></span>
@@ -1467,6 +1471,10 @@
     return items;
   }
 
+  // Твины остаются на своём месте по доблести (обычная сортировка applyFilterSort),
+  // но НЕ нумеруются и рисуются уже/бледнее. Нумеруются и получают кубки только мэйны
+  // (m.is_twin === false). См. рендер в apply().
+
   // Один раз при первом успешном рендере таблицы прокручиваем её вправо.
   let _firstScrollRight = true;
 
@@ -1474,18 +1482,22 @@
     if (!DATA.snapshot) return;   // данные ещё не загружены
     const items = applyFilterSort();
     const norm = DATA.snapshot.valor_norm;
-    // место по доблести (для кубков топ-30) — по ПОЛНОМУ списку, независимо
-    // от текущей сортировки/фильтра. Ординальное место 1..N; null-доблесть вниз.
-    // место для кубков топ-30 — по НОРМАТИВУ (как столбец сортировки), по
-    // полному списку, независимо от текущей сортировки/фильтра.
+    // ТВИНЫ остаются на своих местах по доблести (обычная сортировка), но НЕ нумеруются
+    // и рисуются уже/бледнее (видно, что это твин). Нумеруются и получают кубки только МЭЙНЫ.
+    // место для кубков топ-30 — по НОРМАТИВУ, ТОЛЬКО среди МЭЙНОВ (твины не в счёте).
     const _vrank = new Map();
     DATA.members.slice()
+      .filter(m => !m.is_twin)
       .sort((a, b) => getSortVal(b, "norm") - getSortVal(a, "norm"))
       .forEach((mm, idx) => _vrank.set(mm.id, idx + 1));
-    const rows = items.map((m, i) => {
+    let _place = 0;
+    const rows = items.map((m) => {
+      const isTwin = !!m.is_twin;
+      if (!isTwin) _place += 1;   // нумеруются только мэйны; твины пропускаются
+      const dispNick = m.nick;    // твин показывает СВОЙ ник (стоит на своём месте по доблести)
       const cls = m.class_ || "";
-      const vr = _vrank.get(m.id);
-      const cup = vr <= 10 ? "gold" : vr <= 20 ? "silver" : vr <= 30 ? "bronze" : "";
+      const vr = isTwin ? undefined : _vrank.get(m.id);   // кубок только мэйну
+      const cup = (!isTwin && vr) ? (vr <= 10 ? "gold" : vr <= 20 ? "silver" : vr <= 30 ? "bronze" : "") : "";
       const cupHtml = cup
         ? `<img class="nick-cup nick-cup-${cup}" src="assets/cup-${cup}.png?v=1794800000" alt="" title="${vr} место по нормативу">`
         : "";
@@ -1501,8 +1513,11 @@
       else if (m.norm_met === true)  rowCls += " row-good";
       if (cup) rowCls += " row-cup-" + cup;
       // Роль «Элита» (Топ по урону) — вся строка в роскошной золотой рамке.
-      if ((m.tags_all || []).includes("elite") || (m.tags || []).includes("elite"))
-        rowCls += " row-elite";
+      const isElite = (m.tags_all || []).includes("elite") || (m.tags || []).includes("elite");
+      // Баннер «ЭЛИТА» (красный бархат) — ТОЛЬКО НЕ твинам. У твина роль Элита всё равно
+      // выдаётся и видна (тег в колонке ролей + бейдж «элита» у ника), но фон остаётся
+      // «ТВИН», а не элитный. Поэтому класс row-elite твину не добавляем.
+      if (isElite && !isTwin) rowCls += " row-elite";
       // Столбцы «Доблесть» и «Норматив» объединены в один (на месте Норматива):
       // ячейка показывает % выполнения (renderNorm), а клик раскрывает историю
       // набора доблести по неделям. Поэтому отдельной ячейки valorCell больше нет.
@@ -1546,10 +1561,16 @@
       const dhistBtn = (IS_OFFICER && m.dismissed_count)
         ? ` <button class="dhist-btn" data-canon="${esc(m.nick_canon)}" data-nick="${esc(m.nick)}" title="История снятых предупреждений (${m.dismissed_count})">🕮${m.dismissed_count}</button>`
         : "";
+      // ТВИН — обычная строка (те же колонки/кнопки), но: ник мелкий (CSS), без номера и
+      // кубка, а на ФОНЕ строки — золотая эмблема «ТВИН» (по аналогии с баннером «ЭЛИТА»).
+      // Если твин ещё и Элита (Топ по урону) — маленький бейдж «элита» у ника.
+      const twinBadges = (isTwin && isElite)
+        ? `<span class="tw-badge tw-badge-elite" title="Роль Элита — Топ по урону">элита</span>`
+        : "";
       return `
-        <tr class="${rowCls}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
-          <td class="m-cell-idx">${i + 1}</td>
-          <td class="m-cell-name">${cupHtml}<b>${esc(m.nick)}</b>${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+        <tr class="${rowCls}${isTwin ? " m-row-twin" : ""}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
+          <td class="m-cell-idx">${isTwin ? "" : _place}</td>
+          <td class="m-cell-name">${isTwin ? "" : cupHtml}<b>${esc(dispNick)}</b>${twinBadges}${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">

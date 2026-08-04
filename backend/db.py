@@ -8051,6 +8051,27 @@ def valor_get_current(with_reg_notes: bool = False,
                ORDER BY valor DESC NULLS LAST, COALESCE(sort_key, id), id""",
             (cur["id"],),
         ).fetchall()
+        # ── СВЁРТКА ТВИНОВ В МЭЙНА (персона = мэйн + его твины по main_canon) ──
+        # Идентичность из api_queue._people (снимок Доблести + реестр + queue_twins).
+        # Эффективная доблесть персоны = МАКС доблести её персонажей (мэйна и твинов).
+        # Место/кубки считаются по ПЕРСОНАМ (мэйнам): «более высокая позиция твином
+        # или мэйном = текущее положение человека». Твины — подпункты без номера/кубков.
+        try:
+            import api_queue as _aq
+            _idx = _aq._people(conn)
+        except Exception:
+            _idx = {}
+
+        def _main_of_canon(cn):
+            mc = (_idx.get(cn) or {}).get("main_canon") or cn
+            return mc or cn
+
+        # эффективная доблесть персоны в ТЕКУЩЕМ снимке (max по персонажам)
+        _persona_valor: dict = {}
+        for _r in rows:
+            _cn = _r["nick_canon"]; _mc = _main_of_canon(_cn); _v = _r["valor"] or 0
+            if _v > _persona_valor.get(_mc, -1):
+                _persona_valor[_mc] = _v
         # ── Кубки за место в ТОПе по неделям (накопительно за ВСЕ недели) ──
         # По valor DESC внутри недели: места 1-10 → золото, 11-20 → серебро,
         # 21-30 → бронза (один кубок за неделю). Для КАЖДОГО кубка храним ДЕТАЛИ
@@ -8069,13 +8090,16 @@ def valor_get_current(with_reg_notes: bool = False,
         for _wk in sorted(_cw):
             _seen = set(); _rank = 0
             for _cn in _cw[_wk]:
-                if _cn in _seen:
+                _mc = _main_of_canon(_cn)   # СВЁРТКА твина в мэйна: место/кубок — персоне
+                if _mc in _seen:            # твин уже учтён под мэйном → не занимает место
                     continue
-                _seen.add(_cn)
+                _seen.add(_mc)
                 _band = ("gold" if _rank < 10 else "silver" if _rank < 20
                          else "bronze" if _rank < 30 else None)
                 if _band:
-                    e = cup_map.setdefault(_cn, {"gold": [], "silver": [], "bronze": []})
+                    # кубок начисляем МЭЙНУ персоны (cn=main_canon). Твины (cn≠main_canon)
+                    # в cup_map не попадают → m["cups"]=cup_map.get(cn) даст None у твинов.
+                    e = cup_map.setdefault(_mc, {"gold": [], "silver": [], "bronze": []})
                     e[_band].append({"week": _wk, "place": _rank + 1,
                                      "norm": _norms.get(_wk)})
                 _rank += 1
@@ -8099,7 +8123,14 @@ def valor_get_current(with_reg_notes: bool = False,
             if cn in force_archived:
                 continue
             m["socials"] = socials.get(cn) or None
-            m["cups"] = cup_map.get(cn)   # {gold,silver,bronze} за топ по неделям
+            m["cups"] = cup_map.get(cn)   # {gold,silver,bronze} за топ по неделям (только мэйны)
+            # Свёртка твинов: идентичность персоны + эффективная доблесть (max персоны).
+            # Фронт группирует твинов под мэйном; ТОП/нумерация — по persona_valor.
+            _mc = _main_of_canon(cn)
+            m["main_canon"] = _mc
+            m["main_nick"] = (_idx.get(cn) or {}).get("main_nick") or m.get("nick")
+            m["is_twin"] = bool(_mc) and (_mc != cn)
+            m["persona_valor"] = _persona_valor.get(_mc, m.get("valor") or 0)
             # Возвращён из архива — «чистый лист» (для пометки в истории/штриховки).
             _rs = ret_slate.get(cn)
             m["returned"] = ({"week": _rs["slate_week"], "at": _rs["returned_at"]}
