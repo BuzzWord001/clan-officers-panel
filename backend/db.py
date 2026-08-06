@@ -1068,6 +1068,30 @@ def member_nick_by_platform_id(platform: str, user_id: str) -> str:
     return gn or (row["display_name"] or "").strip()
 
 
+def member_platform_id_by_nick(platform: str, nick: str) -> str:
+    """Обратное к member_nick_by_platform_id: игровой ник → его TG/VK id из ростера.
+    Пусто, если ник не привязан к id на этой площадке (новый/непривязанный игрок).
+    Нужно для матчинга клик↔заход: клик, чей ник уже привязан к ДРУГОМУ id, — не наш."""
+    col = "tg_id" if platform == "tg" else ("vk_id" if platform == "vk" else "")
+    if not col or not nick:
+        return ""
+    n = nick.strip().lower()
+    if not n:
+        return ""
+    with connection() as conn:
+        try:
+            rows = conn.execute(
+                f"SELECT {col} AS pid, game_nick FROM clan_members "
+                f"WHERE {col} IS NOT NULL AND {col} != ''").fetchall()
+        except sqlite3.OperationalError:
+            return ""
+    for r in rows:
+        games = {g.strip().lower() for g in (r["game_nick"] or "").split(",") if g.strip()}
+        if n in games and (r["pid"] or "").strip():
+            return str(r["pid"]).strip()
+    return ""
+
+
 def _prev_departed_map(conn, amap: dict) -> dict[str, dict]:
     """Карта canon → {reason, by, when, kicked} «человек уже был в клане».
     Источники: архив реестра (наши «В архив» с причиной), ушедшие из доблести
@@ -3148,6 +3172,17 @@ def _upsert_chat_user(conn: sqlite3.Connection, *, platform: str,
     показывать актуальное."""
     if not user_id or user_id == "0":
         return
+    # Если автор — ЗАРЕГИСТРИРОВАННЫЙ игрок клана, в базе чатов держим его ИГРОВОЙ
+    # ник из реестра (мэйн), а не сырое имя VK/TG-профиля. Иначе переименование
+    # аккаунта (напр. в ник-ТВИН «Химеко») затирало бы мэйн-ник (Рислинг) в базе
+    # чатов, возврате и резолве. Незарегистрированным оставляем их чат-имя как есть.
+    _col = "tg_id" if platform == "tg" else ("vk_id" if platform == "vk" else "")
+    if _col:
+        _rn = conn.execute(
+            f"SELECT game_nick FROM clan_members WHERE {_col} = ? LIMIT 1",
+            (str(user_id),)).fetchone()
+        if _rn and (_rn["game_nick"] or "").strip():
+            display = (_rn["game_nick"] or "").split(",")[0].strip() or display
     conn.execute(
         """INSERT INTO chat_users
            (platform, user_id, display_name, username,
@@ -4064,6 +4099,17 @@ def member_restore_roster(recent_days: int | None = None) -> dict:
     live_tg, live_vk, live_as_of = _live_roster()
     has_live = bool(live_tg or live_vk)
 
+    # Теги (@screen_name / @username) из чатов по соц-id — чтобы дополнить ПУСТОЙ
+    # тег в реестре (у многих зарегистрированных vk_screen_name/tg_username не
+    # заполнены, а их VK/TG-тег известен из chat_users). Нужно для поиска по тегу
+    # и для корректных ссылок возврата (vk.com/тег вместо vk.com/idNNN).
+    with connection() as conn:
+        _cu_uname = {}
+        for r in conn.execute("SELECT platform, user_id, username FROM chat_users"):
+            u = (r["username"] or "").strip()
+            if u:
+                _cu_uname[(r["platform"], str(r["user_id"]))] = u
+
     def _live_active(tg, vk):
         return (tg in live_tg) or (vk in live_vk)
 
@@ -4080,18 +4126,21 @@ def member_restore_roster(recent_days: int | None = None) -> dict:
             known_tg.add(tg)
         if vk:
             known_vk.add(vk)
+        # тег из реестра ИЛИ дополненный из чатов (если в реестре пусто)
+        tgu = (m.get("tg_username") or "").strip() or _cu_uname.get(("tg", tg), "")
+        vks = (m.get("vk_screen_name") or "").strip() or _cu_uname.get(("vk", vk), "")
         out.append({
             "key": m.get("key"),
             "registered": True,
             "display_name": m.get("display_name"),
             "game_nick": m.get("game_nick"),
             "aka": m.get("_aka") or [],
-            "tg_id": tg, "tg_username": m.get("tg_username"),
+            "tg_id": tg, "tg_username": tgu,
             "tg_display": m.get("tg_display"),
             "tg_first_name": m.get("tg_first_name"),
             "tg_last_name": m.get("tg_last_name"),
             "tg_avatar_url": m.get("tg_avatar_url"),
-            "vk_id": vk, "vk_screen_name": m.get("vk_screen_name"),
+            "vk_id": vk, "vk_screen_name": vks,
             "vk_display": m.get("vk_display"),
             "vk_first": m.get("vk_first"), "vk_last": m.get("vk_last"),
             "vk_avatar_url": m.get("vk_avatar_url"),
@@ -4100,7 +4149,7 @@ def member_restore_roster(recent_days: int | None = None) -> dict:
             "last_active_day": lad,
             "days_ago": _days_since(lad, today),
             "msgs": None,
-            "links": _reinvite_links(m),
+            "links": _reinvite_links({**m, "tg_username": tgu, "vk_screen_name": vks}),
         })
 
     # Индекс СИЛЬНЫХ имён зарег. участников (полное имя / ник / username) → его

@@ -3753,8 +3753,8 @@ def chat_link_click(payload: ChatLinkClickIn, request: Request) -> dict:
 _DEFAULT_CHAT_INVITE = {
     # Фолбэк, если в queue_kv нет chat_invite_*. TG — ссылка С ЗАЯВКОЙ НА ВСТУПЛЕНИЕ
     # (бот авто-одобряет только кликнувших на сайте). Обычно берётся из queue_kv (Настройки/kv_set).
-    "tg": "https://t.me/+IoqFqrfivoxiNDJi",
-    "vk": "https://vk.me/join/8NPd9uaougB4Yecwva_x2wRKsxB6HEAUP1Q=",
+    "tg": "https://t.me/+pUchtUFNKcAxNzIy",
+    "vk": "https://vk.me/join/XWLSaLlXoOgzFMLjbQgvpEtWZBMls0B2ZJE=",
 }
 
 
@@ -3811,6 +3811,16 @@ def chat_join_match(payload: ChatJoinMatchIn, _=Depends(require_bot_token)) -> d
     plat = (payload.platform or "").strip().lower()
     if plat not in ("vk", "tg"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad_platform")
+    joiner_id = str(payload.platform_id or "").strip()
+
+    # 0) Заходящий УЖЕ зарегистрирован (его id есть в ростере) — клики не трогаем.
+    #    Иначе уже зарегистрированный (напр. админ) «съедал» чужой клик новичка.
+    if joiner_id:
+        already = db.member_nick_by_platform_id(plat, joiner_id)
+        if already:
+            return {"matched": False, "reason": "already_member",
+                    "nick": already, "window": 0}
+
     with db.connection() as conn:
         win = payload.window if (isinstance(payload.window, int) and payload.window > 0) else None
         if win is None:
@@ -3826,22 +3836,46 @@ def chat_join_match(payload: ChatJoinMatchIn, _=Depends(require_bot_token)) -> d
             (plat, cutoff)).fetchall()
         if not rows:
             return {"matched": False, "reason": "no_click", "window": win}
-        uniq: dict = {}
+
+        # Классификация кликов ПО НИКАМ (сверяем с ростером):
+        #   exact — ник клика уже привязан ИМЕННО к id заходящего → точное совпадение;
+        #   free  — ник клика не привязан ни к какому id этой площадки (новый игрок) → кандидат;
+        #   чужой — ник клика привязан к ДРУГОМУ id → это не наш клик, игнорируем.
+        exact = []
+        free: dict = {}
         for r in rows:
-            uniq.setdefault(r["canon"], r)
-        if len(uniq) > 1:                                      # неоднозначно — не гадаем
+            linked = db.member_platform_id_by_nick(plat, r["nick"] or "")
+            if linked and joiner_id and str(linked) == joiner_id:
+                exact.append(r)
+            elif not linked:
+                free.setdefault(r["canon"], r)
+            # else: привязан к другому id — пропускаем (чужой клик)
+
+        def _apply(r, how):
+            conn.execute(
+                "UPDATE queue_chat_link_click SET matched=1, matched_at=?, match_pid=?, match_name=? WHERE id=?",
+                (_now(), joiner_id, (payload.name or "")[:200], r["id"]))
+            _log(conn, "chat_join_matched", actor="reg-bot", nick=r["nick"],
+                 detail="заход %s «%s» (id %s) → %s [%s]" % (
+                     plat, (payload.name or "?")[:40], joiner_id, r["nick"], how))
+            return {"matched": True, "nick": r["nick"], "canon": r["canon"],
+                    "clicked_at": r["clicked_at"], "window": win}
+
+        if exact:                                             # идеально: клик привязан к этому id
+            return _apply(exact[0], "точно по id")
+
+        if not free:                                          # клики были, но все — чужие
+            _log(conn, "chat_join_no_free", actor="reg-bot",
+                 detail="заход %s (id %s): клики есть, но привязаны к другим — ручной приём" % (plat, joiner_id))
+            return {"matched": False, "reason": "no_matching_click", "window": win}
+
+        if len(free) > 1:                                     # несколько новичков — не гадаем
             _log(conn, "chat_join_ambiguous", actor="reg-bot",
-                 detail="заход %s: %d кандидатов за %dс — ручной приём" % (plat, len(uniq), win))
+                 detail="заход %s: %d кандидатов за %dс — ручной приём" % (plat, len(free), win))
             return {"matched": False, "ambiguous": True, "window": win,
-                    "candidates": [{"nick": v["nick"], "canon": v["canon"]} for v in list(uniq.values())[:6]]}
-        r = rows[0]
-        conn.execute(
-            "UPDATE queue_chat_link_click SET matched=1, matched_at=?, match_pid=?, match_name=? WHERE id=?",
-            (_now(), str(payload.platform_id or ""), (payload.name or "")[:200], r["id"]))
-        _log(conn, "chat_join_matched", actor="reg-bot", nick=r["nick"],
-             detail="заход %s «%s» (id %s) → %s" % (plat, (payload.name or "?")[:40], payload.platform_id, r["nick"]))
-        return {"matched": True, "nick": r["nick"], "canon": r["canon"],
-                "clicked_at": r["clicked_at"], "window": win}
+                    "candidates": [{"nick": v["nick"], "canon": v["canon"]} for v in list(free.values())[:6]]}
+
+        return _apply(list(free.values())[0], "по времени (новый игрок)")
 
 
 @router.get("/whitelist-ids")
