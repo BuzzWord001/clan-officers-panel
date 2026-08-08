@@ -2472,16 +2472,22 @@
           // одиночная очередь — как раньше, один получатель
           ('<input id="qs-rcpt" list="qs-rcpt-dl" autocomplete="off" placeholder="пусто = себе" value="' + esc(defRcpt) + '" class="qs-p2-inp">' +
           '<datalist id="qs-rcpt-dl">' + _roster.slice(0, 600).map(function (p) { return '<option value="' + esc(p.nick) + '">'; }).join("") + '</datalist>' +
-          // быстрые кнопки: свои аккаунты (мэйн + твины), кроме того, кем стою сейчас
+          // быстрые кнопки: Себе + свои аккаунты (мэйн+твины) + СУПРУГ.
+          // Раньше супруга тут не было — в одиночных очередях (редкая/легендарная/
+          // мифическая) нельзя было ткнуть «отдать мужу», хотя в обычной (мульти) можно.
           (function () {
             var mine = (_myIdentities || []).filter(function (i) { return canon(i.nick) !== canon(_myActiveNick); });
-            return mine.length
-              ? '<div class="qs-rcpt-mine"><span class="qs-rcpt-mine-l">Свои:</span>' +
-                  mine.map(function (i) {
-                    return '<button type="button" class="qs-rcpt-mine-b" data-n="' + esc(i.nick) + '">' +
-                      esc(i.nick) + (i.is_main ? " ⭐" : "") + "</button>";
-                  }).join("") + "</div>"
-              : "";
+            var sp = SPOUSE_BY_NICK[canon(_meAcc && _meAcc.main_nick)] || "";
+            var btns = '<button type="button" class="qs-rcpt-mine-b" data-n="">🏠 Себе</button>';
+            mine.forEach(function (i) {
+              btns += '<button type="button" class="qs-rcpt-mine-b" data-n="' + esc(i.nick) + '">' +
+                esc(i.nick) + (i.is_main ? " ⭐" : "") + "</button>";
+            });
+            if (sp && canon(sp) !== canon(_myActiveNick)) {
+              btns += '<button type="button" class="qs-rcpt-mine-b" data-n="' + esc(sp) + '">💞 ' +
+                esc(sp) + " (супруг)</button>";
+            }
+            return '<div class="qs-rcpt-mine"><span class="qs-rcpt-mine-l">Кому:</span>' + btns + "</div>";
           })())) +
           '<div id="qs-rcpt-warn" class="qs-p2-warn"></div>' +
           '<div id="qs-rcpt-actions" class="qs-rcpt-actions"></div>' +
@@ -3248,9 +3254,9 @@
         { img: "vk-chat.png", g: "#f57a30", name: "ВКонтакте", sub: "чат клана", plat: "vk",
           href: "/queue/chat-invite?p=vk", ext: true },
         { img: "ts.png", g: "#ff6a24", name: "TeamSpeak", sub: "голосовой",
-          href: "ts3server://melodybum.ts3.se", ext: false,
-          copies: [{ cp: "melodybum.ts3.se", lbl: "адрес", t: "Копировать адрес канала" },
-                   { cp: "45.151.182.57:10440", lbl: "IP", t: "Копировать IP (если по адресу не заходит)" }] }
+          href: "ts3server://santdevil.ts3.so", ext: false,
+          copies: [{ cp: "santdevil.ts3.so", lbl: "адрес", t: "Копировать адрес канала" },
+                   { cp: "46.8.53.123:7368", lbl: "IP", t: "Копировать IP (если по адресу не заходит)" }] }
       ];
       var flinks = document.createElement("div");
       flinks.className = "qs-flinks";
