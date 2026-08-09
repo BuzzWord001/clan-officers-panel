@@ -10,10 +10,10 @@
     // Группа ВК убрана (Лир 2026-07-25) — оставлены только чаты и TeamSpeak
     { img: "vk-chat",  name: "Чат ВК",     glow: "#e0903e", authed: true, p: "vk" },
     { img: "ts",       name: "TeamSpeak",  glow: "#e0903e",
-      href: "ts3server://melodybum.ts3.se",
-      copy: "melodybum.ts3.se", proto: true,
-      // IP-фолбэк, если по адресу melodybum.ts3.se не подключается
-      extra: [{ copy: "45.151.182.57:10440",
+      href: "ts3server://santdevil.ts3.so",
+      copy: "santdevil.ts3.so", proto: true,
+      // IP-фолбэк, если по адресу santdevil.ts3.so не подключается
+      extra: [{ copy: "46.8.53.123:7368",
                 note: "если не подключается по адресу — IP:" }] },
   ];
 

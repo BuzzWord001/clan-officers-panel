@@ -24,18 +24,18 @@
       href: "/queue/chat-invite?p=vk", disp: "Войти в чат →",
       img: "assets/social/vk-chat.png", noCopy: true },
     { key: "ts",       label: "TeamSpeak", glow: "#ff5e1c",
-      href: "ts3server://melodybum.ts3.se", disp: "melodybum.ts3.se",
+      href: "ts3server://santdevil.ts3.so", disp: "santdevil.ts3.so",
       img: "assets/social/ts.png",
       // клик по иконке — по протоколу ts3server:// (полная ссылка), а копировать
       // даём чистый адрес + IP-фолбэк, если по адресу не подключается.
       copyList: [
-        { disp: "melodybum.ts3.se", val: "melodybum.ts3.se" },
-        { disp: "45.151.182.57:10440", val: "45.151.182.57:10440",
+        { disp: "santdevil.ts3.so", val: "santdevil.ts3.so" },
+        { disp: "46.8.53.123:7368", val: "46.8.53.123:7368",
           note: "если не подключается по адресу — скопируй IP:" }
       ] },
     // СКРЫТА: иконка/подпись/попап не создаются, но точка держит форму линии
     { key: "vk-group", label: "Группа ВК", glow: "#f57a26",
-      href: "https://vk.com/club38888207", disp: "vk.com/club38888207",
+      href: "https://vk.com/club240651332", disp: "vk.com/club240651332",
       img: "assets/social/vk-group.png", hidden: true }
   ];
 

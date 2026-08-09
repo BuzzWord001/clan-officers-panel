@@ -130,6 +130,7 @@
       m.tg_username, m.tg_first_name, m.tg_last_name, m.tg_display,
       m.vk_screen_name, m.vk_first, m.vk_last, m.vk_display,
       m.tg_id, m.vk_id,
+      ...(Array.isArray(m.aka) ? m.aka : []),   // прошлые имена/ники
     ];
     m._hay = parts.map(v => String(v == null ? "" : v)).join(" ")
       .toLowerCase().replace(/@/g, "").replace(/ё/g, "е");

@@ -11,7 +11,7 @@
     { img: "vk-chat.png", label: "ВКонтакте",
       href: "/queue/chat-invite?p=vk", ext: true },
     { img: "ts.png", label: "TeamSpeak",
-      href: "ts3server://melodybum.ts3.se", ext: false }
+      href: "ts3server://santdevil.ts3.so", ext: false }
   ];
 
   function css() {

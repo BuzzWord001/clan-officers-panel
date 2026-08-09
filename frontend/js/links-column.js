@@ -20,11 +20,11 @@
       disp: "Войти в чат →", gated: true },
     { key: "ts", name: "TeamSpeak (голос)", glow: "#ff5e1c",
       img: "assets/social/ts.png",
-      href: "ts3server://melodybum.ts3.se",
-      disp: "melodybum.ts3.se",
-      copy: "melodybum.ts3.se",
+      href: "ts3server://santdevil.ts3.so",
+      disp: "santdevil.ts3.so",
+      copy: "santdevil.ts3.so",
       // IP-фолбэк, если по адресу не подключается
-      sub: { disp: "45.151.182.57:10440", copy: "45.151.182.57:10440",
+      sub: { disp: "46.8.53.123:7368", copy: "46.8.53.123:7368",
              note: "не подключается по адресу? скопируй IP" } }
   ];
 

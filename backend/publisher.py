@@ -59,6 +59,11 @@ def _caption_vk() -> str:
     return "\n".join(parts)
 
 
+# Статичный пароль от ОФИЦЕРСКОЙ КОМНАТЫ TeamSpeak — не меняется при ротации
+# офиц. пароля сайта, но всегда присутствует в том же закреплённом сообщении.
+TS_OFFICER_ROOM_PW = "456123s"
+
+
 def _officer_pw_text_tg() -> str:
     pwd = _caption_password()
     site = _site_url()
@@ -69,6 +74,10 @@ def _officer_pw_text_tg() -> str:
         "пароля введи <b>офицерский пароль</b>:",
         "",
         (f"<code>{escape(pwd)}</code>" if pwd else "<i>(пароль не задан)</i>"),
+        "",
+        "🎧 <b>Офицерская комната TeamSpeak</b>",
+        "Пароль от комнаты:",
+        f"<code>{escape(TS_OFFICER_ROOM_PW)}</code>",
         "",
         f"<i>Обновлено: {_now_msk()} мск</i>",
     ])
@@ -83,6 +92,10 @@ def _officer_pw_text_vk() -> str:
         f"Зайди на {site}, выбери свой игровой ник, и на шаге пароля введи офицерский пароль:",
         "",
         (pwd or "(пароль не задан)"),
+        "",
+        "🎧 Офицерская комната TeamSpeak",
+        "Пароль от комнаты:",
+        TS_OFFICER_ROOM_PW,
         "",
         f"Обновлено: {_now_msk()} мск",
     ])

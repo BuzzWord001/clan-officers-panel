@@ -4005,9 +4005,21 @@ def _build_report(conn, stages_override: int | None = None, stages_from: int = 0
     report["has_valor"] = bool(valor_map)
     # ВЫДАННЫЕ огненные цилини на этой неделе (из снимка раздачи, added_by='cilin') — чтобы
     # отчёт показывал КОМУ выдан цилинь (получатель выходит из очереди → в pet_queue его уже нет).
+    # ТОЛЬКО раздачи ПОСЛЕ предыдущего отчёта: снимок цилиня живёт до следующей раздачи (нужен
+    # для «не забрал»), поэтому без отсечки по времени отчёт неделями повторял прошлого
+    # получателя. 2026-08-09: Череп@шка получила цилиня 02.08, а отчёт от 09.08 снова писал
+    # «на этой неделе выдаётся Череп@шка» — Лир и офицеры сочли отчёт неверным.
+    # Отсечка — последний отчёт, сделанный ДО сегодняшних суток (МСК): повторная публикация
+    # того же дня цилинь-строку не теряет, а прошлонедельная раздача уже не подхватывается.
     try:
+        day_start = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(
+            hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=3)
+        prev = conn.execute("SELECT MAX(created_at) AS t FROM queue_reports WHERE created_at < ?",
+                            (day_start.isoformat(),)).fetchone()
+        since = (prev["t"] if prev else "") or ""
         report["cilin_given"] = [r["nick"] for r in conn.execute(
-            "SELECT nick FROM queue_served_last WHERE added_by='cilin' ORDER BY served_at, id")]
+            "SELECT nick FROM queue_served_last WHERE added_by='cilin' AND served_at > ?"
+            " ORDER BY served_at, id", (since,))]
     except Exception:
         report["cilin_given"] = []
     # топ-3 поимённо (для отчёта): имя МЭЙНА персоны + её лучший валор (человек+твины = 1 строка)
@@ -4020,6 +4032,30 @@ def _build_report(conn, stages_override: int | None = None, stages_from: int = 0
 
 def _now_msk_str() -> str:
     return datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M мск")
+
+
+def _iso_week_now() -> str:
+    """Текущая ISO-неделя по МСК — «2026-W32» (в этом же виде week у снимков доблести)."""
+    y, w, _ = datetime.now(timezone(timedelta(hours=3))).isocalendar()
+    return "%d-W%02d" % (y, w)
+
+
+def _valor_week_stale() -> str:
+    """Пустая строка, если доблесть на сайте за ТЕКУЩУЮ неделю; иначе текст проблемы.
+
+    Отчёт распределения считает пороги и ТОП-3 по последнему снимку доблести. Снимка за
+    эту неделю может ещё не быть (скрины не загружены) — тогда весь отчёт получается по
+    прошлой неделе. Такой отчёт публиковать нельзя."""
+    week = db.valor_latest_week() or ""
+    now_week = _iso_week_now()
+    if not week:
+        return ("Доблесть ещё не собрана — отчёт считать не по чему. "
+                "Загрузи скрины доблести за эту неделю и повтори.")
+    if week != now_week:
+        return ("Свежая доблесть на сайте — за %s, а сейчас идёт %s. Отчёт посчитается по "
+                "СТАРОЙ неделе (пороги, ТОП-3, жетоны). Собери доблесть за %s и повтори — "
+                "или поставь force, если это осознанно." % (week, now_week, now_week))
+    return ""
 
 
 def _is_test_mode() -> bool:
@@ -4296,6 +4332,13 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     import json as _json
     lo = min(payload.from_stages, payload.to_stages)
     hi = max(payload.from_stages, payload.to_stages)
+    # ЗАЩИТА ОТ ОТЧЁТА ПО СТАРОЙ ДОБЛЕСТИ: раздача считается по последнему снимку доблести.
+    # Если доблесть за эту неделю ещё не собрана, отчёт молча посчитается по ПРОШЛОЙ неделе
+    # (2026-08-09 Лир получил такой отчёт и удалял посты вручную). Публикацию не пускаем,
+    # превью и force — пускаем (превью безвредно, force = сознательное решение админа).
+    stale = _valor_week_stale()
+    if stale and payload.commit and not payload.force:
+        raise HTTPException(status_code=400, detail=stale)
     with db.connection() as conn:
         main = _build_report(conn, stages_override=lo)
         delta = _build_report(conn, stages_override=hi, stages_from=lo) if hi > lo else None
@@ -4303,6 +4346,8 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     img = _render_report_image(main, delta)     # картинка-рендер (None → шлём текстом)
     result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text, "image": bool(img),
               "groups": len(main.get("groups") or []),
+              # предупреждение видно в превью — «доблесть не за эту неделю»
+              **({"valor_week_warning": stale} if stale else {}),
               "pet_queue": [{"nick": p["receiver"], "status": p["status"]}
                             for p in (main.get("pet_queue") or [])],
               # список «не хватило доблести за ресурс» — ТОЛЬКО для админ-панели, в отчёт не идёт
