@@ -6756,15 +6756,18 @@
       var emptyRows = rows.filter(function (r) { return r.status === "empty"; });
       // ПОЛУЧИВШИЕ награду на этой неделе (+ жетон ТОП-3 и цилинь спец-карточками)
       // Отмеченные ПОСТФАКТУМ «не забрал» — помечаем прямо на карточке.
-      var recip = okRows.map(function (r) { return qhCellHtml(r, { uncollected: !!ncSet[canon(r.nick)] }); });
+      // «не забрал» — только там, где реально выдали (см. qsNotCollected)
+      var recip = okRows.map(function (r) { return qhCellHtml(r, { uncollected: qsNotCollected(ncSet, r.nick, r) }); });
       (rep.priv_claims || []).forEach(function (c) {
         if (qhResQueue(c.resource) === qi) {
           var g = {}; g[c.resource] = c.amount;
-          recip.unshift(qhCellHtml({ nick: c.nick, got: g }, { badge: "🎫 жетон", badgeCls: "gold", jetton: true }));
+          recip.unshift(qhCellHtml({ nick: c.nick, got: g }, { badge: "🎫 жетон", badgeCls: "gold", jetton: true,
+            uncollected: !!ncSet[canon(c.nick)] }));
         }
       });
       if (qi === 2) (rep.cilin_given || []).forEach(function (nk) {
-        recip.push(qhCellHtml({ nick: nk, got: { "mount-cilin": 1 } }, { badge: "🐲 цилинь", badgeCls: "dragon", cilin: true }));
+        recip.push(qhCellHtml({ nick: nk, got: { "mount-cilin": 1 } }, { badge: "🐲 цилинь", badgeCls: "dragon", cilin: true,
+          uncollected: !!ncSet[canon(nk)] }));
       });
       // НЕ ВЫДАНО (отделены полоской): не хватило доблести / не досталось ресурса
       var others = [];
@@ -6851,6 +6854,13 @@
     });
     return m;
   }
+  // Отметка «не забрал» ставится на ЧЕЛОВЕКА целиком (ресурсы выдаются одной пачкой), но
+  // показывать её надо ТОЛЬКО в той очереди, где ему на этой неделе реально что-то выдали.
+  // Стоит в очереди, но не прошёл порог доблести / ресурс не достался → забирать было нечего,
+  // значит и «не забрал» там быть не должно (Мерак 96: обычная — да, R/S/SS — нет).
+  function qsHasGot(ge) { return !!(ge && ge.got && Object.keys(ge.got).length); }
+  function qsNotCollected(ncSet, nick, ge) { return !!(ncSet && ncSet[canon(nick)] && qsHasGot(ge)); }
+
   function qsSnapTip(e, ge, nc) {
     var head = tipPortrait(e) + '<span class="qtip-nick">' + esc(e.nick) + "</span>";
     var vl = (typeof e.valor === "number") ? '<span class="qtip-res" style="justify-content:center"><b>' + e.valor + " доблести</b></span>" : "";
@@ -6906,11 +6916,12 @@
       .reverse().map(function (o) {
         var jm = o.e.privileged ? jetonMap[canon(o.e.nick)] : null;
         var ge = jm ? { got: jm.got, got_to: {}, jetton: true } : gotQ[canon(o.e.nick)];
-        return qsSnapCell(o.e, o.num, ge, !!ncSet[canon(o.e.nick)]);
+        return qsSnapCell(o.e, o.num, ge, qsNotCollected(ncSet, o.e.nick, ge));
       }).join("");
     // ВНЕ ОЧЕРЕДИ (цилинь-получатели / жетоны, которых уже нет в очереди) — отдельными карточками у торговца
     var extraCells = (extras || []).map(function (x) {
-      return qsSnapCell(x, "", { got: x.got || {}, got_to: x.got_to || {}, jetton: x.jetton, cilin: x.cilin }, false);
+      var xg = { got: x.got || {}, got_to: x.got_to || {}, jetton: x.jetton, cilin: x.cilin };
+      return qsSnapCell(x, "", xg, qsNotCollected(ncSet, x.nick, xg));
     }).join("");
     // тултип торговца: какие ресурсы доступны (как в живой полосе), встать нельзя — только смотреть
     var resItems = BOOTH_ITEMS[qi] || [];
