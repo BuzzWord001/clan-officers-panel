@@ -123,7 +123,10 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     for sh in shooters:
         got = {}
         for res in SHOOTER_RES:
-            amt = round(_total(res, stages) * SHOOTER_PCT / 100)
+            # В ДЕЛЬТА-режиме («если закроем ещё этап») процент считается от ПРИРОСТА, как и
+            # весь пул. Раньше брали полный объём за все этапы и вычитали его из пула прироста —
+            # дельта-секция занижала раздачу, а по мелким приростам уходила в ноль.
+            amt = round((_total(res, stages) - _total(res, stages_from)) * SHOOTER_PCT / 100)
             got[res] = amt
             shooter_totals[res] += amt
         shooter_rows.append({"nick": sh, "got": got})
@@ -306,7 +309,7 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
         prov_res = []
         n = len(shooter_rows)
         for res in SHOOTER_RES:
-            per = round(_total(res, stages) * SHOOTER_PCT / 100)
+            per = round((_total(res, stages) - _total(res, stages_from)) * SHOOTER_PCT / 100)
             if per > 0:
                 prov_res.append({"key": res, "name": res_name(res), "per": per,
                                  "count": n, "total": per * n, "mode": "stack"})

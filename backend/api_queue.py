@@ -461,6 +461,20 @@ def ensure_queue_tables() -> None:
             conn.execute("ALTER TABLE queue_reports ADD COLUMN snapshot TEXT NOT NULL DEFAULT ''")
         except Exception:
             pass
+        # миграция: управление отчётом из истории — когда откатили и админская заметка
+        for _sql in (
+                "ALTER TABLE queue_reports ADD COLUMN rolled_back_at TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE queue_reports ADD COLUMN note TEXT NOT NULL DEFAULT ''",
+                # снимок «кто вышел» хранил только ОДИН ресурс: вернувшийся из «не забрал»
+                # терял мультивыбор (стоял за 6 ресурсами — возвращался за одним) и историю
+                # полученного. Храним весь выбор целиком.
+                "ALTER TABLE queue_served_last ADD COLUMN resources TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE queue_served_last ADD COLUMN received TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE queue_served_last ADD COLUMN recipients TEXT NOT NULL DEFAULT ''"):
+            try:
+                conn.execute(_sql)
+            except Exception:
+                pass
         # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
         try:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
@@ -4034,6 +4048,17 @@ def _now_msk_str() -> str:
     return datetime.now(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M мск")
 
 
+def _msk_from_iso(iso: str) -> str:
+    """ISO-время из БД → «09.08.2026 15:29 мск» (для перевыпуска отчёта тем же временем)."""
+    try:
+        dt = datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M мск")
+    except (ValueError, TypeError):
+        return _now_msk_str()
+
+
 def _iso_week_now() -> str:
     """Текущая ISO-неделя по МСК — «2026-W32» (в этом же виде week у снимков доблести)."""
     y, w, _ = datetime.now(timezone(timedelta(hours=3))).isocalendar()
@@ -4259,7 +4284,7 @@ def _shift_queues(conn, report: dict) -> dict:
     for q in QUEUES:
         rows = conn.execute(
             "SELECT id, pos, main_canon, nick, cls, resource, resources, received, recipient,"
-            " auto_repeat, auto_plan, not_collected"
+            " recipients, auto_repeat, auto_plan, not_collected"
             " FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
         served = served_by_q.get(q, set())
         keep_ids = []; requeue_ids = []
@@ -4288,10 +4313,13 @@ def _shift_queues(conn, report: dict) -> dict:
             else:
                 conn.execute(
                     "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
-                    " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    " resource, recipient, auto_repeat, auto_plan, added_by, served_at,"
+                    " resources, received, recipients)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
-                     r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "report", _now()))
+                     r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "report", _now(),
+                     r["resources"] or "", r["received"] or "",
+                     (r["recipients"] if "recipients" in r.keys() else "") or ""))
                 try:
                     plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
                 except (ValueError, TypeError):
@@ -4373,14 +4401,20 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     with db.connection() as conn:
         done_week = _cfg_val(conn, "report_shift_week", "")
     if week and done_week == week and not payload.force:
+        # ИМЕННО отчёт этой недели и НЕ откаченный: «последний в таблице» мог оказаться чужим
+        # (перевыпуск прошлой недели) или уже откаченным — тогда бы переслали не то.
         with db.connection() as conn:
-            row = conn.execute("SELECT report FROM queue_reports ORDER BY id DESC LIMIT 1").fetchone()
+            row = conn.execute(
+                "SELECT report, created_at FROM queue_reports WHERE rolled_back_at=''"
+                " ORDER BY id DESC LIMIT 1").fetchone()
         try:
             saved = _json.loads(row["report"]) if row and row["report"] else main
         except (ValueError, TypeError):
             saved = main
-        text2 = distribution.format_report_compact(saved, None, _now_msk_str())
-        img2 = _render_report_image(saved, None)
+        when2 = _msk_from_iso(row["created_at"]) if row else _now_msk_str()
+        saved_delta = saved.get("_delta")
+        text2 = distribution.format_report_compact(saved, saved_delta, when2)
+        img2 = _render_report_image(saved, saved_delta)
         ch = await (_send_report_media(img2, text2) if img2 else _send_text_to_chats(text2))
         result.update({"committed": True, "resent": True, "channels": ch, "text": text2,
                        "note": "повторная отправка отчёта за эту неделю — очередь НЕ сдвигалась"})
@@ -4393,10 +4427,15 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
         stats = _shift_queues(conn, main)
         n_groups = len(main.get("groups") or [])
         n_people = sum(len(g.get("people") or []) for g in (main.get("groups") or []))
+        # Дельту («если закроем ещё этап») сохраняем ВНУТРИ отчёта: без неё перевыпуск из
+        # истории терял целую секцию — пересчитать её потом нельзя, очередь уже сдвинута.
+        saved_main = dict(main)
+        saved_main["_delta"] = delta
+        saved_main["_range"] = [lo, hi]
         conn.execute(
             "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor, snapshot)"
             " VALUES (?,?,?,?,?,?,?)",
-            (_now(), lo, _json.dumps(main, ensure_ascii=False),
+            (_now(), lo, _json.dumps(saved_main, ensure_ascii=False),
              _json.dumps(channels, ensure_ascii=False),
              "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi),
              _actor_name(actor), _json.dumps(snapshot, ensure_ascii=False)))
@@ -4409,6 +4448,249 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
                     % (lo, hi, stats["left_removed"], stats["requeued"], stats["stayed_uncollected"], channels))
     result.update({"committed": True, "channels": channels, **stats})
     return result
+
+
+# ═══════ ПОЛНЫЙ КОНТРОЛЬ АДМИНА НАД УЖЕ ОПУБЛИКОВАННЫМ ОТЧЁТОМ ═══════
+# Отчёт живёт дальше публикации: этапы уточняются задним числом (09.08 оказалось 4, а не 5),
+# цилинь выпадает отдельно, кто-то не забирает своё. Раньше каждый такой случай чинился
+# руками через SSH. Теперь из «Истории распределения» отчёт можно ОТКАТИТЬ (очередь как была),
+# ПЕРЕВЫПУСТИТЬ (переслать в чаты), ПОПРАВИТЬ (цилинь/заметка) и вернуть «не забравших».
+
+class ReportPatchIn(BaseModel):
+    cilin_given: list[str] | None = None   # кому в ЭТОМ отчёте выдан цилинь (ники)
+    note: str | None = None                # админская заметка (видна в истории)
+
+
+class ReportResendIn(BaseModel):
+    dm: bool = False                       # True — только мне в личку (проверить перед чатами)
+
+
+class ReportUncollectedIn(BaseModel):
+    nicks: str = ""                        # ники через запятую/перенос
+    restore: bool = True                   # True — вернуть в очередь, False — только пометить
+
+
+def _jlist(v) -> list:
+    """Поле, которое в БД лежит JSON-строкой, а в снимке — списком → всегда список."""
+    import json as _json
+    if not v:
+        return []
+    if isinstance(v, list):
+        return v
+    try:
+        x = _json.loads(v)
+        return x if isinstance(x, list) else [x]
+    except (ValueError, TypeError):
+        return [v]
+
+
+def _jstore(v) -> str:
+    import json as _json
+    return _json.dumps(v, ensure_ascii=False) if v else ""
+
+
+def _snap_entries(snapshot) -> list[dict]:
+    """Записи очередей из снимка: queues = [[q0…],[q1…],[q2…],[q3…]]."""
+    out = []
+    for qi, Q in enumerate((snapshot or {}).get("queues") or []):
+        rows = Q if isinstance(Q, list) else (Q.get("rows") or [])
+        for e in rows:
+            if isinstance(e, dict) and e.get("id") is not None:
+                e = dict(e)
+                e.setdefault("queue", qi)
+                out.append(e)
+    return out
+
+
+def _snap_resources(e: dict) -> list:
+    """Выбор ресурсов из снимка → как хранить в БД.
+
+    В снимке пустой выбор УЖЕ развёрнут (_entry_resources: q0/q1 → все ресурсы очереди,
+    q2/q3 → сам ресурс). Записывать такой список явно нельзя: «хочу всё» превратилось бы в
+    жёсткий перечень и не подхватило бы новый ресурс очереди. Совпал с дефолтом → пишем пусто."""
+    lst = _jlist(e.get("resources"))
+    q = e.get("queue")
+    valid = _QUEUE_ITEMS[q] if isinstance(q, int) and 0 <= q < len(_QUEUE_ITEMS) else []
+    default = list(valid) if q in (0, 1) else [e.get("resource") or ""]
+    return [] if lst == default else lst
+
+
+def _report_or_404(conn, rid: int):
+    r = conn.execute("SELECT * FROM queue_reports WHERE id=?", (rid,)).fetchone()
+    if not r:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Отчёт не найден")
+    return r
+
+
+def _rollback_report(conn, r, actor_name: str, request) -> dict:
+    """Вернуть очередь к состоянию НА МОМЕНТ публикации отчёта.
+
+    Источник истины — `queue_reports.snapshot` (снят ДО сдвига): в нём и позиции, и выбранные
+    ресурсы, и `received`, и жетон-записи. Восстанавливаем: удалённых вставляем обратно с их
+    прежним id, оставшимся возвращаем перезаписанные сдвигом поля. Записи, появившиеся ПОСЛЕ
+    отчёта (кто-то встал заново), не трогаем — они не часть отчёта."""
+    import json as _json
+    if r["rolled_back_at"]:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Этот отчёт уже откачен")
+    later = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
+                         " ORDER BY id LIMIT 1", (r["id"],)).fetchone()
+    if later:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Сначала откати более поздний отчёт #%d — иначе сдвиги наложатся"
+                            % later["id"])
+    snap = None
+    try:
+        snap = _json.loads(r["snapshot"]) if r["snapshot"] else None
+    except (ValueError, TypeError):
+        snap = None
+    if not snap:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "У этого отчёта нет снимка очереди — откатить автоматически нельзя "
+                            "(снимки пишутся с 03.08.2026)")
+    restored, returned, priv_back = 0, 0, 0
+    for e in _snap_entries(snap):
+        eid = e["id"]
+        cur = conn.execute("SELECT * FROM queue_entries WHERE id=?", (eid,)).fetchone()
+        vals = (e.get("resource") or "", _jstore(_snap_resources(e)),
+                _jstore(_jlist(e.get("received"))), e.get("recipient") or "",
+                _jstore(e.get("auto_plan") or []), 1 if e.get("auto_repeat") else 0,
+                1 if e.get("not_collected") else 0,
+                1 if e.get("privileged") else 0, int(e.get("priv_stacks") or 0))
+        if cur:
+            conn.execute(
+                "UPDATE queue_entries SET resource=?, resources=?, received=?, recipient=?,"
+                " auto_plan=?, auto_repeat=?, not_collected=?, privileged=?, priv_stacks=?,"
+                " pos=? WHERE id=?", vals + (float(e.get("pos") or 0), eid))
+            restored += 1
+        else:
+            conn.execute(
+                "INSERT INTO queue_entries (id, queue, pos, main_canon, nick, cls, resource,"
+                " resources, received, recipient, auto_plan, auto_repeat, not_collected,"
+                " privileged, priv_stacks, added_by, added_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (eid, e.get("queue"), float(e.get("pos") or 0), e.get("main_canon") or "",
+                 e.get("nick") or "", e.get("cls") or "") + vals + ("rollback", _now()))
+            returned += 1
+            if e.get("privileged"):
+                priv_back += 1
+    # снимок «кто вышел» этого отчёта больше не нужен — люди уже возвращены
+    conn.execute("DELETE FROM queue_served_last WHERE added_by='report' AND served_at=?",
+                 (r["created_at"],))
+    # Снять недельный маркер, если он поставлен ЭТИМ отчётом → следующая публикация снова
+    # СДВИНЕТ очередь (иначе уйдёт в «resent» без сдвига). Маркер хранит неделю ДОБЛЕСТИ, а не
+    # дату отчёта (в понедельник это разные недели) — берём её из снимка отчёта.
+    rep_week = (snap.get("week") or "") if isinstance(snap, dict) else ""
+    if _cfg_val(conn, "report_shift_week", "") in (rep_week, _iso_week_key(r["created_at"])):
+        _cfg_set(conn, "report_shift_week", "")
+    conn.execute("UPDATE queue_reports SET rolled_back_at=? WHERE id=?", (_now(), r["id"]))
+    _log(conn, "report_rollback", actor=actor_name, request=request,
+         detail="откат отчёта #%d (%s, %d эт.): возвращено в очередь %d, поправлено записей %d,"
+                " жетон-записей %d" % (r["id"], r["created_at"][:10], r["stages"], returned,
+                                       restored, priv_back))
+    return {"ok": True, "report_id": r["id"], "returned": returned,
+            "updated": restored, "priv_restored": priv_back}
+
+
+@router.post("/admin/report/{rid}/rollback")
+def report_rollback(rid: int, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Откатить публикацию отчёта: очередь возвращается к состоянию до сдвига."""
+    with db.connection() as conn:
+        return _rollback_report(conn, _report_or_404(conn, rid), _actor_name(actor), request)
+
+
+@router.post("/admin/report/{rid}/resend")
+async def report_resend(rid: int, payload: ReportResendIn, request: Request,
+                        actor: dict = Depends(require_admin)) -> dict:
+    """Переслать СОХРАНЁННЫЙ отчёт (картинка + текст) заново. Очередь не трогается —
+    это именно перевыпуск публикации, а не новый расчёт. dm=True → только мне в личку."""
+    import json as _json
+    with db.connection() as conn:
+        r = _report_or_404(conn, rid)
+    try:
+        rep = _json.loads(r["report"])
+    except (ValueError, TypeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Отчёт повреждён — нечего слать")
+    when = _msk_from_iso(r["created_at"])
+    delta = rep.get("_delta")            # секция «если закроем ещё этап», сохранена при публикации
+    text = distribution.format_report_compact(rep, delta, when)
+    img = _render_report_image(rep, delta)
+    ch = await (_send_report_media(img, text, force_dm=payload.dm) if img
+                else _send_text_to_chats(text, force_dm=payload.dm))
+    with db.connection() as conn:
+        _log(conn, "report_resend", actor=_actor_name(actor), request=request,
+             detail="перевыпуск отчёта #%d → %s" % (rid, "личка" if payload.dm else str(ch)))
+    return {"ok": True, "report_id": rid, "channels": ch, "dm": payload.dm, "text": text}
+
+
+@router.patch("/admin/report/{rid}")
+def report_patch(rid: int, payload: ReportPatchIn, request: Request,
+                 actor: dict = Depends(require_admin)) -> dict:
+    """Правка сохранённого отчёта: кому выдан цилинь и заметка админа.
+    Меняет ТОЛЬКО текст/картинку будущих перевыпусков и вид в истории; очередь не трогает."""
+    import json as _json
+    with db.connection() as conn:
+        r = _report_or_404(conn, rid)
+        try:
+            rep = _json.loads(r["report"]) if r["report"] else {}
+        except (ValueError, TypeError):
+            rep = {}
+        changed = []
+        if payload.cilin_given is not None:
+            was = rep.get("cilin_given") or []
+            rep["cilin_given"] = [n.strip() for n in payload.cilin_given if n and n.strip()]
+            conn.execute("UPDATE queue_reports SET report=? WHERE id=?",
+                         (_json.dumps(rep, ensure_ascii=False), rid))
+            changed.append("цилинь: [%s] → [%s]" % (", ".join(was), ", ".join(rep["cilin_given"])))
+        if payload.note is not None:
+            conn.execute("UPDATE queue_reports SET note=? WHERE id=?", (payload.note.strip(), rid))
+            changed.append("заметка")
+        if changed:
+            _log(conn, "report_patch", actor=_actor_name(actor), request=request,
+                 detail="правка отчёта #%d — %s" % (rid, "; ".join(changed)))
+    return {"ok": True, "report_id": rid, "changed": changed,
+            "cilin_given": rep.get("cilin_given") or []}
+
+
+@router.post("/admin/report/{rid}/uncollected")
+def report_uncollected(rid: int, payload: ReportUncollectedIn, request: Request,
+                       actor: dict = Depends(require_admin)) -> dict:
+    """«Не забрал» по никам для КОНКРЕТНОГО отчёта: вернуть человека в очередь на прежнее
+    место за его ресурс (во все очереди, где он значился получателем этого отчёта).
+    restore=False — только пометить в отчёте, очередь не трогать."""
+    import re as _re
+    names = [x.strip() for x in _re.split(r"[\n,;]+", payload.nicks or "") if x.strip()]
+    if not names:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указаны ники")
+    returned, marked, not_found = [], [], []
+    with db.connection() as conn:
+        r = _report_or_404(conn, rid)
+        served = conn.execute("SELECT * FROM queue_served_last WHERE served_at>=?"
+                              " OR added_by='cilin'", (r["created_at"],)).fetchall()
+        for nk in names:
+            c = db._valor_canon(nk)
+            low = nk.lower()
+            hits = [s for s in served
+                    if db._valor_canon(s["nick"] or "") == c or (s["nick"] or "").lower() == low]
+            if hits and payload.restore:
+                for s in hits:
+                    _restore_served_row(conn, s, _actor_name(actor), request)
+                served = [x for x in served if x["id"] not in {h["id"] for h in hits}]
+                returned.append("%s (очередей: %d)" % (hits[0]["nick"], len(hits)))
+                continue
+            # человек остался в очереди (получил не всё / не выходил) — просто помечаем.
+            # Только по канону мэйна: LOWER(nick) зацепил бы тёзку из другой персоны.
+            rows = conn.execute("SELECT id, nick FROM queue_entries WHERE main_canon=?",
+                                (c,)).fetchall()
+            if not rows:
+                not_found.append(nk)
+                continue
+            for e in rows:
+                conn.execute("UPDATE queue_entries SET not_collected=1 WHERE id=?", (e["id"],))
+            marked.append(rows[0]["nick"])
+        _log(conn, "uncollected", actor=_actor_name(actor), request=request,
+             detail="отчёт #%d — не забрали: вернул [%s], пометил [%s], не нашёл [%s]"
+                    % (rid, ", ".join(returned), ", ".join(marked), ", ".join(not_found)))
+    return {"ok": True, "returned": returned, "marked": marked, "not_found": not_found}
 
 
 @router.post("/admin/cilin-distribute")
@@ -4433,10 +4715,13 @@ def cilin_distribute(payload: CilinDistributeIn, request: Request,
                 continue
             conn.execute(
                 "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
-                " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                " resource, recipient, auto_repeat, auto_plan, added_by, served_at,"
+                " resources, received, recipients)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["queue"], row["pos"], row["main_canon"], row["nick"], row["cls"],
-                 row["resource"], row["recipient"], row["auto_repeat"], row["auto_plan"] or "", "cilin", _now()))
+                 row["resource"], row["recipient"], row["auto_repeat"], row["auto_plan"] or "",
+                 "cilin", _now(), row["resources"] or "", row["received"] or "",
+                 (row["recipients"] if "recipients" in row.keys() else "") or ""))
             conn.execute("DELETE FROM queue_entries WHERE id=?", (row["id"],))
             given.append(p["receiver"])
         # НЕ перепаковываем q2 — остальные сохраняют свои позиции (стабильность для возврата).
@@ -4453,6 +4738,12 @@ def _restore_served_row(conn, s, actor_name: str, request) -> None:
     числа людей стабилен и не «съезжает» (каскад pos+1 путал порядок при нескольких возвратах)."""
     q = s["queue"]
     target = float(s["orig_pos"]) - 0.5
+    keys = s.keys()
+    # ВЕСЬ выбор человека, а не только один ресурс: иначе стоявший за шестью ресурсами
+    # возвращался за одним (колонки добавлены 09.08.2026; у старых снимков их нет).
+    ress = (s["resources"] if "resources" in keys else "") or ""
+    recv = (s["received"] if "received" in keys else "") or ""
+    rcpts = (s["recipients"] if "recipients" in keys else "") or ""
     existing = conn.execute(
         "SELECT id FROM queue_entries WHERE queue=? AND main_canon=? AND privileged=0",
         (q, s["main_canon"])).fetchone()
@@ -4461,10 +4752,10 @@ def _restore_served_row(conn, s, actor_name: str, request) -> None:
     else:
         conn.execute(
             "INSERT INTO queue_entries (queue, pos, main_canon, nick, cls, resource, recipient,"
-            " auto_repeat, auto_plan, added_by, added_at, not_collected)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
+            " auto_repeat, auto_plan, added_by, added_at, not_collected, resources, received, recipients)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)",
             (q, target, s["main_canon"], s["nick"], s["cls"], s["resource"], s["recipient"],
-             s["auto_repeat"], s["auto_plan"], "restore", _now()))
+             s["auto_repeat"], s["auto_plan"], "restore", _now(), ress, recv, rcpts))
     conn.execute("DELETE FROM queue_served_last WHERE id=?", (s["id"],))
     # ВАЖНО: возврат «не забрал» НЕ сбрасывает маркер недельного сдвига. Сдвиг очереди —
     # РОВНО ОДИН раз за неделю; возвращённые ждут СЛЕДУЮЩЕГО цикла. Иначе повторное
@@ -5196,30 +5487,35 @@ def _iso_week_key(created_at: str) -> str:
 
 
 @router.get("/history")
-def history(_: dict = Depends(require_officer_or_admin)) -> dict:
+def history(all: bool = False, _: dict = Depends(require_officer_or_admin)) -> dict:
     """Архив недельных распределений (метаданные) — офицерам и админу.
 
     АНТИ-ДУБЛЬ НЕДЕЛЬ: за одну неделю бывает несколько записей queue_reports (перепубликации,
-    пробные прогоны, дельта-отчёты). Показываем ТОЛЬКО последнюю (max id) за каждую ISO-неделю —
-    один таб на неделю, без дублей."""
+    пробные прогоны, дельта-отчёты). По умолчанию показываем ТОЛЬКО последнюю (max id) за
+    каждую ISO-неделю — один таб на неделю, без дублей. `all=1` — ВСЕ записи, включая
+    откаченные: нужно админу, когда он разбирает, что публиковалось и что откатили."""
     import json as _json
     with db.connection() as conn:
         rows = conn.execute(
-            "SELECT id, created_at, stages, channels, summary, actor FROM queue_reports"
-            " ORDER BY id DESC LIMIT 200").fetchall()
+            "SELECT id, created_at, stages, channels, summary, actor, rolled_back_at, note"
+            " FROM queue_reports ORDER BY id DESC LIMIT 200").fetchall()
     out = []
     seen_weeks = set()
     for r in rows:                       # от новых к старым → первый за неделю = самый свежий
         wk = _iso_week_key(r["created_at"])
-        if wk in seen_weeks:
-            continue
-        seen_weeks.add(wk)
+        if not all:
+            if r["rolled_back_at"]:
+                continue          # откаченный отчёт неделю не «занимает» — таб был бы пустышкой
+            if wk in seen_weeks:
+                continue
+            seen_weeks.add(wk)
         try:
             ch = _json.loads(r["channels"]) if r["channels"] else {}
         except (ValueError, TypeError):
             ch = {}
         out.append({"id": r["id"], "at": r["created_at"], "stages": r["stages"], "week": wk,
-                    "channels": ch, "summary": r["summary"], "actor": r["actor"]})
+                    "channels": ch, "summary": r["summary"], "actor": r["actor"],
+                    "rolled_back_at": r["rolled_back_at"] or "", "note": r["note"] or ""})
         if len(out) >= 60:
             break
     return {"reports": out}
@@ -5260,10 +5556,17 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
     import json as _json
     with db.connection() as conn:
         row = conn.execute(
-            "SELECT created_at, stages, report, channels, snapshot FROM queue_reports WHERE id=?", (rid,)).fetchone()
+            "SELECT created_at, stages, report, channels, snapshot, rolled_back_at, note"
+            " FROM queue_reports WHERE id=?", (rid,)).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
         not_collected = _report_not_collected(conn, row["created_at"])
+        # можно ли откатить: есть снимок, сам не откачен и после него нет живых отчётов
+        newer = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
+                             " ORDER BY id LIMIT 1", (rid,)).fetchone()
+        served_cnt = conn.execute("SELECT COUNT(*) c FROM queue_served_last"
+                                  " WHERE added_by='report' AND served_at=?",
+                                  (row["created_at"],)).fetchone()["c"]
     try:
         rep = _json.loads(row["report"]) if row["report"] else {}
     except (ValueError, TypeError):
@@ -5279,8 +5582,16 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
             snap = _json.loads(row["snapshot"])
     except (ValueError, TypeError):
         snap = None
+    rolled = row["rolled_back_at"] or ""
+    can_roll = bool(snap) and not rolled and not newer
+    why = ("уже откачен" if rolled else
+           "нет снимка очереди (отчёты до 03.08.2026)" if not snap else
+           "сначала откати отчёт #%d" % newer["id"] if newer else "")
     return {"report": rep, "at": row["created_at"], "channels": ch,
-            "not_collected": not_collected, "snapshot": snap}
+            "not_collected": not_collected, "snapshot": snap,
+            "id": rid, "stages": row["stages"], "note": row["note"] or "",
+            "rolled_back_at": rolled, "can_rollback": can_roll, "rollback_blocked": why,
+            "served_count": served_cnt}
 
 
 # таблицы создаём при импорте модуля (db-файл уже сконфигурирован settings)
