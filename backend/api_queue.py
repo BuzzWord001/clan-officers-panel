@@ -4263,12 +4263,22 @@ def _repack_queue(conn, q: int) -> None:
         conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(i), r["id"]))
 
 
-def _shift_queues(conn, report: dict) -> dict:
+def _shift_queues(conn, report: dict, dry_run: bool = False) -> dict:
     """Сдвиг очередей после отчёта. Получившие (status ok): с 🔁/планом → в конец, разово →
     выходят; «не забрал» и не получившие → остаются впереди. Цилинь-ждуны в report НЕ попадают
     (они в pet_queue) → тут автоматически остаются на месте. Пишет снимок queue_served_last
-    (для возврата «не забрал»)."""
+    (для возврата «не забрал»).
+
+    dry_run=True — НИЧЕГО не меняет, только считает и возвращает план (`plan`): кто выйдет,
+    кто уйдёт в конец, кто останется. Нужен, чтобы админ видел последствия ДО нажатия, и
+    чтобы превью считалось ТЕМ ЖЕ кодом, что и само действие (иначе они разъезжаются)."""
     import json as _json
+    steps = {"leave": [], "requeue": [], "stay_partial": [], "stay_uncollected": []}
+
+    def _w(sql, args=()):
+        """Запись в БД — только в боевом режиме; в dry_run молча пропускаем."""
+        if not dry_run:
+            conn.execute(sql, args)
     served_by_q = {}
     row_by_id = {}                    # id → строка отчёта (для got/missing)
     for Q in report["queues"]:
@@ -4280,7 +4290,7 @@ def _shift_queues(conn, report: dict) -> dict:
     # Чистим только снимки ПРОШЛОГО отчёта (added_by='report'). Снимки раздачи цилиня
     # (added_by='cilin') НЕ трогаем — иначе публикация отчёта стирала бы возможность вернуть
     # цилинь-получателя через «не забрал», если цилиня раздали ДО отчёта (порядок Лира).
-    conn.execute("DELETE FROM queue_served_last WHERE added_by != 'cilin'")
+    _w("DELETE FROM queue_served_last WHERE added_by != 'cilin'")
     for q in QUEUES:
         rows = conn.execute(
             "SELECT id, pos, main_canon, nick, cls, resource, resources, received, recipient,"
@@ -4293,8 +4303,9 @@ def _shift_queues(conn, report: dict) -> dict:
                 keep_ids.append(r["id"])
             elif r["not_collected"]:
                 keep_ids.append(r["id"])
-                conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
+                _w("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
                 stayed_uncollected += 1
+                steps["stay_uncollected"].append({"nick": r["nick"], "queue": q, "pos": r["pos"]})
             elif (row_by_id.get(r["id"], {}).get("missing") or []):
                 # Получил НЕ ВСЁ выбранное (часть ресурсов не досталась — pack ушёл первому /
                 # fixed кончился). ОСТАЁТСЯ в очереди за НЕДОПОЛУЧЕННЫМИ; полученное сейчас →
@@ -4306,38 +4317,45 @@ def _shift_queues(conn, report: dict) -> dict:
                 except (ValueError, TypeError):
                     prev_recv = []
                 new_recv = sorted(set(prev_recv) | set(got_now))
-                conn.execute(
-                    "UPDATE queue_entries SET resource=?, resources=?, received=? WHERE id=?",
-                    (miss[0], _json.dumps(miss), _json.dumps(new_recv), r["id"]))
+                _w("UPDATE queue_entries SET resource=?, resources=?, received=? WHERE id=?",
+                   (miss[0], _json.dumps(miss), _json.dumps(new_recv), r["id"]))
                 keep_ids.append(r["id"]); partial_stay += 1
+                steps["stay_partial"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                                              "missing": miss, "got": got_now})
             else:
-                conn.execute(
-                    "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
-                    " resource, recipient, auto_repeat, auto_plan, added_by, served_at,"
-                    " resources, received, recipients)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
-                     r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "report", _now(),
-                     r["resources"] or "", r["received"] or "",
-                     (r["recipients"] if "recipients" in r.keys() else "") or ""))
+                _w("INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
+                   " resource, recipient, auto_repeat, auto_plan, added_by, served_at,"
+                   " resources, received, recipients)"
+                   " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
+                    r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "report", _now(),
+                    r["resources"] or "", r["received"] or "",
+                    (r["recipients"] if "recipients" in r.keys() else "") or ""))
                 try:
-                    plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
+                    aplan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
                 except (ValueError, TypeError):
-                    plan = []
-                if plan:
-                    conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
-                                 (plan[0], _json.dumps(plan[1:]), r["id"]))
+                    aplan = []
+                if aplan:
+                    _w("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
+                       (aplan[0], _json.dumps(aplan[1:]), r["id"]))
                     requeue_ids.append(r["id"]); requeued += 1
+                    steps["requeue"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                                             "next": aplan[0], "why": "план на след. недели"})
                 elif r["auto_repeat"]:
                     requeue_ids.append(r["id"]); requeued += 1
+                    steps["requeue"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                                             "next": r["resource"], "why": "🔁 повтор"})
                 else:
-                    conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
+                    _w("DELETE FROM queue_entries WHERE id=?", (r["id"],))
                     left_after += 1
+                    steps["leave"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                                           "resource": r["resource"],
+                                           "got": list((row_by_id.get(r["id"], {}).get("got") or {}).keys())})
         # СТАБИЛЬНЫЕ ПОЗИЦИИ: keep_ids ОСТАЮТСЯ на своих pos — НЕ перепаковываем. Ушедшие
         # оставляют пробелы в нумерации — это нормально (порядок только по pos), зато возврат
         # «не забрал» всегда попадает ТОЧНО на прежнее место без «съезда». Авто-повтор → в КОНЕЦ
         # (max(pos)+1), received сброшен (новый цикл).
-        if requeue_ids:
+        if requeue_ids and not dry_run:
             base = (conn.execute("SELECT COALESCE(MAX(pos), 0) m FROM queue_entries WHERE queue=?",
                                  (q,)).fetchone()["m"]) or 0
             p = float(base)
@@ -4345,7 +4363,8 @@ def _shift_queues(conn, report: dict) -> dict:
                 p += 1.0
                 conn.execute("UPDATE queue_entries SET pos=?, received='' WHERE id=?", (p, i))
     return {"requeued": requeued, "left_removed": left_after,
-            "stayed_uncollected": stayed_uncollected, "partial_stay": partial_stay}
+            "stayed_uncollected": stayed_uncollected, "partial_stay": partial_stay,
+            "steps": steps}
 
 
 @router.post("/admin/report")
@@ -4526,7 +4545,13 @@ def _snap_resources(e: dict) -> list:
     lst = _jlist(e.get("resources"))
     q = e.get("queue")
     valid = _QUEUE_ITEMS[q] if isinstance(q, int) and 0 <= q < len(_QUEUE_ITEMS) else []
-    default = list(valid) if q in (0, 1) else [e.get("resource") or ""]
+    # Привилегированная запись (жетон ТОП-3) берёт РОВНО ОДИН ресурс — у неё дефолт всегда
+    # [resource], даже в мультивыборной q0. Иначе откат прописывал бы ей явный список и
+    # запись переставала совпадать с исходной.
+    if e.get("privileged"):
+        default = [e.get("resource") or ""]
+    else:
+        default = list(valid) if q in (0, 1) else [e.get("resource") or ""]
     return [] if lst == default else lst
 
 
@@ -4537,13 +4562,17 @@ def _report_or_404(conn, rid: int):
     return r
 
 
-def _rollback_report(conn, r, actor_name: str, request) -> dict:
+def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -> dict:
     """Вернуть очередь к состоянию НА МОМЕНТ публикации отчёта.
 
     Источник истины — `queue_reports.snapshot` (снят ДО сдвига): в нём и позиции, и выбранные
-    ресурсы, и `received`, и жетон-записи. Восстанавливаем: удалённых вставляем обратно с их
-    прежним id, оставшимся возвращаем перезаписанные сдвигом поля. Записи, появившиеся ПОСЛЕ
-    отчёта (кто-то встал заново), не трогаем — они не часть отчёта."""
+    ресурсы, и `received`, и жетон-записи (privileged/priv_stacks — захваты ТОП-3, которые
+    публикация удаляет). Восстанавливаем: удалённых вставляем обратно с их прежним id,
+    оставшимся возвращаем перезаписанные сдвигом поля. Записи, появившиеся ПОСЛЕ отчёта
+    (кто-то встал заново), не трогаем — они не часть отчёта.
+
+    dry_run=True — ничего не меняет, только собирает список того, что изменится (для превью
+    в панели: админ видит поимённо, кто вернётся и что поправится)."""
     import json as _json
     if r["rolled_back_at"]:
         raise HTTPException(status.HTTP_409_CONFLICT, "Этот отчёт уже откачен")
@@ -4563,6 +4592,7 @@ def _rollback_report(conn, r, actor_name: str, request) -> dict:
                             "У этого отчёта нет снимка очереди — откатить автоматически нельзя "
                             "(снимки пишутся с 03.08.2026)")
     restored, returned, priv_back = 0, 0, 0
+    steps = {"back": [], "fixed": [], "jetons": []}
     for e in _snap_entries(snap):
         eid = e["id"]
         cur = conn.execute("SELECT * FROM queue_entries WHERE id=?", (eid,)).fetchone()
@@ -4572,30 +4602,56 @@ def _rollback_report(conn, r, actor_name: str, request) -> dict:
                 1 if e.get("not_collected") else 0,
                 1 if e.get("privileged") else 0, int(e.get("priv_stacks") or 0))
         if cur:
-            conn.execute(
-                "UPDATE queue_entries SET resource=?, resources=?, received=?, recipient=?,"
-                " auto_plan=?, auto_repeat=?, not_collected=?, privileged=?, priv_stacks=?,"
-                " pos=? WHERE id=?", vals + (float(e.get("pos") or 0), eid))
+            # что именно поменяется у оставшегося (для превью — без «поправлено N записей»)
+            diffs = []
+            if (cur["resource"] or "") != vals[0]:
+                diffs.append("ресурс %s → %s" % (cur["resource"] or "—", vals[0] or "—"))
+            if (cur["resources"] or "") != vals[1]:
+                diffs.append("выбор ресурсов")
+            if (cur["received"] or "") != vals[2]:
+                diffs.append("отметка «получено»")
+            if round(float(cur["pos"] or 0), 3) != round(float(e.get("pos") or 0), 3):
+                diffs.append("место %s → %s" % (cur["pos"], e.get("pos")))
+            if diffs:
+                steps["fixed"].append({"nick": e.get("nick"), "queue": e.get("queue"),
+                                       "changes": diffs})
+            if not dry_run:
+                conn.execute(
+                    "UPDATE queue_entries SET resource=?, resources=?, received=?, recipient=?,"
+                    " auto_plan=?, auto_repeat=?, not_collected=?, privileged=?, priv_stacks=?,"
+                    " pos=? WHERE id=?", vals + (float(e.get("pos") or 0), eid))
             restored += 1
         else:
-            conn.execute(
-                "INSERT INTO queue_entries (id, queue, pos, main_canon, nick, cls, resource,"
-                " resources, received, recipient, auto_plan, auto_repeat, not_collected,"
-                " privileged, priv_stacks, added_by, added_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (eid, e.get("queue"), float(e.get("pos") or 0), e.get("main_canon") or "",
-                 e.get("nick") or "", e.get("cls") or "") + vals + ("rollback", _now()))
+            if not dry_run:
+                conn.execute(
+                    "INSERT INTO queue_entries (id, queue, pos, main_canon, nick, cls, resource,"
+                    " resources, received, recipient, auto_plan, auto_repeat, not_collected,"
+                    " privileged, priv_stacks, added_by, added_at)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (eid, e.get("queue"), float(e.get("pos") or 0), e.get("main_canon") or "",
+                     e.get("nick") or "", e.get("cls") or "") + vals + ("rollback", _now()))
             returned += 1
+            item = {"nick": e.get("nick"), "queue": e.get("queue"), "pos": e.get("pos"),
+                    "resource": e.get("resource")}
             if e.get("privileged"):
                 priv_back += 1
+                item["stacks"] = int(e.get("priv_stacks") or 0)
+                steps["jetons"].append(item)     # захват вне очереди по жетону ТОП-3
+            else:
+                steps["back"].append(item)
+    rep_week = (snap.get("week") or "") if isinstance(snap, dict) else ""
+    marker_off = _cfg_val(conn, "report_shift_week", "") in (rep_week, _iso_week_key(r["created_at"]))
+    if dry_run:
+        return {"ok": True, "dry_run": True, "report_id": r["id"], "returned": returned,
+                "updated": restored, "priv_restored": priv_back, "marker_off": marker_off,
+                "steps": steps}
     # снимок «кто вышел» этого отчёта больше не нужен — люди уже возвращены
     conn.execute("DELETE FROM queue_served_last WHERE added_by='report' AND served_at=?",
                  (r["created_at"],))
     # Снять недельный маркер, если он поставлен ЭТИМ отчётом → следующая публикация снова
     # СДВИНЕТ очередь (иначе уйдёт в «resent» без сдвига). Маркер хранит неделю ДОБЛЕСТИ, а не
     # дату отчёта (в понедельник это разные недели) — берём её из снимка отчёта.
-    rep_week = (snap.get("week") or "") if isinstance(snap, dict) else ""
-    if _cfg_val(conn, "report_shift_week", "") in (rep_week, _iso_week_key(r["created_at"])):
+    if marker_off:
         _cfg_set(conn, "report_shift_week", "")
     conn.execute("UPDATE queue_reports SET rolled_back_at=? WHERE id=?", (_now(), r["id"]))
     _log(conn, "report_rollback", actor=actor_name, request=request,
@@ -4603,7 +4659,77 @@ def _rollback_report(conn, r, actor_name: str, request) -> dict:
                 " жетон-записей %d" % (r["id"], r["created_at"][:10], r["stages"], returned,
                                        restored, priv_back))
     return {"ok": True, "report_id": r["id"], "returned": returned,
-            "updated": restored, "priv_restored": priv_back}
+            "updated": restored, "priv_restored": priv_back, "marker_off": marker_off,
+            "steps": steps}
+
+
+def _reapply_report(conn, r, actor_name: str, request, dry_run: bool = False) -> dict:
+    """Применить откаченный отчёт СНОВА (шаг «вперёд»): тот же сдвиг очереди, что делала
+    публикация, но без повторной отправки в чаты. Нужен, когда откатили, посмотрели и решили
+    вернуть как было. Расчёт не переделывается — двигаем строго по сохранённому отчёту.
+
+    Перед сдвигом снимок отчёта ОБНОВЛЯЕТСЯ текущим состоянием: иначе следующий откат вернул
+    бы устаревшую картинку (за время «отката» админ мог что-то поправить руками)."""
+    import json as _json
+    if not r["rolled_back_at"]:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Этот отчёт и так применён — откатывать нечего")
+    later = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
+                         " ORDER BY id LIMIT 1", (r["id"],)).fetchone()
+    if later:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Есть более поздний применённый отчёт #%d — сначала откати его"
+                            % later["id"])
+    try:
+        rep = _json.loads(r["report"]) if r["report"] else {}
+    except (ValueError, TypeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Отчёт повреждён")
+    if not rep.get("queues"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В отчёте нет данных очередей")
+    priv = conn.execute("SELECT nick, priv_stacks FROM queue_entries WHERE privileged=1").fetchall()
+    if dry_run:
+        stats = _shift_queues(conn, rep, dry_run=True)
+        stats["jetons_spent"] = [{"nick": p["nick"], "stacks": p["priv_stacks"]} for p in priv]
+        stats["dry_run"] = True
+        stats["report_id"] = r["id"]
+        return {"ok": True, **stats}
+    # Снимок «как было ДО сдвига» снимаем ИМЕННО СЕЙЧАС, до изменений: он станет опорой для
+    # следующего отката. Снятый после сдвига вернул бы очередь в уже сдвинутое состояние.
+    snapshot = _capture_queue_snapshot(conn)
+    stats = _shift_queues(conn, rep)
+    # захваты жетоном ТОП-3 гасятся публикацией: ресурсы уже посчитаны в отчёте
+    conn.execute("DELETE FROM queue_entries WHERE privileged=1")
+    conn.execute("DELETE FROM queue_priv_claims")
+    try:
+        old_snap = _json.loads(r["snapshot"]) if r["snapshot"] else {}
+    except (ValueError, TypeError):
+        old_snap = {}
+    week = (old_snap.get("week") or "") or db.valor_latest_week() or ""
+    if week:
+        _cfg_set(conn, "report_shift_week", week)
+    conn.execute("UPDATE queue_reports SET rolled_back_at='', snapshot=? WHERE id=?",
+                 (_json.dumps(snapshot, ensure_ascii=False), r["id"]))
+    _log(conn, "report_reapply", actor=actor_name, request=request,
+         detail="отчёт #%d применён снова: вышли %d, в конец %d, остались частично %d, жетонов снято %d"
+                % (r["id"], stats["left_removed"], stats["requeued"], stats["partial_stay"], len(priv)))
+    return {"ok": True, "report_id": r["id"], "jetons_spent": len(priv), **stats}
+
+
+@router.get("/admin/report/{rid}/plan")
+def report_plan(rid: int, _: dict = Depends(require_admin)) -> dict:
+    """Что произойдёт, если нажать кнопку: для применённого отчёта — план ОТКАТА, для
+    откаченного — план повторного применения. Считается тем же кодом, что и само действие
+    (dry_run), поэтому превью не может разойтись с результатом."""
+    with db.connection() as conn:
+        r = _report_or_404(conn, rid)
+        if r["rolled_back_at"]:
+            try:
+                return {"action": "reapply", **_reapply_report(conn, r, "", None, dry_run=True)}
+            except HTTPException as e:
+                return {"action": "reapply", "ok": False, "error": e.detail}
+        try:
+            return {"action": "rollback", **_rollback_report(conn, r, "", None, dry_run=True)}
+        except HTTPException as e:
+            return {"action": "rollback", "ok": False, "error": e.detail}
 
 
 @router.post("/admin/report/{rid}/rollback")
@@ -4611,6 +4737,13 @@ def report_rollback(rid: int, request: Request, actor: dict = Depends(require_ad
     """Откатить публикацию отчёта: очередь возвращается к состоянию до сдвига."""
     with db.connection() as conn:
         return _rollback_report(conn, _report_or_404(conn, rid), _actor_name(actor), request)
+
+
+@router.post("/admin/report/{rid}/reapply")
+def report_reapply(rid: int, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """Шаг «вперёд»: применить откаченный отчёт заново (очередь снова сдвигается)."""
+    with db.connection() as conn:
+        return _reapply_report(conn, _report_or_404(conn, rid), _actor_name(actor), request)
 
 
 @router.post("/admin/report/{rid}/resend")
@@ -5599,13 +5732,20 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
         snap = None
     rolled = row["rolled_back_at"] or ""
     can_roll = bool(snap) and not rolled and not newer
-    why = ("уже откачен" if rolled else
+    why = ("уже откачен — доступен шаг «Применить снова»" if rolled else
            "нет снимка очереди (отчёты до 03.08.2026)" if not snap else
            "сначала откати отчёт #%d" % newer["id"] if newer else "")
+    # шаг «вперёд» доступен только откаченному отчёту, за которым нет живых более поздних
+    can_reapply = bool(rolled) and not newer and bool((rep or {}).get("queues"))
+    why_fwd = ("" if can_reapply else
+               "отчёт применён" if not rolled else
+               "сначала откати отчёт #%d" % newer["id"] if newer else
+               "в отчёте нет данных очередей")
     return {"report": rep, "at": row["created_at"], "channels": ch,
             "not_collected": not_collected, "snapshot": snap,
             "id": rid, "stages": row["stages"], "note": row["note"] or "",
             "rolled_back_at": rolled, "can_rollback": can_roll, "rollback_blocked": why,
+            "can_reapply": can_reapply, "reapply_blocked": why_fwd,
             "served_count": served_cnt}
 
 

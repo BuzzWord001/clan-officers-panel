@@ -6475,16 +6475,38 @@
       // ── админ-панель управления отчётом (только админу) ──
       ".qh-adm{border:1px solid rgba(224,162,74,.35);border-radius:12px;padding:10px 12px;margin-bottom:12px;" +
         "background:linear-gradient(180deg,rgba(38,26,12,.92),rgba(24,16,8,.92))}" +
-      ".qh-adm-head{font-size:12.5px;color:#e0c48a;margin-bottom:9px}" +
-      ".qh-adm-badge{background:#7a2d22;color:#ffd9cf;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700}" +
+      ".qh-adm-head{font-size:12.5px;color:#e0c48a;margin-bottom:9px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}" +
+      ".qh-adm-dim{color:#8a795a}" +
+      ".qh-adm-badge{border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700}" +
+      ".qh-adm-badge.is-on{background:rgba(90,140,70,.32);color:#bfe6a8;border:1px solid rgba(140,200,110,.45)}" +
+      ".qh-adm-badge.is-off{background:#7a2d22;color:#ffd9cf}" +
+      // секции: публикация / очередь / правки — сгруппированы, чтобы опасное не смешивалось с рутиной
+      ".qh-adm-sec{border-top:1px solid rgba(224,162,74,.16);padding-top:8px;margin-top:8px}" +
+      ".qh-adm-sec:first-of-type{border-top:0;padding-top:0;margin-top:0}" +
+      ".qh-adm-cap{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8a795a;margin-bottom:6px}" +
       ".qh-adm-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;min-width:0}" +
-      ".qh-adm-row:last-of-type{margin-bottom:0}" +
+      ".qh-adm-row:last-child{margin-bottom:0}" +
       ".qh-adm-lbl{font-size:11.5px;color:#a8916a;min-width:104px}" +
       ".qh-adm input{flex:1 1 240px;min-width:0;background:rgba(12,8,4,.85);border:1px solid rgba(224,162,74,.3);" +
         "border-radius:8px;color:#e7d6b4;padding:5px 9px;font-size:12px}" +
+      ".qh-adm input:focus{outline:none;border-color:#e0a24a;box-shadow:0 0 0 2px rgba(224,162,74,.18)}" +
       ".qh-adm button[disabled]{opacity:.45;cursor:not-allowed}" +
+      // необратимое — красным, шаг «вперёд» — зелёным: видно, что делает кнопка, до нажатия
+      ".qh-adm .qh-danger{background:linear-gradient(180deg,#a2452f,#732c1c);border:1px solid #c9603f;color:#ffe7df}" +
+      ".qh-adm .qh-fwd{background:linear-gradient(180deg,#4f7f3a,#356024);border:1px solid #7bb35c;color:#eaffe0}" +
       ".qh-adm-hint{font-size:11px;color:#8a795a}" +
-      ".qh-adm-out{font-size:11.5px;color:#9fe0a0;margin-top:8px;white-space:pre-wrap}" +
+      ".qh-adm-warn{font-size:11.5px;color:#ff9b86}" +
+      ".qh-adm-out{font-size:11.5px;color:#9fe0a0;margin-top:8px;white-space:pre-wrap;min-height:15px}" +
+      // план изменений (dry-run): что именно произойдёт по нажатию
+      ".qh-adm-plan{margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(12,8,4,.6);" +
+        "border:1px solid rgba(224,162,74,.22);max-height:280px;overflow:auto}" +
+      ".qh-plan-grp{margin-bottom:9px}.qh-plan-grp:last-child{margin-bottom:0}" +
+      ".qh-plan-t{font-size:11.5px;font-weight:700;color:#e0c48a;margin-bottom:3px}" +
+      ".qh-plan-grp.good .qh-plan-t{color:#a8dd93}.qh-plan-grp.warn .qh-plan-t{color:#f0a68d}" +
+      ".qh-plan-grp.gold .qh-plan-t{color:#ffd98a}" +
+      ".qh-adm-plan ul{margin:0;padding-left:16px}" +
+      ".qh-adm-plan li{font-size:11.5px;color:#cbb388;line-height:1.5}" +
+      ".qh-plan-note{font-size:11.5px;color:#9fb8d0;margin-top:6px}" +
       ".qh-weeks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}" +
       ".qh-wtab{font-size:11.5px;padding:4px 10px;border-radius:16px;cursor:pointer;background:rgba(20,14,7,.6);" +
         "border:1px solid rgba(224,162,74,.3);color:#cbb388}" +
@@ -6949,99 +6971,214 @@
 
   // открыть полноэкранный обзор истории (список недель + богатый рендер)
   // ── АДМИН: управление уже опубликованным отчётом прямо из истории ──
-  // Раньше любую ошибку публикации (не тот этап, забытый цилинь, «не забрал») чинили руками
-  // в базе. Здесь — те же операции кнопками: откат, перевыпуск, правка цилиня, возврат людей.
+  // Отчёт — обратимая операция: его можно откатить (очередь вернётся как была), посмотреть
+  // и применить снова. Перед любым таким шагом показываем ПОИМЁННО, что изменится: план
+  // считает сервер тем же кодом, что и само действие (dry-run), поэтому превью не врёт.
+  function qhQName(q) { return ["обычная", "редкие (R)", "легендарные (S)", "мифические (SS)"][q] || ("очередь " + q); }
+
   function qhAdminPanelHtml(d) {
     var rep = d.report || {};
     var rolled = d.rolled_back_at || "";
     var cil = (rep.cilin_given || []).join(", ");
-    var when = d.at ? new Date(d.at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    function dt(s) {
+      return s ? new Date(s).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    }
     var chans = Object.keys(d.channels || {}).map(function (k) { return k + ":" + d.channels[k]; }).join(" · ");
+    var state = rolled
+      ? '<span class="qh-adm-badge is-off">ОТКАЧЕН ' + esc(dt(rolled)) + "</span>"
+      : '<span class="qh-adm-badge is-on">ПРИМЕНЁН</span>';
+    var moveBtn = rolled
+      ? '<button class="qh-fwd" id="qha-reapply"' + (d.can_reapply ? "" : " disabled") + '>↪ Применить снова</button>'
+      : '<button class="qh-danger" id="qha-rollback"' + (d.can_rollback ? "" : " disabled") + ">↩ Откатить очередь</button>";
+    var blocked = rolled ? (d.can_reapply ? "" : d.reapply_blocked) : (d.can_rollback ? "" : d.rollback_blocked);
     return '<div class="qh-adm">' +
-      '<div class="qh-adm-head">' +
-        '<b>Отчёт #' + d.id + '</b> · ' + esc(String(d.stages)) + ' эт. · ' + esc(when) +
-        (chans ? ' · <span style="color:#8a795a">' + esc(chans) + "</span>" : "") +
-        (rolled ? ' <span class="qh-adm-badge">ОТКАЧЕН ' +
-            esc(new Date(rolled).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) + "</span>" : "") +
+      '<div class="qh-adm-head"><b>Отчёт #' + d.id + "</b> · " + esc(String(d.stages)) + " эт. · " + esc(dt(d.at)) +
+        (chans ? ' · <span class="qh-adm-dim">' + esc(chans) + "</span>" : "") + " " + state +
+        (d.note ? ' <span class="qh-adm-dim">· ' + esc(d.note) + "</span>" : "") +
       "</div>" +
-      '<div class="qh-adm-row">' +
-        '<button class="sec" id="qha-resend-dm">👁 Прислать мне в личку</button>' +
-        '<button id="qha-resend">🔁 Перевыпустить в офиц. чаты</button>' +
-        '<button class="sec" id="qha-rollback"' + (d.can_rollback ? "" : " disabled") +
-          ' title="' + esc(d.can_rollback ? "Очередь вернётся к состоянию до публикации" : (d.rollback_blocked || "")) +
-          '">↩ Откатить распределение' + (d.served_count ? " (вернёт " + d.served_count + ")" : "") + "</button>" +
-        (d.can_rollback ? "" : '<span class="qh-adm-hint">' + esc(d.rollback_blocked || "") + "</span>") +
+
+      '<div class="qh-adm-sec"><div class="qh-adm-cap">Публикация</div>' +
+        '<div class="qh-adm-row">' +
+          '<button class="sec" id="qha-resend-dm">👁 Прислать мне в личку</button>' +
+          '<button class="sec" id="qha-resend">🔁 Перевыпустить в офиц. чаты</button>' +
+          '<span class="qh-adm-hint">текст и картинка те же, очередь не трогается</span>' +
+        "</div></div>" +
+
+      '<div class="qh-adm-sec"><div class="qh-adm-cap">Очередь</div>' +
+        '<div class="qh-adm-row">' +
+          '<button class="sec" id="qha-plan">👁 Что изменится</button>' + moveBtn +
+          (blocked ? '<span class="qh-adm-hint">' + esc(blocked) + "</span>" : "") +
+        "</div>" +
+        '<div class="qh-adm-plan" id="qha-plan-box" hidden></div>' +
       "</div>" +
-      '<div class="qh-adm-row">' +
-        '<label class="qh-adm-lbl">🐲 Цилинь выдан</label>' +
-        '<input id="qha-cilin" value="' + esc(cil) + '" placeholder="ники через запятую (пусто = никому)">' +
-        '<button class="sec" id="qha-cilin-save">Сохранить</button>' +
-      "</div>" +
-      '<div class="qh-adm-row">' +
-        '<label class="qh-adm-lbl">📦 Не забрали</label>' +
-        '<input id="qha-unc" placeholder="ники через запятую — вернутся на свои места">' +
-        '<button class="sec" id="qha-unc-go">↩ Вернуть в очередь</button>' +
-      "</div>" +
-      '<div class="qh-adm-row">' +
-        '<label class="qh-adm-lbl">📝 Заметка</label>' +
-        '<input id="qha-note" value="' + esc(d.note || "") + '" placeholder="для себя: что не так с этим отчётом">' +
-        '<button class="sec" id="qha-note-save">Сохранить</button>' +
+
+      '<div class="qh-adm-sec"><div class="qh-adm-cap">Правки</div>' +
+        '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-cilin">🐲 Цилинь выдан</label>' +
+          '<input id="qha-cilin" value="' + esc(cil) + '" placeholder="ники через запятую (пусто = никому)">' +
+          '<button class="sec" id="qha-cilin-save">Сохранить</button></div>' +
+        '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-unc">📦 Не забрали</label>' +
+          '<input id="qha-unc" placeholder="ники через запятую — вернутся на свои места">' +
+          '<button class="sec" id="qha-unc-go">↩ Вернуть в очередь</button></div>' +
+        '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-note">📝 Заметка</label>' +
+          '<input id="qha-note" value="' + esc(d.note || "") + '" placeholder="для себя: что не так с этим отчётом">' +
+          '<button class="sec" id="qha-note-save">Сохранить</button></div>' +
       "</div>" +
       '<div class="qh-adm-out" id="qha-out"></div>' +
       "</div>";
   }
 
+  // План из dry-run сервера → человекочитаемый список. Тот же текст идёт в подтверждение,
+  // чтобы админ соглашался ровно на то, что увидел.
+  function qhPlanHtml(p) {
+    if (!p || p.ok === false) return '<div class="qh-adm-warn">' + esc((p && p.error) || "не удалось посчитать") + "</div>";
+    var s = p.steps || {}, out = [];
+    function list(title, arr, fmt, cls) {
+      if (!arr || !arr.length) return;
+      out.push('<div class="qh-plan-grp' + (cls ? " " + cls : "") + '"><div class="qh-plan-t">' + esc(title) +
+        " · " + arr.length + "</div><ul>" +
+        arr.slice(0, 40).map(function (x) { return "<li>" + fmt(x) + "</li>"; }).join("") +
+        (arr.length > 40 ? "<li>…ещё " + (arr.length - 40) + "</li>" : "") + "</ul></div>");
+    }
+    if (p.action === "rollback") {
+      list("Вернутся в очередь", s.back, function (x) {
+        return "<b>" + esc(x.nick) + "</b> → " + esc(qhQName(x.queue)) + ", место " + esc(String(x.pos));
+      }, "good");
+      list("Жетоны ТОП-3 вернутся", s.jetons, function (x) {
+        return "<b>" + esc(x.nick) + "</b> → захват вне очереди" + (x.stacks ? " ×" + x.stacks : "");
+      }, "gold");
+      list("Записи вернутся к прежнему виду", s.fixed, function (x) {
+        return "<b>" + esc(x.nick) + "</b> (" + esc(qhQName(x.queue)) + "): " + esc((x.changes || []).join(", "));
+      });
+      if (p.marker_off) out.push('<div class="qh-plan-note">Недельный маркер снимется — отчёт можно будет опубликовать заново со сдвигом.</div>');
+      if (!out.length) out.push('<div class="qh-plan-note">Изменений нет — очередь уже в этом состоянии.</div>');
+    } else {
+      list("Выйдут из очереди", s.leave, function (x) {
+        return "<b>" + esc(x.nick) + "</b> — " + esc(qhQName(x.queue)) + ", место " + esc(String(x.pos));
+      }, "warn");
+      list("Уйдут в конец очереди (🔁)", s.requeue, function (x) {
+        return "<b>" + esc(x.nick) + "</b> — " + esc(qhQName(x.queue)) + " · " + esc(x.why || "");
+      });
+      list("Останутся за недополученным", s.stay_partial, function (x) {
+        return "<b>" + esc(x.nick) + "</b> — ждёт: " + esc((x.missing || []).join(", "));
+      }, "good");
+      list("Останутся (отмечены «не забрал»)", s.stay_uncollected, function (x) {
+        return "<b>" + esc(x.nick) + "</b> — " + esc(qhQName(x.queue));
+      }, "good");
+      if (p.jetons_spent && p.jetons_spent.length) {
+        list("Жетоны ТОП-3 спишутся", p.jetons_spent, function (x) {
+          return "<b>" + esc(x.nick) + "</b>" + (x.stacks ? " ×" + x.stacks : "");
+        }, "gold");
+      }
+      if (!out.length) out.push('<div class="qh-plan-note">Сдвигать некого — отчёт без получателей.</div>');
+    }
+    return out.join("");
+  }
+
+  function qhPlanSummary(p) {
+    if (!p || p.ok === false) return "";
+    var s = p.steps || {};
+    if (p.action === "rollback") {
+      return "Вернутся в очередь: " + ((s.back || []).length + (s.jetons || []).length) +
+        " · записей поправится: " + (s.fixed || []).length +
+        ((s.jetons || []).length ? " · жетонов ТОП-3: " + s.jetons.length : "");
+    }
+    return "Выйдут: " + (s.leave || []).length + " · в конец: " + (s.requeue || []).length +
+      " · останутся частично: " + (s.stay_partial || []).length;
+  }
+
   function bindQhAdmin(slot, d, reload) {
     var out = slot.querySelector("#qha-out");
-    function say(msg, bad) {
+    var planBox = slot.querySelector("#qha-plan-box");
+    function say(msg, kind) {
       if (!out) return;
-      out.textContent = msg;
-      out.style.color = bad ? "#e08b7a" : "#9fe0a0";
+      out.textContent = msg || "";
+      out.style.color = kind === "bad" ? "#ff9b86" : kind === "wait" ? "#c9b48f" : "#9fe0a0";
     }
-    function busy(btn, on) { if (btn) btn.disabled = !!on; }
     function call(btn, method, path, body, okMsg, after) {
-      busy(btn, true); say("…");
-      q(method, path, body).then(function (r) {
+      if (btn) btn.disabled = true;
+      say("Выполняю…", "wait");
+      return q(method, path, body).then(function (r) {
         say(typeof okMsg === "function" ? okMsg(r) : okMsg);
-        if (after) setTimeout(after, 700);
+        if (after) after(r);
+        return r;
       }).catch(function (e) {
-        say("Ошибка: " + (e.detail || e.message), true);
-      }).then(function () { busy(btn, false); });
+        say("Ошибка: " + (e.detail || e.message), "bad");
+      }).then(function (r) { if (btn) btn.disabled = false; return r; });
+    }
+    // после любого изменения очереди — обновляем и сцену, и полосы под ней (модалка открыта
+    // поверх, поллинг в это время молчит, поэтому дёргаем refresh вручную)
+    function afterQueueChange() {
+      try { refresh(); } catch (e) {}
+      setTimeout(reload, 500);
+    }
+    function loadPlan(show) {
+      return q("GET", "/queue/admin/report/" + d.id + "/plan").then(function (p) {
+        if (planBox && show) { planBox.innerHTML = qhPlanHtml(p); planBox.hidden = false; }
+        return p;
+      });
     }
     var b;
+    if ((b = slot.querySelector("#qha-plan"))) b.addEventListener("click", function () {
+      if (planBox && !planBox.hidden) { planBox.hidden = true; return; }
+      say("Считаю…", "wait");
+      loadPlan(true).then(function () { say(""); })
+        .catch(function (e) { say("Ошибка: " + (e.detail || e.message), "bad"); });
+    });
     if ((b = slot.querySelector("#qha-resend-dm"))) b.addEventListener("click", function () {
       call(b, "POST", "/queue/admin/report/" + d.id + "/resend", { dm: true }, "Отправила тебе в личку.");
     });
     if ((b = slot.querySelector("#qha-resend"))) b.addEventListener("click", function () {
-      if (!confirm("Переслать этот отчёт в офицерские TG и VK?\nОчередь не изменится.")) return;
+      if (!confirm("Переслать отчёт #" + d.id + " в офицерские TG и VK?\n\nОчередь не изменится — это только повторная отправка.")) return;
       call(b, "POST", "/queue/admin/report/" + d.id + "/resend", { dm: false },
         function (r) { return "Отправлено: " + JSON.stringify(r.channels || {}); });
     });
     if ((b = slot.querySelector("#qha-rollback"))) b.addEventListener("click", function () {
       if (b.disabled) return;
-      if (!confirm("Откатить распределение отчёта #" + d.id + "?\n\nОчередь вернётся к состоянию " +
-                   "НА МОМЕНТ публикации: вышедшие встанут на свои места, полученное обнулится.\n" +
-                   "Публиковать отчёт заново после этого можно как обычно.")) return;
-      call(b, "POST", "/queue/admin/report/" + d.id + "/rollback", {},
-        function (r) { return "Откачено: вернулось " + r.returned + ", поправлено " + r.updated + "."; }, reload);
+      var btn = b;
+      say("Считаю, что изменится…", "wait");
+      loadPlan(true).then(function (p) {
+        say("");
+        if (p.ok === false) { say(p.error || "нельзя откатить", "bad"); return; }
+        if (!confirm("ОТКАТИТЬ отчёт #" + d.id + "?\n\n" + qhPlanSummary(p) +
+            "\n\nОчередь вернётся к состоянию на момент публикации. Сообщения в чатах останутся — их удаляй сам.")) return;
+        call(btn, "POST", "/queue/admin/report/" + d.id + "/rollback", {},
+          function (r) { return "Откачено: вернулось " + r.returned + ", поправлено " + r.updated +
+            (r.priv_restored ? ", жетонов " + r.priv_restored : "") + ". Очередь на сцене обновлена."; },
+          afterQueueChange);
+      }).catch(function (e) { say("Ошибка: " + (e.detail || e.message), "bad"); });
+    });
+    if ((b = slot.querySelector("#qha-reapply"))) b.addEventListener("click", function () {
+      if (b.disabled) return;
+      var btn = b;
+      say("Считаю, что изменится…", "wait");
+      loadPlan(true).then(function (p) {
+        say("");
+        if (p.ok === false) { say(p.error || "нельзя применить", "bad"); return; }
+        if (!confirm("ПРИМЕНИТЬ отчёт #" + d.id + " снова?\n\n" + qhPlanSummary(p) +
+            "\n\nОчередь сдвинется так же, как при публикации. В чаты ничего не уйдёт.")) return;
+        call(btn, "POST", "/queue/admin/report/" + d.id + "/reapply", {},
+          function (r) { return "Применено: вышли " + r.left_removed + ", в конец " + r.requeued +
+            ", остались частично " + r.partial_stay + ". Очередь на сцене обновлена."; },
+          afterQueueChange);
+      }).catch(function (e) { say("Ошибка: " + (e.detail || e.message), "bad"); });
     });
     if ((b = slot.querySelector("#qha-cilin-save"))) b.addEventListener("click", function () {
       var v = (slot.querySelector("#qha-cilin").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       call(b, "PATCH", "/queue/admin/report/" + d.id, { cilin_given: v },
-        "Сохранено. Перевыпусти отчёт, чтобы правка ушла в чаты.", reload);
+        "Сохранено. Чтобы правка ушла в чаты — «Перевыпустить».", function () { setTimeout(reload, 600); });
     });
     if ((b = slot.querySelector("#qha-note-save"))) b.addEventListener("click", function () {
       call(b, "PATCH", "/queue/admin/report/" + d.id, { note: slot.querySelector("#qha-note").value || "" }, "Заметка сохранена.");
     });
     if ((b = slot.querySelector("#qha-unc-go"))) b.addEventListener("click", function () {
       var v = (slot.querySelector("#qha-unc").value || "").trim();
-      if (!v) { say("Впиши ники.", true); return; }
+      if (!v) { say("Впиши ники.", "bad"); return; }
       call(b, "POST", "/queue/admin/report/" + d.id + "/uncollected", { nicks: v, restore: true },
         function (r) {
           return "Вернула: " + (r.returned.join(", ") || "—") +
             (r.marked.length ? " · пометила: " + r.marked.join(", ") : "") +
             (r.not_found.length ? " · не нашла: " + r.not_found.join(", ") : "");
-        }, reload);
+        }, afterQueueChange);
     });
   }
 
