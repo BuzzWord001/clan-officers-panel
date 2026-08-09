@@ -575,6 +575,12 @@ def _people(conn) -> dict[str, dict]:
     """canon(ника) -> {nick, title, cls, main_nick, main_canon, is_twin, sources}.
     Источники: текущий снимок Доблести + активный реестр приёма."""
     idx: dict[str, dict] = {}
+    # НАПИСАНИЕ ника: приоритет источника, а не «кто первым попал в индекс».
+    # Один и тот же человек приходит из доблести (как распознал OCR) и из реестра приёма
+    # (Лир вносит ник, копируя из игры) — и раньше побеждала доблесть просто потому, что
+    # читалась первой. Отсюда 10.08 «Strannik» вместо «stRaNniK» во всех списках,
+    # построенных по персонам. Теперь: ручная правка ✎ → реестр → распознанное.
+    NICK_RANK = {"override": 3, "registry": 2, "valor": 1}
 
     def add(nick: str, title: str, cls: str, true_name: str, source: str):
         nick = (nick or "").strip()
@@ -591,9 +597,15 @@ def _people(conn) -> dict[str, dict]:
                 "true_name": (true_name or "").strip(),
                 "main_nick": main_nick, "main_canon": db._valor_canon(main_nick),
                 "is_twin": is_twin, "sources": {source},
+                "nick_rank": NICK_RANK.get(source, 0),
             }
         else:
             cur["sources"].add(source)
+            if NICK_RANK.get(source, 0) > cur.get("nick_rank", 0):
+                cur["nick"] = nick               # источник надёжнее — берём его написание
+                cur["nick_rank"] = NICK_RANK.get(source, 0)
+                if not cur["is_twin"]:
+                    cur["main_nick"] = nick      # сам себе мэйн — имя мэйна тоже обновляем
             if not cur["cls"] and cls:
                 cur["cls"] = cls.strip()
             if not cur.get("true_name") and true_name:
@@ -614,6 +626,19 @@ def _people(conn) -> dict[str, dict]:
     for r in conn.execute(
             "SELECT game_nick AS nick, title FROM acceptances WHERE COALESCE(archived,0)=0"):
         add(r["nick"], r["title"], "", "", "registry")
+    # Явная админ-коррекция написания (кнопка ✎ в доблести) — последнее слово. Раньше
+    # `_people` про неё вообще не знала, хотя таблица доблести её уже уважала: получалось,
+    # что на одной странице ник исправлен, а в очереди и отчётах — старый.
+    try:
+        for r in conn.execute("SELECT nick_canon, nick FROM valor_nick_override WHERE nick != ''"):
+            p = idx.get(r["nick_canon"])
+            if p is not None:
+                p["nick"] = r["nick"]
+                p["nick_rank"] = 3
+                if not p["is_twin"]:
+                    p["main_nick"] = r["nick"]
+    except Exception:
+        pass
     # Усечённые в игре титулы твинов: строка титула ограничена по длине, поэтому ~ПолныйМэйн~
     # мог обрезаться (напр. ~Vandellia~). Если мэйна из титула нет как реального игрока —
     # привяжем твина к настоящему мэйну по ОДНОЗНАЧНОМУ префиксу.
@@ -4593,6 +4618,7 @@ def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -
                             "(снимки пишутся с 03.08.2026)")
     restored, returned, priv_back = 0, 0, 0
     steps = {"back": [], "fixed": [], "jetons": []}
+    idx_live = _people(conn)          # в снимке ник застыл — показываем нынешнее написание
     for e in _snap_entries(snap):
         eid = e["id"]
         cur = conn.execute("SELECT * FROM queue_entries WHERE id=?", (eid,)).fetchone()
@@ -4613,8 +4639,8 @@ def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -
             if round(float(cur["pos"] or 0), 3) != round(float(e.get("pos") or 0), 3):
                 diffs.append("место %s → %s" % (cur["pos"], e.get("pos")))
             if diffs:
-                steps["fixed"].append({"nick": e.get("nick"), "queue": e.get("queue"),
-                                       "changes": diffs})
+                steps["fixed"].append({"nick": _live_nick(idx_live, e.get("main_canon"), e.get("nick")),
+                                       "queue": e.get("queue"), "changes": diffs})
             if not dry_run:
                 conn.execute(
                     "UPDATE queue_entries SET resource=?, resources=?, received=?, recipient=?,"
@@ -4631,7 +4657,8 @@ def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -
                     (eid, e.get("queue"), float(e.get("pos") or 0), e.get("main_canon") or "",
                      e.get("nick") or "", e.get("cls") or "") + vals + ("rollback", _now()))
             returned += 1
-            item = {"nick": e.get("nick"), "queue": e.get("queue"), "pos": e.get("pos"),
+            item = {"nick": _live_nick(idx_live, e.get("main_canon"), e.get("nick")),
+                    "queue": e.get("queue"), "pos": e.get("pos"),
                     "resource": e.get("resource")}
             if e.get("privileged"):
                 priv_back += 1
@@ -4981,6 +5008,17 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
 QUEUE_NAMES = {0: "обычная", 1: "редкие (R)", 2: "легендарные (S)", 3: "мифические (SS)"}
 
 
+def _live_nick(idx: dict, canon: str, fallback: str = "") -> str:
+    """Актуальное написание ника по канону.
+
+    Ники в снимках и отчётах застывают такими, какими были в момент публикации. Если позже
+    написание поправили (реестр, кнопка ✎), старые списки продолжали показывать прежнее —
+    10.08 в «не забрали» висел «Strannik», хотя человек давно «stRaNniK». Везде, где ник
+    берётся из сохранённых данных, прогоняем его через эту функцию."""
+    p = idx.get(canon) or {}
+    return p.get("nick") or fallback or canon
+
+
 @router.get("/served-last")
 def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
     """Кто «получил» ресурс на последней раздаче и уже вышел из очереди — готовый список
@@ -4988,15 +5026,16 @@ def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
     прежнее место, откуда снимок (отчёт или цилинь) и когда."""
     with db.connection() as conn:
         rows = conn.execute(
-            "SELECT id, queue, orig_pos, nick, resource, added_by, served_at, resources"
+            "SELECT id, queue, orig_pos, main_canon, nick, resource, added_by, served_at, resources"
             " FROM queue_served_last ORDER BY added_by, queue, orig_pos").fetchall()
+        idx = _people(conn)          # актуальные написания ников
     out = []
     for r in rows:
         keys = r.keys()
         extra = _jlist(r["resources"] if "resources" in keys else "")
         out.append({
             "id": r["id"], "queue": r["queue"], "queue_name": QUEUE_NAMES.get(r["queue"], str(r["queue"])),
-            "nick": r["nick"], "pos": r["orig_pos"],
+            "nick": _live_nick(idx, r["main_canon"], r["nick"]), "pos": r["orig_pos"],
             "resource": distribution.res_name(r["resource"]) if r["resource"] else "",
             "resource_key": r["resource"] or "",
             # весь выбор человека — чтобы в списке было видно, за чем он стоял
@@ -5028,11 +5067,12 @@ def _uncollected_people(conn) -> dict:
     import json as _json
     r = _last_live_report(conn)
     people: dict[str, dict] = {}
+    idx = _people(conn)          # актуальные написания ников
 
     def slot(canon, nick):
         if canon not in people:
-            people[canon] = {"canon": canon, "nick": nick, "queues": [], "got": {},
-                             "out": 0, "stayed": 0, "cilin": False}
+            people[canon] = {"canon": canon, "nick": _live_nick(idx, canon, nick), "queues": [],
+                             "got": {}, "out": 0, "stayed": 0, "cilin": False}
         return people[canon]
 
     if r:
@@ -5133,6 +5173,7 @@ def return_people(payload: ReturnPeopleIn, request: Request,
                 snap = _json.loads(r["snapshot"]) if r["snapshot"] else {}
             except (ValueError, TypeError):
                 snap = {}
+        idx = _people(conn)          # актуальные написания ников
         by_canon: dict[str, list] = {}
         for e in _snap_entries(snap):
             by_canon.setdefault(e.get("main_canon") or "", []).append(e)
@@ -5159,7 +5200,7 @@ def return_people(payload: ReturnPeopleIn, request: Request,
             if not back and not fixed:
                 misses.append(canon)
                 continue
-            nick = (by_canon.get(canon) or [{}])[0].get("nick") or canon
+            nick = _live_nick(idx, canon, (by_canon.get(canon) or [{}])[0].get("nick") or canon)
             done.append({"canon": canon, "nick": nick, "returned": back, "cleared": fixed})
             _log(conn, "uncollected", actor=_actor_name(actor), nick=nick, request=request,
                  detail="не забрал — возвращён по всем очередям раздачи: вернулось %d, "
@@ -5182,13 +5223,15 @@ def restore_served(payload: RestoreServedIn, request: Request,
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Никто не отмечен")
     done, missing = [], []
     with db.connection() as conn:
+        idx = _people(conn)
         for sid in payload.ids:
             s = conn.execute("SELECT * FROM queue_served_last WHERE id=?", (sid,)).fetchone()
             if not s:
                 missing.append(sid)
                 continue
             _restore_served_row(conn, s, _actor_name(actor), request)
-            done.append({"nick": s["nick"], "queue": s["queue"],
+            done.append({"nick": _live_nick(idx, s["main_canon"], s["nick"]),
+                         "queue": s["queue"],
                          "queue_name": QUEUE_NAMES.get(s["queue"], str(s["queue"])),
                          "pos": s["orig_pos"]})
     return {"ok": True, "restored": done, "missing": missing}
