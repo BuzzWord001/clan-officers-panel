@@ -4978,17 +4978,60 @@ def mark_uncollected(payload: MarkUncollectedIn, request: Request,
     return {"ok": True}
 
 
+QUEUE_NAMES = {0: "обычная", 1: "редкие (R)", 2: "легендарные (S)", 3: "мифические (SS)"}
+
+
 @router.get("/served-last")
 def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
-    """Кто «получил» ресурс на ПОСЛЕДНЕЙ финализации (вс 00:00) и уже вышел из очереди.
-    Если офицер не успел отметить «не забрал» до сдвига — отсюда его можно вернуть."""
+    """Кто «получил» ресурс на последней раздаче и уже вышел из очереди — готовый список
+    для отметки «не забрал». Отдаём всё, что нужно показать галочками: очередь, ресурс,
+    прежнее место, откуда снимок (отчёт или цилинь) и когда."""
     with db.connection() as conn:
         rows = conn.execute(
-            "SELECT id, queue, orig_pos, nick, resource FROM queue_served_last ORDER BY queue, orig_pos"
-        ).fetchall()
-    out = [{"id": r["id"], "queue": r["queue"], "nick": r["nick"],
-            "resource": distribution.res_name(r["resource"]) if r["resource"] else ""} for r in rows]
+            "SELECT id, queue, orig_pos, nick, resource, added_by, served_at, resources"
+            " FROM queue_served_last ORDER BY added_by, queue, orig_pos").fetchall()
+    out = []
+    for r in rows:
+        keys = r.keys()
+        extra = _jlist(r["resources"] if "resources" in keys else "")
+        out.append({
+            "id": r["id"], "queue": r["queue"], "queue_name": QUEUE_NAMES.get(r["queue"], str(r["queue"])),
+            "nick": r["nick"], "pos": r["orig_pos"],
+            "resource": distribution.res_name(r["resource"]) if r["resource"] else "",
+            "resource_key": r["resource"] or "",
+            # весь выбор человека — чтобы в списке было видно, за чем он стоял
+            "resources": [distribution.res_name(x) for x in extra],
+            "source": ("цилинь" if r["added_by"] == "cilin" else "отчёт"),
+            "at": r["served_at"] or "",
+        })
     return {"served": out}
+
+
+class RestoreServedIn(BaseModel):
+    ids: list[int] = Field(default_factory=list)   # id строк queue_served_last
+
+
+@router.post("/admin/restore-served")
+def restore_served(payload: RestoreServedIn, request: Request,
+                   actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Вернуть в очередь ОТМЕЧЕННЫХ галочками (по id снимка, а не по никам).
+
+    По id надёжнее ручного ввода: не путаются тёзки и твины, и человек, стоявший в
+    нескольких очередях, возвращается ровно туда, где не получил."""
+    if not payload.ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Никто не отмечен")
+    done, missing = [], []
+    with db.connection() as conn:
+        for sid in payload.ids:
+            s = conn.execute("SELECT * FROM queue_served_last WHERE id=?", (sid,)).fetchone()
+            if not s:
+                missing.append(sid)
+                continue
+            _restore_served_row(conn, s, _actor_name(actor), request)
+            done.append({"nick": s["nick"], "queue": s["queue"],
+                         "queue_name": QUEUE_NAMES.get(s["queue"], str(s["queue"])),
+                         "pos": s["orig_pos"]})
+    return {"ok": True, "restored": done, "missing": missing}
 
 
 @router.post("/restore-uncollected")

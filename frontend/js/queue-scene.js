@@ -2132,6 +2132,16 @@
       "color:#1b1006;background:linear-gradient(180deg,#ffe486,#eab531);box-shadow:0 8px 26px rgba(0,0,0,.5)}" +
     "#qs-ztoast.show{opacity:1;transform:translateX(-50%) translateY(0)}" +
     ".qs-stage.admin .q-char-x,.qs-stage.admin .q-char-mv{display:flex}" +
+    // список «не забрали»: галочки вместо ручного ввода ников
+    ".qd-ret-box{max-height:240px;overflow:auto;border:1px solid rgba(120,170,255,.25);border-radius:8px;" +
+      "background:rgba(8,12,22,.5);padding:5px 7px}" +
+    ".qd-ret-item{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 5px;border-radius:6px;" +
+      "font-size:11.5px;color:#dfe8f5;cursor:pointer}" +
+    ".qd-ret-item:hover{background:rgba(120,170,255,.1)}" +
+    ".qd-ret-item input{accent-color:#6f9fe0;width:15px;height:15px;cursor:pointer;flex:none}" +
+    ".qd-ret-nick{font-weight:700;color:#ffe8bd;min-width:110px}" +
+    ".qd-ret-res{color:#a8dd93}" +
+    ".qd-ret-dim{color:#7f8ea3}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
       ".q-char-name{font:700 9px/1.3 Georgia,serif;max-width:74px}" +
@@ -7016,9 +7026,18 @@
         '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-cilin">🐲 Цилинь выдан</label>' +
           '<input id="qha-cilin" value="' + esc(cil) + '" placeholder="ники через запятую (пусто = никому)">' +
           '<button class="sec" id="qha-cilin-save">Сохранить</button></div>' +
-        '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-unc">📦 Не забрали</label>' +
-          '<input id="qha-unc" placeholder="ники через запятую — вернутся на свои места">' +
-          '<button class="sec" id="qha-unc-go">↩ Вернуть в очередь</button></div>' +
+        '<div class="qh-adm-row" style="align-items:flex-start">' +
+          '<label class="qh-adm-lbl">📦 Не забрали</label>' +
+          '<div style="flex:1 1 320px;min-width:0">' +
+            '<div id="qha-unc-box" class="qd-ret-box">Загрузка списка…</div>' +
+            '<div class="qh-adm-row" style="margin-top:6px">' +
+              '<button class="sec" id="qha-unc-go">↩ Вернуть отмеченных</button>' +
+              '<button class="sec" id="qha-unc-all">✓ отметить всех</button>' +
+              '<button class="sec" id="qha-unc-reload">↻ обновить</button>' +
+              '<span id="qha-unc-count" class="qh-adm-hint"></span>' +
+            "</div>" +
+          "</div>" +
+        "</div>" +
         '<div class="qh-adm-row"><label class="qh-adm-lbl" for="qha-note">📝 Заметка</label>' +
           '<input id="qha-note" value="' + esc(d.note || "") + '" placeholder="для себя: что не так с этим отчётом">' +
           '<button class="sec" id="qha-note-save">Сохранить</button></div>' +
@@ -7170,15 +7189,52 @@
     if ((b = slot.querySelector("#qha-note-save"))) b.addEventListener("click", function () {
       call(b, "PATCH", "/queue/admin/report/" + d.id, { note: slot.querySelector("#qha-note").value || "" }, "Заметка сохранена.");
     });
+    // «не забрали» — галочками по списку вышедших, без ручного ввода ников
+    function uncCount() {
+      var box = slot.querySelector("#qha-unc-box"), el = slot.querySelector("#qha-unc-count");
+      if (!box || !el) return;
+      var all = box.querySelectorAll(".qd-ret-cb").length;
+      el.textContent = all ? ("отмечено " + box.querySelectorAll(".qd-ret-cb:checked").length + " из " + all) : "";
+    }
+    function uncLoad() {
+      var box = slot.querySelector("#qha-unc-box");
+      if (!box) return;
+      box.textContent = "Загрузка списка…";
+      q("GET", "/queue/served-last").then(function (r) {
+        var s = r.served || [];
+        if (!s.length) {
+          box.innerHTML = '<div class="qh-adm-hint">Некого возвращать — из очереди никто не выходил.</div>';
+          uncCount(); return;
+        }
+        box.innerHTML = s.map(function (x) {
+          return '<label class="qd-ret-item"><input type="checkbox" class="qd-ret-cb" value="' + x.id + '">' +
+            '<span class="qd-ret-nick">' + esc(x.nick) + "</span>" +
+            '<span class="qd-ret-dim">' + esc(x.queue_name) + " · место " + esc(String(x.pos)) + "</span>" +
+            '<span class="qd-ret-res">' + esc(x.resource || "—") + "</span>" +
+            '<span class="qd-ret-dim">' + esc(x.source) + "</span></label>";
+        }).join("");
+        [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) { c.addEventListener("change", uncCount); });
+        uncCount();
+      }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
+    }
+    uncLoad();
+    if ((b = slot.querySelector("#qha-unc-reload"))) b.addEventListener("click", uncLoad);
+    if ((b = slot.querySelector("#qha-unc-all"))) b.addEventListener("click", function () {
+      [].forEach.call(slot.querySelectorAll("#qha-unc-box .qd-ret-cb"), function (c) { c.checked = true; });
+      uncCount();
+    });
     if ((b = slot.querySelector("#qha-unc-go"))) b.addEventListener("click", function () {
-      var v = (slot.querySelector("#qha-unc").value || "").trim();
-      if (!v) { say("Впиши ники.", "bad"); return; }
-      call(b, "POST", "/queue/admin/report/" + d.id + "/uncollected", { nicks: v, restore: true },
+      var boxes = slot.querySelectorAll("#qha-unc-box .qd-ret-cb:checked");
+      var ids = [].map.call(boxes, function (c) { return parseInt(c.value, 10); });
+      if (!ids.length) { say("Отметь галочками тех, кто не забрал.", "bad"); return; }
+      var names = [].map.call(boxes, function (c) { return c.parentElement.querySelector(".qd-ret-nick").textContent; });
+      if (!confirm("Вернуть в очередь " + ids.length + " чел.?\n\n" + names.join(", ") +
+                   "\n\nКаждый встанет на своё прежнее место за свой ресурс.")) return;
+      call(b, "POST", "/queue/admin/restore-served", { ids: ids },
         function (r) {
-          return "Вернула: " + (r.returned.join(", ") || "—") +
-            (r.marked.length ? " · пометила: " + r.marked.join(", ") : "") +
-            (r.not_found.length ? " · не нашла: " + r.not_found.join(", ") : "");
-        }, afterQueueChange);
+          return "Вернула: " + ((r.restored || []).map(function (x) {
+            return x.nick + " → " + x.queue_name + ", место " + x.pos; }).join("; ") || "—");
+        }, function () { afterQueueChange(); uncLoad(); });
     });
   }
 
@@ -7562,13 +7618,18 @@
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
         'background:rgba(120,170,255,.06);border:1px solid rgba(120,170,255,.35);border-radius:9px;padding:9px 11px">' +
         '<div style="font-size:12.5px;color:#cfe0ff;font-weight:700">↩ Не забрали ресурсы (вернуть в очередь)</div>' +
-        '<div style="font-size:11px;color:#8a795a">Ники тех, кто не забрал (после отчёта/цилиня) — вернутся на своё ' +
+        '<div style="font-size:11px;color:#8a795a">Отметь галочками тех, кто не забрал — вернутся на своё ' +
           'место за свой ресурс, в ту очередь, где не получили. Работает и после 00:00.</div>' +
-        '<textarea id="qd-ret-nicks" rows="2" placeholder="Ник1, Ник2…" autocomplete="off" ' +
-          'style="resize:vertical;width:100%"></textarea>' +
-        '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
-          '<button id="qd-ret-go" style="font-weight:700">↩ Вернуть в очередь</button>' +
-          '<button class="sec" id="qd-ret-list">📋 показать получивших на этой неделе</button>' +
+        // Список получивших с галочками. Ники руками больше не вводим: возврат идёт по id
+        // снимка, поэтому тёзки и твины не путаются, а человек из нескольких очередей
+        // возвращается ровно туда, где не получил.
+        '<div id="qd-ret-list-box" class="qd-ret-box">Загрузка списка…</div>' +
+        '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<button id="qd-ret-go" style="font-weight:700">↩ Вернуть отмеченных</button>' +
+          '<button class="sec" id="qd-ret-all">✓ отметить всех</button>' +
+          '<button class="sec" id="qd-ret-none">✗ снять отметки</button>' +
+          '<button class="sec" id="qd-ret-list">↻ обновить</button>' +
+          '<span id="qd-ret-count" style="font-size:11px;color:#8a795a"></span>' +
         "</div>" +
         '<div id="qd-ret-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap"></div>' +
       "</div>" +
@@ -7777,26 +7838,71 @@
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     // ── Не забрали ресурсы: вернуть по никам ──
-    wrap.querySelector("#qd-ret-go").addEventListener("click", function () {
-      var raw = wrap.querySelector("#qd-ret-nicks").value.trim();
-      if (!raw) { status("Укажи хотя бы один ник."); return; }
-      status("Возвращаю в очередь…");
-      q("POST", "/queue/admin/return-nicks", { nicks: raw }).then(function (d) {
-        wrap.querySelector("#qd-ret-out").textContent = "✓ вернул: " + ((d.returned || []).join(", ") || "—") +
-          ((d.not_found || []).length ? "\n⚠ не найдены среди получивших: " + d.not_found.join(", ") : "");
-        status("✓ Возвращено: " + ((d.returned || []).length) + ((d.not_found || []).length ? " · не найдено: " + d.not_found.length : ""),
-          (d.returned || []).length > 0);
-        refresh();
-      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-    });
-    wrap.querySelector("#qd-ret-list").addEventListener("click", function () {
-      var out = wrap.querySelector("#qd-ret-out"); out.textContent = "Загрузка…";
-      q("GET", "/queue/served-last").then(function (d) {
+    // ── список «кто получил» с галочками ──
+    function retCount() {
+      var box = wrap.querySelector("#qd-ret-list-box");
+      var el = wrap.querySelector("#qd-ret-count");
+      if (!box || !el) return 0;
+      var n = box.querySelectorAll(".qd-ret-cb:checked").length;
+      var all = box.querySelectorAll(".qd-ret-cb").length;
+      el.textContent = all ? ("отмечено " + n + " из " + all) : "";
+      return n;
+    }
+    function retLoad() {
+      var box = wrap.querySelector("#qd-ret-list-box");
+      if (!box) return;
+      box.textContent = "Загрузка списка…";
+      return q("GET", "/queue/served-last").then(function (d) {
         var s = d.served || [];
-        out.textContent = s.length
-          ? s.map(function (x) { return "• " + x.nick + (x.resource ? " (" + x.resource + ")" : ""); }).join("\n")
-          : "список пуст (ещё не было отчёта/цилиня на этой неделе)";
-      }).catch(function (e) { out.textContent = "Ошибка: " + (e.detail || e.message); });
+        if (!s.length) {
+          box.innerHTML = '<div style="color:#8a795a;font-size:11.5px">Пока некого возвращать: ' +
+            "на этой неделе никто не выходил из очереди (не было отчёта или раздачи цилиня).</div>";
+          retCount();
+          return;
+        }
+        box.innerHTML = s.map(function (x) {
+          var extra = (x.resources && x.resources.length > 1)
+            ? ' <span class="qd-ret-dim">(стоял за: ' + esc(x.resources.join(", ")) + ")</span>" : "";
+          return '<label class="qd-ret-item"><input type="checkbox" class="qd-ret-cb" value="' + x.id + '">' +
+            '<span class="qd-ret-nick">' + esc(x.nick) + "</span>" +
+            '<span class="qd-ret-dim">' + esc(x.queue_name) + " · место " + esc(String(x.pos)) + "</span>" +
+            '<span class="qd-ret-res">' + esc(x.resource || "—") + "</span>" +
+            '<span class="qd-ret-dim">' + esc(x.source) + "</span>" + extra + "</label>";
+        }).join("");
+        [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) {
+          c.addEventListener("change", retCount);
+        });
+        retCount();
+      }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
+    }
+    retLoad();     // список подтягивается сразу — вводить ничего не нужно
+    wrap.querySelector("#qd-ret-list").addEventListener("click", retLoad);
+    wrap.querySelector("#qd-ret-all").addEventListener("click", function () {
+      [].forEach.call(wrap.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = true; });
+      retCount();
+    });
+    wrap.querySelector("#qd-ret-none").addEventListener("click", function () {
+      [].forEach.call(wrap.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = false; });
+      retCount();
+    });
+    wrap.querySelector("#qd-ret-go").addEventListener("click", function () {
+      var ids = [].map.call(wrap.querySelectorAll(".qd-ret-cb:checked"), function (c) { return parseInt(c.value, 10); });
+      if (!ids.length) { status("Отметь галочками тех, кто не забрал."); return; }
+      var names = [].map.call(wrap.querySelectorAll(".qd-ret-cb:checked"), function (c) {
+        return c.parentElement.querySelector(".qd-ret-nick").textContent;
+      });
+      if (!confirm("Вернуть в очередь " + ids.length + " чел.?\n\n" + names.join(", ") +
+                   "\n\nКаждый встанет на своё прежнее место за свой ресурс.")) return;
+      status("Возвращаю в очередь…");
+      q("POST", "/queue/admin/restore-served", { ids: ids }).then(function (d) {
+        var r = d.restored || [];
+        wrap.querySelector("#qd-ret-out").textContent = r.length
+          ? "✓ вернул: " + r.map(function (x) { return x.nick + " → " + x.queue_name + ", место " + x.pos; }).join("; ")
+          : "никого не вернул";
+        status("✓ Возвращено: " + r.length, r.length > 0);
+        refresh();          // сцена и полосы очередей обновляются сразу
+        retLoad();          // вернувшиеся исчезают из списка
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     wrap.querySelector("#qd-prune").addEventListener("click", function () {
       if (!confirm("Убрать из очередей всех, кого нет в текущем списке клана (вылетевших)?")) return;
