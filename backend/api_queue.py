@@ -4370,12 +4370,27 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     with db.connection() as conn:
         main = _build_report(conn, stages_override=lo)
         delta = _build_report(conn, stages_override=hi, stages_from=lo) if hi > lo else None
+    # ЗАЩИТА ОТ РАЗДАЧИ БЕЗ ДОБЛЕСТИ: движок сам сверяет каждого получателя с порогом его
+    # очереди. Непустой список = в расчёте баг (как 09.08, когда порог в q2 был отключён и
+    # чешуя ушла человеку с 0 доблести). В чаты такое не выпускаем.
+    viol = (main.get("threshold_violations") or []) + ((delta or {}).get("threshold_violations") or [])
+    if viol and payload.commit and not payload.force:
+        raise HTTPException(
+            status_code=400,
+            detail="Раздача нарушает пороги доблести (%d): %s. Публикация остановлена — "
+                   "это ошибка расчёта, а не данных. Если так и задумано, повтори с force."
+                   % (len(viol), "; ".join("%s — %d при пороге %d (очередь %d)"
+                                           % (v["nick"], v["valor"], v["threshold"], v["queue"])
+                                           for v in viol[:6])))
     text = distribution.format_report_compact(main, delta, _now_msk_str())
     img = _render_report_image(main, delta)     # картинка-рендер (None → шлём текстом)
     result = {"ok": True, "from_stages": lo, "to_stages": hi, "text": text, "image": bool(img),
               "groups": len(main.get("groups") or []),
               # предупреждение видно в превью — «доблесть не за эту неделю»
               **({"valor_week_warning": stale} if stale else {}),
+              # самопроверка порогов: пусто = раздача честная (видно и в превью, и после публикации)
+              "threshold_violations": viol,
+              "thresholds": main.get("thresholds") or {},
               "pet_queue": [{"nick": p["receiver"], "status": p["status"]}
                             for p in (main.get("pet_queue") or [])],
               # список «не хватило доблести за ресурс» — ТОЛЬКО для админ-панели, в отчёт не идёт

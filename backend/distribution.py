@@ -316,7 +316,25 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
             prov_people.sort(key=lambda p: p["receiver"].casefold())
             groups.insert(0, {"people": prov_people, "resources": prov_res, "provodnik": True})
 
+    # ── САМОПРОВЕРКА ПОРОГОВ (инвариант) ──
+    # Корень инцидента 09.08: 02.08 в q2 отключили порог одной строкой (`elig = rest_raw`),
+    # и заодно обнулили `low` — люди без доблести не попадали даже в админ-список «не хватило».
+    # Нарушение стало НЕВИДИМЫМ: в отчёте EvgeniY с 0 доблести выглядел законным получателем.
+    # Теперь движок сам проверяет итог: получил ресурс → обязан проходить порог своей очереди.
+    # api_queue не даст опубликовать отчёт с непустым threshold_violations (обход — только force).
+    violations = []
+    for Q in queues_out:
+        thr_q = Q["threshold"]
+        for row in Q["rows"]:
+            if row.get("status") in ("ok", "privileged") and row.get("got"):
+                v = row.get("valor") or 0
+                if v < thr_q:
+                    violations.append({"nick": row.get("nick", ""), "queue": Q["queue"],
+                                       "valor": v, "threshold": thr_q,
+                                       "got": list((row.get("got") or {}).keys())})
     return {
+        "threshold_violations": violations,   # получил, хотя доблести не хватает (должно быть пусто)
+        "thresholds": dict(QUEUE_THRESHOLD),  # чтобы порог был ВИДЕН в отчёте/панели, а не только в коде
         "stages": stages,
         "pet_count": pet_count,
         "shooters": shooter_rows,

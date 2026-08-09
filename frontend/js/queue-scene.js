@@ -7402,6 +7402,7 @@
             '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
           "</div>" +
         "</div>" +
+        '<div id="qd-rep-check" style="font-size:11px;white-space:pre-wrap;margin-bottom:5px;color:#9fe0a0"></div>' +
         '<div id="qd-rep-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>' +
         '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
           'padding:7px 9px;background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px;display:none"></div>' +
@@ -7532,6 +7533,26 @@
     }
     function showLow(d) {
       var lowEl = wrap.querySelector("#qd-rep-low");
+      // САМОПРОВЕРКА ПОРОГОВ. Пустой список — норма, показываем одной строкой, чтобы было
+      // видно, что доблесть вообще учитывалась (09.08 порог в легендарной очереди был
+      // отключён, и понять это по отчёту было невозможно).
+      var viol = d.threshold_violations || [], thr = d.thresholds || {};
+      var chk = wrap.querySelector("#qd-rep-check");
+      if (chk) {
+        var thrTxt = Object.keys(thr).length
+          ? " (обычные " + thr[0] + " · редкие " + thr[1] + " · легендарные " + thr[2] + " · SS " + thr[3] + ")" : "";
+        if (viol.length) {
+          chk.style.color = "#ff9b86";
+          chk.textContent = "⛔ РАЗДАЧА НАРУШАЕТ ПОРОГИ ДОБЛЕСТИ" + thrTxt + ":\n" +
+            viol.map(function (v) {
+              return "• " + v.nick + " — " + v.valor + " при пороге " + v.threshold +
+                     " (очередь " + v.queue + "): " + (v.got || []).join(", ");
+            }).join("\n") + "\nПубликация будет остановлена — это ошибка расчёта.";
+        } else {
+          chk.style.color = "#9fe0a0";
+          chk.textContent = "✓ Доблесть учтена: все получатели проходят порог своей очереди" + thrTxt;
+        }
+      }
       var lv = d.low_valor || [];
       if (!lv.length) { lowEl.style.display = "none"; lowEl.textContent = ""; return; }
       lowEl.style.display = "block";
