@@ -5007,6 +5007,166 @@ def served_last(_: dict = Depends(require_officer_or_admin)) -> dict:
     return {"served": out}
 
 
+class ReturnPeopleIn(BaseModel):
+    canons: list[str] = Field(default_factory=list)   # main_canon людей, которые не забрали
+
+
+def _last_live_report(conn):
+    """Последний НЕ откаченный отчёт — от него считаем, кому что выдали на этой раздаче."""
+    return conn.execute("SELECT * FROM queue_reports WHERE rolled_back_at=''"
+                        " ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def _uncollected_people(conn) -> dict:
+    """Кому в ПОСЛЕДНЕЙ раздаче реально что-то выдали — сгруппировано ПО ЧЕЛОВЕКУ.
+
+    Ресурсы выдаются человеку одной пачкой сразу по всем очередям, поэтому и «не забрал»
+    — состояние человека целиком, а не отдельной строки. Раньше список строился из
+    queue_served_last (только выбывшие), и получившие ЧАСТЬ выбранного (они остаются в
+    очереди за недополученным) в него не попадали: 10.08 так пропали Vanyta и Мерак,
+    хотя ресурсы им выдали. Теперь источник — сам отчёт плюс снимок раздачи цилиня."""
+    import json as _json
+    r = _last_live_report(conn)
+    people: dict[str, dict] = {}
+
+    def slot(canon, nick):
+        if canon not in people:
+            people[canon] = {"canon": canon, "nick": nick, "queues": [], "got": {},
+                             "out": 0, "stayed": 0, "cilin": False}
+        return people[canon]
+
+    if r:
+        try:
+            rep = _json.loads(r["report"]) if r["report"] else {}
+        except (ValueError, TypeError):
+            rep = {}
+        for Q in rep.get("queues") or []:
+            for row in Q.get("rows") or []:
+                if row.get("status") != "ok" or not (row.get("got") or {}):
+                    continue
+                cn = row.get("main_canon") or row.get("nick") or ""
+                p = slot(cn, row.get("nick") or cn)
+                left = row.get("id") is not None and conn.execute(
+                    "SELECT 1 FROM queue_entries WHERE id=?", (row["id"],)).fetchone() is None
+                p["queues"].append({
+                    "queue": Q.get("queue"), "queue_name": QUEUE_NAMES.get(Q.get("queue"), ""),
+                    "pos": row.get("pos"),
+                    "got": [{"key": k, "name": distribution.res_name(k), "amount": v}
+                            for k, v in (row.get("got") or {}).items()],
+                    "left_queue": bool(left),
+                })
+                for k, v in (row.get("got") or {}).items():
+                    p["got"][k] = p["got"].get(k, 0) + v
+                p["out" if left else "stayed"] += 1
+    # раздача цилиня живёт своим снимком — её получатель тоже мог не забрать питомца
+    for s in conn.execute("SELECT * FROM queue_served_last WHERE added_by='cilin'"):
+        p = slot(s["main_canon"] or s["nick"], s["nick"])
+        p["cilin"] = True
+        p["queues"].append({"queue": s["queue"], "queue_name": QUEUE_NAMES.get(s["queue"], ""),
+                            "pos": s["orig_pos"],
+                            "got": [{"key": s["resource"],
+                                     "name": distribution.res_name(s["resource"]), "amount": 1}],
+                            "left_queue": True})
+        p["out"] += 1
+    # Кого уже вернули? Отдельный флаг в базе не нужен — состояние очереди само отвечает:
+    # человек «ещё не возвращён», пока он числится в снимке выдачи ИЛИ у его записей остались
+    # следы раздачи (изменён выбор ресурсов / стоит отметка «получено»). Так возвращённые
+    # исчезают из списка сами и не возвращаются повторно.
+    snap = {}
+    if r:
+        try:
+            snap = _json.loads(r["snapshot"]) if r["snapshot"] else {}
+        except (ValueError, TypeError):
+            snap = {}
+    by_canon: dict[str, list] = {}
+    for e in _snap_entries(snap):
+        by_canon.setdefault(e.get("main_canon") or "", []).append(e)
+    served_canons = {row["main_canon"] for row in
+                     conn.execute("SELECT DISTINCT main_canon FROM queue_served_last")}
+    out = []
+    for p in people.values():
+        p["got_list"] = [{"name": distribution.res_name(k), "amount": v} for k, v in p["got"].items()]
+        p.pop("got", None)
+        dirty = False
+        for e in by_canon.get(p["canon"], []):
+            cur = conn.execute("SELECT resource, resources, received FROM queue_entries WHERE id=?",
+                               (e["id"],)).fetchone()
+            if not cur:
+                continue                     # вышел из очереди — это ловит served_canons
+            if (cur["resource"] or "") != (e.get("resource") or "") \
+                    or (cur["resources"] or "") != _jstore(_snap_resources(e)) \
+                    or (cur["received"] or "") != _jstore(_jlist(e.get("received"))):
+                dirty = True
+                break
+        p["returned"] = (p["canon"] not in served_canons) and not dirty
+        out.append(p)
+    out.sort(key=lambda x: (x["returned"], (x["nick"] or "").casefold()))
+    return {"report_id": (r["id"] if r else None),
+            "report_at": (r["created_at"] if r else ""), "people": out}
+
+
+@router.get("/admin/uncollected-candidates")
+def uncollected_candidates(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Список для галочек «не забрали»: все, кому на последней раздаче что-то выдали."""
+    with db.connection() as conn:
+        return _uncollected_people(conn)
+
+
+@router.post("/admin/return-people")
+def return_people(payload: ReturnPeopleIn, request: Request,
+                  actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Вернуть отмеченных ЦЕЛИКОМ: во все очереди, где им выдавали ресурсы этой раздачей.
+
+    Человек либо забрал всю пачку, либо не забрал ничего — половинчатого возврата не бывает.
+    Для выбывших восстанавливаем строку из снимка, для оставшихся (получили часть) —
+    возвращаем их запись к состоянию ДО раздачи: выбор ресурсов и отметку «получено»."""
+    import json as _json
+    if not payload.canons:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Никто не отмечен")
+    want = {c for c in payload.canons if c}
+    done, misses = [], []
+    with db.connection() as conn:
+        r = _last_live_report(conn)
+        snap = {}
+        if r:
+            try:
+                snap = _json.loads(r["snapshot"]) if r["snapshot"] else {}
+            except (ValueError, TypeError):
+                snap = {}
+        by_canon: dict[str, list] = {}
+        for e in _snap_entries(snap):
+            by_canon.setdefault(e.get("main_canon") or "", []).append(e)
+        for canon in want:
+            back, fixed = [], []
+            # 1) вышедшие из очереди — поднимаем из снимка «кто вышел»
+            for s in conn.execute("SELECT * FROM queue_served_last WHERE main_canon=?", (canon,)):
+                _restore_served_row(conn, s, _actor_name(actor), request)
+                back.append({"queue": s["queue"], "queue_name": QUEUE_NAMES.get(s["queue"], ""),
+                             "pos": s["orig_pos"]})
+            # 2) оставшиеся в очереди — снимаем следы выдачи (выбор ресурсов и «получено»)
+            for e in by_canon.get(canon, []):
+                cur = conn.execute("SELECT * FROM queue_entries WHERE id=?", (e["id"],)).fetchone()
+                if not cur:
+                    continue
+                res, ress, recv = (e.get("resource") or "", _jstore(_snap_resources(e)),
+                                   _jstore(_jlist(e.get("received"))))
+                if (cur["resource"] or "") == res and (cur["resources"] or "") == ress \
+                        and (cur["received"] or "") == recv:
+                    continue
+                conn.execute("UPDATE queue_entries SET resource=?, resources=?, received=?,"
+                             " not_collected=0 WHERE id=?", (res, ress, recv, e["id"]))
+                fixed.append({"queue": e.get("queue"), "queue_name": QUEUE_NAMES.get(e.get("queue"), "")})
+            if not back and not fixed:
+                misses.append(canon)
+                continue
+            nick = (by_canon.get(canon) or [{}])[0].get("nick") or canon
+            done.append({"canon": canon, "nick": nick, "returned": back, "cleared": fixed})
+            _log(conn, "uncollected", actor=_actor_name(actor), nick=nick, request=request,
+                 detail="не забрал — возвращён по всем очередям раздачи: вернулось %d, "
+                        "снята выдача у %d записей" % (len(back), len(fixed)))
+    return {"ok": True, "people": done, "not_found": misses}
+
+
 class RestoreServedIn(BaseModel):
     ids: list[int] = Field(default_factory=list)   # id строк queue_served_last
 

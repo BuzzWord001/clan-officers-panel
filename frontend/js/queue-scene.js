@@ -2142,6 +2142,13 @@
     ".qd-ret-nick{font-weight:700;color:#ffe8bd;min-width:110px}" +
     ".qd-ret-res{color:#a8dd93}" +
     ".qd-ret-dim{color:#7f8ea3}" +
+    // строка человека: ник + вся его выдача, снизу — очереди
+    ".qd-ret-person{align-items:flex-start;padding:6px 5px;border-bottom:1px solid rgba(120,170,255,.1)}" +
+    ".qd-ret-person:last-child{border-bottom:0}" +
+    ".qd-ret-main{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;flex:1 1 320px;min-width:0}" +
+    ".qd-ret-person.is-done{opacity:.5;cursor:default}" +
+    ".qd-ret-person.is-done:hover{background:none}" +
+    ".qd-ret-tick{width:15px;flex:none;color:#7f8ea3;text-align:center}" +
     "@media(max-width:640px){.qs-sign{font-size:10px;padding:3px 8px}" +
       ".qs-join{font-size:10.5px;padding:5px 9px}.qs-list{font-size:9.5px;padding:3px 7px}" +
       ".q-char-name{font:700 9px/1.3 Georgia,serif;max-width:74px}" +
@@ -6986,6 +6993,29 @@
   // считает сервер тем же кодом, что и само действие (dry-run), поэтому превью не врёт.
   function qhQName(q) { return ["обычная", "редкие (R)", "легендарные (S)", "мифические (SS)"][q] || ("очередь " + q); }
 
+  // Строки списка «не забрали» — ПО ЧЕЛОВЕКУ: галочка одна, а под ней все очереди, где ему
+  // выдали, и что именно. Возврат такого человека отменяет всю его выдачу разом.
+  function qhPeopleRowsHtml(people) {
+    return people.map(function (p) {
+      var got = (p.got_list || []).map(function (g) {
+        return esc(g.name) + " ×" + g.amount; }).join(", ");
+      var qs = (p.queues || []).map(function (x) {
+        return esc(x.queue_name) + (x.left_queue ? " (вышел)" : " (остался)"); }).join(" · ");
+      // уже возвращённого не даём отметить второй раз — показываем приглушённым
+      if (p.returned) {
+        return '<div class="qd-ret-item qd-ret-person is-done"><span class="qd-ret-tick">↩</span>' +
+          '<span class="qd-ret-main"><span class="qd-ret-nick">' + esc(p.nick) + "</span>" +
+            '<span class="qd-ret-dim">' + (got || "—") + "</span></span>" +
+          '<span class="qd-ret-dim">уже возвращён</span></div>';
+      }
+      return '<label class="qd-ret-item qd-ret-person">' +
+        '<input type="checkbox" class="qd-ret-cb" value="' + esc(p.canon) + '" data-nick="' + esc(p.nick) + '">' +
+        '<span class="qd-ret-main"><span class="qd-ret-nick">' + esc(p.nick) + "</span>" +
+          '<span class="qd-ret-res">' + (got || "—") + "</span></span>" +
+        '<span class="qd-ret-dim">' + qs + (p.cilin ? " · цилинь" : "") + "</span></label>";
+    }).join("");
+  }
+
   function qhAdminPanelHtml(d) {
     var rep = d.report || {};
     var rolled = d.rolled_back_at || "";
@@ -7200,19 +7230,13 @@
       var box = slot.querySelector("#qha-unc-box");
       if (!box) return;
       box.textContent = "Загрузка списка…";
-      q("GET", "/queue/served-last").then(function (r) {
-        var s = r.served || [];
+      q("GET", "/queue/admin/uncollected-candidates").then(function (r) {
+        var s = r.people || [];
         if (!s.length) {
-          box.innerHTML = '<div class="qh-adm-hint">Некого возвращать — из очереди никто не выходил.</div>';
+          box.innerHTML = '<div class="qh-adm-hint">Некого возвращать — раздачи ещё не было.</div>';
           uncCount(); return;
         }
-        box.innerHTML = s.map(function (x) {
-          return '<label class="qd-ret-item"><input type="checkbox" class="qd-ret-cb" value="' + x.id + '">' +
-            '<span class="qd-ret-nick">' + esc(x.nick) + "</span>" +
-            '<span class="qd-ret-dim">' + esc(x.queue_name) + " · место " + esc(String(x.pos)) + "</span>" +
-            '<span class="qd-ret-res">' + esc(x.resource || "—") + "</span>" +
-            '<span class="qd-ret-dim">' + esc(x.source) + "</span></label>";
-        }).join("");
+        box.innerHTML = qhPeopleRowsHtml(s);
         [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) { c.addEventListener("change", uncCount); });
         uncCount();
       }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
@@ -7225,15 +7249,16 @@
     });
     if ((b = slot.querySelector("#qha-unc-go"))) b.addEventListener("click", function () {
       var boxes = slot.querySelectorAll("#qha-unc-box .qd-ret-cb:checked");
-      var ids = [].map.call(boxes, function (c) { return parseInt(c.value, 10); });
-      if (!ids.length) { say("Отметь галочками тех, кто не забрал.", "bad"); return; }
-      var names = [].map.call(boxes, function (c) { return c.parentElement.querySelector(".qd-ret-nick").textContent; });
-      if (!confirm("Вернуть в очередь " + ids.length + " чел.?\n\n" + names.join(", ") +
-                   "\n\nКаждый встанет на своё прежнее место за свой ресурс.")) return;
-      call(b, "POST", "/queue/admin/restore-served", { ids: ids },
+      var canons = [].map.call(boxes, function (c) { return c.value; });
+      if (!canons.length) { say("Отметь галочками тех, кто не забрал.", "bad"); return; }
+      var names = [].map.call(boxes, function (c) { return c.getAttribute("data-nick"); });
+      if (!confirm("Вернуть " + canons.length + " чел.?\n\n" + names.join(", ") +
+                   "\n\nКаждый вернётся ЦЕЛИКОМ — во все очереди, где ему выдавали ресурсы " +
+                   "этой раздачей.")) return;
+      call(b, "POST", "/queue/admin/return-people", { canons: canons },
         function (r) {
-          return "Вернула: " + ((r.restored || []).map(function (x) {
-            return x.nick + " → " + x.queue_name + ", место " + x.pos; }).join("; ") || "—");
+          return "Вернула: " + ((r.people || []).map(function (x) {
+            return x.nick + " (" + (x.returned.length + x.cleared.length) + " очер.)"; }).join("; ") || "—");
         }, function () { afterQueueChange(); uncLoad(); });
     });
   }
@@ -7852,23 +7877,18 @@
       var box = wrap.querySelector("#qd-ret-list-box");
       if (!box) return;
       box.textContent = "Загрузка списка…";
-      return q("GET", "/queue/served-last").then(function (d) {
-        var s = d.served || [];
+      // Список ПО ЛЮДЯМ: ресурсы выдаются пачкой сразу по всем очередям, поэтому и «не
+      // забрал» — про человека целиком. Берём всех, кому в последней раздаче что-то выдали,
+      // включая тех, кто получил часть и остался в очереди (их в снимке «кто вышел» нет).
+      return q("GET", "/queue/admin/uncollected-candidates").then(function (d) {
+        var s = d.people || [];
         if (!s.length) {
           box.innerHTML = '<div style="color:#8a795a;font-size:11.5px">Пока некого возвращать: ' +
-            "на этой неделе никто не выходил из очереди (не было отчёта или раздачи цилиня).</div>";
+            "на этой неделе ещё не было раздачи.</div>";
           retCount();
           return;
         }
-        box.innerHTML = s.map(function (x) {
-          var extra = (x.resources && x.resources.length > 1)
-            ? ' <span class="qd-ret-dim">(стоял за: ' + esc(x.resources.join(", ")) + ")</span>" : "";
-          return '<label class="qd-ret-item"><input type="checkbox" class="qd-ret-cb" value="' + x.id + '">' +
-            '<span class="qd-ret-nick">' + esc(x.nick) + "</span>" +
-            '<span class="qd-ret-dim">' + esc(x.queue_name) + " · место " + esc(String(x.pos)) + "</span>" +
-            '<span class="qd-ret-res">' + esc(x.resource || "—") + "</span>" +
-            '<span class="qd-ret-dim">' + esc(x.source) + "</span>" + extra + "</label>";
-        }).join("");
+        box.innerHTML = qhPeopleRowsHtml(s);
         [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) {
           c.addEventListener("change", retCount);
         });
@@ -7886,18 +7906,20 @@
       retCount();
     });
     wrap.querySelector("#qd-ret-go").addEventListener("click", function () {
-      var ids = [].map.call(wrap.querySelectorAll(".qd-ret-cb:checked"), function (c) { return parseInt(c.value, 10); });
-      if (!ids.length) { status("Отметь галочками тех, кто не забрал."); return; }
-      var names = [].map.call(wrap.querySelectorAll(".qd-ret-cb:checked"), function (c) {
-        return c.parentElement.querySelector(".qd-ret-nick").textContent;
-      });
-      if (!confirm("Вернуть в очередь " + ids.length + " чел.?\n\n" + names.join(", ") +
-                   "\n\nКаждый встанет на своё прежнее место за свой ресурс.")) return;
+      var boxes = wrap.querySelectorAll(".qd-ret-cb:checked");
+      var canons = [].map.call(boxes, function (c) { return c.value; });
+      if (!canons.length) { status("Отметь галочками тех, кто не забрал."); return; }
+      var names = [].map.call(boxes, function (c) { return c.getAttribute("data-nick"); });
+      if (!confirm("Вернуть " + canons.length + " чел.?\n\n" + names.join(", ") +
+                   "\n\nКаждый вернётся ЦЕЛИКОМ — во все очереди, где ему выдавали ресурсы " +
+                   "этой раздачей, на свои прежние места.")) return;
       status("Возвращаю в очередь…");
-      q("POST", "/queue/admin/restore-served", { ids: ids }).then(function (d) {
-        var r = d.restored || [];
+      q("POST", "/queue/admin/return-people", { canons: canons }).then(function (d) {
+        var r = d.people || [];
         wrap.querySelector("#qd-ret-out").textContent = r.length
-          ? "✓ вернул: " + r.map(function (x) { return x.nick + " → " + x.queue_name + ", место " + x.pos; }).join("; ")
+          ? "✓ вернул: " + r.map(function (x) {
+              return x.nick + " (" + (x.returned.length + x.cleared.length) + " очер.)"; }).join("; ")
+            + ((d.not_found || []).length ? "\n⚠ не нашёл: " + d.not_found.join(", ") : "")
           : "никого не вернул";
         status("✓ Возвращено: " + r.length, r.length > 0);
         refresh();          // сцена и полосы очередей обновляются сразу

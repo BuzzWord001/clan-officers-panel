@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
-"""E2E «не забрали»: список вышедших → возврат ОТМЕЧЕННЫХ по id → проверка мест и выбора.
+"""E2E «не забрали»: список кандидатов и ПОЛНЫЙ возврат человека.
 
-Ключевое отличие от возврата по никам: возвращаем ровно ту запись, которую отметили —
-человек, стоявший в нескольких очередях, не возвращается разом во все.
+Правило клана: ресурсы выдаются человеку одной пачкой сразу по всем очередям. Не пришёл —
+не забрал ничего. Поэтому:
+  • в списке обязан быть КАЖДЫЙ, кому что-то выдали, включая получивших часть и оставшихся
+    в очереди (10.08 так пропали Vanyta и Мерак — список строился из снимка выбывших);
+  • возврат человека отменяет всю его выдачу: и выход из очереди, и следы у оставшихся строк.
 
 Запуск внутри контейнера (работает на копии базы, прод не трогается):
     flyctl ssh console -C "python /app/backend/tests/e2e_uncollected.py"
 """
 import asyncio
+import json
 import os
 import shutil
 import sys
@@ -50,99 +54,90 @@ def check(cond, what):
     print(("  [ok ] " if cond else "  [FAIL] ") + what)
 
 
-def entry_of(canon, queue):
+def report_recipients():
+    """Кому отчёт реально что-то выдал: canon -> {ник, очереди}."""
     with db.connection() as conn:
-        r = conn.execute("SELECT id, pos, resource, resources, received FROM queue_entries"
-                         " WHERE main_canon=? AND queue=? AND privileged=0", (canon, queue)).fetchone()
-    return dict(r) if r else None
+        r = api_queue._last_live_report(conn)
+        rep = json.loads(r["report"])
+    out = {}
+    for Q in rep.get("queues") or []:
+        for row in Q.get("rows") or []:
+            if row.get("status") == "ok" and (row.get("got") or {}):
+                cn = row.get("main_canon") or row.get("nick")
+                out.setdefault(cn, {"nick": row.get("nick"), "queues": set()})["queues"].add(Q["queue"])
+    return out
 
 
-print("\n1. публикуем отчёт, чтобы кто-то вышел из очереди")
+print("\n1. публикуем отчёт")
 out = asyncio.run(api_queue.admin_report(
     api_queue.ReportIn(from_stages=5, to_stages=5, commit=True, force=True), None, ACTOR))
-check(out.get("committed") is True, "отчёт опубликован, вышли %s" % out.get("left_removed"))
+check(out.get("committed") is True,
+      "опубликован: вышли %s, остались частично %s" % (out.get("left_removed"), out.get("partial_stay")))
 
-print("\n2. список для галочек (/queue/served-last)")
-served = api_queue.served_last(ACTOR)["served"]
-check(bool(served), "список не пустой: %d чел" % len(served))
-need = ("id", "nick", "queue", "queue_name", "pos", "resource", "source")
-check(all(all(k in s for k in need) for s in served), "у каждой строки есть ник, очередь, место, ресурс, источник")
-for s in served[:5]:
-    print("     %-14s %-16s место %-5s %-22s %s" % (s["nick"], s["queue_name"], s["pos"], s["resource"], s["source"]))
+print("\n2. в списке — ВСЕ получатели, а не только выбывшие")
+data = api_queue.uncollected_candidates(ACTOR)
+people = {p["canon"]: p for p in data["people"]}
+recips = report_recipients()
+missing = [v["nick"] for c, v in recips.items() if c not in people]
+check(not missing, "никто из получателей не потерян" + (" (нет: %s)" % ", ".join(missing) if missing else ""))
+stayed_only = [p["nick"] for p in data["people"] if p["out"] == 0 and p["stayed"] > 0]
+check(bool(stayed_only), "в списке есть получившие ЧАСТЬ и оставшиеся в очереди: %s"
+      % (", ".join(stayed_only[:4]) or "—"))
+for p in data["people"][:6]:
+    print("     %-14s очередей: %d (вышел из %d) · получил: %s"
+          % (p["nick"], len(p["queues"]), p["out"],
+             ", ".join("%s×%s" % (g["name"], g["amount"]) for g in p["got_list"])[:70]))
 
-if not served:
-    print("\nНекого возвращать — тест дальше не идёт")
-    sys.exit(1 if _bad else 0)
-
-print("\n3. возврат ОДНОГО отмеченного")
-target = served[0]
+print("\n3. возврат человека — сразу по ВСЕМ его очередям")
+multi = sorted(data["people"], key=lambda p: -len(p["queues"]))
+target = multi[0]
+check(len(target["queues"]) >= 1, "берём %s — очередей с выдачей: %d" % (target["nick"], len(target["queues"])))
+want_q = {x["queue"] for x in target["queues"]}
+res = api_queue.return_people(api_queue.ReturnPeopleIn(canons=[target["canon"]]), None, ACTOR)
+got = res["people"][0] if res["people"] else {}
+touched = len(got.get("returned") or []) + len(got.get("cleared") or [])
+check(touched >= len(want_q), "затронуто очередей %d при %d выдачах" % (touched, len(want_q)))
 with db.connection() as conn:
-    snap_row = conn.execute("SELECT main_canon, orig_pos, resources FROM queue_served_last"
-                            " WHERE id=?", (target["id"],)).fetchone()
-canon, orig_pos, want_res = snap_row["main_canon"], snap_row["orig_pos"], (snap_row["resources"] or "")
-check(entry_of(canon, target["queue"]) is None, "%s сейчас НЕ в очереди %d" % (target["nick"], target["queue"]))
-
-res = api_queue.restore_served(api_queue.RestoreServedIn(ids=[target["id"]]), None, ACTOR)
-check(len(res["restored"]) == 1 and not res["missing"], "вернулся ровно один: %s" % res["restored"])
-back = entry_of(canon, target["queue"])
-check(back is not None, "%s снова в очереди %d" % (target["nick"], target["queue"]))
-check(back and abs(float(back["pos"]) - (float(orig_pos) - 0.5)) < 0.001,
-      "встал на прежнее место (%s → %s, перед тем, кто там сейчас)" % (orig_pos, back and back["pos"]))
-check(back and (back["resources"] or "") == want_res,
-      "выбор ресурсов сохранён: %s" % ((back and back["resources"]) or "(один ресурс)"))
+    rows = {r["queue"]: dict(r) for r in conn.execute(
+        "SELECT queue, pos, resource, resources, received FROM queue_entries"
+        " WHERE main_canon=? AND privileged=0", (target["canon"],))}
+    rep_row = api_queue._last_live_report(conn)
+    snap = json.loads(rep_row["snapshot"]) if rep_row and rep_row["snapshot"] else {}
+check(want_q.issubset(set(rows)), "человек стоит во всех своих очередях: %s" % sorted(rows))
+# следы выдачи сняты: запись совпадает со снимком, сделанным ДО раздачи
+was = {e.get("queue"): e for e in api_queue._snap_entries(snap)
+       if (e.get("main_canon") or "") == target["canon"]}
+same = []
+for qq, cur in rows.items():
+    e = was.get(qq)
+    if not e:
+        continue
+    same.append((cur["resource"] or "") == (e.get("resource") or "")
+                and (cur["resources"] or "") == api_queue._jstore(api_queue._snap_resources(e))
+                and (cur["received"] or "") == api_queue._jstore(api_queue._jlist(e.get("received"))))
+check(bool(same) and all(same), "записи вернулись к состоянию до раздачи (выбор ресурсов и «получено»)")
 with db.connection() as conn:
-    gone = conn.execute("SELECT 1 FROM queue_served_last WHERE id=?", (target["id"],)).fetchone()
-check(gone is None, "строка ушла из списка — второй раз вернуть нельзя")
+    left = conn.execute("SELECT COUNT(*) c FROM queue_served_last WHERE main_canon=?",
+                        (target["canon"],)).fetchone()["c"]
+check(left == 0, "строки этого человека убраны из снимка выдачи")
 
-print("\n4. человек в нескольких очередях возвращается ТОЛЬКО в отмеченную")
-served2 = api_queue.served_last(ACTOR)["served"]
-multi = {}
-for s in served2:
-    multi.setdefault(s["nick"], []).append(s)
-pick = next((v for v in multi.values() if len(v) > 1), None)
-if not pick:
-    # в живых данных такого не случилось — собираем случай сами: один и тот же человек
-    # значится вышедшим сразу из двух очередей
-    print("     (в снимке такого нет — создаю случай вручную)")
-    with db.connection() as conn:
-        src = conn.execute("SELECT * FROM queue_served_last LIMIT 1").fetchone()
-        if src:
-            for qn, res in ((0, "kamen-doblesti"), (1, "prikaz-feniksa")):
-                conn.execute(
-                    "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
-                    " resource, recipient, auto_repeat, auto_plan, added_by, served_at,"
-                    " resources, received, recipients)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (qn, 9.0, "e2e~twin", "Е2Е-Двойник", "", res, "", 0, "", "report",
-                     api_queue._now(), "", "", ""))
-    served2 = api_queue.served_last(ACTOR)["served"]
-    multi = {}
-    for s in served2:
-        multi.setdefault(s["nick"], []).append(s)
-    pick = next((v for v in multi.values() if len(v) > 1), None)
-
-if pick:
-    one, other = pick[0], pick[1]
-    api_queue.restore_served(api_queue.RestoreServedIn(ids=[one["id"]]), None, ACTOR)
-    with db.connection() as conn:
-        left = conn.execute("SELECT 1 FROM queue_served_last WHERE id=?", (other["id"],)).fetchone()
-        got = conn.execute("SELECT COUNT(*) c FROM queue_entries WHERE main_canon=?"
-                           " AND privileged=0", ("e2e~twin",)).fetchone()["c"]
-    check(left is not None, "%s возвращён в «%s», а в «%s» остался в списке"
-          % (one["nick"], one["queue_name"], other["queue_name"]))
-    if one["nick"] == "Е2Е-Двойник":
-        check(got == 1, "в очереди появилась ровно одна запись, а не обе (%d)" % got)
-else:
-    check(False, "не удалось проверить случай «человек в двух очередях»")
+print("\n4. он помечен возвращённым, остальные ждут")
+data2 = api_queue.uncollected_candidates(ACTOR)
+now = {p["canon"]: p for p in data2["people"]}
+check(now.get(target["canon"], {}).get("returned") is True,
+      "%s помечен «уже возвращён» — второй раз не отметить" % target["nick"])
+waiting = [c for c, p in now.items() if not p["returned"]]
+check(len(waiting) == len(people) - 1,
+      "остальные кандидаты на месте (%d ждут возврата из %d)" % (len(waiting), len(people)))
 
 print("\n5. защиты")
 try:
-    api_queue.restore_served(api_queue.RestoreServedIn(ids=[]), None, ACTOR)
+    api_queue.return_people(api_queue.ReturnPeopleIn(canons=[]), None, ACTOR)
     check(False, "пустой список отклонён")
 except Exception as exc:
     check("Никто не отмечен" in str(getattr(exc, "detail", exc)), "пустой список отклонён")
-r = api_queue.restore_served(api_queue.RestoreServedIn(ids=[999999]), None, ACTOR)
-check(r["missing"] == [999999] and not r["restored"], "несуществующий id не ломает возврат")
+r = api_queue.return_people(api_queue.ReturnPeopleIn(canons=["нет-такого-канона"]), None, ACTOR)
+check(r["not_found"] == ["нет-такого-канона"] and not r["people"], "неизвестный ник не ломает возврат")
 
 print("\n" + "=" * 56)
 print("ИТОГ: прошло %d, провалено %d" % (len(_ok), len(_bad)))
