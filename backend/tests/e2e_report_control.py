@@ -100,14 +100,20 @@ with db.connection() as conn:
 check(len(privs()) == 1, "жетон применён: %s" % (privs(),))
 base = snap()
 
-print("\n1. публикация отчёта")
-out = asyncio.run(api_queue.admin_report(
+print("\n1. публикация отчёта + сдвиг очереди (с 16.08.2026 это ДВА разных действия)")
+pub = asyncio.run(api_queue.admin_report(
     api_queue.ReportIn(from_stages=4, to_stages=4, commit=True, force=True), None, ACTOR))
+check(pub.get("published") is True and pub.get("shifted") is False,
+      "публикация прошла и очередь НЕ тронула")
+check(snap() == base, "после публикации очередь побитово прежняя")
+check(privs() != [], "жетон жив до сдвига (гасит его именно сдвиг)")
+out = api_queue.admin_shift(api_queue.ShiftIn(stages=4, force=True), None, ACTOR)
 with db.connection() as conn:
-    rid = conn.execute("SELECT MAX(id) m FROM queue_reports").fetchone()["m"]
-check(out.get("committed") is True, "отчёт #%d опубликован (вышли %s)" % (rid, out.get("left_removed")))
-check(privs() == [], "захват по жетону погашен публикацией")
-check(out.get("threshold_violations") == [], "пороги доблести соблюдены")
+    rid = conn.execute("SELECT MAX(id) m FROM queue_reports WHERE COALESCE(kind,'report')='report'"
+                       ).fetchone()["m"]
+check(out.get("shifted") is True, "отчёт #%d: очередь сдвинута (вышли %s)" % (rid, out.get("left_removed")))
+check(privs() == [], "захват по жетону погашен сдвигом")
+check(pub.get("threshold_violations") == [], "пороги доблести соблюдены")
 after_pub = snap()
 
 print("\n2. план (dry-run) ничего не меняет и показывает жетон")

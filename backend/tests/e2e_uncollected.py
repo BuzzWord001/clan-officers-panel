@@ -68,11 +68,14 @@ def report_recipients():
     return out
 
 
-print("\n1. публикуем отчёт")
-out = asyncio.run(api_queue.admin_report(
+print("\n1. публикуем отчёт и сдвигаем очередь (с 16.08.2026 — разные кнопки)")
+pub = asyncio.run(api_queue.admin_report(
     api_queue.ReportIn(from_stages=5, to_stages=5, commit=True, force=True), None, ACTOR))
-check(out.get("committed") is True,
-      "опубликован: вышли %s, остались частично %s" % (out.get("left_removed"), out.get("partial_stay")))
+check(pub.get("published") is True and pub.get("shifted") is False,
+      "публикация прошла, очередь не тронута")
+out = api_queue.admin_shift(api_queue.ShiftIn(stages=5, force=True), None, ACTOR)
+check(out.get("shifted") is True,
+      "сдвинуто: вышли %s, остались частично %s" % (out.get("left_removed"), out.get("partial_stay")))
 
 print("\n2. в списке — ВСЕ получатели, а не только выбывшие")
 data = api_queue.uncollected_candidates(ACTOR)

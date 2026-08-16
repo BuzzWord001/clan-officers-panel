@@ -1900,7 +1900,7 @@ def valor_screenshots_set(week: str, shots: list[dict], actor: dict | None = Non
 
 def valor_request_publish(week: str) -> dict:
     """Кнопка «Готово»: заявка на авто-публикацию топа за неделю. Сброс
-    published_at → поллер опубликует через 5 мин."""
+    published_at → локальный поллер опубликует на ближайшем тике (раз в минуту)."""
     now = datetime.utcnow().isoformat(timespec="seconds")
     with connection() as conn:
         conn.execute(
@@ -10100,9 +10100,11 @@ OFFICER_GRANT_KEYS = frozenset(g["key"] for g in OFFICER_GRANTS)
 # Пути АДМИН-эндпоинтов, которые можно ВЫДАТЬ офицеру (path→grant). Чего тут нет — админ-только.
 _OFFICER_GRANT_RULES = [
     ("/queue/admin/report", "adm_distribution"),
+    ("/queue/admin/shift", "adm_distribution"),          # сдвиг очереди по числу закрытых этапов
     ("/queue/admin/distribute", "adm_distribution"),
+    ("/queue/admin/cilin-report", "adm_distribution"),   # отдельный отчёт Огненного цилиня
     ("/queue/admin/cilin-distribute", "adm_distribution"),
-    ("/queue/admin/return-nicks", "adm_distribution"),
+    ("/queue/admin/return-people", "adm_distribution"),  # возврат «не забравших» по галочкам
     ("/queue/admin/grant-token", "adm_distribution"),
     ("/queue/admin/prune-left", "adm_distribution"),
     ("/queue/admin/model", "adm_scene"),          # model / model-upload / model-delete / model-variant-as

@@ -470,11 +470,25 @@ def ensure_queue_tables() -> None:
                 # полученного. Храним весь выбор целиком.
                 "ALTER TABLE queue_served_last ADD COLUMN resources TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE queue_served_last ADD COLUMN received TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE queue_served_last ADD COLUMN recipients TEXT NOT NULL DEFAULT ''"):
+                "ALTER TABLE queue_served_last ADD COLUMN recipients TEXT NOT NULL DEFAULT ''",
+                # 2026-08-16: публикация отчёта и СДВИГ очереди разведены по разным кнопкам.
+                #   kind       — 'report' (ресурсы КХ) или 'cilin' (Огненный цилинь): у каждого
+                #                свой отчёт, своя публикация и свой сдвиг, в истории — свои табы.
+                #   shifted_at — когда по этому отчёту реально сдвинули очередь ('' = ещё нет).
+                "ALTER TABLE queue_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'"):
             try:
                 conn.execute(_sql)
             except Exception:
                 pass
+        # shifted_at — когда по этому отчёту реально сдвинули очередь ('' = ещё не двигали).
+        # БЭКФИЛЛ строго один раз, в момент создания колонки: до 2026-08-16 публикация и сдвиг
+        # были одним действием, поэтому все прежние отчёты сдвинуты в час своей публикации.
+        # Ставить это позже нельзя — затёрло бы свежие, ещё не сдвинутые отчёты.
+        try:
+            conn.execute("ALTER TABLE queue_reports ADD COLUMN shifted_at TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE queue_reports SET shifted_at=created_at WHERE rolled_back_at=''")
+        except Exception:
+            pass
         # миграция: выбранный игроком вариант модели (ключ конкретной модельки, если несколько доступно)
         try:
             conn.execute("ALTER TABLE queue_model_pref ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
@@ -906,18 +920,31 @@ class PrivClaimIn(BaseModel):
 
 
 class ReportIn(BaseModel):
-    from_stages: int = Field(ge=0, le=7)   # нижний этап (по нему считается ОСНОВНОЙ отчёт и сдвиг)
+    from_stages: int = Field(ge=0, le=7)   # нижний этап (по нему считается ОСНОВНОЙ отчёт)
     to_stages: int = Field(ge=0, le=7)     # верхний этап; если > from → добавляется секция «если закроем ещё»
-    commit: bool = False                   # False = превью (не двигать очередь); True = опубликовать + сдвинуть
-    force: bool = False                    # обойти защиту от повторного сдвига в тот же день
+    commit: bool = False                   # False = пробный отчёт; True = опубликовать (очередь НЕ двигает)
+    force: bool = False                    # обойти защиту «доблесть не за эту неделю»
+    dm: bool = False                       # пробный отчёт ещё и в личку (по умолчанию только на сайте)
+
+
+class ShiftIn(BaseModel):
+    """Отдельная кнопка «Сдвинуть очередь» — когда точно известно, сколько этапов КХ закрыли.
+    Публикация отчёта очередь не двигает, сдвиг делается ровно этим запросом."""
+    stages: int = Field(ge=0, le=7)        # сколько этапов КХ реально закрыли
+    dry_run: bool = False                  # True — только показать план (кто выйдет/в конец), ничего не менять
+    force: bool = False                    # повторный сдвиг в ту же неделю (обычно не нужен)
+
+
+class CilinReportIn(BaseModel):
+    """Отдельный отчёт по Огненному цилиню (своя кнопка публикации)."""
+    count: int | None = Field(default=None, ge=0, le=200)  # сколько цилиней выпало (None — просто список очереди)
+    commit: bool = False                   # False = пробный отчёт; True = опубликовать (очередь НЕ двигает)
+    dm: bool = False                       # пробный отчёт ещё и в личку (по умолчанию только на сайте)
 
 
 class CilinDistributeIn(BaseModel):
     count: int = Field(ge=0, le=200)       # сколько Огненных цилиней выпало на этой неделе
-
-
-class ReturnNicksIn(BaseModel):
-    nicks: str = Field(min_length=1, max_length=4000)   # ники «не забравших» (запятая/перенос строки)
+    dry_run: bool = False                  # True — показать, кто получит, ничего не меняя
 
 
 class GrantTokenIn(BaseModel):
@@ -4149,37 +4176,10 @@ def distribute(_: dict = Depends(require_admin)) -> dict:
         return _build_report(conn)
 
 
-@router.post("/admin/distribute/send")
-async def distribute_send(request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Строит отчёт и отправляет его в офицерский чат TG + VK (по кнопке)."""
-    with db.connection() as conn:
-        report = _build_report(conn)
-    channels = await _send_report_to_chats(report)
-    with db.connection() as conn:
-        _log(conn, "report_sent", actor=_actor_name(actor), request=request,
-             detail="tg=%s · vk=%s" % (channels.get("tg"), channels.get("vk")))
-    return {"ok": True, "channels": channels, "report": report}
-
-
-@router.post("/admin/distribute/send-range")
-async def distribute_send_range(payload: ReportRangeIn, request: Request,
-                                actor: dict = Depends(require_admin)) -> dict:
-    """Прислать отчёты для КАЖДОГО числа закрытых этапов из диапазона [from..to] — Лиру
-    в личку (@pw_spamer_bot). Нужно, когда до 00:00 могут закрыть ещё этап-другой: сразу
-    видишь распределение для каждого варианта. Конфиг stages_closed НЕ меняется."""
-    lo = min(payload.from_stages, payload.to_stages)
-    hi = max(payload.from_stages, payload.to_stages)
-    sent = []
-    for s in range(lo, hi + 1):
-        with db.connection() as conn:
-            report = _build_report(conn, stages_override=s)
-        ch = await _send_report_to_chats(report, force_dm=True)   # всегда в личку — это превью-варианты
-        sent.append({"stages": s, "channels": ch})
-    with db.connection() as conn:
-        _log(conn, "report_range", actor=_actor_name(actor), request=request,
-             detail="этапы %d–%d: прислано %d отчётов в личку" % (lo, hi, len(sent)))
-    return {"ok": True, "sent": sent}
-
+# /admin/distribute/send и /admin/distribute/send-range УДАЛЕНЫ 2026-08-16: это был
+# второй, «тихий» путь публикации отчёта — без выбора этапов, без картинки и без записи
+# в историю. Публикация теперь одна: /admin/report (ресурсы) и /admin/cilin-report
+# (цилинь). Веер отчётов по каждому этапу остался у десктопа — /report-range-bot.
 
 @router.post("/report-range-bot")
 async def report_range_bot(payload: ReportRangeIn, _=Depends(require_bot_token)) -> dict:
@@ -4198,7 +4198,7 @@ async def report_range_bot(payload: ReportRangeIn, _=Depends(require_bot_token))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # НОВЫЙ поток раздачи наград: ручной отчёт по диапазону этапов + цилинь/возврат
-# отдельными кнопками (панель админа справа). Заменяет связку /admin/advance.
+# отдельными кнопками (панель админа справа). Публикация и сдвиг — РАЗНЫЕ кнопки (16.08.2026).
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _send_text_to_chats(text: str, force_dm: bool = False) -> dict:
@@ -4392,6 +4392,43 @@ def _shift_queues(conn, report: dict, dry_run: bool = False) -> dict:
             "steps": steps}
 
 
+def _upsert_report_row(conn, kind: str, stages: int, report: dict, channels: dict, summary: str,
+                       actor_name: str, snapshot: dict | None = None,
+                       shifted_at: str | None = None) -> tuple[int, bool]:
+    """Запись отчёта недели в историю — ОДНА на (неделя, вид), а не по строке на нажатие.
+
+    Публикация и сдвиг стали разными кнопками, и каждую можно нажать не по одному разу.
+    Складывать их отдельными строками нельзя: история распухла бы дублями одной недели.
+    Поэтому пишем/обновляем единственную живую (не откаченную) запись за текущую ISO-неделю
+    этого вида: 'report' — ресурсы КХ, 'cilin' — Огненный цилинь. Возвращает (id, обновили ли).
+    `snapshot`/`shifted_at` не затираются пустыми — сдвиг проставит их поверх публикации."""
+    import json as _json
+    now = _now()
+    wk = _iso_week_key(now)
+    rows = conn.execute(
+        "SELECT id, created_at FROM queue_reports WHERE kind=? AND rolled_back_at=''"
+        " ORDER BY id DESC LIMIT 40", (kind,)).fetchall()
+    rid = next((r["id"] for r in rows if _iso_week_key(r["created_at"]) == wk), None)
+    rep_j = _json.dumps(report, ensure_ascii=False)
+    ch_j = _json.dumps(channels or {}, ensure_ascii=False)
+    if rid:
+        conn.execute("UPDATE queue_reports SET stages=?, report=?, channels=?, summary=?, actor=?"
+                     " WHERE id=?", (stages, rep_j, ch_j, summary, actor_name, rid))
+        if snapshot is not None:
+            conn.execute("UPDATE queue_reports SET snapshot=? WHERE id=?",
+                         (_json.dumps(snapshot, ensure_ascii=False), rid))
+        if shifted_at is not None:
+            conn.execute("UPDATE queue_reports SET shifted_at=? WHERE id=?", (shifted_at, rid))
+        return rid, True
+    cur = conn.execute(
+        "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor,"
+        " snapshot, kind, shifted_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (now, stages, rep_j, ch_j, summary, actor_name,
+         _json.dumps(snapshot or {}, ensure_ascii=False) if snapshot is not None else "",
+         kind, shifted_at or ""))
+    return int(cur.lastrowid), False
+
+
 @router.post("/admin/report")
 async def admin_report(payload: ReportIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
     """Ручной отчёт по диапазону этапов КХ.
@@ -4401,7 +4438,6 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
     commit=False → превью (очередь не трогаем). commit=True → опубликовать текст в офиц.чаты
     И СДВИНУТЬ основные очереди (получившие уходят/в конец; цилинь-ждуны остаются — их двигает
     отдельная кнопка). Защита от повторного сдвига в тот же день (обойти force=True)."""
-    import json as _json
     lo = min(payload.from_stages, payload.to_stages)
     hi = max(payload.from_stages, payload.to_stages)
     # ЗАЩИТА ОТ ОТЧЁТА ПО СТАРОЙ ДОБЛЕСТИ: раздача считается по последнему снимку доблести.
@@ -4440,10 +4476,17 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
               # список «не хватило доблести за ресурс» — ТОЛЬКО для админ-панели, в отчёт не идёт
               "low_valor": main.get("low_valor") or []}
     if not payload.commit:
-        # ПРЕВЬЮ — картинка + текст ТОЛЬКО мне в личку (@pw_spamer_bot), очередь НЕ трогаем
-        ch = await (_send_report_media(img, text, force_dm=True) if img
-                    else _send_text_to_chats(text, force_dm=True))
-        result.update({"preview": True, "channels": ch})
+        # ПРОБНЫЙ ОТЧЁТ — по умолчанию НИКУДА НЕ ШЛЁТСЯ: текст возвращается и показывается
+        # прямо на сайте, чтобы проверить его глазами и только потом публиковать в каналы.
+        # `dm=True` — дополнительно прислать в личку (@pw_spamer_bot), если нужно на телефоне.
+        ch = {}
+        if payload.dm:
+            ch = await (_send_report_media(img, text, force_dm=True) if img
+                        else _send_text_to_chats(text, force_dm=True))
+        # полный расчёт — чтобы сайт нарисовал ту же карточку с группами и картинками,
+        # что уйдёт в каналы, а не «примерно похожую» по отдельному эндпоинту
+        result.update({"preview": True, "channels": ch, "sent": bool(payload.dm),
+                       "report": main, "delta": delta})
         return result
     # ПРОБНЫЙ РЕЖИМ: commit НЕ двигает очередь — сухой прогон целиком в личку. Так «пробный
     # отчёт» безопасен: жми сколько угодно, очередь не сдвинется.
@@ -4453,60 +4496,179 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
         result.update({"committed": False, "dry_run": True, "channels": ch,
                        "note": "пробный режим: отчёт ушёл в личку, очередь НЕ сдвинута"})
         return result
-    # БОЕВОЙ РЕЖИМ (пробный выключен): сдвиг ОДИН раз за неделю. Повторное нажатие в то же
-    # воскресенье — ПРОСТО ПОВТОРНАЯ отправка того же отчёта, БЕЗ второго сдвига и не за след.
-    # неделю. Ключ недели = неделя последнего снапшота доблести.
+    # БОЕВОЙ РЕЖИМ: ТОЛЬКО ПУБЛИКАЦИЯ. Очередь эта кнопка больше НЕ двигает (2026-08-16).
+    # Так решил Лир: отчёт объявляется сразу, а число закрытых этапов КХ выясняется позже —
+    # сдвиг делает отдельная кнопка «Сдвинуть очередь», когда цифра точно известна. Публиковать
+    # можно сколько угодно раз: каждая публикация просто обновляет отчёт недели в истории.
+    channels = await (_send_report_media(img, text) if img else _send_text_to_chats(text))
+    saved_main = dict(main)
+    saved_main["_delta"] = delta
+    saved_main["_range"] = [lo, hi]
+    n_groups = len(main.get("groups") or [])
+    n_people = sum(len(g.get("people") or []) for g in (main.get("groups") or []))
+    with db.connection() as conn:
+        rid, again = _upsert_report_row(
+            conn, "report", lo, saved_main, channels,
+            "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi),
+            _actor_name(actor), snapshot=_capture_queue_snapshot(conn))
+        _log(conn, "report_publish", actor=_actor_name(actor), request=request,
+             detail="этапы %d-%d · отчёт #%d %s · очередь НЕ двигалась · %s"
+                    % (lo, hi, rid, "обновлён" if again else "опубликован", channels))
+    result.update({"committed": True, "published": True, "report_id": rid, "republished": again,
+                   "channels": channels, "shifted": False,
+                   "note": "отчёт опубликован; очередь НЕ сдвинута — для сдвига жми «Сдвинуть очередь»"})
+    return result
+
+
+@router.post("/admin/shift")
+def admin_shift(payload: ShiftIn, request: Request, actor: dict = Depends(require_admin)) -> dict:
+    """СДВИГ основных очередей — отдельной кнопкой, когда точно известно число закрытых этапов КХ.
+
+    Публикация отчёта очередь не трогает (её жмут сразу), а сколько этапов закрыли, выясняется
+    позже — тогда админ вводит цифру здесь и двигает очередь ровно по ней. Раздача считается
+    заново по этому числу, поэтому уточнённый этап меняет и раздачу, и сдвиг согласованно.
+    Ничего не публикует: чаты уже получили отчёт. `dry_run` — показать план, не меняя ничего."""
+    stages = payload.stages
+    # Та же защита, что у публикации: считать раздачу по прошлонедельной доблести нельзя.
+    stale = _valor_week_stale()
+    if stale and not payload.force and not payload.dry_run:
+        raise HTTPException(status_code=400, detail=stale)
+    with db.connection() as conn:
+        main = _build_report(conn, stages_override=stages)
+    viol = main.get("threshold_violations") or []
+    if viol and not payload.force and not payload.dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Раздача нарушает пороги доблести (%d): %s. Сдвиг остановлен — это ошибка "
+                   "расчёта, а не данных. Если так и задумано, повтори с force."
+                   % (len(viol), "; ".join("%s — %d при пороге %d (очередь %d)"
+                                           % (v["nick"], v["valor"], v["threshold"], v["queue"])
+                                           for v in viol[:6])))
     week = db.valor_latest_week() or ""
+    if payload.dry_run:
+        with db.connection() as conn:
+            plan = _shift_queues(conn, main, dry_run=True)
+            done_week = _cfg_val(conn, "report_shift_week", "")
+        return {"ok": True, "dry_run": True, "stages": stages, "plan": plan.get("steps") or {},
+                "left_removed": plan["left_removed"], "requeued": plan["requeued"],
+                "stayed_uncollected": plan["stayed_uncollected"],
+                "partial_stay": plan["partial_stay"],
+                "already_shifted": bool(week and done_week == week),
+                "threshold_violations": viol}
     with db.connection() as conn:
         done_week = _cfg_val(conn, "report_shift_week", "")
-    if week and done_week == week and not payload.force:
-        # ИМЕННО отчёт этой недели и НЕ откаченный: «последний в таблице» мог оказаться чужим
-        # (перевыпуск прошлой недели) или уже откаченным — тогда бы переслали не то.
-        with db.connection() as conn:
-            row = conn.execute(
-                "SELECT report, created_at FROM queue_reports WHERE rolled_back_at=''"
-                " ORDER BY id DESC LIMIT 1").fetchone()
-        try:
-            saved = _json.loads(row["report"]) if row and row["report"] else main
-        except (ValueError, TypeError):
-            saved = main
-        when2 = _msk_from_iso(row["created_at"]) if row else _now_msk_str()
-        saved_delta = saved.get("_delta")
-        text2 = distribution.format_report_compact(saved, saved_delta, when2)
-        img2 = _render_report_image(saved, saved_delta)
-        ch = await (_send_report_media(img2, text2) if img2 else _send_text_to_chats(text2))
-        result.update({"committed": True, "resent": True, "channels": ch, "text": text2,
-                       "note": "повторная отправка отчёта за эту неделю — очередь НЕ сдвигалась"})
-        return result
-    # первый БОЕВОЙ сдвиг за эту неделю: публикуем (картинка→текст) и сдвигаем очередь
-    channels = await (_send_report_media(img, text) if img else _send_text_to_chats(text))
-    with db.connection() as conn:
-        # СНИМОК очереди ДО сдвига — точная копия для «истории распределения»
+        if week and done_week == week and not payload.force:
+            raise HTTPException(
+                status_code=400,
+                detail="Очередь за эту неделю (%s) уже сдвигали. Повторный сдвиг сдвинул бы людей "
+                       "второй раз. Если это осознанный пересдвиг — повтори с force." % week)
+        # СНИМОК очереди ДО сдвига — по нему откатывают отчёт и рисуют историю распределения.
         snapshot = _capture_queue_snapshot(conn)
         stats = _shift_queues(conn, main)
         n_groups = len(main.get("groups") or [])
         n_people = sum(len(g.get("people") or []) for g in (main.get("groups") or []))
-        # Дельту («если закроем ещё этап») сохраняем ВНУТРИ отчёта: без неё перевыпуск из
-        # истории терял целую секцию — пересчитать её потом нельзя, очередь уже сдвинута.
+        # Отчёт недели в истории теперь хранит РЕАЛЬНО сдвинутую раздачу (по уточнённому этапу),
+        # а не ту, что публиковалась предположительно.
         saved_main = dict(main)
-        saved_main["_delta"] = delta
-        saved_main["_range"] = [lo, hi]
-        conn.execute(
-            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor, snapshot)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (_now(), lo, _json.dumps(saved_main, ensure_ascii=False),
-             _json.dumps(channels, ensure_ascii=False),
-             "групп:%d получателей:%d (диап %d-%d)" % (n_groups, n_people, lo, hi),
-             _actor_name(actor), _json.dumps(snapshot, ensure_ascii=False)))
+        saved_main["_range"] = [stages, stages]
+        rid, _again = _upsert_report_row(
+            conn, "report", stages, saved_main, {},
+            "групп:%d получателей:%d (сдвиг по %d эт.)" % (n_groups, n_people, stages),
+            _actor_name(actor), snapshot=snapshot, shifted_at=_now())
+        # Жетоны ТОП-3 гасятся ровно в момент сдвига: до него захват «вне очереди» ещё активен.
         conn.execute("DELETE FROM queue_entries WHERE privileged=1")
         conn.execute("DELETE FROM queue_priv_claims")
         _save_low_valor_notices(conn, main)
         _cfg_set(conn, "report_shift_week", week)     # маркер: на этой неделе уже сдвигали
-        _log(conn, "report_commit", actor=_actor_name(actor), request=request,
-             detail="этапы %d-%d · вышли %d, в конец %d, не забрал(остались) %d · %s"
-                    % (lo, hi, stats["left_removed"], stats["requeued"], stats["stayed_uncollected"], channels))
-    result.update({"committed": True, "channels": channels, **stats})
+        _log(conn, "report_shift", actor=_actor_name(actor), request=request,
+             detail="этапов %d · отчёт #%d · вышли %d, в конец %d, не забрал(остались) %d, частично %d"
+                    % (stages, rid, stats["left_removed"], stats["requeued"],
+                       stats["stayed_uncollected"], stats["partial_stay"]))
+    return {"ok": True, "shifted": True, "stages": stages, "report_id": rid, "week": week, **stats}
+
+
+@router.post("/admin/cilin-report")
+async def admin_cilin_report(payload: CilinReportIn, request: Request,
+                             actor: dict = Depends(require_admin)) -> dict:
+    """ОТДЕЛЬНЫЙ отчёт по Огненному цилиню — своя кнопка публикации (2026-08-16).
+
+    Цилинь выпадает независимо от этапов КХ, поэтому в отчёте распределения ресурсов его больше
+    нет. `count` — сколько цилиней выпало (None → просто список очереди). Очередь эта кнопка НЕ
+    двигает: раздачу делает «Раздать и сдвинуть очередь цилиня»."""
+    with db.connection() as conn:
+        main = _build_report(conn)
+    text = distribution.format_cilin_report(main, _now_msk_str(), payload.count)
+    pet = main.get("pet_queue") or []
+    ready = [p for p in pet if p.get("status") == "pet"]
+    n = 0 if payload.count is None else max(0, min(payload.count, len(ready)))
+    result = {"ok": True, "text": text, "count": payload.count,
+              "queue": [{"nick": p["receiver"], "status": p["status"], "valor": p.get("valor") or 0}
+                        for p in pet],
+              "would_get": [p["receiver"] for p in ready[:n]]}
+    if not payload.commit:
+        # Пробный отчёт цилиня — тоже сначала на сайт, в каналы ничего не уходит.
+        ch = await _send_text_to_chats(text, force_dm=True) if payload.dm else {}
+        result.update({"preview": True, "channels": ch, "sent": bool(payload.dm)})
+        return result
+    dm = _is_test_mode()
+    channels = await _send_text_to_chats(text, force_dm=dm)
+    with db.connection() as conn:
+        rid, again = _upsert_report_row(
+            conn, "cilin", 0, {"pet_queue": pet, "cilin_count": payload.count,
+                               "thresholds": main.get("thresholds") or {}},
+            channels, "цилинь: выпало %s · в очереди %d"
+                      % ("—" if payload.count is None else payload.count, len(pet)),
+            _actor_name(actor))
+        _log(conn, "cilin_report", actor=_actor_name(actor), request=request,
+             detail="отчёт цилиня #%d %s · выпало %s · в очереди %d · %s"
+                    % (rid, "обновлён" if again else "опубликован",
+                       "—" if payload.count is None else payload.count, len(pet), channels))
+    result.update({"committed": True, "published": True, "report_id": rid, "republished": again,
+                   "channels": channels, "dry_run": dm, "shifted": False,
+                   "note": ("пробный режим: отчёт цилиня ушёл в личку" if dm else
+                            "отчёт цилиня опубликован; очередь цилиня НЕ сдвинута")})
     return result
+
+
+@router.get("/admin/week-status")
+def admin_week_status(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Что уже сделано на этой неделе: опубликованы ли оба отчёта и сдвинуты ли обе очереди.
+
+    Нужно, чтобы кнопки не жались вслепую: публикация и сдвиг разведены, шагов стало четыре,
+    и без индикаторов легко или пропустить сдвиг, или сдвинуть дважды."""
+    week = db.valor_latest_week() or ""
+    now_week = _iso_week_now()
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT id, kind, created_at, shifted_at, stages, summary, channels, rolled_back_at"
+            " FROM queue_reports ORDER BY id DESC LIMIT 60").fetchall()
+        shift_week = _cfg_val(conn, "report_shift_week", "")
+        # Раздача цилиня «этой недели» = живой снимок added_by='cilin' (его чистит следующая раздача)
+        cil = conn.execute(
+            "SELECT COUNT(*) c, MAX(served_at) t FROM queue_served_last WHERE added_by='cilin'").fetchone()
+        test_mode = _cfg_val(conn, "queue_test_send", "1") != "0"
+    cur = {}
+    for r in rows:
+        if r["rolled_back_at"] or _iso_week_key(r["created_at"]) != now_week:
+            continue
+        cur.setdefault(r["kind"] or "report", r)
+    rep, cl = cur.get("report"), cur.get("cilin")
+    cil_at = (cil["t"] or "") if cil else ""
+    cil_this_week = bool(cil_at and _iso_week_key(cil_at) == now_week)
+    return {
+        "week": now_week, "valor_week": week, "valor_fresh": bool(week and week == now_week),
+        "test_mode": test_mode,
+        "report": {"published": bool(rep), "at": (rep["created_at"] if rep else ""),
+                   "id": (rep["id"] if rep else 0), "stages": (rep["stages"] if rep else 0),
+                   "summary": (rep["summary"] if rep else "")},
+        "shift": {"done": bool(week and shift_week == week),
+                  "at": (rep["shifted_at"] if rep and rep["shifted_at"] else ""),
+                  "stages": (rep["stages"] if rep and rep["shifted_at"] else 0)},
+        "cilin_report": {"published": bool(cl), "at": (cl["created_at"] if cl else ""),
+                         "id": (cl["id"] if cl else 0), "summary": (cl["summary"] if cl else "")},
+        "cilin_shift": {"done": cil_this_week, "at": cil_at if cil_this_week else "",
+                        "given": (cil["c"] if cil and cil_this_week else 0)},
+    }
 
 
 # ═══════ ПОЛНЫЙ КОНТРОЛЬ АДМИНА НАД УЖЕ ОПУБЛИКОВАННЫМ ОТЧЁТОМ ═══════
@@ -4587,6 +4749,40 @@ def _report_or_404(conn, rid: int):
     return r
 
 
+def _rollback_cilin(conn, r, actor_name: str, request, dry_run: bool = False) -> dict:
+    """Откат отчёта Огненного цилиня = вернуть получателей питомца в их очередь.
+
+    У цилиня нет снимка всей очереди: он живёт в q2 и при раздаче человек ПОЛНОСТЬЮ выходит из
+    очереди, а его прежнее место сохраняется в queue_served_last (added_by='cilin'). Поэтому
+    откат — это возврат ровно этих записей на прежние позиции (тот же механизм, что у «не
+    забрал»). Если очередь цилиня ещё не двигали, откатывать нечего — публикация никого не
+    трогает."""
+    shifted = (r["shifted_at"] if "shifted_at" in r.keys() else "") or ""
+    rows = conn.execute("SELECT * FROM queue_served_last WHERE added_by='cilin'"
+                        " ORDER BY orig_pos").fetchall()
+    if not shifted or not rows:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "По цилиню очередь ещё не двигали (или раздачу уже откатили) — возвращать некого. "
+            "Публикация отчёта цилиня никого не двигает.")
+    idx_live = _people(conn)
+    back = [{"nick": _live_nick(idx_live, s["main_canon"], s["nick"]), "queue": s["queue"],
+             "pos": s["orig_pos"], "resource": s["resource"]} for s in rows]
+    if dry_run:
+        return {"ok": True, "dry_run": True, "report_id": r["id"], "kind": "cilin",
+                "returned": len(back), "updated": 0, "priv_restored": 0, "marker_off": False,
+                "steps": {"back": back, "fixed": [], "jetons": []}}
+    for s in rows:
+        _restore_served_row(conn, s, actor_name, request)
+    conn.execute("UPDATE queue_reports SET rolled_back_at=?, shifted_at='' WHERE id=?",
+                 (_now(), r["id"]))
+    _log(conn, "cilin_rollback", actor=actor_name, request=request,
+         detail="откат раздачи цилиня (отчёт #%d): вернулось в очередь %d" % (r["id"], len(back)))
+    return {"ok": True, "report_id": r["id"], "kind": "cilin", "returned": len(back),
+            "updated": 0, "priv_restored": 0, "marker_off": False,
+            "steps": {"back": back, "fixed": [], "jetons": []}}
+
+
 def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -> dict:
     """Вернуть очередь к состоянию НА МОМЕНТ публикации отчёта.
 
@@ -4601,7 +4797,20 @@ def _rollback_report(conn, r, actor_name: str, request, dry_run: bool = False) -
     import json as _json
     if r["rolled_back_at"]:
         raise HTTPException(status.HTTP_409_CONFLICT, "Этот отчёт уже откачен")
+    kind = (r["kind"] if "kind" in r.keys() else "") or "report"
+    shifted = (r["shifted_at"] if "shifted_at" in r.keys() else "") or ""
+    if kind == "cilin":
+        return _rollback_cilin(conn, r, actor_name, request, dry_run)
+    # Публикация отчёта очередь не двигает (с 16.08.2026). Пока по нему не нажали «Сдвинуть
+    # очередь», откатывать нечего: снимок совпадает с текущим состоянием, а пометка «откачен»
+    # только спрятала бы отчёт из истории.
+    if not shifted:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "По этому отчёту очередь ещё не сдвигали — откатывать нечего. Публикация никого не "
+            "двигает; если отчёт неверный, поправь этапы и опубликуй заново.")
     later = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
+                         " AND shifted_at!='' AND COALESCE(kind,'report')='report'"
                          " ORDER BY id LIMIT 1", (r["id"],)).fetchone()
     if later:
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -4700,7 +4909,13 @@ def _reapply_report(conn, r, actor_name: str, request, dry_run: bool = False) ->
     import json as _json
     if not r["rolled_back_at"]:
         raise HTTPException(status.HTTP_409_CONFLICT, "Этот отчёт и так применён — откатывать нечего")
+    if ((r["kind"] if "kind" in r.keys() else "") or "report") == "cilin":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Раздачу цилиня повторяют кнопкой «Раздать и сдвинуть очередь цилиня» — укажи, "
+            "сколько цилиней выпало, и она выдаст их первым в очереди заново.")
     later = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
+                         " AND shifted_at!='' AND COALESCE(kind,'report')='report'"
                          " ORDER BY id LIMIT 1", (r["id"],)).fetchone()
     if later:
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -4733,8 +4948,8 @@ def _reapply_report(conn, r, actor_name: str, request, dry_run: bool = False) ->
     week = (old_snap.get("week") or "") or db.valor_latest_week() or ""
     if week:
         _cfg_set(conn, "report_shift_week", week)
-    conn.execute("UPDATE queue_reports SET rolled_back_at='', snapshot=? WHERE id=?",
-                 (_json.dumps(snapshot, ensure_ascii=False), r["id"]))
+    conn.execute("UPDATE queue_reports SET rolled_back_at='', snapshot=?, shifted_at=? WHERE id=?",
+                 (_json.dumps(snapshot, ensure_ascii=False), _now(), r["id"]))
     _log(conn, "report_reapply", actor=actor_name, request=request,
          detail="отчёт #%d применён снова: вышли %d, в конец %d, остались частично %d, жетонов снято %d"
                 % (r["id"], stats["left_removed"], stats["requeued"], stats["partial_stay"], len(priv)))
@@ -4871,15 +5086,22 @@ def report_uncollected(rid: int, payload: ReportUncollectedIn, request: Request,
 @router.post("/admin/cilin-distribute")
 def cilin_distribute(payload: CilinDistributeIn, request: Request,
                      actor: dict = Depends(require_admin)) -> dict:
-    """Раздать выпавших Огненных цилиней. count = сколько выпало → первым `count` в очереди
-    цилиня (q2, выбрали mount-cilin, доблесть ≥ порога, по порядку) выдаём питомца: они выходят
-    из очереди (пишутся в снимок «не забрал» для возможного возврата), очередь сдвигается.
-    count=0 → никто не двигается, все ждут (в т.ч. на следующей неделе)."""
+    """СДВИГ ОЧЕРЕДИ ЦИЛИНЯ — отдельная кнопка, когда точно известно, сколько цилиней выпало.
+
+    count = сколько выпало → первым `count` в очереди цилиня (q2, выбрали mount-cilin, доблесть
+    ≥ порога, по порядку) выдаём питомца: они выходят из очереди (пишутся в снимок «не забрал»
+    для возможного возврата), очередь сдвигается. count=0 → никто не двигается, все ждут (в т.ч.
+    на следующей неделе). Публикацию отчёта цилиня НЕ делает — она отдельной кнопкой.
+    `dry_run` — показать, кто получит, ничего не меняя."""
     with db.connection() as conn:
         report = _build_report(conn)
         pet = report.get("pet_queue") or []
         elig = [p for p in pet if p.get("status") == "pet" and p.get("id")]
         n = min(payload.count, len(elig))
+        if payload.dry_run:
+            return {"ok": True, "dry_run": True, "dropped": payload.count, "given_count": n,
+                    "given": [p["receiver"] for p in elig[:n]],
+                    "waiting": [p["receiver"] for p in elig[n:]]}
         given = []
         # Чистим снимки ПРОШЛОЙ раздачи цилиня (added_by='cilin'), чтобы не копились по неделям.
         # Снимки отчёта (added_by='report') не трогаем — они живут своим циклом.
@@ -4900,6 +5122,14 @@ def cilin_distribute(payload: CilinDistributeIn, request: Request,
             conn.execute("DELETE FROM queue_entries WHERE id=?", (row["id"],))
             given.append(p["receiver"])
         # НЕ перепаковываем q2 — остальные сохраняют свои позиции (стабильность для возврата).
+        # Отмечаем в истории, что очередь цилиня за эту неделю сдвинута (для индикаторов и
+        # отката): отчёт цилиня и его сдвиг живут в одной записи kind='cilin'.
+        _upsert_report_row(
+            conn, "cilin", 0,
+            {"pet_queue": pet, "cilin_count": payload.count, "cilin_given": given,
+             "thresholds": report.get("thresholds") or {}},
+            {}, "цилинь: выдано %d из %d выпавших · ждут %d" % (n, payload.count, len(elig) - n),
+            _actor_name(actor), shifted_at=_now())
         _log(conn, "cilin_distribute", actor=_actor_name(actor), request=request,
              detail="выпало %d · выдано %d · ждут ещё %d" % (payload.count, n, len(elig) - n))
     return {"ok": True, "dropped": payload.count, "given": given, "given_count": n,
@@ -4940,35 +5170,9 @@ def _restore_served_row(conn, s, actor_name: str, request) -> None:
          request=request, detail="возвращён (не забрал) — на прежнее место за свой ресурс")
 
 
-@router.post("/admin/return-nicks")
-def return_nicks(payload: ReturnNicksIn, request: Request,
-                 actor: dict = Depends(require_admin)) -> dict:
-    """«Не забрал» по никам (перемотка назад): ники через запятую/перенос → вернуть каждого из
-    снимка queue_served_last на ПРЕЖНЮЮ позицию за ЕГО ресурс, в ту очередь, где он не получил.
-    Работает и после 00:00. Снимок пишется отчётом и раздачей цилиня."""
-    import re as _re
-    raw = [x.strip() for x in _re.split(r"[\n,;]+", payload.nicks) if x.strip()]
-    returned = []; not_found = []
-    with db.connection() as conn:
-        served = conn.execute("SELECT * FROM queue_served_last").fetchall()
-        for nk in raw:
-            c = db._valor_canon(nk)
-            low = nk.strip().lower()
-            # ВСЕ записи этого человека в снимке (по ВСЕМ очередям) — возвращаем сразу везде,
-            # а не по одной. Раньше брали только первую → человек в нескольких очередях
-            # оставался частично невозвращённым.
-            matches = [s for s in served
-                       if db._valor_canon(s["nick"] or "") == c or (s["nick"] or "").strip().lower() == low]
-            if not matches:
-                not_found.append(nk)
-                continue
-            for s in matches:
-                _restore_served_row(conn, s, _actor_name(actor), request)
-            done = {s["id"] for s in matches}
-            served = [x for x in served if x["id"] not in done]
-            returned.append("%s (очередей: %d)" % (matches[0]["nick"], len(matches)))
-    return {"ok": True, "returned": returned, "not_found": not_found}
-
+# /admin/return-nicks УДАЛЁН 2026-08-16: возврат «не забравших» по ВВЕДЁННЫМ никам путал
+# тёзок и твинов и возвращал не в ту очередь. Живой путь — /admin/return-people:
+# галочки в панели, возврат по id снимка queue_served_last.
 
 @router.get("/due")
 def due(_: dict = Depends(require_officer_or_admin)) -> dict:
@@ -5051,8 +5255,13 @@ class ReturnPeopleIn(BaseModel):
 
 
 def _last_live_report(conn):
-    """Последний НЕ откаченный отчёт — от него считаем, кому что выдали на этой раздаче."""
+    """Последний НЕ откаченный отчёт РАСПРЕДЕЛЕНИЯ РЕСУРСОВ — от него считаем, кому что выдали.
+
+    Именно kind='report': с 16.08.2026 у Огненного цилиня свой отчёт, и он часто публикуется
+    последним. Без фильтра список «кто не забрал» строился бы по цилинь-записи, где никаких
+    очередей с выдачей нет, — и все получатели ресурсов из него пропадали бы."""
     return conn.execute("SELECT * FROM queue_reports WHERE rolled_back_at=''"
+                        " AND COALESCE(kind,'report')='report'"
                         " ORDER BY id DESC LIMIT 1").fetchone()
 
 
@@ -5622,95 +5831,11 @@ def _save_low_valor_notices(conn, report) -> None:
             (mc, "low_valor", _json.dumps(data, ensure_ascii=False), now))
 
 
-@router.post("/admin/advance")
-async def advance(request: Request, actor: dict = Depends(require_admin)) -> dict:
-    """Финализация недели:
-    1) убрать вылетевших из клана; 2) построить отчёт → отправить в офицерский чат;
-    3) сдвиг очереди: получившие с авто-повтором/планом встают В КОНЕЦ (план — со
-       следующим ресурсом), без авто-повтора — ВЫХОДЯТ из очереди; остальные (не
-       хватило доблести/ресурс кончился/не выбран) остаются в начале."""
-    import json as _json
-    with db.connection() as conn:
-        pruned = _prune_left_clan(conn, request, _actor_name(actor))   # (4) вылетевшие
-        report = _build_report(conn)
-    channels = await _send_report_to_chats(report)     # отчёт по умолчанию уходит в чаты
-    served_by_q = {}
-    for Q in report["queues"]:
-        served_by_q[Q["queue"]] = {r["id"] for r in Q["rows"]
-                                   if r["status"] == "ok" and r["id"] is not None}
-    requeued = left_after = stayed_uncollected = 0
-    with db.connection() as conn:
-        conn.execute("DELETE FROM queue_served_last")   # снимок «получивших» перезаписываем
-        for q in QUEUES:
-            rows = conn.execute(
-                "SELECT id, pos, main_canon, nick, cls, resource, recipient, auto_repeat, auto_plan, not_collected"
-                " FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)).fetchall()
-            served = served_by_q.get(q, set())
-            keep_ids = []          # остаются впереди (не получили ИЛИ не забрали)
-            requeue_ids = []       # авто-повтор/план → в конец
-            for r in rows:
-                if r["id"] not in served:
-                    keep_ids.append(r["id"])           # не хватило/кончилось/не выбран → впереди
-                elif r["not_collected"]:               # получил бы, но НЕ забрал → остаётся впереди
-                    keep_ids.append(r["id"])
-                    conn.execute("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
-                    stayed_uncollected += 1
-                else:                                  # забрал → очередь проходит дальше
-                    # снимок на случай, если офицер отметит «не забрал» уже ПОСЛЕ сдвига —
-                    # тогда вернём человека в очередь на его прежнюю позицию (orig_pos).
-                    conn.execute(
-                        "INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
-                        " resource, recipient, auto_repeat, auto_plan, added_by, served_at)"
-                        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                        (q, r["pos"], r["main_canon"], r["nick"], r["cls"], r["resource"],
-                         r["recipient"], r["auto_repeat"], r["auto_plan"] or "", "advance", _now()))
-                    try:
-                        plan = _json.loads(r["auto_plan"]) if r["auto_plan"] else []
-                    except (ValueError, TypeError):
-                        plan = []
-                    if plan:                     # план: берём следующий ресурс, встаём в конец
-                        conn.execute("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
-                                     (plan[0], _json.dumps(plan[1:]), r["id"]))
-                        requeue_ids.append(r["id"]); requeued += 1
-                    elif r["auto_repeat"]:       # повтор: тот же ресурс, в конец
-                        requeue_ids.append(r["id"]); requeued += 1
-                    else:                        # разово: выходит из очереди
-                        conn.execute("DELETE FROM queue_entries WHERE id=?", (r["id"],))
-                        left_after += 1
-            pos = 1
-            for i in keep_ids + requeue_ids:            # оставшиеся впереди, авто → в конец
-                conn.execute("UPDATE queue_entries SET pos=? WHERE id=?", (float(pos), i))
-                pos += 1
-        _log(conn, "advance", actor=_actor_name(actor), request=request,
-             detail="вылетевших:%d · не забрали (остались):%d · авто-переочередь:%d · вышли:%d · отчёт tg=%s vk=%s"
-                    % (len(pruned), stayed_uncollected, requeued, left_after, channels.get("tg"), channels.get("vk")))
-        # снимок недели в архив (для ручной проверки истории распределений)
-        n_groups = len(report.get("groups") or [])
-        n_people = sum(len(g.get("people") or []) for g in (report.get("groups") or []))
-        lo = {k: v for k, v in (report.get("leftovers") or {}).items() if v > 0}
-        summary = "групп: %d · получателей: %d · остаток: %s" % (
-            n_groups, n_people, (", ".join("%s×%d" % (distribution.res_name(k), v) for k, v in lo.items()) or "нет"))
-        conn.execute(
-            "INSERT INTO queue_reports (created_at, stages, report, channels, summary, actor)"
-            " VALUES (?,?,?,?,?,?)",
-            (_now(), report.get("stages", 0), _json.dumps(report, ensure_ascii=False),
-             _json.dumps(channels, ensure_ascii=False), summary, _actor_name(actor)))
-        # СУПЕРСПОСОБНОСТЬ: топ-3 доблести получают +1 жетон (использовать на след. неделе).
-        # Единая ИДЕМПОТЕНТНАЯ функция (та же, что зовёт валор-«Готово») — если жетоны за
-        # эту неделю уже начислены при обновлении доблести, повторно НЕ начисляем.
-        _gt = grant_top3_valor_tokens(conn, week=None, actor_name=_actor_name(actor))
-        granted = _gt.get("granted", [])
-        # УВЕДОМЛЕНИЯ «не хватило доблести»: у кого очередь подошла, но доблести не хватило —
-        # копим по мэйн-канону, покажем при следующем входе в раздел.
-        _save_low_valor_notices(conn, report)
-        # внеочередные захваты недели отработали (уже вычтены) → чистим на новую неделю;
-        # привилегированные записи (взяли жетоном) тоже убираем — ресурс уже получен
-        conn.execute("DELETE FROM queue_entries WHERE privileged=1")
-        conn.execute("DELETE FROM queue_priv_claims")
-    return {"ok": True, "requeued": requeued, "left_removed": left_after,
-            "stayed_uncollected": stayed_uncollected, "priv_granted": granted,
-            "pruned": len(pruned), "pruned_nicks": pruned, "channels": channels}
-
+# СТАРАЯ «финализация недели» (/admin/advance) УДАЛЕНА 2026-08-16. Она делала всё разом —
+# отчёт в чаты + сдвиг очереди — и держала СОБСТВЕННУЮ копию логики сдвига, уже без
+# partial_stay/received и со стиранием ВСЕХ снимков queue_served_last (включая цилинь).
+# Теперь эти шаги разведены: публикация — /admin/report и /admin/cilin-report, сдвиг —
+# /admin/shift и /admin/cilin-distribute, а единственная логика сдвига живёт в _shift_queues.
 
 @router.get("/admin/log")
 def admin_log(_: dict = Depends(require_admin)) -> dict:
@@ -5887,28 +6012,33 @@ def history(all: bool = False, _: dict = Depends(require_officer_or_admin)) -> d
     АНТИ-ДУБЛЬ НЕДЕЛЬ: за одну неделю бывает несколько записей queue_reports (перепубликации,
     пробные прогоны, дельта-отчёты). По умолчанию показываем ТОЛЬКО последнюю (max id) за
     каждую ISO-неделю — один таб на неделю, без дублей. `all=1` — ВСЕ записи, включая
-    откаченные: нужно админу, когда он разбирает, что публиковалось и что откатили."""
+    откаченные: нужно админу, когда он разбирает, что публиковалось и что откатили.
+
+    Ключ дедупа — (неделя, ВИД отчёта): у ресурсов КХ и Огненного цилиня свои отчёты, и без
+    вида в ключе цилинь-отчёт вытеснял бы из истории отчёт распределения за ту же неделю."""
     import json as _json
     with db.connection() as conn:
         rows = conn.execute(
-            "SELECT id, created_at, stages, channels, summary, actor, rolled_back_at, note"
-            " FROM queue_reports ORDER BY id DESC LIMIT 200").fetchall()
+            "SELECT id, created_at, stages, channels, summary, actor, rolled_back_at, note,"
+            " kind, shifted_at FROM queue_reports ORDER BY id DESC LIMIT 200").fetchall()
     out = []
     seen_weeks = set()
     for r in rows:                       # от новых к старым → первый за неделю = самый свежий
         wk = _iso_week_key(r["created_at"])
+        kind = r["kind"] or "report"
         if not all:
             if r["rolled_back_at"]:
                 continue          # откаченный отчёт неделю не «занимает» — таб был бы пустышкой
-            if wk in seen_weeks:
+            if (wk, kind) in seen_weeks:
                 continue
-            seen_weeks.add(wk)
+            seen_weeks.add((wk, kind))
         try:
             ch = _json.loads(r["channels"]) if r["channels"] else {}
         except (ValueError, TypeError):
             ch = {}
         out.append({"id": r["id"], "at": r["created_at"], "stages": r["stages"], "week": wk,
                     "channels": ch, "summary": r["summary"], "actor": r["actor"],
+                    "kind": kind, "shifted_at": r["shifted_at"] or "",
                     "rolled_back_at": r["rolled_back_at"] or "", "note": r["note"] or ""})
         if len(out) >= 60:
             break
@@ -5950,17 +6080,26 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
     import json as _json
     with db.connection() as conn:
         row = conn.execute(
-            "SELECT created_at, stages, report, channels, snapshot, rolled_back_at, note"
-            " FROM queue_reports WHERE id=?", (rid,)).fetchone()
+            "SELECT created_at, stages, report, channels, snapshot, rolled_back_at, note,"
+            " kind, shifted_at FROM queue_reports WHERE id=?", (rid,)).fetchone()
         if not row:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
         not_collected = _report_not_collected(conn, row["created_at"])
-        # можно ли откатить: есть снимок, сам не откачен и после него нет живых отчётов
+        # можно ли откатить: есть снимок, сам не откачен и после него нет живых СДВИНУТЫХ
+        # отчётов того же вида (опубликованные-но-несдвинутые откату не мешают — они очередь
+        # не трогали, а цилинь двигает свою очередь независимо от ресурсов КХ)
         newer = conn.execute("SELECT id FROM queue_reports WHERE id>? AND rolled_back_at=''"
-                             " ORDER BY id LIMIT 1", (rid,)).fetchone()
-        served_cnt = conn.execute("SELECT COUNT(*) c FROM queue_served_last"
-                                  " WHERE added_by='report' AND served_at=?",
-                                  (row["created_at"],)).fetchone()["c"]
+                             " AND shifted_at!='' AND COALESCE(kind,'report')=COALESCE(?,'report')"
+                             " ORDER BY id LIMIT 1", (rid, row["kind"] or "report")).fetchone()
+        kind = row["kind"] or "report"
+        if kind == "cilin":
+            # у цилиня свой снимок вышедших (added_by='cilin'), он и решает, есть ли что откатывать
+            served_cnt = conn.execute("SELECT COUNT(*) c FROM queue_served_last"
+                                      " WHERE added_by='cilin'").fetchone()["c"]
+        else:
+            served_cnt = conn.execute("SELECT COUNT(*) c FROM queue_served_last"
+                                      " WHERE added_by='report' AND served_at=?",
+                                      (row["created_at"],)).fetchone()["c"]
     try:
         rep = _json.loads(row["report"]) if row["report"] else {}
     except (ValueError, TypeError):
@@ -5977,19 +6116,32 @@ def history_one(rid: int, _: dict = Depends(require_officer_or_admin)) -> dict:
     except (ValueError, TypeError):
         snap = None
     rolled = row["rolled_back_at"] or ""
-    can_roll = bool(snap) and not rolled and not newer
-    why = ("уже откачен — доступен шаг «Применить снова»" if rolled else
-           "нет снимка очереди (отчёты до 03.08.2026)" if not snap else
-           "сначала откати отчёт #%d" % newer["id"] if newer else "")
-    # шаг «вперёд» доступен только откаченному отчёту, за которым нет живых более поздних
-    can_reapply = bool(rolled) and not newer and bool((rep or {}).get("queues"))
-    why_fwd = ("" if can_reapply else
-               "отчёт применён" if not rolled else
-               "сначала откати отчёт #%d" % newer["id"] if newer else
-               "в отчёте нет данных очередей")
+    shifted = row["shifted_at"] or ""
+    # Откатывают СДВИГ очереди, а не факт публикации: пока по отчёту не двигали, откат
+    # бессмысленен (никого не сдвигали) — так и пишем, вместо «нет снимка».
+    if kind == "cilin":
+        can_roll = bool(shifted) and bool(served_cnt) and not rolled
+        why = ("уже откачен" if rolled else
+               "очередь цилиня по этому отчёту ещё не двигали" if not shifted else
+               "возвращать некого — снимок раздачи пуст" if not served_cnt else "")
+        can_reapply, why_fwd = False, ("раздать цилиня заново можно кнопкой «Раздать и сдвинуть "
+                                       "очередь цилиня»")
+    else:
+        can_roll = bool(snap) and bool(shifted) and not rolled and not newer
+        why = ("уже откачен — доступен шаг «Применить снова»" if rolled else
+               "очередь по этому отчёту ещё не сдвигали — откатывать нечего" if not shifted else
+               "нет снимка очереди (отчёты до 03.08.2026)" if not snap else
+               "сначала откати отчёт #%d" % newer["id"] if newer else "")
+        # шаг «вперёд» доступен только откаченному отчёту, за которым нет живых более поздних
+        can_reapply = bool(rolled) and not newer and bool((rep or {}).get("queues"))
+        why_fwd = ("" if can_reapply else
+                   "отчёт применён" if not rolled else
+                   "сначала откати отчёт #%d" % newer["id"] if newer else
+                   "в отчёте нет данных очередей")
     return {"report": rep, "at": row["created_at"], "channels": ch,
             "not_collected": not_collected, "snapshot": snap,
             "id": rid, "stages": row["stages"], "note": row["note"] or "",
+            "kind": kind, "shifted_at": shifted,
             "rolled_back_at": rolled, "can_rollback": can_roll, "rollback_blocked": why,
             "can_reapply": can_reapply, "reapply_blocked": why_fwd,
             "served_count": served_cnt}

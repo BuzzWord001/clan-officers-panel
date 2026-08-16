@@ -539,17 +539,9 @@ def format_report_compact(main: dict, delta: dict | None = None, when_msk: str =
         for i, info in enumerate(res):
             branch = "┗" if i == len(res) - 1 else "┣"
             L.append("   %s %s — %d шт" % (branch, info["name"], info["total"]))
-    # Огненный цилинь — список СТРОГО В ПОРЯДКЕ ОЧЕРЕДИ (кто раньше — тот первым). У кого мало
-    # доблести — ОСТАЮТСЯ в списке, ярко помечены «(мало доблести — не получит)».
-    # ОГНЕННЫЙ ЦИЛИНЬ — отдельная секция: ТОЛЬКО кому ВЫДАН на этой неделе (по решению Лира
-    # 2026-08-02: очередь ждунов НЕ показываем, только получателей питомца).
-    given = main.get("cilin_given") or []
-    L.append(_BAR)
-    if given:
-        L.append("🐲 ОГНЕННЫЙ ЦИЛИНЬ — на этой неделе выдаётся:")
-        L.append("   " + ", ".join(given))
-    else:
-        L.append("🐲 Огненный цилинь на этой неделе никому не выдан")
+    # ОГНЕННЫЙ ЦИЛИНЬ ЗДЕСЬ НЕ ПЕЧАТАЕТСЯ (2026-08-16, решение Лира): у него теперь свой
+    # отдельный отчёт и своя кнопка публикации — см. format_cilin_report(). Смешивать нельзя:
+    # ресурсы КХ и цилинь выпадают независимо и объявляются в разное время.
     # (группа «не хватило доблести» за ресурсы — только в АДМИН-панели, в отчёт НЕ пишется)
     # дельта: доп. раздача, если закроют ещё этап
     if delta and (delta.get("groups") or []):
@@ -558,4 +550,52 @@ def format_report_compact(main: dict, delta: dict | None = None, when_msk: str =
         for g in delta["groups"]:
             L.append("• %d чел: %s" % (len(g["people"]), ", ".join(_person_label(p) for p in g["people"])))
             L.append("   " + " · ".join("%s ×%d" % (info["name"], info["total"]) for info in g["resources"]))
+    return "\n".join(L)
+
+
+def format_cilin_report(main: dict, when_msk: str = "", count: int | None = None) -> str:
+    """ОТДЕЛЬНЫЙ отчёт по Огненному цилиню (своя кнопка публикации, 2026-08-16).
+
+    Цилинь падает независимо от этапов КХ и объявляется в другое время, поэтому он больше не
+    мешается в отчёте распределения ресурсов. `count` — сколько цилиней выпало на этой неделе:
+      • None — просто список очереди («кто стоит»), никого не выделяем;
+      • 0     — выпало ноль: все ждут дальше;
+      • N > 0 — первые N по очереди получают, остальные ждут.
+    Порядок СТРОГО по очереди (кто раньше встал). У кого мало доблести — остаётся в списке с
+    явной пометкой: он не выбывает и не «съедает» цилиня, но и не получает его."""
+    pet = main.get("pet_queue") or []
+    thr = (main.get("thresholds") or {}).get(2) or (main.get("thresholds") or {}).get("2") or 100
+    L = ["🐲 ОГНЕННЫЙ ЦИЛИНЬ"]
+    meta = ("🗓 %s" % when_msk) if when_msk else ""
+    if count is not None:
+        meta += (" · " if meta else "") + "выпало на этой неделе: %d" % count
+    if meta:
+        L.append(meta)
+    L.append(_BAR)
+    if not pet:
+        L.append("За цилинём сейчас никто не стоит.")
+        return "\n".join(L)
+    # Получают только те, кому хватает доблести (status == "pet"), СТРОГО по порядку очереди.
+    ready = [p for p in pet if p.get("status") == "pet"]
+    n = 0 if count is None else max(0, min(count, len(ready)))
+    winners = {id(p) for p in ready[:n]}
+    if count is not None:
+        if n:
+            L.append("🎁 ПОЛУЧАЮТ:")
+            for i, p in enumerate(ready[:n], 1):
+                L.append("   %d. %s" % (i, p["receiver"]))
+        else:
+            L.append("🎁 На этой неделе цилинь никому не выдаётся — все ждут дальше.")
+        L.append(_BAR)
+    L.append("⏳ ОЧЕРЕДЬ ЗА ЦИЛИНЁМ:" if count is not None else "⏳ КТО СТОИТ ЗА ЦИЛИНЁМ:")
+    place = 0
+    for p in pet:
+        if id(p) in winners:
+            continue
+        place += 1
+        if p.get("status") == "pet_low":
+            L.append("   %d. %s — мало доблести (%d при пороге %d), цилиня пока не получит"
+                     % (place, p["receiver"], p.get("valor") or 0, thr))
+        else:
+            L.append("   %d. %s" % (place, p["receiver"]))
     return "\n".join(L)

@@ -6972,8 +6972,38 @@
     });
     return qs;
   }
+  // ── карточка отчёта Огненного цилиня в истории ──
+  function qhCilinHistoryHtml(d, rep) {
+    var pet = rep.pet_queue || [], given = rep.cilin_given || [];
+    var thr = (rep.thresholds && (rep.thresholds[2] || rep.thresholds["2"])) || 100;
+    var gset = {}; given.forEach(function (n) { gset[canon(n)] = 1; });
+    var h = '<div class="qsh-report"><div class="qs-dr-sec"><h4>🐲 Огненный цилинь</h4>';
+    h += '<div class="qs-dr-row">Выпало на неделе: <b>' +
+      (rep.cilin_count == null ? "—" : rep.cilin_count) + "</b>" +
+      (d.shifted_at ? "" : ' · <span style="color:#e0c07a">роздан ещё не был</span>') + "</div>";
+    h += '<div class="qs-dr-row">Выдан: <b>' + (given.length ? esc(given.join(", ")) : "—") + "</b></div>";
+    h += "</div>";
+    h += '<div class="qs-dr-sec"><h4>Очередь за цилинём на момент отчёта</h4>';
+    if (!pet.length) {
+      h += '<div class="qs-dr-row">— за цилинём никто не стоял</div>';
+    } else {
+      h += pet.map(function (p, i) {
+        var nk = p.receiver || p.nick || "";
+        var low = p.status === "pet_low";
+        return '<div class="qs-dr-row"' + (low ? ' style="opacity:.65"' : "") + ">" + (i + 1) + ". " +
+          esc(nk) + (gset[canon(nk)] ? " — 🎁 получил" : "") +
+          (low ? ' <span style="color:#e0a86a">мало доблести (' + (p.valor || 0) +
+                 " при пороге " + thr + ")</span>" : "") + "</div>";
+      }).join("");
+    }
+    return h + "</div></div>";
+  }
+
   function qsHistoryHtml(d) {
     var rep = d.report || {}, snap = d.snapshot, nc = d.not_collected || [];
+    // ОТЧЁТ ЦИЛИНЯ — своя, простая карточка: у него нет ни групп раздачи, ни снимка всех
+    // очередей, только список стоящих за питомцем и кому он в итоге достался.
+    if (d.kind === "cilin") return qhCilinHistoryHtml(d, rep);
     var ncSet = {}; nc.forEach(function (n) { ncSet[canon(n)] = 1; });
     var gotByQ = qhGotByQueue(rep);       // по-очередно: обычная раздача (яркий/серый)
     var jetonMap = qhJetonMap(rep);       // жетоны ТОП-3: отдельная светящаяся запись «вне очереди»
@@ -7288,8 +7318,14 @@
       return '<div class="qh-weeks">' + weeks.slice().reverse().map(function (w) {
         var lbl = w.at ? new Date(w.at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : ("отчёт " + w.id);
         var wn = (w.week && /W(\d+)/.test(w.week)) ? (" · нед. " + RegExp.$1) : "";
+        // У недели теперь ДВА отчёта — ресурсы КХ и цилинь. Помечаем, иначе табы неразличимы.
+        var cil = w.kind === "cilin";
+        var tag = cil ? "🐲 цилинь" : "📋 ресурсы";
+        var st = cil ? "" : (w.stages != null ? " · " + w.stages + " эт." : "");
+        // не сдвинутый отчёт — опубликован, но очередь ещё стоит на месте
+        var pend = (!cil && !w.shifted_at) ? " · ⏸ не сдвинут" : (cil && !w.shifted_at ? " · ⏸ не роздан" : "");
         return '<span class="qh-wtab' + (w.id === cur ? " active" : "") + '" data-wid="' + w.id + '">' +
-          esc(lbl) + wn + (w.stages != null ? " · " + w.stages + " эт." : "") + "</span>";
+          tag + " " + esc(lbl) + wn + st + pend + "</span>";
       }).join("") + "</div>";
     }
     function loadReport(id) {
@@ -7597,9 +7633,13 @@
           'Огненных цилиней (питомец): ' +
           '<input type="number" id="qd-pet" min="0" value="' + pet + '" style="width:90px"></label>' +
       "</div>" +
+      // ── ИНДИКАТОРЫ НЕДЕЛИ: что уже сделано, а что нет. Шагов теперь четыре (два отчёта и
+      //    два сдвига), и без табло легко пропустить сдвиг или сдвинуть дважды.
+      '<div id="qd-week" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;' +
+        'padding:7px 9px;border:1px solid rgba(224,162,74,.35);border-radius:9px;' +
+        'background:rgba(224,162,74,.05);font-size:11.5px">Загружаю статус недели…</div>' +
       '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap">' +
         '<button id="qd-history" class="sec" style="font-weight:700" title="Полный обзор недельного распределения — 4 очереди с модельками, кто сколько получил, остаток">📜 История распределения</button>' +
-        '<button id="qd-report" class="sec" title="Показать расчёт на странице (не публикует)">📋 Показать расчёт (превью на странице)</button>' +
         '<button class="sec" id="qd-prune" title="Убрать вылетевших из клана">🧹 Убрать вылетевших</button>' +
       "</div>" +
       // ── НОВЫЙ ОТЧЁТ по диапазону этапов (рендер + текст в офиц.чаты + сдвиг очереди) ──
@@ -7608,13 +7648,16 @@
         '<div style="font-size:12.5px;color:#f0dcb4;font-weight:700">📋 Отчёт распределения</div>' +
         '<div style="font-size:11px;color:#8a795a">Один этап (напр. 6 и 6) → отчёт только за него. Диапазон ' +
           '(6→7) → плюс секция «если закроем 7-й». Грамота и остаток — мастер раздаёт вручную, в отчёт не идут. ' +
-          'Огненный цилинь — отдельным списком (его двигает кнопка ниже).</div>' +
+          'Огненный цилинь — <b>отдельный отчёт</b> своей кнопкой ниже. ' +
+          '<b style="color:#f0dcb4">Публикация очередь НЕ двигает</b> — сдвиг отдельной кнопкой, когда точно ' +
+          'известно число закрытых этапов.</div>' +
         '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="font-size:12px;color:#f0dcb4">этапы КХ от ' +
             '<input type="number" id="qd-rep-from" min="0" max="7" value="' + stages + '" style="width:54px"> до ' +
             '<input type="number" id="qd-rep-to" min="0" max="7" value="' + stages + '" style="width:54px"></span>' +
-          '<button class="sec" id="qd-rep-preview">👁 Превью (мне в личку)</button>' +
-          '<button id="qd-rep-commit" style="font-weight:700">📤 Опубликовать и сдвинуть очередь</button>' +
+          '<button class="sec" id="qd-rep-preview" title="Показать отчёт здесь, на сайте — никуда не отправляется">🧪 Пробный отчёт (показать здесь)</button>' +
+          '<button class="sec" id="qd-rep-dm" title="Прислать пробный отчёт мне в личку @pw_spamer_bot">✉ и в личку</button>' +
+          '<button id="qd-rep-commit" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
         "</div>" +
         '<label class="q-admin-row" style="gap:7px;align-items:center;cursor:pointer;font-size:12px;color:#f0dcb4;' +
           'margin:2px 0 2px;padding:6px 8px;border:1px solid rgba(224,162,74,.3);border-radius:8px;background:rgba(224,162,74,.05)">' +
@@ -7636,19 +7679,42 @@
         '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
           'padding:7px 9px;background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px;display:none"></div>' +
       "</div>" +
+      // ── СДВИГ ОСНОВНЫХ ОЧЕРЕДЕЙ — отдельным шагом, по точному числу закрытых этапов ──
+      '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
+        'background:rgba(150,200,120,.07);border:1px solid rgba(150,200,120,.45);border-radius:9px;padding:9px 11px">' +
+        '<div style="font-size:12.5px;color:#d6efc0;font-weight:700">⏭ Сдвинуть очередь (ресурсы КХ)</div>' +
+        '<div style="font-size:11px;color:#8a795a">Жать, когда ТОЧНО известно, сколько этапов КХ закрыли. ' +
+          'Раздача пересчитается по этому числу, получившие уйдут из очереди (или в конец по 🔁), ' +
+          'недополучившие останутся. В чаты ничего не шлётся — отчёт уже опубликован. ' +
+          'Очередь цилиня этой кнопкой НЕ двигается.</div>' +
+        '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<span style="font-size:12px;color:#d6efc0">закрыто этапов КХ: ' +
+            '<input type="number" id="qd-shift-n" min="0" max="7" value="' + stages + '" style="width:64px"></span>' +
+          '<button class="sec" id="qd-shift-plan">👁 Показать план сдвига</button>' +
+          '<button id="qd-shift-go" style="font-weight:700">⏭ Сдвинуть очередь</button>' +
+        "</div>" +
+        '<div id="qd-shift-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:220px;overflow:auto"></div>' +
+      "</div>" +
       // ── ОГНЕННЫЙ ЦИЛИНЬ — раздать выпавших и сдвинуть их очередь ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
         'background:rgba(255,120,70,.07);border:1px solid rgba(255,120,70,.4);border-radius:9px;padding:9px 11px">' +
-        '<div style="font-size:12.5px;color:#ffd0b0;font-weight:700">🐲 Огненный цилинь — раздать выпавших</div>' +
-        '<div style="font-size:11px;color:#8a795a">Сколько цилиней выпало на этой неделе — раздаст первым в их очереди, ' +
-          'они выйдут, очередь сдвинется. 0 → никто не двигается, все ждут (и на следующей неделе). ' +
-          'Кто стоит за цилинём — видно в отчёте отдельным списком.</div>' +
+        '<div style="font-size:12.5px;color:#ffd0b0;font-weight:700">🐲 Огненный цилинь — отдельный отчёт и своя очередь</div>' +
+        '<div style="font-size:11px;color:#8a795a">Цилинь выпадает независимо от этапов КХ, поэтому у него ' +
+          '<b>свой отчёт</b> и <b>свой сдвиг</b>. Публикация отчёта очередь не двигает. ' +
+          'Сдвиг: сколько цилиней выпало → раздаст первым в очереди, они выйдут. ' +
+          '0 → никто не двигается, все ждут (и на следующей неделе).</div>' +
         '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="font-size:12px;color:#f0dcb4">выпало цилиней: ' +
             '<input type="number" id="qd-cil-n" min="0" value="0" style="width:70px"></span>' +
-          '<button id="qd-cil-go" style="font-weight:700">🐲 Раздать и сдвинуть очередь цилиня</button>' +
+          '<button class="sec" id="qd-cil-preview" title="Показать отчёт цилиня здесь, на сайте — никуда не отправляется">🧪 Пробный отчёт (показать здесь)</button>' +
+          '<button class="sec" id="qd-cil-dm" title="Прислать пробный отчёт цилиня мне в личку">✉ и в личку</button>' +
+          '<button id="qd-cil-publish" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
         "</div>" +
-        '<div id="qd-cil-out" style="font-size:11px;color:#c9b48f"></div>' +
+        '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<button class="sec" id="qd-cil-plan">👁 Кто получит</button>' +
+          '<button id="qd-cil-go" style="font-weight:700">⏭ Раздать и сдвинуть очередь цилиня</button>' +
+        "</div>" +
+        '<div id="qd-cil-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:220px;overflow:auto"></div>' +
       "</div>" +
       // ── НЕ ЗАБРАЛИ РЕСУРСЫ — перемотка назад по никам ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
@@ -7685,6 +7751,43 @@
       '<div id="qd-status" style="min-height:16px;font-size:11.5px;color:#e0a86a"></div>';
     var st = wrap.querySelector("#qd-status");
     function status(m, ok) { st.textContent = m || ""; st.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    // ── ТАБЛО НЕДЕЛИ: опубликованы ли оба отчёта и сдвинуты ли обе очереди ──
+    // Шагов теперь четыре и они независимы, поэтому состояние должно быть видно с одного
+    // взгляда: что сделано (зелёное), что ещё нет (серое), где предупреждение (жёлтое).
+    function qdChip(done, label, when, warn) {
+      var col = warn ? "#e0c07a" : (done ? "#9fe0a0" : "#8a95a5");
+      var bg = warn ? "rgba(224,192,122,.12)" : (done ? "rgba(120,224,140,.12)" : "rgba(140,150,165,.1)");
+      return '<span style="display:inline-flex;gap:5px;align-items:center;padding:3px 8px;border-radius:20px;' +
+        "border:1px solid " + col + '55;background:' + bg + ";color:" + col + '">' +
+        (warn ? "⚠" : (done ? "✔" : "○")) + " " + esc(label) +
+        (when ? '<span style="opacity:.65;font-size:10.5px">' + esc(when) + "</span>" : "") + "</span>";
+    }
+    function qdWhen(iso) {
+      if (!iso) return "";
+      var d = new Date((iso.indexOf("Z") < 0 ? iso + "Z" : iso));
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+    function loadWeek() {
+      var host = wrap.querySelector("#qd-week");
+      if (!host) return;
+      return q("GET", "/queue/admin/week-status").then(function (d) {
+        var h = ['<b style="color:#f0dcb4">Неделя ' + esc(d.week || "?") + ":</b>"];
+        h.push(qdChip(d.report.published, "отчёт ресурсов", qdWhen(d.report.at)));
+        h.push(qdChip(d.shift.done, d.shift.done ? "очередь сдвинута (" + (d.shift.stages || 0) + " эт.)" : "очередь не сдвинута",
+                      qdWhen(d.shift.at)));
+        h.push(qdChip(d.cilin_report.published, "отчёт цилиня", qdWhen(d.cilin_report.at)));
+        h.push(qdChip(d.cilin_shift.done, d.cilin_shift.done ? "цилинь роздан (" + (d.cilin_shift.given || 0) + ")" : "цилинь не роздан",
+                      qdWhen(d.cilin_shift.at)));
+        if (!d.valor_fresh) {
+          h.push(qdChip(false, "доблесть за " + (d.valor_week || "—") + ", а идёт " + d.week, "", true));
+        }
+        if (d.test_mode) h.push(qdChip(false, "пробный режим — отчёты идут в личку", "", true));
+        host.innerHTML = h.join(" ");
+      }).catch(function (e) {
+        host.textContent = "Статус недели недоступен: " + (e.detail || e.message);
+      });
+    }
     function loadPriv() {
       var host = wrap.querySelector("#qd-priv"); host.textContent = "Загрузка…";
       q("GET", "/queue/privileges").then(function (d) {
@@ -7754,11 +7857,6 @@
       status(this.checked ? "🧪 Пробный режим ВКЛ — отчёт пойдёт в личку (@pw_spamer_bot)" : "Пробный режим выкл — отчёт в офицерский чат", true);
     });
     wrap.querySelector("#qd-history").addEventListener("click", openQueueHistoryModal);
-    wrap.querySelector("#qd-report").addEventListener("click", function () {
-      status("Считаю отчёт…");
-      q("GET", "/queue/admin/distribute").then(function (rep) { status(""); renderDistReport(rep); })
-        .catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-    });
     // ── Отчёт: диапазон этапов ──
     function repRange() {
       var f = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-rep-from").value, 10) || 0));
@@ -7796,18 +7894,26 @@
           return "• " + p.receiver + " — " + (p.valor || 0) + " доблести" + qn;
         }).join("\n");
     }
-    wrap.querySelector("#qd-rep-preview").addEventListener("click", function () {
+    // ПРОБНЫЙ ОТЧЁТ: тот же расчёт и тот же текст, что уйдёт в каналы, но показывается ЗДЕСЬ —
+    // сначала проверяем глазами, и только потом жмём публикацию. dm=true — ещё и в личку.
+    function repPreview(dm) {
       var r = repRange(), out = wrap.querySelector("#qd-rep-out");
-      out.textContent = "Считаю…"; status("Считаю превью…");
-      q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: false })
+      out.textContent = "Считаю…"; status("Считаю пробный отчёт…");
+      return q("POST", "/queue/admin/report",
+               { from_stages: r.from_stages, to_stages: r.to_stages, commit: false, dm: !!dm })
         .then(function (d) {
           out.textContent = (d.valor_week_warning ? "⚠ " + d.valor_week_warning + "\n\n" : "") + (d.text || "(пусто)");
           showLow(d);
-          status(d.valor_week_warning ? "⚠ Доблесть не за эту неделю — см. текст превью"
-                                      : "✓ Превью ушло тебе в личку (очередь НЕ тронута)", !d.valor_week_warning);
+          if (d.report) renderDistReport(d.report);   // карточка с группами и картинками
+          status(d.valor_week_warning ? "⚠ Доблесть не за эту неделю — см. текст пробного отчёта"
+                 : (dm ? "✓ Пробный отчёт показан здесь и отправлен тебе в личку (в каналы НЕ ушёл)"
+                       : "✓ Пробный отчёт — проверь и жми «Опубликовать» (в каналы пока НЕ ушёл)"),
+                 !d.valor_week_warning);
         })
         .catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
-    });
+    }
+    wrap.querySelector("#qd-rep-preview").addEventListener("click", function () { repPreview(false); });
+    wrap.querySelector("#qd-rep-dm").addEventListener("click", function () { repPreview(true); });
     wrap.querySelector("#qd-rep-commit").addEventListener("click", function () {
       var r = repRange();
       if (r.from_stages === 0) {
@@ -7828,49 +7934,132 @@
           ? (r.from_stages + "→" + r.to_stages + " (с секцией «если закроем " + r.to_stages + "-й»)")
           : (r.from_stages + " (только этот этап)");
         var msg = testOn
-          ? ("🧪 ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ, очередь НЕ сдвинется (сухой прогон).\n\n• этапы КХ: " + rng +
-             "\n\nЧтобы публиковать в офицерские TG+VK и двигать очередь — сними галочку «Пробный режим».")
-          : ("⚠ БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG + VK и очередь СДВИНЕТСЯ.\n\n• этапы КХ: " + rng +
-             "\n\nПолучившие уходят/в конец. Огненный цилинь НЕ двигается (отдельная кнопка). Грамота и остаток — вручную.\n\n" +
-             "Если на этой неделе уже двигали — отчёт просто отправится повторно, БЕЗ второго сдвига.");
+          ? ("🧪 ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ, а не в офицерские каналы.\n\n• этапы КХ: " + rng +
+             "\n\nЧтобы публиковать в офицерские TG+VK — сними галочку «Пробный режим».")
+          : ("⚠ БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG + VK.\n\n• этапы КХ: " + rng +
+             "\n\nОчередь при этом НЕ двигается — для сдвига есть отдельная кнопка «Сдвинуть очередь», " +
+             "её жмут, когда точно известно число закрытых этапов. Публиковать можно сколько угодно раз.");
         if (!confirm(msg)) { status(""); return; }
         status(testOn ? "Пробный прогон…" : "Публикую в офицерские каналы…");
         return q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true })
           .then(function (d) {
             wrap.querySelector("#qd-rep-out").textContent = d.text || ""; showLow(d);
             var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
-            if (d.dry_run) { status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true); refresh(); return; }
-            if (d.resent) {
-              status("✓ Повторная публикация (" + rep + ") — очередь НЕ сдвигалась (сдвиг раз в неделю)", true);
-              refresh();
-              // запасной выход: принудительный пересдвиг (редкий ре-ду распределения)
-              if (confirm("Отчёт переотправлен. На этой неделе очередь УЖЕ сдвигали.\n\nПРИНУДИТЕЛЬНО сдвинуть заново? Обычно НЕ нужно — только если переделываешь распределение с нуля.")) {
-                status("Принудительный пересдвиг…");
-                q("POST", "/queue/admin/report", { from_stages: r.from_stages, to_stages: r.to_stages, commit: true, force: true })
-                  .then(function (d2) {
-                    var c2 = d2.channels || {}, rep2 = c2.test ? ("личка:" + c2.test) : ("TG:" + (c2.tg || "?") + " VK:" + (c2.vk || "?"));
-                    status("✓ Пересдвинуто (" + rep2 + ") · вышли: " + (d2.left_removed || 0) + " · в конец: " + (d2.requeued || 0), true);
-                    refresh();
-                  }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-              }
-              return;
-            }
-            status("✓ Опубликовано в офиц.каналы (" + rep + ") · вышли: " + (d.left_removed || 0) + " · в конец: " + (d.requeued || 0) +
-              " · не забрали: " + (d.stayed_uncollected || 0), true);
-            refresh();
+            if (d.dry_run) { status("✓ Пробный: отчёт в личку (" + rep + "), очередь НЕ тронута", true); loadWeek(); return; }
+            status("✓ Отчёт " + (d.republished ? "переопубликован" : "опубликован") + " (" + rep +
+              ") · очередь НЕ сдвинута — жми «Сдвинуть очередь», когда узнаешь число этапов", true);
+            loadWeek();
           });
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
-    // ── Огненный цилинь: раздать выпавших ──
+    // ── СДВИГ основных очередей: отдельный шаг по точному числу закрытых этапов ──
+    function shiftStages() {
+      return Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-shift-n").value, 10) || 0));
+    }
+    function shiftPlanText(d) {
+      var s = d.plan || {}, L = [];
+      L.push("По " + d.stages + " закрытым этапам:");
+      L.push("• выходят из очереди: " + (d.left_removed || 0));
+      L.push("• уходят в конец (🔁/план): " + (d.requeued || 0));
+      L.push("• остаются, получили не всё: " + (d.partial_stay || 0));
+      L.push("• остаются, «не забрал»: " + (d.stayed_uncollected || 0));
+      function names(a) { return (a || []).map(function (x) { return x.nick; }).join(", ") || "—"; }
+      if ((s.leave || []).length) L.push("\nВыйдут: " + names(s.leave));
+      if ((s.requeue || []).length) L.push("В конец: " + names(s.requeue));
+      if ((s.stay_partial || []).length) L.push("Остаются (недополучили): " + names(s.stay_partial));
+      if ((s.stay_uncollected || []).length) L.push("Остаются (не забрали): " + names(s.stay_uncollected));
+      if (d.already_shifted) L.push("\n⚠ Очередь за эту неделю УЖЕ сдвигали.");
+      return L.join("\n");
+    }
+    wrap.querySelector("#qd-shift-plan").addEventListener("click", function () {
+      var n = shiftStages(), out = wrap.querySelector("#qd-shift-out");
+      out.textContent = "Считаю план…"; status("Считаю план сдвига…");
+      q("POST", "/queue/admin/shift", { stages: n, dry_run: true }).then(function (d) {
+        out.textContent = shiftPlanText(d);
+        status("✓ План посчитан — очередь НЕ тронута", true);
+      }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
+    });
+    wrap.querySelector("#qd-shift-go").addEventListener("click", function () {
+      var n = shiftStages(), out = wrap.querySelector("#qd-shift-out");
+      if (!n && !confirm("⚠ Указано 0 этапов КХ — раздачи нет, значит и двигать некого.\n\nВсё равно продолжить?")) return;
+      status("Считаю план сдвига…");
+      // Сначала ВСЕГДА показываем план тем же кодом, что и сам сдвиг, — чтобы подтверждение
+      // было не «вслепую», а поимённо.
+      q("POST", "/queue/admin/shift", { stages: n, dry_run: true }).then(function (p) {
+        out.textContent = shiftPlanText(p);
+        if (!confirm("СДВИНУТЬ ОЧЕРЕДЬ по " + n + " закрытым этапам?\n\n" + shiftPlanText(p) +
+                     "\n\nВ чаты ничего не уйдёт. Отменить можно откатом из «Истории распределения».")) {
+          status(""); return;
+        }
+        status("Двигаю очередь…");
+        return q("POST", "/queue/admin/shift", { stages: n }).then(function (d) {
+          out.textContent = "✓ Сдвинуто по " + d.stages + " этапам · вышли: " + (d.left_removed || 0) +
+            " · в конец: " + (d.requeued || 0) + " · остались частично: " + (d.partial_stay || 0) +
+            " · не забрали: " + (d.stayed_uncollected || 0);
+          status("✓ Очередь сдвинута", true);
+          loadWeek(); refresh();
+        });
+      }).catch(function (e) {
+        // Повторный сдвиг за неделю бэкенд блокирует — предлагаем осознанный force
+        var msg = e.detail || e.message || "";
+        if (/уже сдвигали/i.test(msg) &&
+            confirm(msg + "\n\nПРИНУДИТЕЛЬНО сдвинуть ещё раз? Обычно НЕ нужно — только если переделываешь распределение с нуля.")) {
+          status("Принудительный пересдвиг…");
+          q("POST", "/queue/admin/shift", { stages: shiftStages(), force: true }).then(function (d2) {
+            out.textContent = "✓ Пересдвинуто · вышли: " + (d2.left_removed || 0) + " · в конец: " + (d2.requeued || 0);
+            status("✓ Пересдвинуто", true); loadWeek(); refresh();
+          }).catch(function (e2) { status("Ошибка: " + (e2.detail || e2.message)); });
+          return;
+        }
+        status("Ошибка: " + msg);
+      });
+    });
+    // ── Огненный цилинь: свой отчёт (публикация) и свой сдвиг (раздача) ──
+    function cilCount() { return Math.max(0, parseInt(wrap.querySelector("#qd-cil-n").value, 10) || 0); }
+    function cilPreview(dm) {
+      var out = wrap.querySelector("#qd-cil-out");
+      out.textContent = "Считаю…"; status("Считаю пробный отчёт цилиня…");
+      return q("POST", "/queue/admin/cilin-report", { count: cilCount(), commit: false, dm: !!dm })
+        .then(function (d) {
+          out.textContent = d.text || "(пусто)";
+          status(dm ? "✓ Пробный отчёт цилиня показан здесь и отправлен в личку (в каналы НЕ ушёл)"
+                    : "✓ Пробный отчёт цилиня — проверь и жми «Опубликовать» (в каналы пока НЕ ушёл)", true);
+        }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
+    }
+    wrap.querySelector("#qd-cil-preview").addEventListener("click", function () { cilPreview(false); });
+    wrap.querySelector("#qd-cil-dm").addEventListener("click", function () { cilPreview(true); });
+    wrap.querySelector("#qd-cil-publish").addEventListener("click", function () {
+      var n = cilCount(), out = wrap.querySelector("#qd-cil-out");
+      if (!confirm("Опубликовать ОТДЕЛЬНЫЙ отчёт по Огненному цилиню (выпало: " + n + ")?\n\n" +
+                   "Очередь цилиня при этом НЕ двигается — для раздачи есть кнопка ниже.")) return;
+      status("Публикую отчёт цилиня…");
+      q("POST", "/queue/admin/cilin-report", { count: n, commit: true }).then(function (d) {
+        out.textContent = d.text || "";
+        var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
+        status("✓ Отчёт цилиня " + (d.republished ? "переопубликован" : "опубликован") + " (" + rep +
+               ") · очередь цилиня НЕ сдвинута", true);
+        loadWeek();
+      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    });
+    wrap.querySelector("#qd-cil-plan").addEventListener("click", function () {
+      var out = wrap.querySelector("#qd-cil-out");
+      out.textContent = "Считаю…"; status("Смотрю, кто получит цилиня…");
+      q("POST", "/queue/admin/cilin-distribute", { count: cilCount(), dry_run: true }).then(function (d) {
+        out.textContent = "Получат (" + (d.given_count || 0) + "): " + ((d.given || []).join(", ") || "—") +
+          "\nЖдут дальше: " + ((d.waiting || []).join(", ") || "—");
+        status("✓ Посчитано — очередь НЕ тронута", true);
+      }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
+    });
     wrap.querySelector("#qd-cil-go").addEventListener("click", function () {
-      var n = Math.max(0, parseInt(wrap.querySelector("#qd-cil-n").value, 10) || 0);
-      if (!confirm("Раздать " + n + " Огненного цилиня первым в их очереди и сдвинуть?\n(0 → никто не двигается, все ждут дальше)")) return;
+      var n = cilCount(), out = wrap.querySelector("#qd-cil-out");
+      if (!confirm("Раздать " + n + " Огненного цилиня первым в их очереди и СДВИНУТЬ очередь цилиня?\n" +
+                   "(0 → никто не двигается, все ждут дальше)")) return;
       status("Раздаю цилиней…");
       q("POST", "/queue/admin/cilin-distribute", { count: n }).then(function (d) {
-        wrap.querySelector("#qd-cil-out").textContent = "✓ выдано " + (d.given_count || 0) + ": " +
-          ((d.given || []).join(", ") || "—") + (d.waiting && d.waiting.length ? " · ждут ещё: " + d.waiting.join(", ") : "");
+        out.textContent = "✓ выдано " + (d.given_count || 0) + ": " +
+          ((d.given || []).join(", ") || "—") + (d.waiting && d.waiting.length ? "\nждут ещё: " + d.waiting.join(", ") : "");
         status("✓ Цилинь: выдано " + (d.given_count || 0) + ", ждут " + ((d.waiting || []).length), true);
-        refresh();
+        loadWeek(); refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
     // ── Не забрали ресурсы: вернуть по никам ──
@@ -7906,6 +8095,7 @@
         retCount();
       }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
     }
+    loadWeek();    // табло недели: что уже опубликовано и сдвинуто, а что ещё нет
     retLoad();     // список подтягивается сразу — вводить ничего не нужно
     wrap.querySelector("#qd-ret-list").addEventListener("click", retLoad);
     wrap.querySelector("#qd-ret-all").addEventListener("click", function () {
@@ -8001,35 +8191,15 @@
     return html;
   }
 
-  // ── модалка отчёта распределения ──
+  // ── карточка ПРОБНОГО отчёта распределения (модалка) ──
+  // Публикующей кнопки здесь СОЗНАТЕЛЬНО нет: публикация живёт в одном месте — в панели
+  // распределения («Опубликовать в офиц. каналы»), где выбран диапазон этапов и виден режим.
+  // Вторая кнопка отправки в модалке публиковала отчёт мимо этих настроек и мимо истории.
   function renderDistReport(rep) {
     var body = document.createElement("div");
     body.className = "qs-distrep";
     body.innerHTML = distReportHtml(rep);
-    // кнопка ручной отправки отчёта в офицерский чат
-    var sendBar = document.createElement("div");
-    sendBar.style.cssText = "margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
-    var sendBtn = document.createElement("button");
-    sendBtn.className = "qs-join"; sendBtn.style.cssText = "margin:0;max-width:none";
-    sendBtn.textContent = "📤 Отправить отчёт в офицерский чат (TG + VK)";
-    var sendMsg = document.createElement("span");
-    sendMsg.style.cssText = "font-size:12px;color:#c9b48f";
-    sendBtn.addEventListener("click", function () {
-      sendBtn.disabled = true; sendMsg.textContent = "Отправляю…"; sendMsg.style.color = "#c9b48f";
-      q("POST", "/queue/admin/distribute/send").then(function (d) {
-        var c = d.channels || {};
-        var okAll = c.test ? (c.test === "ok") : (c.tg === "ok" && c.vk === "ok");
-        sendMsg.textContent = c.test ? ("🧪 проба (@pw_spamer_bot): " + c.test) : ("TG: " + (c.tg || "?") + " · VK: " + (c.vk || "?"));
-        sendMsg.style.color = okAll ? "#9fe0a0" : "#e0a86a";
-        sendBtn.disabled = false;
-      }).catch(function (e) {
-        sendMsg.textContent = "Ошибка: " + (e.detail || e.message); sendMsg.style.color = "#e08a8a";
-        sendBtn.disabled = false;
-      });
-    });
-    sendBar.appendChild(sendBtn); sendBar.appendChild(sendMsg);
-    body.appendChild(sendBar);
-    sceneModal("📋 Отчёт о распределении ресурсов", body);
+    sceneModal("🧪 Пробный отчёт о распределении ресурсов", body);
   }
 
   function buildModelSizePanel() {
