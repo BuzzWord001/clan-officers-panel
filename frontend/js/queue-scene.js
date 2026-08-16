@@ -7733,7 +7733,8 @@
           '<span style="font-size:12px;color:#f0dcb4">этапы КХ от ' +
             '<input type="number" id="qd-rep-from" min="0" max="7" value="' + stages + '" style="width:54px"> до ' +
             '<input type="number" id="qd-rep-to" min="0" max="7" value="' + stages + '" style="width:54px"></span>' +
-          '<button class="sec" id="qd-rep-preview" title="Показать отчёт здесь, на сайте — никуда не отправляется">🧪 Пробный отчёт (показать здесь)</button>' +
+          '<button id="qd-rep-open" style="font-weight:700">📋 Открыть отчёт (очередь + текст)</button>' +
+          '<button class="sec" id="qd-rep-preview" title="Только текст отчёта, без картинки очереди">🧪 Пробный текстом</button>' +
           '<button class="sec" id="qd-rep-dm" title="Прислать пробный отчёт мне в личку @pw_spamer_bot">✉ и в личку</button>' +
           '<button id="qd-rep-commit" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
         "</div>" +
@@ -7783,16 +7784,9 @@
         '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="font-size:12px;color:#f0dcb4">выпало цилиней: ' +
             '<input type="number" id="qd-cil-n" min="0" value="0" style="width:70px"></span>' +
-          '<button class="sec" id="qd-cil-preview" title="Показать отчёт цилиня здесь, на сайте — никуда не отправляется">🧪 Пробный отчёт (показать здесь)</button>' +
-          '<button class="sec" id="qd-cil-dm" title="Прислать пробный отчёт цилиня мне в личку">✉ и в личку</button>' +
-          '<button id="qd-cil-publish" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
+          '<button id="qd-cil-open" style="font-weight:700">🐲 Открыть очередь цилиня</button>' +
         "</div>" +
-        '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
-          '<button class="sec" id="qd-cil-plan">👁 Кто получит</button>' +
-          '<button id="qd-cil-go" style="font-weight:700">⏭ Раздать и сдвинуть очередь цилиня</button>' +
         "</div>" +
-        '<div id="qd-cil-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:220px;overflow:auto"></div>' +
-      "</div>" +
       // ── НЕ ЗАБРАЛИ РЕСУРСЫ — список открывается кнопкой ──
       // Раньше список висел прямо в разделе, длинной простынёй, и дублировал панель сдвига:
       // до сдвига в нём почти все строки были неактивны («уже возвращён»), и понять, что с ним
@@ -8009,6 +8003,10 @@
         })
         .catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
     }
+    wrap.querySelector("#qd-rep-open").addEventListener("click", function () {
+      var r = repRange();
+      openReportPanel(r.from_stages, r.to_stages);
+    });
     wrap.querySelector("#qd-rep-preview").addEventListener("click", function () { repPreview(false); });
     wrap.querySelector("#qd-rep-dm").addEventListener("click", function () { repPreview(true); });
     wrap.querySelector("#qd-rep-commit").addEventListener("click", function () {
@@ -8056,53 +8054,13 @@
       var n = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-shift-n").value, 10) || 0));
       openShiftPanel(n);
     });
-    // ── Огненный цилинь: свой отчёт (публикация) и свой сдвиг (раздача) ──
-    function cilCount() { return Math.max(0, parseInt(wrap.querySelector("#qd-cil-n").value, 10) || 0); }
-    function cilPreview(dm) {
-      var out = wrap.querySelector("#qd-cil-out");
-      out.textContent = "Считаю…"; status("Считаю пробный отчёт цилиня…");
-      return q("POST", "/queue/admin/cilin-report", { count: cilCount(), commit: false, dm: !!dm })
-        .then(function (d) {
-          out.textContent = d.text || "(пусто)";
-          status(dm ? "✓ Пробный отчёт цилиня показан здесь и отправлен в личку (в каналы НЕ ушёл)"
-                    : "✓ Пробный отчёт цилиня — проверь и жми «Опубликовать» (в каналы пока НЕ ушёл)", true);
-        }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
-    }
-    wrap.querySelector("#qd-cil-preview").addEventListener("click", function () { cilPreview(false); });
-    wrap.querySelector("#qd-cil-dm").addEventListener("click", function () { cilPreview(true); });
-    wrap.querySelector("#qd-cil-publish").addEventListener("click", function () {
-      var n = cilCount(), out = wrap.querySelector("#qd-cil-out");
-      if (!confirm("Опубликовать ОТДЕЛЬНЫЙ отчёт по Огненному цилиню (выпало: " + n + ")?\n\n" +
-                   "Очередь цилиня при этом НЕ двигается — для раздачи есть кнопка ниже.")) return;
-      status("Публикую отчёт цилиня…");
-      q("POST", "/queue/admin/cilin-report", { count: n, commit: true }).then(function (d) {
-        out.textContent = d.text || "";
-        var c = d.channels || {}, rep = c.test ? ("личка: " + c.test) : ("TG:" + (c.tg || "?") + " VK:" + (c.vk || "?"));
-        status("✓ Отчёт цилиня " + (d.republished ? "переопубликован" : "опубликован") + " (" + rep +
-               ") · очередь цилиня НЕ сдвинута", true);
-        loadWeek();
-      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
-    });
-    wrap.querySelector("#qd-cil-plan").addEventListener("click", function () {
-      var out = wrap.querySelector("#qd-cil-out");
-      out.textContent = "Считаю…"; status("Смотрю, кто получит цилиня…");
-      q("POST", "/queue/admin/cilin-distribute", { count: cilCount(), dry_run: true }).then(function (d) {
-        out.textContent = "Получат (" + (d.given_count || 0) + "): " + ((d.given || []).join(", ") || "—") +
-          "\nЖдут дальше: " + ((d.waiting || []).join(", ") || "—");
-        status("✓ Посчитано — очередь НЕ тронута", true);
-      }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
-    });
-    wrap.querySelector("#qd-cil-go").addEventListener("click", function () {
-      var n = cilCount(), out = wrap.querySelector("#qd-cil-out");
-      if (!confirm("Раздать " + n + " Огненного цилиня первым в их очереди и СДВИНУТЬ очередь цилиня?\n" +
-                   "(0 → никто не двигается, все ждут дальше)")) return;
-      status("Раздаю цилиней…");
-      q("POST", "/queue/admin/cilin-distribute", { count: n }).then(function (d) {
-        out.textContent = "✓ выдано " + (d.given_count || 0) + ": " +
-          ((d.given || []).join(", ") || "—") + (d.waiting && d.waiting.length ? "\nждут ещё: " + d.waiting.join(", ") : "");
-        status("✓ Цилинь: выдано " + (d.given_count || 0) + ", ждут " + ((d.waiting || []).length), true);
-        loadWeek(); refresh();
-      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    // ── Огненный цилинь: вся работа — в своей визуальной панели (очередь карточками) ──
+    // Текстовые кнопки «пробный / опубликовать / кто получит / раздать» жили прямо в разделе:
+    // очередь цилиня при этом была не видна, и кто получит питомца, приходилось узнавать из
+    // текста. Теперь панель показывает очередь так же, как история распределения.
+    wrap.querySelector("#qd-cil-open").addEventListener("click", function () {
+      var n = Math.max(0, parseInt(wrap.querySelector("#qd-cil-n").value, 10) || 0);
+      openCilinPanel(n);
     });
     // ── Не забрали ресурсы: список открывается модалкой (та же, что в панели сдвига) ──
     // Список с галочками жил прямо в разделе и дублировал панель сдвига; до сдвига почти все
@@ -8402,36 +8360,290 @@
     load();
   }
 
-  // ── список «кого вернуть» с галочками (после сдвига) ──
+  // ── ВОЗВРАТ «не забравших» — карточками, как очередь, а не строчками текста ──
   function openReturnPicker(after) {
+    shiftCssOnce();
     var body = document.createElement("div");
-    body.innerHTML = '<div class="qd-ret-box" id="qrp-box">Загрузка…</div>' +
-      '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap;align-items:center">' +
-      '<button id="qrp-go" style="font-weight:700">↩ Вернуть отмеченных</button>' +
-      '<button class="sec" id="qrp-all">✓ отметить всех</button>' +
-      '<span id="qrp-msg" style="font-size:11.5px;color:#c9b48f"></span></div>';
+    body.className = "qsf-wrap";
+    body.innerHTML = '<div class="qsf-empty">Загрузка…</div>';
     sceneModal("↩ Вернуть тех, кто не забрал", body);
-    var box = body.querySelector("#qrp-box");
-    q("GET", "/queue/admin/uncollected-candidates").then(function (d) {
-      var ppl = d.people || [];
-      box.innerHTML = ppl.length ? qhPeopleRowsHtml(ppl)
-        : '<div style="color:#8a795a;font-size:11.5px">Некого возвращать — раздачи не было.</div>';
-    }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
-    body.querySelector("#qrp-all").addEventListener("click", function () {
-      [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = true; });
-    });
-    body.querySelector("#qrp-go").addEventListener("click", function () {
-      var sel = [].map.call(box.querySelectorAll(".qd-ret-cb:checked"), function (c) { return c.value; });
-      var msg = body.querySelector("#qrp-msg");
-      if (!sel.length) { msg.textContent = "Никто не отмечен."; return; }
-      msg.textContent = "Возвращаю…";
-      q("POST", "/queue/admin/return-people", { canons: sel }).then(function (r) {
-        msg.textContent = "✓ вернулись: " + ((r.returned || []).join(", ") || "—");
-        msg.style.color = "#9fe0a0";
-        refresh();
-        if (after) after();
-      }).catch(function (e) { msg.textContent = "Ошибка: " + (e.detail || e.message); });
-    });
+    var picked = {};
+
+    function load() {
+      return q("GET", "/queue/admin/uncollected-candidates").then(function (d) {
+        var ppl = (d.people || []).filter(function (p) { return !p.returned; });
+        var done = (d.people || []).filter(function (p) { return p.returned; });
+        if (!ppl.length && !done.length) {
+          body.innerHTML = '<div class="qsf-empty">Некого возвращать — на этой неделе раздачи ещё не было.</div>';
+          return;
+        }
+        var cards = ppl.map(function (p) {
+          var mi = modelInfo(p);
+          var got = (p.got_list || []).map(function (g) {
+            return '<img src="' + resImg(g.key) + '" alt="" title="' + esc(g.name) + " ×" + g.amount + '">';
+          }).join("");
+          var qn = (p.queues || []).map(function (x) { return x.queue_name; }).join(", ");
+          return '<div class="qsf-c' + (picked[p.canon] ? " nc" : "") + '" data-canon="' + esc(p.canon) + '" ' +
+            'title="' + esc(p.nick) + " · очереди: " + esc(qn) + '\\nнажми — вернуть его в очередь">' +
+            (mi ? '<img class="qsf-mdl" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qsf-mdl">?</span>') +
+            '<span class="qsf-nick">' + esc(p.nick) + "</span>" +
+            '<span class="qsf-got">' + got + "</span>" +
+            '<span class="qsf-act" style="color:' + (picked[p.canon] ? "#c9a0ff" : "#8a795a") + '">' +
+              (picked[p.canon] ? "✔ вернуть" : (p.out ? "🚪 вышел" : "⏳ остался")) + "</span></div>";
+        }).join("");
+        body.innerHTML =
+          '<div style="font-size:11.5px;color:#8a795a">Нажми на тех, кто НЕ забрал свои ресурсы — они вернутся ' +
+            'на прежнее место, в ту очередь, где не получили. Работает и после 00:00.</div>' +
+          '<div class="qsf-lane" style="--gc:rgba(120,170,255,.5)"><div class="qsf-lane-h">Кому выдали на этой раздаче ' +
+            '<small>' + ppl.length + " чел</small></div><div class=\"qsf-strip\">" +
+            (cards || '<div class="qsf-empty">все уже возвращены</div>') + "</div></div>" +
+          (done.length ? '<div class="qsf-empty">↩ уже возвращены: ' +
+            done.map(function (p) { return esc(p.nick); }).join(", ") + "</div>" : "") +
+          '<div class="qsf-bar" style="border-color:rgba(120,170,255,.5);background:rgba(120,170,255,.07)">' +
+            '<button id="qrp-go" style="font-weight:700">↩ Вернуть отмеченных</button>' +
+            '<span id="qrp-msg" style="font-size:11.5px;color:#c9b48f"></span></div>';
+        try { autoCropAll(body, ".qsf-mdl"); } catch (e2) {}
+        [].forEach.call(body.querySelectorAll(".qsf-c"), function (c) {
+          c.addEventListener("click", function () {
+            var cn = c.getAttribute("data-canon");
+            if (picked[cn]) { delete picked[cn]; } else { picked[cn] = 1; }
+            load();
+          });
+        });
+        body.querySelector("#qrp-go").addEventListener("click", function () {
+          var sel = Object.keys(picked);
+          var msg = body.querySelector("#qrp-msg");
+          if (!sel.length) { msg.textContent = "Никто не отмечен — нажми на людей выше."; return; }
+          msg.textContent = "Возвращаю…";
+          q("POST", "/queue/admin/return-people", { canons: sel }).then(function (r) {
+            picked = {};
+            refresh();
+            if (after) after();
+            return load().then(function () {
+              var m2 = body.querySelector("#qrp-msg");
+              if (m2) { m2.textContent = "✓ вернулись: " + ((r.returned || []).join(", ") || "—"); m2.style.color = "#9fe0a0"; }
+            });
+          }).catch(function (e) { msg.textContent = "Ошибка: " + (e.detail || e.message); });
+        });
+      }).catch(function (e) {
+        body.innerHTML = '<div class="qsf-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+      });
+    }
+    load();
+  }
+
+  // ── ОТЧЁТ РАСПРЕДЕЛЕНИЯ — очередь карточками: кому что достанется и у кого сколько доблести ──
+  // Текст отчёта показывает ГРУППЫ («2 чел: такие-то, столько-то»), и по нему не видно, где
+  // человек стоит в очереди и почему сосед получил, а он нет. Здесь — та же очередь, что на
+  // сцене: получатели подсвечены и с иконками, недобравшие по доблести приглушены.
+  function openReportPanel(lo, hi) {
+    shiftCssOnce();
+    var body = document.createElement("div");
+    body.className = "qsf-wrap";
+    body.innerHTML = '<div class="qsf-empty">Считаю отчёт…</div>';
+    sceneModal("📋 Отчёт распределения — очередь и кому что достанется", body);
+
+    function say(m, ok) {
+      var el = body.querySelector("#qrep-msg");
+      if (el) { el.textContent = m || ""; el.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    }
+    function load() {
+      return Promise.all([
+        q("GET", "/queue/admin/shift-preview?stages=" + lo),
+        q("POST", "/queue/admin/report", { from_stages: lo, to_stages: hi, commit: false })
+      ]).then(function (r) { draw(r[0], r[1]); }).catch(function (e) {
+        body.innerHTML = '<div class="qsf-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+      });
+    }
+    function draw(pv, rep) {
+      var w = pv.week || {};
+      var lanes = (pv.queues || []).map(function (Q) {
+        var acc = (BOOTHS[Q.queue] && BOOTHS[Q.queue].accent) || "#e0a24a";
+        var ents = (Q.entries || []).filter(function (e) { return e.resource !== "mount-cilin"; });
+        var win = ents.filter(function (e) { return Object.keys(e.got || {}).length; }).length;
+        var cards = ents.length ? ents.map(function (e, i) {
+          var mi = modelInfo(e), got = Object.keys(e.got || {});
+          var low = (e.valor || 0) < Q.threshold;
+          return '<div class="qsf-c nomark' + (got.length ? " nc" : low ? " dim" : "") + '" title="' +
+            esc(e.nick) + " · доблесть " + (e.valor || 0) + " (порог " + Q.threshold + ")" +
+            (got.length ? "\\nполучит: " + got.map(function (k) { return resName(k) + " ×" + e.got[k]; }).join(", ")
+                        : low ? "\\nне хватает доблести" : "\\nресурс не достанется") + '">' +
+            '<span class="qsf-pos">#' + (i + 1) + "</span>" +
+            (mi ? '<img class="qsf-mdl" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qsf-mdl">?</span>') +
+            '<span class="qsf-nick">' + esc(e.nick) + "</span>" +
+            '<span class="qsf-val' + (low ? " low" : "") + '">💪 ' + (e.valor || 0) + (low ? " / " + Q.threshold : "") + "</span>" +
+            '<span class="qsf-got">' + got.map(function (k) {
+              return '<img src="' + resImg(k) + '" alt="" title="' + esc(resName(k)) + " ×" + e.got[k] + '">';
+            }).join("") + "</span>" +
+            '<span class="qsf-act" style="color:' + (got.length ? "#9fe0a0" : low ? "#8a95a5" : "#8a795a") + '">' +
+              (got.length ? "🎁 получит" : low ? "💤 мало доблести" : "— не достанется") + "</span></div>";
+        }).join("") : '<div class="qsf-empty">очередь пуста</div>';
+        return '<div class="qsf-lane" style="--gc:' + acc + '"><div class="qsf-lane-h">' + esc(Q.name) +
+          ' <small>порог ' + Q.threshold + " · стоят " + ents.length + " · получат " + win + "</small></div>" +
+          '<div class="qsf-strip">' + cards + "</div></div>";
+      }).join("");
+      var vs = rep.variants || [];
+      var txt = vs.length > 1
+        ? vs.map(function (v) { return "═══ ЕСЛИ ЗАКРОЕМ " + v.stages + " ЭТАП(ОВ) ═══\n" + (v.text || ""); }).join("\n\n\n")
+        : (rep.text || "");
+      body.innerHTML =
+        '<div class="qsf-bar">' +
+          '<b style="color:#f0dcb4">Этапы КХ:</b>' +
+          '<input type="number" id="qrep-lo" min="0" max="7" value="' + lo + '" style="width:56px"> — ' +
+          '<input type="number" id="qrep-hi" min="0" max="7" value="' + hi + '" style="width:56px">' +
+          '<button class="sec" id="qrep-recalc">↻ пересчитать</button>' +
+          '<span class="qsf-sum">' +
+            ((w.report && w.report.published) ? '<span style="color:#9fe0a0">✔ отчёт опубликован</span>'
+                                             : '<span style="color:#8a95a5">○ отчёт не опубликован</span>') +
+            ((w.shift && w.shift.done) ? '<span style="color:#e0c07a">✔ очередь сдвинута</span>'
+                                       : '<span style="color:#9fe0a0">○ очередь не сдвинута</span>') +
+            (w.test_mode ? '<span style="color:#e0c07a">🧪 пробный режим — в личку</span>' : "") +
+          "</span></div>" +
+        lanes +
+        '<div class="qsf-bar" style="border-color:rgba(224,162,74,.5)">' +
+          '<button id="qrep-pub" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
+          '<span id="qrep-msg" style="font-size:11.5px;color:#c9b48f"></span>' +
+        "</div>" +
+        '<div style="font:700 12px Georgia,serif;color:#f0dcb4">Текст, который уйдёт в чаты:</div>' +
+        '<div style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:260px;overflow:auto;' +
+          'padding:8px 10px;border:1px dashed rgba(224,162,74,.35);border-radius:9px">' + esc(txt || "(пусто)") + "</div>" +
+        ((rep.low_valor || []).length
+          ? '<div style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;padding:7px 9px;' +
+            'background:rgba(200,90,60,.08);border:1px dashed rgba(220,120,90,.4);border-radius:8px">' +
+            "⚠ НЕ ХВАТИЛО ДОБЛЕСТИ (только тебе, в отчёт не идёт):\n" +
+            rep.low_valor.map(function (p) {
+              return "• " + esc(p.receiver) + " — " + (p.valor || 0) + " доблести" +
+                ((p.queue_names && p.queue_names.length) ? " · " + esc(p.queue_names.join(", ")) : "");
+            }).join("\n") + "</div>"
+          : "");
+      try { autoCropAll(body, ".qsf-mdl"); } catch (e2) {}
+      body.querySelector("#qrep-recalc").addEventListener("click", function () {
+        var a = Math.max(0, Math.min(7, parseInt(body.querySelector("#qrep-lo").value, 10) || 0));
+        var b = Math.max(0, Math.min(7, parseInt(body.querySelector("#qrep-hi").value, 10) || 0));
+        lo = Math.min(a, b); hi = Math.max(a, b);
+        body.innerHTML = '<div class="qsf-empty">Считаю…</div>'; load();
+      });
+      body.querySelector("#qrep-pub").addEventListener("click", function () {
+        if (!confirm((w.test_mode ? "🧪 ПРОБНЫЙ режим: отчёт уйдёт ТЕБЕ В ЛИЧКУ.\\n\\n"
+                                  : "⚠ БОЕВОЙ режим: отчёт уйдёт в ОФИЦЕРСКИЕ TG + VK.\\n\\n") +
+                     "Этапы: " + lo + (hi > lo ? "→" + hi : "") +
+                     "\\n\\nОчередь при этом НЕ двигается — для сдвига есть шаг 2.")) return;
+        say("Публикую…");
+        q("POST", "/queue/admin/report", { from_stages: lo, to_stages: hi, commit: true })
+          .then(function (d) {
+            say("✓ Отчёт " + (d.republished ? "переопубликован" : "опубликован") +
+                " · очередь НЕ сдвинута", true);
+            load();
+          }).catch(function (e) { say("Ошибка: " + (e.detail || e.message)); });
+      });
+    }
+    load();
+  }
+
+  // ── ОЧЕРЕДЬ ЦИЛИНЯ — та же карточная очередь: кто получит, кто ждёт, кому не хватает ──
+  function openCilinPanel(count) {
+    shiftCssOnce();
+    var body = document.createElement("div");
+    body.className = "qsf-wrap";
+    body.innerHTML = '<div class="qsf-empty">Считаю очередь цилиня…</div>';
+    sceneModal("🐲 Огненный цилинь — очередь и раздача", body);
+    var n = count || 0;
+
+    function say(m, ok) {
+      var el = body.querySelector("#qcl-msg");
+      if (el) { el.textContent = m || ""; el.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    }
+
+    function load() {
+      return Promise.all([
+        q("GET", "/queue/admin/shift-preview?stages=0"),
+        q("POST", "/queue/admin/cilin-distribute", { count: n, dry_run: true })
+      ]).then(function (r) { draw(r[0], r[1]); }).catch(function (e) {
+        body.innerHTML = '<div class="qsf-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+      });
+    }
+
+    function draw(pv, plan) {
+      var q2 = (pv.queues || []).filter(function (Q) { return Q.queue === 2; })[0] || { entries: [] };
+      var ents = (q2.entries || []).filter(function (e) { return e.resource === "mount-cilin"; });
+      var win = {};
+      (plan.given || []).forEach(function (nk) { win[canon(nk)] = 1; });
+      var w = pv.week || {};
+      var cards = ents.length ? ents.map(function (e, i) {
+        var mi = modelInfo(e);
+        var isWin = !!win[canon(e.nick)];
+        var low = e.action === "wait_cilin_low";
+        return '<div class="qsf-c' + (isWin ? " nc" : "") + (low ? " dim" : "") + ' nomark">' +
+          '<span class="qsf-pos">#' + (i + 1) + "</span>" +
+          (mi ? '<img class="qsf-mdl" src="' + esc(mi.url) + '" alt="" loading="lazy">' : '<span class="qsf-mdl">?</span>') +
+          '<span class="qsf-nick">' + esc(e.nick) + "</span>" +
+          '<span class="qsf-val' + (low ? " low" : "") + '">💪 ' + (e.valor || 0) +
+            (low ? " / " + q2.threshold : "") + "</span>" +
+          '<span class="qsf-act" style="color:' + (isWin ? "#c9a0ff" : low ? "#8a95a5" : "#ffb07a") + '">' +
+            (isWin ? "🎁 получит" : low ? "💤 мало доблести" : "🐲 ждёт") + "</span></div>";
+      }).join("") : '<div class="qsf-empty">за цилинём никто не стоит</div>';
+
+      body.innerHTML =
+        '<div class="qsf-bar" style="border-color:rgba(255,120,70,.5);background:rgba(255,120,70,.08)">' +
+          '<b style="color:#ffd0b0">Выпало цилиней:</b>' +
+          '<input type="number" id="qcl-n" min="0" max="50" value="' + n + '" style="width:62px">' +
+          '<button class="sec" id="qcl-recalc">↻ пересчитать</button>' +
+          '<span class="qsf-sum">' +
+            ((w.cilin_report && w.cilin_report.published)
+              ? '<span style="color:#9fe0a0">✔ отчёт цилиня опубликован</span>'
+              : '<span style="color:#8a95a5">○ отчёт цилиня не опубликован</span>') +
+            ((w.cilin_shift && w.cilin_shift.done)
+              ? '<span style="color:#e0c07a">⚠ цилинь уже роздан (' + (w.cilin_shift.given || 0) + ")</span>"
+              : '<span style="color:#9fe0a0">○ цилинь ещё не роздан</span>') +
+          "</span></div>" +
+        '<div class="qsf-lane" style="--gc:rgba(255,120,70,.55)">' +
+          '<div class="qsf-lane-h">Очередь за Огненным цилинём <small>порог доблести ' + q2.threshold +
+          " · стоят " + ents.length + " · получат " + (plan.given_count || 0) + "</small></div>" +
+          '<div class="qsf-strip">' + cards + "</div></div>" +
+        '<div class="qsf-bar">' +
+          '<button class="sec" id="qcl-prev">🧪 Пробный отчёт (текстом)</button>' +
+          '<button id="qcl-pub" style="font-weight:700">📤 Опубликовать в офиц. каналы</button>' +
+          '<button id="qcl-go" style="font-weight:700;background:linear-gradient(180deg,#ffb07a,#d0782e)">🐲 Раздать и сдвинуть</button>' +
+          '<span id="qcl-msg" style="font-size:11.5px;color:#c9b48f"></span>' +
+        "</div>" +
+        '<div id="qcl-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>';
+      try { autoCropAll(body, ".qsf-mdl"); } catch (e2) {}
+
+      body.querySelector("#qcl-recalc").addEventListener("click", function () {
+        n = Math.max(0, parseInt(body.querySelector("#qcl-n").value, 10) || 0);
+        body.innerHTML = '<div class="qsf-empty">Считаю…</div>'; load();
+      });
+      body.querySelector("#qcl-prev").addEventListener("click", function () {
+        n = Math.max(0, parseInt(body.querySelector("#qcl-n").value, 10) || 0);
+        say("Считаю…");
+        q("POST", "/queue/admin/cilin-report", { count: n, commit: false }).then(function (d) {
+          body.querySelector("#qcl-out").textContent = d.text || "(пусто)";
+          say("✓ Пробный отчёт — в каналы НЕ ушёл", true);
+        }).catch(function (e) { say("Ошибка: " + (e.detail || e.message)); });
+      });
+      body.querySelector("#qcl-pub").addEventListener("click", function () {
+        n = Math.max(0, parseInt(body.querySelector("#qcl-n").value, 10) || 0);
+        if (!confirm("Опубликовать отчёт цилиня (выпало: " + n + ")?\\n\\nОчередь цилиня при этом НЕ двигается.")) return;
+        say("Публикую…");
+        q("POST", "/queue/admin/cilin-report", { count: n, commit: true }).then(function (d) {
+          body.querySelector("#qcl-out").textContent = d.text || "";
+          say("✓ Отчёт цилиня опубликован · очередь НЕ сдвинута", true);
+          load();
+        }).catch(function (e) { say("Ошибка: " + (e.detail || e.message)); });
+      });
+      body.querySelector("#qcl-go").addEventListener("click", function () {
+        n = Math.max(0, parseInt(body.querySelector("#qcl-n").value, 10) || 0);
+        if (!confirm("Раздать " + n + " цилиня первым в очереди и СДВИНУТЬ очередь цилиня?\\n" +
+                     "Получат: " + ((plan.given || []).join(", ") || "—") +
+                     "\\n\\n0 → никто не двигается, все ждут дальше.")) return;
+        say("Раздаю…");
+        q("POST", "/queue/admin/cilin-distribute", { count: n }).then(function (d) {
+          say("✓ Выдано " + (d.given_count || 0) + ": " + ((d.given || []).join(", ") || "—"), true);
+          refresh(); load();
+        }).catch(function (e) { say("Ошибка: " + (e.detail || e.message)); });
+      });
+    }
+    load();
   }
 
   // ── карточка ПРОБНОГО отчёта распределения (модалка) ──

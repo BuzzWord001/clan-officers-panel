@@ -5446,10 +5446,21 @@ def _uncollected_people(conn) -> dict:
     people: dict[str, dict] = {}
     idx = _people(conn)          # актуальные написания ников
 
+    # поля для МОДЕЛЬКИ: список возврата рисуется такими же карточками, как очередь на сцене,
+    # а не строчками текста — значит фронту нужны класс, пол и выбранный облик человека
+    gmap = {g["canon"]: g["gender"] for g in conn.execute("SELECT canon, gender FROM queue_gender")}
+    pmap = {g["canon"]: g["prefer_class"] for g in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
+    vmap = {g["canon"]: (g["variant"] or "") for g in conn.execute("SELECT canon, variant FROM queue_model_pref")}
+
     def slot(canon, nick):
         if canon not in people:
+            p = idx.get(canon) or {}
             people[canon] = {"canon": canon, "nick": _live_nick(idx, canon, nick), "queues": [],
-                             "got": {}, "out": 0, "stayed": 0, "cilin": False}
+                             "got": {}, "out": 0, "stayed": 0, "cilin": False,
+                             "cls": p.get("cls", ""), "true_name": p.get("true_name", ""),
+                             "main_nick": p.get("main_nick") or _live_nick(idx, canon, nick),
+                             "gender": gmap.get(canon, ""), "variant": vmap.get(canon, ""),
+                             "prefer_class": bool(pmap.get(canon))}
         return people[canon]
 
     if r:
