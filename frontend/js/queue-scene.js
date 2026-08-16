@@ -8237,7 +8237,10 @@
     stay_partial:     { t: "останется — получил не всё", c: "#9fd6e0", ic: "⏳" },
     stay_uncollected: { t: "НЕ ЗАБРАЛ — останется", c: "#c9a0ff", ic: "✋" },
     stay_low:         { t: "мало доблести", c: "#8a95a5", ic: "💤" },
-    stay_empty:       { t: "ресурс не достался", c: "#8a95a5", ic: "—" }
+    stay_empty:       { t: "ресурс не достался", c: "#8a95a5", ic: "—" },
+    // цилинь-ждунов эта кнопка НЕ двигает: у питомца своя очередь и своя кнопка раздачи
+    wait_cilin:       { t: "ждёт цилиня", c: "#ffb07a", ic: "🐲" },
+    wait_cilin_low:   { t: "цилинь: мало доблести", c: "#8a95a5", ic: "🐲" }
   };
 
   function shiftCssOnce() {
@@ -8259,6 +8262,8 @@
       "  padding:6px 4px;border-radius:10px;border:1px solid rgba(224,162,74,.25);cursor:pointer;",
       "  background:rgba(0,0,0,.28);transition:transform .08s,border-color .12s}",
       ".qsf-c:hover{transform:translateY(-2px);border-color:rgba(240,200,120,.7)}",
+      ".qsf-c.nomark{cursor:default}",
+      ".qsf-c.nomark:hover{transform:none;border-color:rgba(224,162,74,.25)}",
       ".qsf-c img.qsf-mdl{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.55))}",
       ".qsf-c .qsf-nick{font:700 10px system-ui;color:#f6ead2;max-width:88px;overflow:hidden;",
       "  text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px #000}",
@@ -8289,8 +8294,13 @@
     if (nc) a = SHIFT_ACT.stay_uncollected;
     var mi = modelInfo(e);
     var got = Object.keys(e.got || {});
-    var low = (e.action === "stay_low");
-    var cls = "qsf-c" + (nc ? " nc" : "") + (e.action === "leave" && !nc ? " go" : "") + (low ? " dim" : "");
+    var low = (e.action === "stay_low" || e.action === "wait_cilin_low");
+    // Отмечать «не забрал» имеет смысл только тому, кому в эту раздачу что-то выдают
+    // (или кто уже отмечен — чтобы отметку можно было снять). Цилинь-ждунам и тем, кому
+    // ресурс не достался, отмечать нечего: клик по ним ничего не значил бы.
+    var canMark = nc || Object.keys(e.got || {}).length > 0;
+    var cls = "qsf-c" + (nc ? " nc" : "") + (e.action === "leave" && !nc ? " go" : "") +
+              (low ? " dim" : "") + (canMark ? "" : " nomark");
     var gotHtml = got.length
       ? got.map(function (k) {
           return '<img src="' + resImg(k) + '" alt="" title="' + esc(resName(k)) + " ×" + e.got[k] + '">';
@@ -8403,7 +8413,7 @@
       });
       // клик по человеку — «не забрал» (и обратно). Отмечаем сразу на сервере: так состояние
       // честное, и после перезагрузки панели видно, что человек остаётся.
-      [].forEach.call(body.querySelectorAll(".qsf-c"), function (c) {
+      [].forEach.call(body.querySelectorAll(".qsf-c:not(.nomark)"), function (c) {
         c.addEventListener("click", function () {
           var id = parseInt(c.getAttribute("data-id"), 10);
           var on = !c.classList.contains("nc");

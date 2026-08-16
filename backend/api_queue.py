@@ -4750,6 +4750,13 @@ def admin_shift_preview(stages: int = 0, _: dict = Depends(require_admin)) -> di
                 if r.get("id") is not None:
                     row_by_id[r["id"]] = r
                     status_by_id[r["id"]] = r.get("status")
+        # ЦИЛИНЬ-ЖДУНЫ живут в отдельной очереди (pet_queue) и в строки отчёта не попадают:
+        # без этой карты у них в панели была бы доблесть 0 и подпись «ресурс не достался»,
+        # хотя доблесть у них есть, а ждут они питомца, которого двигает своя кнопка.
+        for p in rep.get("pet_queue") or []:
+            if p.get("id") is not None:
+                row_by_id[p["id"]] = p
+                status_by_id[p["id"]] = p.get("status")     # pet | pet_low
         act = {}
         for kind, key in (("leave", "leave"), ("requeue", "requeue"),
                           ("stay_partial", "stay_partial"), ("stay_uncollected", "stay_uncollected")):
@@ -4769,8 +4776,11 @@ def admin_shift_preview(stages: int = 0, _: dict = Depends(require_admin)) -> di
                 e["missing"] = rw.get("missing") or []
                 e["not_collected"] = bool(r["not_collected"])
                 # что сделает сдвиг: пришло из dry-run того же кода, что и сам сдвиг
+                stt = status_by_id.get(r["id"])
                 e["action"] = act.get(r["id"]) or (
-                    "stay_low" if status_by_id.get(r["id"]) == "low_valor" else "stay_empty")
+                    "wait_cilin" if stt == "pet" else
+                    "wait_cilin_low" if stt == "pet_low" else
+                    "stay_low" if stt == "low_valor" else "stay_empty")
                 ents.append(e)
             queues.append({"queue": q, "name": QUEUE_NAMES.get(q, ""),
                            "threshold": (rep.get("thresholds") or {}).get(q, 0),

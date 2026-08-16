@@ -309,6 +309,16 @@ check("Аня" in after_nc and after_nc["Аня"] == before_nc["Аня"],
 check(sh2["stayed_uncollected"] >= 1, "сдвиг посчитал её как оставшуюся, а не выбывшую")
 check(any(s["nick"] for s in api_queue.admin_shift_preview(6, ACTOR)["served_last"]),
       "в панели виден список сдвинутых — есть кого возвращать")
+# Цилинь-ждуны стоят в той же q2, но в строки отчёта не попадают (у них своя очередь).
+# Без отдельной карты у них в панели была бы доблесть 0 и подпись «ресурс не достался».
+seed()
+pv3 = api_queue.admin_shift_preview(6, ACTOR)
+q2 = next(Q for Q in pv3["queues"] if Q["queue"] == 2)
+cil = [e for e in q2["entries"] if e["resource"] == "mount-cilin"]
+check(len(cil) == 2, "цилинь-ждуны показаны в своей очереди")
+check(all(e["action"] in ("wait_cilin", "wait_cilin_low") for e in cil),
+      "у них подпись «ждёт цилиня», а не «ресурс не достался»")
+check(all(e["valor"] == VALOR for e in cil), "их доблесть показана верно, а не нулём")
 
 print("\n12. НЕДЕЛЯ СЧИТАЕТСЯ ПО МСК (граница воскресенье→понедельник)")
 # Метки времени в базе — UTC, клан живёт по Москве. Воскресным вечером после 21:00 UTC в
