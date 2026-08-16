@@ -7722,8 +7722,8 @@
       "</div>" +
       // ── НОВЫЙ ОТЧЁТ по диапазону этапов (рендер + текст в офиц.чаты + сдвиг очереди) ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
-        'background:rgba(224,162,74,.07);border:1px solid rgba(224,162,74,.4);border-radius:9px;padding:9px 11px">' +
-        '<div style="font-size:12.5px;color:#f0dcb4;font-weight:700">📋 Отчёт распределения</div>' +
+        'background:rgba(224,162,74,.07);border:1px solid rgba(224,162,74,.4);border-radius:9px;padding:9px 11px" id="qd-step1">' +
+        '<div style="font-size:12.5px;color:#f0dcb4;font-weight:700">1️⃣ 📋 Отчёт распределения ресурсов</div>' +
         '<div style="font-size:11px;color:#8a795a">Один этап (напр. 6 и 6) → отчёт только за него. Диапазон ' +
           '(6→7) → плюс секция «если закроем 7-й». Грамота и остаток — мастер раздаёт вручную, в отчёт не идут. ' +
           'Огненный цилинь — <b>отдельный отчёт</b> своей кнопкой ниже. ' +
@@ -7743,15 +7743,16 @@
           '🧪 Пробный режим — отчёт слать мне в личку (@pw_spamer_bot), НЕ в офицерские каналы и НЕ двигать очередь ' +
           '<span style="color:#8a795a">(сними для боевой публикации)</span></label>' +
         // ── ПРОВОДНИКИ (+10% камней доблести и метеоритов каждому, до раздачи остальным) ──
-        '<div style="margin:2px 0;padding:7px 9px;border:1px solid rgba(255,150,70,.4);border-radius:8px;background:rgba(255,150,70,.06)">' +
-          '<div style="font-size:11.5px;color:#ffd0b0;margin-bottom:5px">🎯 <b>Проводники</b> — каждому +10% камней доблести и метеоритов (вычтется из пула ДО раздачи остальным). Учитываются в отчёте сразу.</div>' +
+        '<details style="margin:2px 0;padding:7px 9px;border:1px solid rgba(255,150,70,.4);border-radius:8px;background:rgba(255,150,70,.06)">' +
+          '<summary style="cursor:pointer;font-size:11.5px;color:#ffd0b0">🎯 Проводники — настроить</summary>' +
+          '<div style="font-size:11.5px;color:#ffd0b0;margin:6px 0 5px">🎯 <b>Проводники</b> — каждому +10% камней доблести и метеоритов (вычтется из пула ДО раздачи остальным). Учитываются в отчёте сразу.</div>' +
           '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
             '<input id="qd-shnick" list="qd-dl" placeholder="ник проводника…" autocomplete="off" style="min-width:160px">' +
             '<button class="sec" id="qd-shadd">＋ добавить</button>' +
             '<datalist id="qd-dl">' + dl + '</datalist>' +
             '<span id="qd-shlist" style="display:flex;gap:5px;flex-wrap:wrap"></span>' +
           "</div>" +
-        "</div>" +
+        "</details>" +
         '<div id="qd-rep-check" style="font-size:11px;white-space:pre-wrap;margin-bottom:5px;color:#9fe0a0"></div>' +
         '<div id="qd-rep-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:230px;overflow:auto"></div>' +
         '<div id="qd-rep-low" style="font-size:11px;color:#e0b0a0;white-space:pre-wrap;margin-top:4px;' +
@@ -7759,8 +7760,8 @@
       "</div>" +
       // ── СДВИГ ОСНОВНЫХ ОЧЕРЕДЕЙ — отдельным шагом, по точному числу закрытых этапов ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
-        'background:rgba(150,200,120,.07);border:1px solid rgba(150,200,120,.45);border-radius:9px;padding:9px 11px">' +
-        '<div style="font-size:12.5px;color:#d6efc0;font-weight:700">⏭ Сдвинуть очередь (ресурсы КХ)</div>' +
+        'background:rgba(150,200,120,.07);border:1px solid rgba(150,200,120,.45);border-radius:9px;padding:9px 11px" id="qd-step2">' +
+        '<div style="font-size:12.5px;color:#d6efc0;font-weight:700">2️⃣ ⏭ Сдвинуть очередь (ресурсы КХ)</div>' +
         '<div style="font-size:11px;color:#8a795a">Жать, когда ТОЧНО известно, сколько этапов КХ закрыли. ' +
           'Откроется живая очередь: видно каждого — доблесть, что достанется и что с ним сделает сдвиг. ' +
           'Там же отмечаешь тех, кто НЕ забрал ресурсы (останутся на месте), и оттуда же двигаешь очередь. ' +
@@ -7773,8 +7774,8 @@
       "</div>" +
       // ── ОГНЕННЫЙ ЦИЛИНЬ — раздать выпавших и сдвинуть их очередь ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
-        'background:rgba(255,120,70,.07);border:1px solid rgba(255,120,70,.4);border-radius:9px;padding:9px 11px">' +
-        '<div style="font-size:12.5px;color:#ffd0b0;font-weight:700">🐲 Огненный цилинь — отдельный отчёт и своя очередь</div>' +
+        'background:rgba(255,120,70,.07);border:1px solid rgba(255,120,70,.4);border-radius:9px;padding:9px 11px" id="qd-step3">' +
+        '<div style="font-size:12.5px;color:#ffd0b0;font-weight:700">3️⃣ 🐲 Огненный цилинь — свой отчёт и своя очередь</div>' +
         '<div style="font-size:11px;color:#8a795a">Цилинь выпадает независимо от этапов КХ, поэтому у него ' +
           '<b>свой отчёт</b> и <b>свой сдвиг</b>. Публикация отчёта очередь не двигает. ' +
           'Сдвиг: сколько цилиней выпало → раздаст первым в очереди, они выйдут. ' +
@@ -7792,25 +7793,19 @@
         "</div>" +
         '<div id="qd-cil-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:220px;overflow:auto"></div>' +
       "</div>" +
-      // ── НЕ ЗАБРАЛИ РЕСУРСЫ — перемотка назад по никам ──
+      // ── НЕ ЗАБРАЛИ РЕСУРСЫ — список открывается кнопкой ──
+      // Раньше список висел прямо в разделе, длинной простынёй, и дублировал панель сдвига:
+      // до сдвига в нём почти все строки были неактивны («уже возвращён»), и понять, что с ним
+      // делать, было нельзя. Теперь это шаг с одной кнопкой — список открывается по клику.
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
         'background:rgba(120,170,255,.06);border:1px solid rgba(120,170,255,.35);border-radius:9px;padding:9px 11px">' +
-        '<div style="font-size:12.5px;color:#cfe0ff;font-weight:700">↩ Не забрали ресурсы (вернуть в очередь)</div>' +
-        '<div style="font-size:11px;color:#8a795a">Это — для тех, кто не забрал уже ПОСЛЕ сдвига: вернутся на своё ' +
+        '<div style="font-size:12.5px;color:#cfe0ff;font-weight:700">4️⃣ ↩ Не забрали ресурсы — вернуть в очередь</div>' +
+        '<div style="font-size:11px;color:#8a795a">Для тех, кто не забрал уже ПОСЛЕ сдвига: вернутся на своё ' +
           'место за свой ресурс, в ту очередь, где не получили. Работает и после 00:00. ' +
-          'Если очередь ещё НЕ двигали — отмечай прямо в «Открыть сдвиг очереди», там они просто не поедут.</div>' +
-        // Список получивших с галочками. Ники руками больше не вводим: возврат идёт по id
-        // снимка, поэтому тёзки и твины не путаются, а человек из нескольких очередей
-        // возвращается ровно туда, где не получил.
-        '<div id="qd-ret-list-box" class="qd-ret-box">Загрузка списка…</div>' +
+          '<b style="color:#cfe0ff">Если очередь ещё НЕ двигали</b> — отмечай прямо в шаге 2, там они просто не поедут.</div>' +
         '<div class="q-admin-row" style="gap:8px;flex-wrap:wrap;align-items:center">' +
-          '<button id="qd-ret-go" style="font-weight:700">↩ Вернуть отмеченных</button>' +
-          '<button class="sec" id="qd-ret-all">✓ отметить всех</button>' +
-          '<button class="sec" id="qd-ret-none">✗ снять отметки</button>' +
-          '<button class="sec" id="qd-ret-list">↻ обновить</button>' +
-          '<span id="qd-ret-count" style="font-size:11px;color:#8a795a"></span>' +
+          '<button id="qd-ret-open" style="font-weight:700">↩ Открыть список возврата</button>' +
         "</div>" +
-        '<div id="qd-ret-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap"></div>' +
       "</div>" +
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:4px">' +
         '<div style="font-size:12px;color:#caa66a">🌟 Суперспособность топ-3 (жетоны «вне очереди») ' +
@@ -7861,6 +7856,19 @@
         }
         if (d.test_mode) h.push(qdChip(false, "пробный режим — отчёты идут в личку", "", true));
         host.innerHTML = h.join(" ");
+        // ПОДСВЕТКА ШАГОВ: сделанное — зелёной рамкой с галочкой в заголовке. Так видно с одного
+        // взгляда, на каком шаге ты сейчас, и нельзя случайно пропустить сдвиг или сделать дважды.
+        [[1, d.report.published], [2, d.shift.done], [3, d.cilin_shift.done]].forEach(function (p) {
+          var el = wrap.querySelector("#qd-step" + p[0]);
+          if (!el) return;
+          var head = el.firstChild;
+          el.style.borderColor = p[1] ? "rgba(150,224,140,.75)" : "";
+          el.style.boxShadow = p[1] ? "0 0 12px rgba(120,224,140,.14)" : "";
+          if (head && head.textContent) {
+            var base = head.textContent.replace(/^✔\s*/, "");
+            head.textContent = (p[1] ? "✔ " : "") + base;
+          }
+        });
       }).catch(function (e) {
         host.textContent = "Статус недели недоступен: " + (e.detail || e.message);
       });
@@ -8096,70 +8104,11 @@
         loadWeek(); refresh();
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
-    // ── Не забрали ресурсы: вернуть по никам ──
-    // ── список «кто получил» с галочками ──
-    function retCount() {
-      var box = wrap.querySelector("#qd-ret-list-box");
-      var el = wrap.querySelector("#qd-ret-count");
-      if (!box || !el) return 0;
-      var n = box.querySelectorAll(".qd-ret-cb:checked").length;
-      var all = box.querySelectorAll(".qd-ret-cb").length;
-      el.textContent = all ? ("отмечено " + n + " из " + all) : "";
-      return n;
-    }
-    function retLoad() {
-      var box = wrap.querySelector("#qd-ret-list-box");
-      if (!box) return;
-      box.textContent = "Загрузка списка…";
-      // Список ПО ЛЮДЯМ: ресурсы выдаются пачкой сразу по всем очередям, поэтому и «не
-      // забрал» — про человека целиком. Берём всех, кому в последней раздаче что-то выдали,
-      // включая тех, кто получил часть и остался в очереди (их в снимке «кто вышел» нет).
-      return q("GET", "/queue/admin/uncollected-candidates").then(function (d) {
-        var s = d.people || [];
-        if (!s.length) {
-          box.innerHTML = '<div style="color:#8a795a;font-size:11.5px">Пока некого возвращать: ' +
-            "на этой неделе ещё не было раздачи.</div>";
-          retCount();
-          return;
-        }
-        box.innerHTML = qhPeopleRowsHtml(s);
-        [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) {
-          c.addEventListener("change", retCount);
-        });
-        retCount();
-      }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
-    }
-    loadWeek();    // табло недели: что уже опубликовано и сдвинуто, а что ещё нет
-    retLoad();     // список подтягивается сразу — вводить ничего не нужно
-    wrap.querySelector("#qd-ret-list").addEventListener("click", retLoad);
-    wrap.querySelector("#qd-ret-all").addEventListener("click", function () {
-      [].forEach.call(wrap.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = true; });
-      retCount();
-    });
-    wrap.querySelector("#qd-ret-none").addEventListener("click", function () {
-      [].forEach.call(wrap.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = false; });
-      retCount();
-    });
-    wrap.querySelector("#qd-ret-go").addEventListener("click", function () {
-      var boxes = wrap.querySelectorAll(".qd-ret-cb:checked");
-      var canons = [].map.call(boxes, function (c) { return c.value; });
-      if (!canons.length) { status("Отметь галочками тех, кто не забрал."); return; }
-      var names = [].map.call(boxes, function (c) { return c.getAttribute("data-nick"); });
-      if (!confirm("Вернуть " + canons.length + " чел.?\n\n" + names.join(", ") +
-                   "\n\nКаждый вернётся ЦЕЛИКОМ — во все очереди, где ему выдавали ресурсы " +
-                   "этой раздачей, на свои прежние места.")) return;
-      status("Возвращаю в очередь…");
-      q("POST", "/queue/admin/return-people", { canons: canons }).then(function (d) {
-        var r = d.people || [];
-        wrap.querySelector("#qd-ret-out").textContent = r.length
-          ? "✓ вернул: " + r.map(function (x) {
-              return x.nick + " (" + (x.returned.length + x.cleared.length) + " очер.)"; }).join("; ")
-            + ((d.not_found || []).length ? "\n⚠ не нашёл: " + d.not_found.join(", ") : "")
-          : "никого не вернул";
-        status("✓ Возвращено: " + r.length, r.length > 0);
-        refresh();          // сцена и полосы очередей обновляются сразу
-        retLoad();          // вернувшиеся исчезают из списка
-      }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
+    // ── Не забрали ресурсы: список открывается модалкой (та же, что в панели сдвига) ──
+    // Список с галочками жил прямо в разделе и дублировал панель сдвига; до сдвига почти все
+    // его строки были неактивны, и толку от него не было. Теперь — одна кнопка.
+    wrap.querySelector("#qd-ret-open").addEventListener("click", function () {
+      openReturnPicker(function () { loadWeek(); });
     });
     wrap.querySelector("#qd-prune").addEventListener("click", function () {
       if (!confirm("Убрать из очередей всех, кого нет в текущем списке клана (вылетевших)?")) return;
