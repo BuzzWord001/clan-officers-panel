@@ -279,6 +279,49 @@ check(ov["thresholds"].get(0) == 60 and ov["thresholds"].get(2) == 100,
       "пороги очередей приходят вместе с доблестью — сцена красит по ним")
 check("week" in ov and "has_valor" in ov, "видно, за какую неделю доблесть и собрана ли она")
 
+print("\n11. ПАНЕЛЬ СДВИГА: ВИДНО ПЛАН И «НЕ ЗАБРАЛ» ОТМЕЧАЕТСЯ ДО СДВИГА")
+seed()
+run(api_queue.admin_report(api_queue.ReportIn(from_stages=6, to_stages=6, commit=True), REQ, ACTOR))
+pv = api_queue.admin_shift_preview(6, ACTOR)
+q0 = next(Q for Q in pv["queues"] if Q["queue"] == 0)
+acts = {e["nick"]: e["action"] for e in q0["entries"]}
+check(acts.get("Аня") == "leave", "в плане видно, что получившая разово ВЫЙДЕТ")
+check(acts.get("Боря") == "requeue", "видно, что с 🔁 уйдёт в конец")
+check(all("valor" in e and "got" in e for e in q0["entries"]),
+      "у каждого в панели есть доблесть и что ему достанется")
+check(pv["queues"][0]["threshold"] == 60 and pv["totals"]["leave"] >= 1,
+      "порог очереди и сводка по сдвигу приходят вместе с людьми")
+# сценарий Лира: ресурсы не забрали — отмечаем ДО сдвига, и они остаются на местах
+anya = next(e for e in q0["entries"] if e["nick"] == "Аня")
+mk = api_queue.mark_uncollected_bulk(
+    api_queue.MarkUncollectedBulkIn(ids=[anya["id"]], uncollected=True), REQ, ACTOR)
+check(mk["ok"] and "Аня" in mk["marked"], "отметка «не забрал» ставится пакетно, до сдвига")
+pv2 = api_queue.admin_shift_preview(6, ACTOR)
+q0b = next(Q for Q in pv2["queues"] if Q["queue"] == 0)
+check(next(e["action"] for e in q0b["entries"] if e["nick"] == "Аня") == "stay_uncollected",
+      "в плане она сразу помечена «останется — не забрала»")
+before_nc = queue_state()
+sh2 = api_queue.admin_shift(api_queue.ShiftIn(stages=6, force=True), REQ, ACTOR)
+after_nc = queue_state()
+check("Аня" in after_nc and after_nc["Аня"] == before_nc["Аня"],
+      "после сдвига не забравшая ОСТАЛАСЬ на своём месте")
+check(sh2["stayed_uncollected"] >= 1, "сдвиг посчитал её как оставшуюся, а не выбывшую")
+check(any(s["nick"] for s in api_queue.admin_shift_preview(6, ACTOR)["served_last"]),
+      "в панели виден список сдвинутых — есть кого возвращать")
+
+print("\n12. НЕДЕЛЯ СЧИТАЕТСЯ ПО МСК (граница воскресенье→понедельник)")
+# Метки времени в базе — UTC, клан живёт по Москве. Воскресным вечером после 21:00 UTC в
+# Москве уже понедельник: если считать неделю по UTC, индикаторы «отчёт опубликован» гаснут,
+# а в истории появляется вторая запись за ту же неделю. Ровно это вылезло 17.08.2026 в 00:10 МСК.
+check(api_queue._iso_week_key("2026-08-16T21:10:00+00:00") == "2026-W34",
+      "вс 21:10 UTC = пн по МСК → неделя следующая (W34)")
+check(api_queue._iso_week_key("2026-08-16T20:50:00+00:00") == "2026-W33",
+      "вс 20:50 UTC = вс по МСК → неделя прежняя (W33)")
+check(api_queue._iso_week_key("2026-08-16T21:10:00") == "2026-W34",
+      "метка без таймзоны читается как UTC и тоже переводится в МСК")
+check(api_queue._iso_week_key(api_queue._now()) == api_queue._iso_week_now(),
+      "«сейчас» в базе и «текущая неделя» всегда в одной неделе")
+
 print("\n" + "=" * 58)
 if _bad:
     print("ПРОВАЛЕНО %d из %d:" % (len(_bad), len(_ok) + len(_bad)))

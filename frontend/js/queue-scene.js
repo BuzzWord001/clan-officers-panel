@@ -7762,16 +7762,14 @@
         'background:rgba(150,200,120,.07);border:1px solid rgba(150,200,120,.45);border-radius:9px;padding:9px 11px">' +
         '<div style="font-size:12.5px;color:#d6efc0;font-weight:700">⏭ Сдвинуть очередь (ресурсы КХ)</div>' +
         '<div style="font-size:11px;color:#8a795a">Жать, когда ТОЧНО известно, сколько этапов КХ закрыли. ' +
-          'Раздача пересчитается по этому числу, получившие уйдут из очереди (или в конец по 🔁), ' +
-          'недополучившие останутся. В чаты ничего не шлётся — отчёт уже опубликован. ' +
-          'Очередь цилиня этой кнопкой НЕ двигается.</div>' +
+          'Откроется живая очередь: видно каждого — доблесть, что достанется и что с ним сделает сдвиг. ' +
+          'Там же отмечаешь тех, кто НЕ забрал ресурсы (останутся на месте), и оттуда же двигаешь очередь. ' +
+          'В чаты ничего не шлётся. Очередь цилиня этой кнопкой НЕ двигается.</div>' +
         '<div class="q-admin-row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="font-size:12px;color:#d6efc0">закрыто этапов КХ: ' +
             '<input type="number" id="qd-shift-n" min="0" max="7" value="' + stages + '" style="width:64px"></span>' +
-          '<button class="sec" id="qd-shift-plan">👁 Показать план сдвига</button>' +
-          '<button id="qd-shift-go" style="font-weight:700">⏭ Сдвинуть очередь</button>' +
+          '<button id="qd-shift-open" style="font-weight:700">⏭ Открыть сдвиг очереди</button>' +
         "</div>" +
-        '<div id="qd-shift-out" style="font-size:11px;color:#c9b48f;white-space:pre-wrap;max-height:220px;overflow:auto"></div>' +
       "</div>" +
       // ── ОГНЕННЫЙ ЦИЛИНЬ — раздать выпавших и сдвинуть их очередь ──
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
@@ -7798,8 +7796,9 @@
       '<div class="q-admin-row" style="flex-direction:column;align-items:stretch;gap:6px;' +
         'background:rgba(120,170,255,.06);border:1px solid rgba(120,170,255,.35);border-radius:9px;padding:9px 11px">' +
         '<div style="font-size:12.5px;color:#cfe0ff;font-weight:700">↩ Не забрали ресурсы (вернуть в очередь)</div>' +
-        '<div style="font-size:11px;color:#8a795a">Отметь галочками тех, кто не забрал — вернутся на своё ' +
-          'место за свой ресурс, в ту очередь, где не получили. Работает и после 00:00.</div>' +
+        '<div style="font-size:11px;color:#8a795a">Это — для тех, кто не забрал уже ПОСЛЕ сдвига: вернутся на своё ' +
+          'место за свой ресурс, в ту очередь, где не получили. Работает и после 00:00. ' +
+          'Если очередь ещё НЕ двигали — отмечай прямо в «Открыть сдвиг очереди», там они просто не поедут.</div>' +
         // Список получивших с галочками. Ники руками больше не вводим: возврат идёт по id
         // снимка, поэтому тёзки и твины не путаются, а человек из нескольких очередей
         // возвращается ровно туда, где не получил.
@@ -8042,67 +8041,12 @@
           });
       }).catch(function (e) { status("Ошибка: " + (e.detail || e.message)); });
     });
-    // ── СДВИГ основных очередей: отдельный шаг по точному числу закрытых этапов ──
-    function shiftStages() {
-      return Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-shift-n").value, 10) || 0));
-    }
-    function shiftPlanText(d) {
-      var s = d.plan || {}, L = [];
-      L.push("По " + d.stages + " закрытым этапам:");
-      L.push("• выходят из очереди: " + (d.left_removed || 0));
-      L.push("• уходят в конец (🔁/план): " + (d.requeued || 0));
-      L.push("• остаются, получили не всё: " + (d.partial_stay || 0));
-      L.push("• остаются, «не забрал»: " + (d.stayed_uncollected || 0));
-      function names(a) { return (a || []).map(function (x) { return x.nick; }).join(", ") || "—"; }
-      if ((s.leave || []).length) L.push("\nВыйдут: " + names(s.leave));
-      if ((s.requeue || []).length) L.push("В конец: " + names(s.requeue));
-      if ((s.stay_partial || []).length) L.push("Остаются (недополучили): " + names(s.stay_partial));
-      if ((s.stay_uncollected || []).length) L.push("Остаются (не забрали): " + names(s.stay_uncollected));
-      if (d.already_shifted) L.push("\n⚠ Очередь за эту неделю УЖЕ сдвигали.");
-      return L.join("\n");
-    }
-    wrap.querySelector("#qd-shift-plan").addEventListener("click", function () {
-      var n = shiftStages(), out = wrap.querySelector("#qd-shift-out");
-      out.textContent = "Считаю план…"; status("Считаю план сдвига…");
-      q("POST", "/queue/admin/shift", { stages: n, dry_run: true }).then(function (d) {
-        out.textContent = shiftPlanText(d);
-        status("✓ План посчитан — очередь НЕ тронута", true);
-      }).catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
-    });
-    wrap.querySelector("#qd-shift-go").addEventListener("click", function () {
-      var n = shiftStages(), out = wrap.querySelector("#qd-shift-out");
-      if (!n && !confirm("⚠ Указано 0 этапов КХ — раздачи нет, значит и двигать некого.\n\nВсё равно продолжить?")) return;
-      status("Считаю план сдвига…");
-      // Сначала ВСЕГДА показываем план тем же кодом, что и сам сдвиг, — чтобы подтверждение
-      // было не «вслепую», а поимённо.
-      q("POST", "/queue/admin/shift", { stages: n, dry_run: true }).then(function (p) {
-        out.textContent = shiftPlanText(p);
-        if (!confirm("СДВИНУТЬ ОЧЕРЕДЬ по " + n + " закрытым этапам?\n\n" + shiftPlanText(p) +
-                     "\n\nВ чаты ничего не уйдёт. Отменить можно откатом из «Истории распределения».")) {
-          status(""); return;
-        }
-        status("Двигаю очередь…");
-        return q("POST", "/queue/admin/shift", { stages: n }).then(function (d) {
-          out.textContent = "✓ Сдвинуто по " + d.stages + " этапам · вышли: " + (d.left_removed || 0) +
-            " · в конец: " + (d.requeued || 0) + " · остались частично: " + (d.partial_stay || 0) +
-            " · не забрали: " + (d.stayed_uncollected || 0);
-          status("✓ Очередь сдвинута", true);
-          loadWeek(); refresh();
-        });
-      }).catch(function (e) {
-        // Повторный сдвиг за неделю бэкенд блокирует — предлагаем осознанный force
-        var msg = e.detail || e.message || "";
-        if (/уже сдвигали/i.test(msg) &&
-            confirm(msg + "\n\nПРИНУДИТЕЛЬНО сдвинуть ещё раз? Обычно НЕ нужно — только если переделываешь распределение с нуля.")) {
-          status("Принудительный пересдвиг…");
-          q("POST", "/queue/admin/shift", { stages: shiftStages(), force: true }).then(function (d2) {
-            out.textContent = "✓ Пересдвинуто · вышли: " + (d2.left_removed || 0) + " · в конец: " + (d2.requeued || 0);
-            status("✓ Пересдвинуто", true); loadWeek(); refresh();
-          }).catch(function (e2) { status("Ошибка: " + (e2.detail || e2.message)); });
-          return;
-        }
-        status("Ошибка: " + msg);
-      });
+    // ── СДВИГ основных очередей: открывается визуальной панелью (очередь целиком) ──
+    // Текстовый план и кнопка «сдвинуть» жили здесь же, но вслепую: список ников без картинки
+    // очереди и без возможности убрать оттуда не забравших. Теперь и то, и другое — в панели.
+    wrap.querySelector("#qd-shift-open").addEventListener("click", function () {
+      var n = Math.max(0, Math.min(7, parseInt(wrap.querySelector("#qd-shift-n").value, 10) || 0));
+      openShiftPanel(n);
     });
     // ── Огненный цилинь: свой отчёт (публикация) и свой сдвиг (раздача) ──
     function cilCount() { return Math.max(0, parseInt(wrap.querySelector("#qd-cil-n").value, 10) || 0); }
@@ -8279,6 +8223,256 @@
       ? loKeys.map(function (k) { return esc(resName(k)) + " ×" + lo[k]; }).join(" · ")
       : '<span style="color:#8fc36a">— нет, всё распределено</span>') + "</div></div>";
     return html;
+  }
+
+  // ══════════════ ПАНЕЛЬ СДВИГА ОЧЕРЕДИ (визуальная, как история распределения) ══════════════
+  // Раньше сдвиг был кнопкой вслепую: жмёшь — и очередь уехала, а кто именно уехал, выяснялось
+  // потом. Теперь перед сдвигом видно ту же очередь, что на сцене: человек за человеком, с
+  // доблестью, с тем, что ему достаётся, и с пометкой, что с ним сделает сдвиг. Не забравших
+  // ресурсы отмечают прямо здесь — они останутся на своих местах. Ниже — кого сдвинули в
+  // прошлый раз, с возвратом в один клик.
+  var SHIFT_ACT = {
+    leave:            { t: "выйдет из очереди", c: "#ff9b86", ic: "🚪" },
+    requeue:          { t: "уйдёт в конец (🔁)", c: "#e0c07a", ic: "🔁" },
+    stay_partial:     { t: "останется — получил не всё", c: "#9fd6e0", ic: "⏳" },
+    stay_uncollected: { t: "НЕ ЗАБРАЛ — останется", c: "#c9a0ff", ic: "✋" },
+    stay_low:         { t: "мало доблести", c: "#8a95a5", ic: "💤" },
+    stay_empty:       { t: "ресурс не достался", c: "#8a95a5", ic: "—" }
+  };
+
+  function shiftCssOnce() {
+    if (document.getElementById("qsf-css")) return;
+    var st = document.createElement("style");
+    st.id = "qsf-css";
+    st.textContent = [
+      ".qsf-wrap{display:flex;flex-direction:column;gap:12px}",
+      ".qsf-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 12px;",
+      "  background:rgba(224,162,74,.08);border:1px solid rgba(224,162,74,.45);border-radius:11px}",
+      ".qsf-sum{display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px}",
+      ".qsf-sum span{padding:3px 9px;border-radius:20px;border:1px solid currentColor;opacity:.95}",
+      ".qsf-lane{border:1px solid var(--gc,rgba(224,162,74,.4));border-radius:12px;padding:8px 10px;",
+      "  background:linear-gradient(180deg,rgba(30,20,8,.55),rgba(16,10,4,.55))}",
+      ".qsf-lane-h{display:flex;gap:9px;align-items:baseline;margin:0 0 7px;font:700 13px Georgia,serif;color:var(--gc,#f0c878)}",
+      ".qsf-lane-h small{font:400 11px system-ui;color:#8a795a}",
+      ".qsf-strip{display:flex;gap:7px;overflow-x:auto;padding:3px 1px 7px}",
+      ".qsf-c{flex:0 0 auto;width:92px;display:flex;flex-direction:column;align-items:center;gap:3px;",
+      "  padding:6px 4px;border-radius:10px;border:1px solid rgba(224,162,74,.25);cursor:pointer;",
+      "  background:rgba(0,0,0,.28);transition:transform .08s,border-color .12s}",
+      ".qsf-c:hover{transform:translateY(-2px);border-color:rgba(240,200,120,.7)}",
+      ".qsf-c img.qsf-mdl{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(0,0,0,.55))}",
+      ".qsf-c .qsf-nick{font:700 10px system-ui;color:#f6ead2;max-width:88px;overflow:hidden;",
+      "  text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px #000}",
+      ".qsf-c .qsf-pos{font:700 9px system-ui;color:#8a795a}",
+      ".qsf-val{font:700 9.5px system-ui;color:#9fe0a0}",
+      ".qsf-val.low{color:#e0a86a}",
+      ".qsf-got{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;min-height:16px}",
+      ".qsf-got img{width:15px;height:15px;object-fit:contain}",
+      ".qsf-act{font:700 8.5px system-ui;text-align:center;line-height:1.25;letter-spacing:.2px}",
+      // не забрал — ярко и понятно, что человек остаётся
+      ".qsf-c.nc{border-color:#c9a0ff;background:rgba(150,110,255,.16);box-shadow:0 0 12px rgba(160,120,255,.25)}",
+      ".qsf-c.nc img.qsf-mdl{filter:drop-shadow(0 0 6px rgba(190,150,255,.8))}",
+      // выбывает — приглушаем, видно «уходит»
+      ".qsf-c.go{opacity:.95;border-color:rgba(255,140,120,.55)}",
+      ".qsf-c.dim{opacity:.5}",
+      ".qsf-c.dim img.qsf-mdl{filter:grayscale(.7) brightness(.8)}",
+      ".qsf-last{display:flex;gap:7px;flex-wrap:wrap}",
+      ".qsf-last-c{display:flex;gap:7px;align-items:center;padding:5px 9px;border-radius:9px;",
+      "  border:1px solid rgba(120,170,255,.35);background:rgba(120,170,255,.08);font-size:11.5px}",
+      ".qsf-empty{color:#8a795a;font-size:11.5px;font-style:italic;padding:4px 2px}"
+    ].join("");
+    document.head.appendChild(st);
+  }
+
+  function shiftCardHtml(e, qi) {
+    var a = SHIFT_ACT[e.action] || SHIFT_ACT.stay_empty;
+    var nc = !!e.not_collected;
+    if (nc) a = SHIFT_ACT.stay_uncollected;
+    var mi = modelInfo(e);
+    var got = Object.keys(e.got || {});
+    var low = (e.action === "stay_low");
+    var cls = "qsf-c" + (nc ? " nc" : "") + (e.action === "leave" && !nc ? " go" : "") + (low ? " dim" : "");
+    var gotHtml = got.length
+      ? got.map(function (k) {
+          return '<img src="' + resImg(k) + '" alt="" title="' + esc(resName(k)) + " ×" + e.got[k] + '">';
+        }).join("")
+      : "";
+    var thr = e._thr || 0;
+    return '<div class="' + cls + '" data-id="' + e.id + '" data-q="' + qi + '" title="' +
+      esc(e.nick) + " · " + a.t + (got.length ? " · получит: " + got.map(function (k) {
+        return resName(k) + " ×" + e.got[k]; }).join(", ") : "") + '\nнажми — отметить, что НЕ забрал">' +
+      '<span class="qsf-pos">#' + (e.pos != null ? Math.round(e.pos) : "?") + "</span>" +
+      (mi ? '<img class="qsf-mdl" src="' + esc(mi.url) + '" alt="" loading="lazy">'
+          : '<span class="qsf-mdl">?</span>') +
+      '<span class="qsf-nick">' + esc(e.nick) + "</span>" +
+      '<span class="qsf-val' + ((e.valor || 0) < thr ? " low" : "") + '">💪 ' + (e.valor || 0) +
+        ((e.valor || 0) < thr ? " / " + thr : "") + "</span>" +
+      '<span class="qsf-got">' + gotHtml + "</span>" +
+      '<span class="qsf-act" style="color:' + a.c + '">' + a.ic + " " + esc(a.t) + "</span>" +
+      "</div>";
+  }
+
+  function openShiftPanel(stages) {
+    shiftCssOnce();
+    var body = document.createElement("div");
+    body.className = "qsf-wrap";
+    body.innerHTML = '<div class="qsf-empty">Считаю очередь…</div>';
+    sceneModal("⏭ Сдвиг очереди — кто куда пойдёт", body);
+    var st = stages || 0;
+
+    function say(msg, ok) {
+      var el = body.querySelector("#qsf-msg");
+      if (el) { el.textContent = msg || ""; el.style.color = ok ? "#9fe0a0" : "#e0a86a"; }
+    }
+
+    function load() {
+      return q("GET", "/queue/admin/shift-preview?stages=" + st).then(draw).catch(function (e) {
+        body.innerHTML = '<div class="qsf-empty">Ошибка: ' + esc(e.detail || e.message) + "</div>";
+      });
+    }
+
+    function draw(d) {
+      var w = d.week || {}, t = d.totals || {};
+      var chips =
+        '<span style="color:#ff9b86">🚪 выйдут: ' + (t.leave || 0) + "</span>" +
+        '<span style="color:#e0c07a">🔁 в конец: ' + (t.requeue || 0) + "</span>" +
+        '<span style="color:#9fd6e0">⏳ останутся (недополучили): ' + (t.stay_partial || 0) + "</span>" +
+        '<span style="color:#c9a0ff">✋ не забрали: ' + (t.stay_uncollected || 0) + "</span>";
+      // что уже сделано на неделе — чтобы не сдвинуть дважды и не забыть отчёт
+      var wchips = [
+        (w.report && w.report.published) ? '<span style="color:#9fe0a0">✔ отчёт опубликован</span>'
+                                         : '<span style="color:#8a95a5">○ отчёт не опубликован</span>',
+        (w.shift && w.shift.done) ? '<span style="color:#e0c07a">⚠ очередь уже сдвигали (' + (w.shift.stages || 0) + " эт.)</span>"
+                                  : '<span style="color:#9fe0a0">○ очередь ещё не сдвигали</span>',
+        (w.cilin_report && w.cilin_report.published) ? '<span style="color:#9fe0a0">✔ отчёт цилиня</span>'
+                                                     : '<span style="color:#8a95a5">○ отчёт цилиня</span>',
+        (w.cilin_shift && w.cilin_shift.done) ? '<span style="color:#e0c07a">✔ цилинь роздан</span>'
+                                              : '<span style="color:#8a95a5">○ цилинь не роздан</span>'
+      ].join("");
+      var lanes = (d.queues || []).map(function (Q) {
+        var acc = (BOOTHS[Q.queue] && BOOTHS[Q.queue].accent) || "#e0a24a";
+        var ents = Q.entries || [];
+        ents.forEach(function (e) { e._thr = Q.threshold; });
+        var strip = ents.length
+          ? ents.map(function (e) { return shiftCardHtml(e, Q.queue); }).join("")
+          : '<div class="qsf-empty">очередь пуста</div>';
+        return '<div class="qsf-lane" style="--gc:' + acc + '">' +
+          '<div class="qsf-lane-h">' + esc(Q.name) + ' <small>порог доблести ' + Q.threshold +
+          " · в очереди " + ents.length + "</small></div>" +
+          '<div class="qsf-strip">' + strip + "</div></div>";
+      }).join("");
+      var served = d.served_last || [];
+      var lastHtml = served.length
+        ? '<div class="qsf-last">' + served.map(function (s) {
+            return '<span class="qsf-last-c"><b style="color:#cfe0ff">' + esc(s.nick) + "</b>" +
+              '<span style="color:#8a795a">' + esc(resName(s.resource)) + " · место #" + Math.round(s.pos) +
+              (s.by === "cilin" ? " · цилинь" : "") + "</span></span>";
+          }).join("") + "</div>"
+        : '<div class="qsf-empty">На этой неделе очередь ещё не двигали — возвращать некого.</div>';
+
+      body.innerHTML =
+        '<div class="qsf-bar">' +
+          '<b style="color:#f0dcb4">Закрыто этапов КХ:</b>' +
+          '<input type="number" id="qsf-st" min="0" max="7" value="' + st + '" style="width:62px">' +
+          '<button class="sec" id="qsf-recalc">↻ пересчитать</button>' +
+          '<span class="qsf-sum">' + wchips + "</span>" +
+        "</div>" +
+        '<div class="qsf-sum" style="padding:0 2px">' + chips + "</div>" +
+        '<div style="font-size:11.5px;color:#8a795a;padding:0 2px">Нажми на человека — отметить, что он ' +
+          '<b style="color:#c9a0ff">НЕ забрал</b> ресурсы: он останется на своём месте, а не выйдет. ' +
+          "Нажми ещё раз — снять отметку.</div>" +
+        lanes +
+        '<div class="qsf-bar" style="border-color:rgba(150,200,120,.5);background:rgba(150,200,120,.07)">' +
+          '<button id="qsf-go" style="font-weight:700">⏭ Сдвинуть очередь</button>' +
+          '<span id="qsf-msg" style="font-size:11.5px;color:#e0a86a"></span>' +
+        "</div>" +
+        '<div style="border-top:1px dashed rgba(120,170,255,.35);padding-top:10px">' +
+          '<div style="font:700 13px Georgia,serif;color:#cfe0ff;margin:0 0 6px">↩ Кого сдвинули в прошлый раз' +
+          ' <small style="font:400 11px system-ui;color:#8a795a">— можно вернуть на прежнее место</small></div>' +
+          lastHtml +
+          (served.length ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="sec" id="qsf-ret">↩ Вернуть отмеченных ниже…</button>' +
+            '<span style="font-size:11px;color:#8a795a">откроется список с галочками</span></div>' : "") +
+        "</div>";
+
+      try { autoCropAll(body, ".qsf-mdl"); } catch (e2) {}
+
+      body.querySelector("#qsf-recalc").addEventListener("click", function () {
+        st = Math.max(0, Math.min(7, parseInt(body.querySelector("#qsf-st").value, 10) || 0));
+        body.innerHTML = '<div class="qsf-empty">Считаю очередь…</div>';
+        load();
+      });
+      // клик по человеку — «не забрал» (и обратно). Отмечаем сразу на сервере: так состояние
+      // честное, и после перезагрузки панели видно, что человек остаётся.
+      [].forEach.call(body.querySelectorAll(".qsf-c"), function (c) {
+        c.addEventListener("click", function () {
+          var id = parseInt(c.getAttribute("data-id"), 10);
+          var on = !c.classList.contains("nc");
+          c.style.opacity = ".6";
+          q("POST", "/queue/admin/mark-uncollected-bulk", { ids: [id], uncollected: on })
+            .then(function (r) {
+              say((on ? "✋ отмечен «не забрал»: " : "✓ снята отметка: ") + (r.marked || []).join(", "), true);
+              st = Math.max(0, Math.min(7, parseInt(body.querySelector("#qsf-st").value, 10) || st));
+              return load();
+            })
+            .catch(function (e3) { c.style.opacity = ""; say("Ошибка: " + (e3.detail || e3.message)); });
+        });
+      });
+      body.querySelector("#qsf-go").addEventListener("click", function () {
+        var n = Math.max(0, Math.min(7, parseInt(body.querySelector("#qsf-st").value, 10) || 0));
+        var msg = "СДВИНУТЬ ОЧЕРЕДЬ по " + n + " закрытым этапам?\n\n" +
+          "🚪 выйдут: " + (t.leave || 0) + "\n🔁 в конец: " + (t.requeue || 0) +
+          "\n⏳ останутся (получили не всё): " + (t.stay_partial || 0) +
+          "\n✋ не забрали (останутся): " + (t.stay_uncollected || 0) +
+          "\n\nВ чаты ничего не уйдёт. Отменить можно откатом из «Истории распределения».";
+        if ((w.shift && w.shift.done) &&
+            !confirm("⚠ На этой неделе очередь УЖЕ сдвигали.\n\nСдвинуть ещё раз? Обычно НЕ нужно.")) return;
+        if (!confirm(msg)) return;
+        say("Двигаю очередь…");
+        q("POST", "/queue/admin/shift", { stages: n, force: !!(w.shift && w.shift.done) })
+          .then(function (r) {
+            say("✓ Сдвинуто: вышли " + (r.left_removed || 0) + ", в конец " + (r.requeued || 0) +
+                ", остались " + ((r.partial_stay || 0) + (r.stayed_uncollected || 0)), true);
+            refresh();
+            st = n; load();
+          })
+          .catch(function (e4) { say("Ошибка: " + (e4.detail || e4.message)); });
+      });
+      var retBtn = body.querySelector("#qsf-ret");
+      if (retBtn) retBtn.addEventListener("click", function () { openReturnPicker(load); });
+    }
+    load();
+  }
+
+  // ── список «кого вернуть» с галочками (после сдвига) ──
+  function openReturnPicker(after) {
+    var body = document.createElement("div");
+    body.innerHTML = '<div class="qd-ret-box" id="qrp-box">Загрузка…</div>' +
+      '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap;align-items:center">' +
+      '<button id="qrp-go" style="font-weight:700">↩ Вернуть отмеченных</button>' +
+      '<button class="sec" id="qrp-all">✓ отметить всех</button>' +
+      '<span id="qrp-msg" style="font-size:11.5px;color:#c9b48f"></span></div>';
+    sceneModal("↩ Вернуть тех, кто не забрал", body);
+    var box = body.querySelector("#qrp-box");
+    q("GET", "/queue/admin/uncollected-candidates").then(function (d) {
+      var ppl = d.people || [];
+      box.innerHTML = ppl.length ? qhPeopleRowsHtml(ppl)
+        : '<div style="color:#8a795a;font-size:11.5px">Некого возвращать — раздачи не было.</div>';
+    }).catch(function (e) { box.textContent = "Ошибка: " + (e.detail || e.message); });
+    body.querySelector("#qrp-all").addEventListener("click", function () {
+      [].forEach.call(box.querySelectorAll(".qd-ret-cb"), function (c) { c.checked = true; });
+    });
+    body.querySelector("#qrp-go").addEventListener("click", function () {
+      var sel = [].map.call(box.querySelectorAll(".qd-ret-cb:checked"), function (c) { return c.value; });
+      var msg = body.querySelector("#qrp-msg");
+      if (!sel.length) { msg.textContent = "Никто не отмечен."; return; }
+      msg.textContent = "Возвращаю…";
+      q("POST", "/queue/admin/return-people", { canons: sel }).then(function (r) {
+        msg.textContent = "✓ вернулись: " + ((r.returned || []).join(", ") || "—");
+        msg.style.color = "#9fe0a0";
+        refresh();
+        if (after) after();
+      }).catch(function (e) { msg.textContent = "Ошибка: " + (e.detail || e.message); });
+    });
   }
 
   // ── карточка ПРОБНОГО отчёта распределения (модалка) ──

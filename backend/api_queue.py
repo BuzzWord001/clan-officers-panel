@@ -4358,7 +4358,7 @@ def _shift_queues(conn, report: dict, dry_run: bool = False) -> dict:
                 keep_ids.append(r["id"])
                 _w("UPDATE queue_entries SET not_collected=0 WHERE id=?", (r["id"],))
                 stayed_uncollected += 1
-                steps["stay_uncollected"].append({"nick": r["nick"], "queue": q, "pos": r["pos"]})
+                steps["stay_uncollected"].append({"id": r["id"], "nick": r["nick"], "queue": q, "pos": r["pos"]})
             elif (row_by_id.get(r["id"], {}).get("missing") or []):
                 # Получил НЕ ВСЁ выбранное (часть ресурсов не досталась — pack ушёл первому /
                 # fixed кончился). ОСТАЁТСЯ в очереди за НЕДОПОЛУЧЕННЫМИ; полученное сейчас →
@@ -4373,7 +4373,7 @@ def _shift_queues(conn, report: dict, dry_run: bool = False) -> dict:
                 _w("UPDATE queue_entries SET resource=?, resources=?, received=? WHERE id=?",
                    (miss[0], _json.dumps(miss), _json.dumps(new_recv), r["id"]))
                 keep_ids.append(r["id"]); partial_stay += 1
-                steps["stay_partial"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                steps["stay_partial"].append({"id": r["id"], "nick": r["nick"], "queue": q, "pos": r["pos"],
                                               "missing": miss, "got": got_now})
             else:
                 _w("INSERT INTO queue_served_last (queue, orig_pos, main_canon, nick, cls,"
@@ -4392,16 +4392,16 @@ def _shift_queues(conn, report: dict, dry_run: bool = False) -> dict:
                     _w("UPDATE queue_entries SET resource=?, auto_plan=? WHERE id=?",
                        (aplan[0], _json.dumps(aplan[1:]), r["id"]))
                     requeue_ids.append(r["id"]); requeued += 1
-                    steps["requeue"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                    steps["requeue"].append({"id": r["id"], "nick": r["nick"], "queue": q, "pos": r["pos"],
                                              "next": aplan[0], "why": "план на след. недели"})
                 elif r["auto_repeat"]:
                     requeue_ids.append(r["id"]); requeued += 1
-                    steps["requeue"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                    steps["requeue"].append({"id": r["id"], "nick": r["nick"], "queue": q, "pos": r["pos"],
                                              "next": r["resource"], "why": "🔁 повтор"})
                 else:
                     _w("DELETE FROM queue_entries WHERE id=?", (r["id"],))
                     left_after += 1
-                    steps["leave"].append({"nick": r["nick"], "queue": q, "pos": r["pos"],
+                    steps["leave"].append({"id": r["id"], "nick": r["nick"], "queue": q, "pos": r["pos"],
                                            "resource": r["resource"],
                                            "got": list((row_by_id.get(r["id"], {}).get("got") or {}).keys())})
         # СТАБИЛЬНЫЕ ПОЗИЦИИ: keep_ids ОСТАЮТСЯ на своих pos — НЕ перепаковываем. Ушедшие
@@ -4672,6 +4672,110 @@ async def admin_cilin_report(payload: CilinReportIn, request: Request,
                    "note": ("пробный режим: отчёт цилиня ушёл в личку" if dm else
                             "отчёт цилиня опубликован; очередь цилиня НЕ сдвинута")})
     return result
+
+
+class MarkUncollectedBulkIn(BaseModel):
+    """Отметить «не забрал» сразу нескольким — ДО сдвига очереди."""
+    ids: list[int] = Field(default_factory=list)      # записи очереди (id)
+    uncollected: bool = True                          # True — не забрал (останется), False — снять
+
+
+@router.post("/admin/mark-uncollected-bulk")
+def mark_uncollected_bulk(payload: MarkUncollectedBulkIn, request: Request,
+                          actor: dict = Depends(require_officer_or_admin)) -> dict:
+    """Пакетная отметка «не забрал» по записям очереди (панель сдвига).
+
+    Отмеченный при сдвиге ОСТАЁТСЯ на своём месте, а не выбывает: ресурс ему выдали на бумаге,
+    но он его не взял. Раньше такие правились уже ПОСЛЕ сдвига (возвратом из снимка) — теперь
+    их видно и убирают до того, как очередь поехала.
+
+    Человек стоит в нескольких очередях, а не забирает ВСЮ пачку сразу — поэтому отмечаем
+    ЦЕЛИКОМ по человеку: все его записи, а не только ту, по которой кликнули."""
+    if not payload.ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Никто не отмечен")
+    val = 1 if payload.uncollected else 0
+    names = []
+    with db.connection() as conn:
+        canons = set()
+        for eid in payload.ids:
+            row = conn.execute("SELECT main_canon, nick FROM queue_entries WHERE id=?", (eid,)).fetchone()
+            if row:
+                canons.add(row["main_canon"])
+                names.append(row["nick"])
+        touched = 0
+        for c in canons:
+            cur = conn.execute("UPDATE queue_entries SET not_collected=? WHERE main_canon=?", (val, c))
+            touched += cur.rowcount or 0
+        _log(conn, "uncollected", actor=_actor_name(actor), request=request,
+             detail="%s (до сдвига): %s · записей %d"
+                    % ("не забрали — останутся" if val else "забрали — пройдут",
+                       ", ".join(names) or "—", touched))
+    return {"ok": True, "marked": names, "entries": touched, "uncollected": bool(val)}
+
+
+@router.get("/admin/shift-preview")
+def admin_shift_preview(stages: int = 0, _: dict = Depends(require_admin)) -> dict:
+    """ВСЁ, что нужно увидеть ПЕРЕД сдвигом очереди, одним запросом.
+
+    Панель сдвига показывает живую очередь так же, как история распределения: человек за
+    человеком, с доблестью, с тем, что ему достанется, и с пометкой, что с ним сделает сдвиг
+    (выйдет / уйдёт в конец по 🔁 / останется). Прямо там отмечают тех, кто НЕ ЗАБРАЛ свои
+    ресурсы, — отмеченные остаются в очереди, а не выбывают. Раньше это было видно только
+    списком в отчёте, а «не забрал» правился уже ПОСЛЕ сдвига, задним числом.
+
+    Отдаём в порядке очереди (pos), с полями для моделек — сцена рисует те же карточки."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        gmap = {r["canon"]: r["gender"] for r in conn.execute("SELECT canon, gender FROM queue_gender")}
+        pmap = {r["canon"]: r["prefer_class"] for r in conn.execute("SELECT canon, prefer_class FROM queue_model_pref")}
+        vmap_var = {r["canon"]: (r["variant"] or "") for r in conn.execute("SELECT canon, variant FROM queue_model_pref")}
+        smap = _spouse_map(conn)
+        tmap = _build_translit_map(idx)
+        rep = _build_report(conn, stages_override=stages)
+        plan = _shift_queues(conn, rep, dry_run=True)
+        # id → что человек получит и что ему НЕ досталось (для пометок в карточке)
+        row_by_id, status_by_id = {}, {}
+        for Q in rep["queues"]:
+            for r in Q["rows"]:
+                if r.get("id") is not None:
+                    row_by_id[r["id"]] = r
+                    status_by_id[r["id"]] = r.get("status")
+        act = {}
+        for kind, key in (("leave", "leave"), ("requeue", "requeue"),
+                          ("stay_partial", "stay_partial"), ("stay_uncollected", "stay_uncollected")):
+            for st in (plan.get("steps") or {}).get(key) or []:
+                if st.get("id") is not None:
+                    act[st["id"]] = kind
+        queues = []
+        for q in QUEUES:
+            ents = []
+            for r in conn.execute("SELECT * FROM queue_entries WHERE queue=? ORDER BY pos, id", (q,)):
+                e = _entry_public(r, idx, gmap, smap, pmap, None, tmap, vmap_var)
+                rw = row_by_id.get(r["id"]) or {}
+                e["pos"] = r["pos"]
+                e["main_canon"] = r["main_canon"]
+                e["valor"] = rw.get("valor", 0)
+                e["got"] = rw.get("got") or {}
+                e["missing"] = rw.get("missing") or []
+                e["not_collected"] = bool(r["not_collected"])
+                # что сделает сдвиг: пришло из dry-run того же кода, что и сам сдвиг
+                e["action"] = act.get(r["id"]) or (
+                    "stay_low" if status_by_id.get(r["id"]) == "low_valor" else "stay_empty")
+                ents.append(e)
+            queues.append({"queue": q, "name": QUEUE_NAMES.get(q, ""),
+                           "threshold": (rep.get("thresholds") or {}).get(q, 0),
+                           "entries": ents})
+        # КОГО СДВИНУЛИ В ПРОШЛЫЙ РАЗ — для блока «вернуть назад» (снимок выдачи)
+        served = [{"id": s["id"], "nick": s["nick"], "queue": s["queue"], "pos": s["orig_pos"],
+                   "main_canon": s["main_canon"], "resource": s["resource"],
+                   "by": s["added_by"], "at": s["served_at"]}
+                  for s in conn.execute(
+                      "SELECT * FROM queue_served_last ORDER BY queue, orig_pos")]
+    return {"stages": stages, "queues": queues, "pet_queue": rep.get("pet_queue") or [],
+            "totals": {"leave": plan["left_removed"], "requeue": plan["requeued"],
+                       "stay_partial": plan["partial_stay"],
+                       "stay_uncollected": plan["stayed_uncollected"]},
+            "served_last": served, "week": admin_week_status(_)}
 
 
 @router.get("/admin/week-status")
@@ -6035,7 +6139,13 @@ def activity_log(_: dict = Depends(require_officer_or_admin)) -> dict:
 
 def _iso_week_key(created_at: str) -> str:
     """ISO-неделя из created_at (для анти-дубля недель в истории). Все повторные публикации/
-    перепубликации/пробные отчёты за одну неделю падают в один ключ → показываем только последний."""
+    перепубликации/пробные отчёты за одну неделю падают в один ключ → показываем только последний.
+
+    СЧИТАЕМ ПО МСК, как и `_iso_week_now`. Метки времени в базе хранятся в UTC, а клан живёт по
+    Москве: воскресным вечером (после 21:00 UTC) московский понедельник уже наступил, и неделя
+    по UTC отставала на одну. 17.08.2026 в 00:10 МСК из-за этого «поехали» индикаторы недели
+    (отчёт опубликован, а панель показывала «не опубликован») и мог появиться дубль записи за
+    неделю в истории — как раз в те часы, когда идёт раздача."""
     from datetime import datetime
     s = (created_at or "").strip().replace("Z", "+00:00")
     try:
@@ -6045,7 +6155,10 @@ def _iso_week_key(created_at: str) -> str:
             dt = datetime.fromisoformat(s[:19])   # без таймзоны
         except ValueError:
             return created_at or ""
-    y, w, _ = dt.isocalendar()
+    msk = timezone(timedelta(hours=3))
+    # без таймзоны в строке = UTC (так пишет _now)
+    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    y, w, _ = dt.astimezone(msk).isocalendar()
     return "%04d-W%02d" % (y, w)
 
 
