@@ -4483,10 +4483,26 @@ async def admin_report(payload: ReportIn, request: Request, actor: dict = Depend
         if payload.dm:
             ch = await (_send_report_media(img, text, force_dm=True) if img
                         else _send_text_to_chats(text, force_dm=True))
+        # ДИАПАЗОН ЭТАПОВ → ПОЛНЫЙ ОТЧЁТ НА КАЖДЫЙ ВАРИАНТ. Раньше пробный отчёт по диапазону
+        # 4-5 показывал один расклад (за 4) плюс сухую приписку «если закроем 5-й — дополнительно
+        # столько-то»: чтобы понять раздачу за 5 этапов, её приходилось складывать в уме. Теперь
+        # сайт показывает оба расклада целиком, рядом. В каналы по-прежнему уходит ОДИН пост —
+        # основной за нижний этап и приписка про следующий (публикация ниже это не трогает).
+        variants = []
+        for s in range(lo, hi + 1):
+            with db.connection() as conn:
+                rep_s = main if s == lo else _build_report(conn, stages_override=s)
+            variants.append({
+                "stages": s,
+                "text": distribution.format_report_compact(rep_s, None, _now_msk_str()),
+                "report": rep_s,
+                "groups": len(rep_s.get("groups") or []),
+                "people": sum(len(g.get("people") or []) for g in (rep_s.get("groups") or [])),
+            })
         # полный расчёт — чтобы сайт нарисовал ту же карточку с группами и картинками,
         # что уйдёт в каналы, а не «примерно похожую» по отдельному эндпоинту
         result.update({"preview": True, "channels": ch, "sent": bool(payload.dm),
-                       "report": main, "delta": delta})
+                       "report": main, "delta": delta, "variants": variants})
         return result
     # ПРОБНЫЙ РЕЖИМ: commit НЕ двигает очередь — сухой прогон целиком в личку. Так «пробный
     # отчёт» безопасен: жми сколько угодно, очередь не сдвинется.

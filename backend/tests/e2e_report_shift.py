@@ -162,6 +162,15 @@ pv = run(api_queue.admin_report(api_queue.ReportIn(from_stages=6, to_stages=6, c
 check(pv.get("preview") and not pv.get("sent"), "пробный отчёт: в каналы не ушёл")
 check(bool(pv.get("text")) and bool(pv.get("report")), "пробный отчёт вернул текст и расчёт для показа на сайте")
 check(queue_state() == before, "пробный отчёт очередь не тронул")
+# Диапазон этапов = ПОЛНЫЙ отчёт на каждый вариант. Раньше на «4-5» приходил один расклад
+# (за 4) с припиской «если закроем 5-й — дополнительно», и раздачу за 5 надо было
+# складывать в уме.
+rng = run(api_queue.admin_report(api_queue.ReportIn(from_stages=4, to_stages=6, commit=False), REQ, ACTOR))
+vs = rng.get("variants") or []
+check([v["stages"] for v in vs] == [4, 5, 6], "диапазон 4-6 даёт три полных варианта отчёта")
+check(all(v.get("text") and v.get("report") for v in vs), "у каждого варианта свой текст и свой расчёт")
+one = run(api_queue.admin_report(api_queue.ReportIn(from_stages=6, to_stages=6, commit=False), REQ, ACTOR))
+check(len(one.get("variants") or []) == 1, "один этап — один вариант, лишнего не считаем")
 
 print("\n3. ЦИЛИНЬ — ОТДЕЛЬНЫЙ ОТЧЁТ, ОЧЕРЕДЬ НЕ ДВИГАЕТ")
 cr = run(api_queue.admin_cilin_report(api_queue.CilinReportIn(count=1, commit=True), REQ, ACTOR))

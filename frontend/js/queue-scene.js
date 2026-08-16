@@ -7902,12 +7902,24 @@
       return q("POST", "/queue/admin/report",
                { from_stages: r.from_stages, to_stages: r.to_stages, commit: false, dm: !!dm })
         .then(function (d) {
-          out.textContent = (d.valor_week_warning ? "⚠ " + d.valor_week_warning + "\n\n" : "") + (d.text || "(пусто)");
+          // Диапазон этапов → ПОЛНЫЙ расклад на каждый вариант, а не один отчёт с припиской
+          // «если закроем ещё этап — дополнительно». Складывать раздачу в уме больше не нужно.
+          var vs = d.variants || [];
+          var head = d.valor_week_warning ? "⚠ " + d.valor_week_warning + "\n\n" : "";
+          if (vs.length > 1) {
+            out.textContent = head + vs.map(function (v) {
+              return "═══ ЕСЛИ ЗАКРОЕМ " + v.stages + " ЭТАП(ОВ) ═══\n" + (v.text || "(пусто)");
+            }).join("\n\n\n");
+          } else {
+            out.textContent = head + (d.text || "(пусто)");
+          }
           showLow(d);
-          if (d.report) renderDistReport(d.report);   // карточка с группами и картинками
+          if (vs.length > 1) renderDistVariants(vs);
+          else if (d.report) renderDistReport(d.report);   // карточка с группами и картинками
+          var many = vs.length > 1 ? (" · вариантов: " + vs.length) : "";
           status(d.valor_week_warning ? "⚠ Доблесть не за эту неделю — см. текст пробного отчёта"
-                 : (dm ? "✓ Пробный отчёт показан здесь и отправлен тебе в личку (в каналы НЕ ушёл)"
-                       : "✓ Пробный отчёт — проверь и жми «Опубликовать» (в каналы пока НЕ ушёл)"),
+                 : (dm ? "✓ Пробный отчёт показан здесь и отправлен тебе в личку (в каналы НЕ ушёл)" + many
+                       : "✓ Пробный отчёт — проверь и жми «Опубликовать» (в каналы пока НЕ ушёл)" + many),
                  !d.valor_week_warning);
         })
         .catch(function (e) { out.textContent = ""; status("Ошибка: " + (e.detail || e.message)); });
@@ -8200,6 +8212,23 @@
     body.className = "qs-distrep";
     body.innerHTML = distReportHtml(rep);
     sceneModal("🧪 Пробный отчёт о распределении ресурсов", body);
+  }
+
+  // ── несколько ВАРИАНТОВ отчёта (диапазон этапов) в одной модалке, друг под другом ──
+  // Пока число закрытых этапов неизвестно, полезно видеть готовые расклады рядом: «за 4» и
+  // «за 5» целиком, а не «за 4» плюс приписку, что добавится на пятом.
+  function renderDistVariants(variants) {
+    var body = document.createElement("div");
+    body.className = "qs-distrep";
+    body.innerHTML = variants.map(function (v) {
+      return '<div style="margin:0 0 8px;padding:7px 11px;border-radius:9px;font-weight:700;' +
+        'background:rgba(224,162,74,.16);border:1px solid rgba(224,162,74,.5);color:#f0dcb4">' +
+        "🏰 Если закроем " + v.stages + " этап(ов) · групп: " + (v.groups || 0) +
+        " · получателей: " + (v.people || 0) + "</div>" +
+        distReportHtml(v.report) +
+        '<div style="height:18px;border-bottom:1px dashed rgba(224,162,74,.35);margin:0 0 18px"></div>';
+    }).join("");
+    sceneModal("🧪 Пробный отчёт — " + variants.length + " варианта по этапам КХ", body);
   }
 
   function buildModelSizePanel() {
