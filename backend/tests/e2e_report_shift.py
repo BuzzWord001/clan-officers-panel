@@ -54,7 +54,8 @@ async def _fake_send(a, b=None, force_dm=False):
 api_queue._send_report_media = _fake_send
 api_queue._send_text_to_chats = _fake_send
 api_queue._render_report_image = lambda *a, **k: None
-api_queue._valor_week_stale = lambda: ""          # доблесть считаем свежей
+_ORIG_STALE = api_queue._valor_week_stale         # настоящая проверка — нужна блоку 13
+api_queue._valor_week_stale = lambda: ""          # в остальных блоках доблесть считаем свежей
 api_queue._is_test_mode = lambda: False           # боевой режим (пробный проверяем отдельно)
 db.valor_latest_week = lambda: "2026-W33"
 api_queue._save_low_valor_notices = lambda conn, rep: None
@@ -321,6 +322,30 @@ check(api_queue._iso_week_key("2026-08-16T21:10:00") == "2026-W34",
       "метка без таймзоны читается как UTC и тоже переводится в МСК")
 check(api_queue._iso_week_key(api_queue._now()) == api_queue._iso_week_now(),
       "«сейчас» в базе и «текущая неделя» всегда в одной неделе")
+
+print("\n13. ЗАЩИТА ОТ СТАРОЙ ДОБЛЕСТИ НЕ МЕШАЕТ РАБОЧЕМУ ЦИКЛУ")
+# Доблесть собирают в воскресенье вечером, а двигают очередь ночью или в понедельник — уже на
+# следующей ISO-неделе. Это норма: 17.08.2026 в 00:10 МСК защита заблокировала Лиру сдвиг по
+# доблести, собранной за час до этого. Терпим ровно один шаг назад и только в пн/вт.
+_real_week = db.valor_latest_week
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz  # noqa: E402
+_msk = _dt.now(_tz(_td(hours=3)))
+_cur_y, _cur_w, _ = _msk.isocalendar()
+_prev_y, _prev_w, _ = (_msk - _td(days=7)).isocalendar()
+_old_y, _old_w, _ = (_msk - _td(days=21)).isocalendar()
+db.valor_latest_week = lambda: "%d-W%02d" % (_cur_y, _cur_w)
+check(_ORIG_STALE() == "", "доблесть за текущую неделю — пропускаем")
+db.valor_latest_week = lambda: "%d-W%02d" % (_old_y, _old_w)
+check("Свежая доблесть" in _ORIG_STALE(), "доблесть трёхнедельной давности — блокируем")
+db.valor_latest_week = lambda: ""
+check("ещё не собрана" in _ORIG_STALE(), "доблести нет вовсе — блокируем")
+db.valor_latest_week = lambda: "%d-W%02d" % (_prev_y, _prev_w)
+_res = _ORIG_STALE()
+if _msk.isoweekday() <= 2:
+    check(_res == "", "прошлая неделя в пн/вт (раздача после воскресного сбора) — пропускаем")
+else:
+    check("Свежая доблесть" in _res, "прошлая неделя в середине недели — блокируем")
+db.valor_latest_week = _real_week
 
 print("\n" + "=" * 58)
 if _bad:
