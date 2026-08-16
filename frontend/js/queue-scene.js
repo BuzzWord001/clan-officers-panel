@@ -1191,6 +1191,14 @@
     ".qs-cell-badge{position:absolute;bottom:-2px;left:-2px;font:800 9px system-ui;color:#1b1006;background:var(--gc);" +
       "min-width:15px;text-align:center;border-radius:8px;padding:1px 4px;box-shadow:0 1px 3px rgba(0,0,0,.5)}" +
     ".qs-cell-nick{font:700 9.5px system-ui;color:#f6ead2;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;text-shadow:0 1px 2px #000}" +
+    // ── ДОБЛЕСТЬ НА ПОЛОСЕ (включается админом) ──────────────────────────────────────
+    // Кто не дотягивает до порога СВОЕЙ очереди — приглушён и обесцвечен, как в истории
+    // распределения: видно сразу, кому ресурс не достанется, ещё до расчёта отчёта.
+    ".qs-cell-val{font:700 9px system-ui;color:#9fe0a0;text-shadow:0 1px 2px #000;letter-spacing:.2px}" +
+    ".qs-cell-val.low{color:#e0a86a}" +
+    ".qs-cell.lowv{opacity:.55}" +
+    ".qs-cell.lowv .qs-cell-img{filter:grayscale(.75) brightness(.8)}" +
+    ".qs-cell.lowv .qs-cell-nick{color:#c8bda9}" +
     ".qs-cell.clk{cursor:pointer}.qs-cell.clk:hover .qs-cell-img{filter:drop-shadow(0 0 9px var(--gc)) drop-shadow(0 2px 3px rgba(0,0,0,.5))}" +
     ".qs-cell-edit{margin-top:1px;font:800 7.5px system-ui;color:#1b1006;background:linear-gradient(180deg,#f3d489,#d09b2e);" +
       "padding:1px 6px;border-radius:7px;white-space:nowrap}" +
@@ -3927,6 +3935,44 @@
   function renderQueueStrips(state) {
     var box = document.createElement("div");
     box.className = "qs-strips";
+    // ── ПЕРЕКЛЮЧАТЕЛЬ ДОБЛЕСТИ (только админ/офицер) ──
+    // Прямо над полосами: видно, кто сколько набрал за неделю, и кто не дотягивает до порога
+    // СВОЕЙ очереди — такие гаснут. Раньше это было понятно только из отчёта, после расчёта.
+    if (_isAdmin || _role === "officer") {
+      var vbar = document.createElement("div");
+      vbar.style.cssText = "display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:0 0 6px;padding:0 4px";
+      var vbtn = document.createElement("button");
+      vbtn.className = "sec";
+      vbtn.style.cssText = "padding:4px 11px;font-weight:700;font-size:12px;cursor:pointer";
+      var vnote = document.createElement("span");
+      vnote.style.cssText = "font-size:11px;color:#8a795a";
+      function paintVbtn() {
+        vbtn.textContent = _showValor ? "💪 Доблесть недели: показана" : "💪 Показать доблесть недели";
+        vbtn.style.borderColor = _showValor ? "rgba(150,224,140,.6)" : "";
+        vbtn.style.color = _showValor ? "#9fe0a0" : "";
+        vnote.textContent = !_showValor ? ""
+          : (_valorOv && _valorOv.week ? "неделя " + _valorOv.week + " · кому не хватает доблести для своей очереди — приглушены"
+             : "доблесть за неделю ещё не собрана");
+      }
+      paintVbtn();
+      vbtn.addEventListener("click", function () {
+        _showValor = !_showValor;
+        try { localStorage.setItem("qs_show_valor", _showValor ? "1" : "0"); } catch (e2) {}
+        if (_showValor && !_valorOv) {
+          vbtn.textContent = "💪 Загружаю доблесть…";
+          loadValorOverlay().then(function () { render(_lastState); });
+        } else {
+          render(_lastState);
+        }
+      });
+      vbar.appendChild(vbtn); vbar.appendChild(vnote);
+      box.appendChild(vbar);
+      // включено с прошлого раза, но данных ещё нет — подтянуть и перерисовать один раз
+      if (_showValor && !_valorOv && !_valorOvLoading) {
+        _valorOvLoading = true;
+        loadValorOverlay().then(function () { _valorOvLoading = false; render(_lastState); });
+      }
+    }
     var meCanon = _meAcc ? canon(_meAcc.main_nick) : "";
     var adminCanon = (_isAdmin && !_meAcc) ? canon(ADMIN_NICK) : "";   // админ тестирует как Лирия!
     BOOTHS.forEach(function (b) {
@@ -4010,8 +4056,13 @@
       } else entries.map(function (e, i) { return { e: e, i: i }; }).reverse().forEach(function (o) {
         var e = o.e, i = o.i;
         var mi = modelInfo(e), mine = meCanon && canon(e.main_nick) === meCanon;
+        // доблесть за текущую неделю (если админ включил показ): недобравшие до порога СВОЕЙ
+        // очереди гаснут — тот же приём, что в истории распределения
+        var vv = (_showValor && _valorOv) ? valorOf(e) : null;
+        var vThr = valorThr(b.q);
+        var vLow = (vv != null) && (vv < vThr);
         var cell = document.createElement("div");
-        cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "") + (modelAura(e) === "death" ? " death" : "");
+        cell.className = "qs-cell" + (mine ? " me" : "") + (e.privileged ? " priv" : "") + (modelAura(e) === "death" ? " death" : "") + (vLow ? " lowv" : "");
         cell.setAttribute("data-tip", tipHtml(e) + (mine ? '<span class="qtip-hint">нажми, чтобы сменить ресурс</span>' : ""));
         // облачко над головой — ТОЛЬКО картинка ресурса (без названия); имя и кол-во в подсказке.
         // Иконки автокропятся ниже → цилинь заполняет облачко без пустого пространства.
@@ -4031,6 +4082,10 @@
             (e.privileged ? "" : '<span class="qs-cell-badge">' + (i + 1) + "</span>") +
           "</div>" +
           '<span class="qs-cell-nick">' + esc(e.nick) + "</span>" +
+          (vv == null ? "" : '<span class="qs-cell-val' + (vLow ? " low" : "") + '" title="' +
+            (vLow ? "не хватает доблести для этой очереди (нужно " + vThr + ")"
+                  : "доблести хватает (порог " + vThr + ")") +
+            '">💪 ' + vv + (vLow ? " / " + vThr : "") + "</span>") +
           (mine ? '<span class="qs-cell-edit">✏️ сменить</span>' : "");
         if (mine) {
           cell.classList.add("clk");
@@ -4207,6 +4262,29 @@
   }
 
   var _roster = [], _isAdmin = false, _role = "", _officerName = "", _meAcc = null, _myTokens = 0, _myGender = "", _myPreferClass = false, _myVariant = "", _lastState = { queues: [[], [], [], []] };
+  // ── НАЛОЖЕНИЕ ДОБЛЕСТИ НА ПОЛОСЫ (админ/офицер) ──
+  // Данные грузятся отдельным запросом (в публичном /state доблести нет) и живут между
+  // перерисовками сцены; выбор «показывать/нет» запоминается в браузере.
+  var _valorOv = null;
+  var _valorOvLoading = false;
+  var _showValor = false;
+  try { _showValor = localStorage.getItem("qs_show_valor") === "1"; } catch (e) { _showValor = false; }
+  function valorOf(e) {
+    if (!_valorOv || !e || e.id == null) return null;
+    var v = _valorOv.valor[String(e.id)];
+    return (v == null) ? null : v;
+  }
+  function valorThr(qi) {
+    var t = _valorOv && _valorOv.thresholds;
+    if (!t) return ({ 0: 60, 1: 100, 2: 100, 3: 200 })[qi];
+    return (t[qi] != null) ? t[qi] : t[String(qi)];
+  }
+  function loadValorOverlay() {
+    return q("GET", "/queue/valor-overlay").then(function (d) {
+      _valorOv = { valor: d.valor || {}, thresholds: d.thresholds || {}, week: d.week || "", has: !!d.has_valor };
+      return _valorOv;
+    }).catch(function () { _valorOv = null; return null; });
+  }
   var _offAccess = {};   // права офицера {section_key: bool} (для скрытия разделов; админ = всё)
   // Может ли ТЕКУЩИЙ пользователь пользоваться разделом. Админ — всегда; офицер — по карте
   // (отсутствие ключа = разрешено). Совпадает с серверной проверкой (defense in depth).
@@ -8315,6 +8393,9 @@
       .then(function (m) { _myTokens = (m && m.tokens) || 0; _myGender = (m && m.gender) || ""; _myPreferClass = !!(m && m.prefer_class); _myVariant = (m && m.variant) || ""; _myIdentities = (m && m.identities) || []; _myActiveNick = (m && m.active_nick) || ""; }).catch(function () {}));
     jobs.push(q("GET", "/queue/token-board")
       .then(function (d) { if (d && d.holders) _tokenBoard = d.holders; }).catch(function () {}));
+    // доблесть на полосах включена → освежаем вместе с очередью, иначе после сдвига или
+    // нового сбора доблести на сцене висели бы вчерашние числа
+    if (_showValor && (_isAdmin || _role === "officer")) jobs.push(loadValorOverlay());
     return Promise.all(jobs).then(function (r) { render(r[0]); }).catch(function (e) {
       var host = document.getElementById("scene");
       if (host) host.innerHTML = '<div class="q-banner">Не удалось загрузить очередь: ' + esc(e.detail || e.message) + "</div>";

@@ -2584,6 +2584,34 @@ def state() -> dict:
     return {"queues": qs}
 
 
+@router.get("/valor-overlay")
+def valor_overlay(_: dict = Depends(require_officer_or_admin)) -> dict:
+    """Доблесть за текущую неделю для наложения на полосы очередей (админ/офицер).
+
+    Нужна, чтобы прямо на сцене видеть, кто сколько набрал и КТО НЕ ДОТЯГИВАЕТ до порога
+    СВОЕЙ очереди — раньше это было видно только в отчёте, уже после расчёта. Отдаём отдельным
+    запросом, а не в общем `/state`: тот публичный, а доблесть — не для всех подряд.
+
+    Доблесть считается ПО ЧЕЛОВЕКУ (лучший результат мэйна и твинов) — тем же правилом, что в
+    ТОП-20 и в раздаче, иначе на сцене и в отчёте были бы разные числа."""
+    with db.connection() as conn:
+        idx = _people(conn)
+        vmap, _nm = _valor_map(conn)
+        main_map = {cn: p["main_canon"] for cn, p in idx.items() if p.get("main_canon")}
+        person: dict[str, int] = {}
+        for c, v in vmap.items():
+            p = main_map.get(c, c)
+            if (v or 0) > person.get(p, -1):
+                person[p] = v or 0
+        out: dict[str, int] = {}
+        for r in conn.execute("SELECT id, main_canon, nick FROM queue_entries"):
+            mc = r["main_canon"] or db._valor_canon(r["nick"] or "")
+            p = main_map.get(mc, mc)
+            out[str(r["id"])] = person.get(p, vmap.get(mc, 0) or 0)
+    return {"valor": out, "thresholds": dict(distribution.QUEUE_THRESHOLD),
+            "week": db.valor_latest_week() or "", "has_valor": bool(vmap)}
+
+
 @router.post("/join")
 def join(payload: JoinIn, request: Request) -> dict:
     q = payload.queue

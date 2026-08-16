@@ -269,6 +269,16 @@ h = api_queue.history(False, ACTOR)["reports"]
 kinds = {x["kind"] for x in h}
 check("report" in kinds and "cilin" in kinds, "в истории видны оба отчёта за одну неделю")
 
+print("\n10. ДОБЛЕСТЬ НА ПОЛОСАХ ОЧЕРЕДЕЙ (наложение для админа)")
+seed()
+ov = api_queue.valor_overlay(ACTOR)
+with db.connection() as conn:
+    ids = [str(r["id"]) for r in conn.execute("SELECT id FROM queue_entries")]
+check(set(ov["valor"].keys()) == set(ids), "доблесть отдаётся по КАЖДОЙ записи очереди (ключ = id)")
+check(ov["thresholds"].get(0) == 60 and ov["thresholds"].get(2) == 100,
+      "пороги очередей приходят вместе с доблестью — сцена красит по ним")
+check("week" in ov and "has_valor" in ov, "видно, за какую неделю доблесть и собрана ли она")
+
 print("\n" + "=" * 58)
 if _bad:
     print("ПРОВАЛЕНО %d из %d:" % (len(_bad), len(_ok) + len(_bad)))
