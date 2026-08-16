@@ -167,8 +167,20 @@ def compute(state: dict, valor_map: dict, cfg: dict) -> dict:
     top3 = {p for p, _ in ranked[:3]}            # МЭЙН-каноны топ-3 РАЗНЫХ людей
 
     def entry_valor(e) -> int:
-        for key in (e.get("canon_nick"), e.get("main_canon")):
-            if key and key in valor_map and valor_map[key] is not None:
+        """Доблесть ЧЕЛОВЕКА, а не одного его персонажа: лучший результат среди мэйна и твинов.
+
+        То же правило, что в ТОП-20 и при выдаче жетонов ТОП-3 (person_valor выше) — иначе
+        система противоречит сама себе: в топе человек стоит по твину, а на пороге очереди
+        его проверяют по мэйну. Так 16.08.2026 Риcлинг (мэйн 76, твин 110) стоял в топе 5-м
+        со 110 и одновременно был помечен «мало доблести» в очереди за Огненным цилинём,
+        где порог 100."""
+        for key in (e.get("main_canon"), e.get("canon_nick")):
+            if not key:
+                continue
+            p = _person(key)
+            if p in person_valor:
+                return person_valor[p]
+            if valor_map.get(key) is not None:
                 return valor_map[key]
         return 0
 
