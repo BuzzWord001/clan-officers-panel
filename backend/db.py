@@ -8115,12 +8115,19 @@ def valor_get_current(with_reg_notes: bool = False,
             mc = (_idx.get(cn) or {}).get("main_canon") or cn
             return mc or cn
 
-        # эффективная доблесть персоны в ТЕКУЩЕМ снимке (max по персонажам)
+        # эффективная доблесть персоны в ТЕКУЩЕМ снимке (max по персонажам) + ЧЕЙ это результат.
+        # Порядковый ключ того персонажа, что дал максимум, нужен для тай-брейка при равной
+        # доблести: место решает порядок скринов, а не алфавит. Тот же ключ использует
+        # воскресный ТОП-20, поэтому номер в таблице и место в посте совпадают даже при ничьей.
         _persona_valor: dict = {}
+        _persona_key: dict = {}
         for _r in rows:
             _cn = _r["nick_canon"]; _mc = _main_of_canon(_cn); _v = _r["valor"] or 0
-            if _v > _persona_valor.get(_mc, -1):
+            _k = _r["sort_key"] if ("sort_key" in _r.keys() and _r["sort_key"] is not None) else _r["id"]
+            if _v > _persona_valor.get(_mc, -1) or (_v == _persona_valor.get(_mc, -1)
+                                                    and _k < _persona_key.get(_mc, 1 << 30)):
                 _persona_valor[_mc] = _v
+                _persona_key[_mc] = _k
         # ── Кубки за место в ТОПе по неделям (накопительно за ВСЕ недели) ──
         # По valor DESC внутри недели: места 1-10 → золото, 11-20 → серебро,
         # 21-30 → бронза (один кубок за неделю). Для КАЖДОГО кубка храним ДЕТАЛИ
@@ -8180,6 +8187,8 @@ def valor_get_current(with_reg_notes: bool = False,
             m["main_nick"] = (_idx.get(cn) or {}).get("main_nick") or m.get("nick")
             m["is_twin"] = bool(_mc) and (_mc != cn)
             m["persona_valor"] = _persona_valor.get(_mc, m.get("valor") or 0)
+            # чей результат дал персоне её место — им же разрешаем ничью (порядок скринов)
+            m["persona_key"] = _persona_key.get(_mc, r["id"])
             # Возвращён из архива — «чистый лист» (для пометки в истории/штриховки).
             _rs = ret_slate.get(cn)
             m["returned"] = ({"week": _rs["slate_week"], "at": _rs["returned_at"]}

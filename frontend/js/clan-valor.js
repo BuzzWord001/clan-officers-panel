@@ -240,8 +240,23 @@
     `;
   }
 
+  // МЕСТО СЧИТАЕТСЯ ПО ЧЕЛОВЕКУ, А НЕ ПО ПЕРСОНАЖУ (решение Лира 17.08.2026).
+  // Мэйн стоит по ЛУЧШЕМУ результату среди своих персонажей (persona_valor), твин — по
+  // своему. Тем же правилом считаются воскресный ТОП-20, жетоны ТОП-3 и пороги в раздаче
+  // ресурсов, поэтому номер в таблице и место в посте теперь совпадают. Раньше таблица
+  // засчитывала мэйну только его личную доблесть: Риcлинг (сам 76, твин 110) стоял 19-м,
+  // а в посте 5-м, и все ниже него разъезжались на две позиции.
+  function personaValor(m) {
+    if (m.is_twin) return m.valor;                       // твин — по своему результату
+    return (m.persona_valor != null) ? m.persona_valor : m.valor;
+  }
+
   function getSortVal(m, key) {
-    if (key === "level" || key === "valor")
+    if (key === "valor") {
+      const v = personaValor(m);
+      return v == null ? -1 : v;
+    }
+    if (key === "level")
       return m[key] == null ? -1 : m[key];
     if (key === "class") return (m.class_ || "").toLowerCase();
     if (key === "rank") {
@@ -263,8 +278,9 @@
       // бонусов. Так 143/18 выше 125/15 и 80/18 — никаких скидок/надбавок за
       // иммунитет/АФК, место строго по набранной доблести относительно нормы.
       const n = (DATA.snapshot && DATA.snapshot.valor_norm) || 0;
-      if (m.valor == null) return -1;
-      return n ? (m.valor / n) * 100 : m.valor;
+      const pv = personaValor(m);          // по человеку, как и место — иначе кубок и номер разъедутся
+      if (pv == null) return -1;
+      return n ? (pv / n) * 100 : pv;
     }
     if (key === "compliance") {
       // Колонка «Оценка и тренд» показывает форму за последние 4 недели —
@@ -1462,6 +1478,17 @@
       const vb = getSortVal(b, SORT.key);
       if (va < vb) return SORT.dir === "asc" ? -1 : 1;
       if (va > vb) return SORT.dir === "asc" ?  1 : -1;
+      // РАВНАЯ ДОБЛЕСТЬ → место решает порядок скринов, а не алфавит и не случайность:
+      // тем же ключом разрешает ничью воскресный ТОП-20, поэтому номер в таблице и место в
+      // посте совпадают даже когда у двоих одинаковый результат (17.08.2026: Риcлинг и
+      // ☆ZONT☆ оба по 110 — раньше в таблице и в посте они стояли в разном порядке).
+      // Только среди набравших: у кого по нулям, порядок по-прежнему решает статус
+      // (АФК и иммунитет выше «просто ноль без причины») — это правило ниже.
+      if ((SORT.key === "norm" || SORT.key === "valor") && va > 0) {
+        const ka = (a.persona_key != null) ? a.persona_key : a.id;
+        const kb = (b.persona_key != null) ? b.persona_key : b.id;
+        if (ka !== kb) return ka - kb;
+      }
       // При РАВНОМ значении (напр. оба 0) — АФК/иммун выше «просто 0 без
       // уважительной причины». Для всех метрик: норматив, ценность, доблесть.
       if (["score", "score_all", "norm", "valor", "compliance"].indexOf(SORT.key) >= 0)
@@ -1567,10 +1594,16 @@
       const twinBadges = (isTwin && isElite)
         ? `<span class="tw-badge tw-badge-elite" title="Роль Элита — Топ по урону">элита</span>`
         : "";
+      // Мэйн стоит выше собственной доблести — значит место дал его твин. Без пометки это
+      // выглядит ошибкой («у него 76, почему он над тем, у кого 110?»), поэтому говорим прямо.
+      const pv = m.persona_valor;
+      const byTwin = (!isTwin && pv != null && m.valor != null && pv > m.valor)
+        ? `<span class="tw-badge" title="Место по лучшему результату среди своих персонажей — как в воскресном ТОП-20 и при раздаче ресурсов">по твину ${pv}</span>`
+        : "";
       return `
         <tr class="${rowCls}${isTwin ? " m-row-twin" : ""}" data-nick="${esc(m.nick)}" data-canon="${esc(m.nick_canon)}">
           <td class="m-cell-idx">${isTwin ? "" : _place}</td>
-          <td class="m-cell-name">${isTwin ? "" : cupHtml}<b>${esc(dispNick)}</b>${twinBadges}${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
+          <td class="m-cell-name">${isTwin ? "" : cupHtml}<b>${esc(dispNick)}</b>${twinBadges}${byTwin}${achBtn}${dhistBtn}${aiMark}${sugHtml}${adminBtns}</td>
           <td class="socials-cell">${socialCell}</td>
           <td class="hist-cell" data-field="rank">${esc(m.rank)}</td>
           <td class="m-cell-titlename">
